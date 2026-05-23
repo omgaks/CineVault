@@ -2,14 +2,18 @@ package com.sole.cinevault
 
 import android.content.Context
 import android.provider.MediaStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-fun scanVideos(context: Context): List<VideoFile> {
+suspend fun scanDeviceVideos(
+    context: Context
+): List<VideoWithMetadata> = withContext(Dispatchers.IO) {
 
-    val videoList = mutableListOf<VideoFile>()
+    val videoList = mutableListOf<VideoWithMetadata>()
 
     val projection = arrayOf(
-        MediaStore.Video.Media.DISPLAY_NAME,
-        MediaStore.Video.Media.DATA
+        MediaStore.Video.Media.DATA,
+        MediaStore.Video.Media.DISPLAY_NAME
     )
 
     val cursor = context.contentResolver.query(
@@ -17,48 +21,84 @@ fun scanVideos(context: Context): List<VideoFile> {
         projection,
         null,
         null,
-        null
+        "${MediaStore.Video.Media.DATE_ADDED} DESC"
     )
 
     cursor?.use {
 
-        val nameColumn =
-            it.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
-
         val pathColumn =
             it.getColumnIndexOrThrow(MediaStore.Video.Media.DATA)
 
+        val nameColumn =
+            it.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
+
         while (it.moveToNext()) {
 
-            val name = it.getString(nameColumn)
-            val path = it.getString(pathColumn)
+            val path =
+                it.getString(pathColumn) ?: continue
 
-            val lower = name.lowercase()
+            val name =
+                it.getString(nameColumn)
+                    ?: path.substringAfterLast("/")
 
-            if (
-                lower.endsWith(".mp4") ||
-                lower.endsWith(".mkv") ||
-                lower.endsWith(".avi") ||
-                lower.endsWith(".mov") ||
-                lower.endsWith(".m4v") ||
-                lower.endsWith(".webm") ||
-                lower.endsWith(".flv") ||
-                lower.endsWith(".mpeg") ||
-                lower.endsWith(".mpg") ||
-                lower.endsWith(".ts") ||
-                lower.endsWith(".m2ts") ||
-                lower.endsWith(".wmv")
-            ) {
+            val cleanedTitle =
+                cleanMovieFilename(name)
 
-                videoList.add(
-                    VideoFile(
-                        name = name,
-                        path = path
+            // ALWAYS create local fallback first
+            var videoItem = VideoWithMetadata(
+                video = VideoFile(
+                    name = name,
+                    path = path
+                ),
+                title = cleanedTitle,
+                subtitle = "Movie",
+                posterUrl = null,
+                backdropUrl = null,
+                overview = "",
+                rating = 0.0,
+                imdbRating = null,
+                rottenTomatoesRating = null,
+                tmdbId = null,
+                type = "movie"
+            )
+
+            // THEN try TMDB enrichment
+            try {
+
+                val tmdb =
+                    TmdbClient.api.searchMovie(
+                        bearerToken = TmdbClient.BEARER,
+                        query = cleanedTitle
                     )
-                )
+
+                val result =
+                    tmdb.results.firstOrNull()
+
+                if (result != null) {
+
+                    videoItem = videoItem.copy(
+                        title = result.title ?: cleanedTitle,
+                        posterUrl =
+                            result.poster_path?.let {
+                                "https://image.tmdb.org/t/p/w500$it"
+                            },
+                        backdropUrl =
+                            result.backdrop_path?.let {
+                                "https://image.tmdb.org/t/p/original$it"
+                            },
+                        overview = result.overview,
+                        rating = result.vote_average,
+                        tmdbId = result.id
+                    )
+                }
+
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
+
+            videoList.add(videoItem)
         }
     }
 
-    return videoList
+    videoList
 }
