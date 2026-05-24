@@ -67,7 +67,7 @@ suspend fun scanDeviceVideos(
 
                 val tmdb =
                     TmdbClient.api.searchMovie(
-                        bearerToken = TmdbClient.BEARER,
+                        bearerToken = BuildConfig.TMDB_TOKEN,
                         query = cleanedTitle
                     )
 

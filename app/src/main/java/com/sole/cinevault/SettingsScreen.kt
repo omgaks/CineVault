@@ -1,12 +1,11 @@
 package com.sole.cinevault
 
-import coil.compose.AsyncImage
-import androidx.compose.material.icons.filled.List
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -16,7 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -28,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -248,7 +248,7 @@ private fun SettingsHeroCard() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(145.dp)
+            .height(155.dp)
             .clip(RoundedCornerShape(28.dp))
             .background(
                 Brush.linearGradient(
@@ -290,15 +290,15 @@ private fun SettingsHeroCard() {
         Box(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .size(58.dp)
+                .size(86.dp)
                 .clip(RoundedCornerShape(50))
-                .background(Color.White.copy(alpha = 0.12f)),
+                .background(Color.White.copy(alpha = 0.08f)),
             contentAlignment = Alignment.Center
         ) {
-            AsyncImage(
-                model = R.drawable.cinevault_circle_logo,
+            Image(
+                painter = painterResource(id = R.drawable.cinevault_circle_logo),
                 contentDescription = "CineVault Logo",
-                modifier = Modifier.size(100.dp)
+                modifier = Modifier.size(82.dp)
             )
         }
     }

@@ -1,5 +1,6 @@
 package com.sole.cinevault
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.Image
@@ -19,12 +20,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,11 +28,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 
 @Composable
 fun DetailScreen(
@@ -47,38 +46,48 @@ fun DetailScreen(
     val context = LocalContext.current
     val fullPath = item.video.path.replace("%20", " ")
 
-    var castList by remember(item.video.path) { mutableStateOf<List<TmdbCastMember>>(emptyList()) }
-    var castLoading by remember(item.video.path) { mutableStateOf(true) }
+    var castList by remember(item.video.path) {
+        mutableStateOf(loadCastCache(context, item.tmdbId, item.type))
+    }
+
+    var castLoading by remember(item.video.path) {
+        mutableStateOf(castList.isEmpty())
+    }
 
     LaunchedEffect(item.tmdbId, item.type) {
+        val id = item.tmdbId ?: return@LaunchedEffect
+
+        val cached = loadCastCache(context, id, item.type)
+        if (cached.isNotEmpty()) {
+            castList = cached
+            castLoading = false
+            return@LaunchedEffect
+        }
+
         castLoading = true
 
-        castList =
+        val freshCast =
             try {
-                val id = item.tmdbId
+                val credits =
+                    if (item.type == "tv") {
+                        TmdbClient.api.getTvCredits(
+                            bearerToken = BuildConfig.TMDB_TOKEN,
+                            seriesId = id
+                        )
+                    } else {
+                        TmdbClient.api.getMovieCredits(
+                            bearerToken = BuildConfig.TMDB_TOKEN,
+                            movieId = id
+                        )
+                    }
 
-                if (id != null) {
-                    val credits =
-                        if (item.type == "tv") {
-                            TmdbClient.api.getTvCredits(
-                                bearerToken = BuildConfig.TMDB_TOKEN,
-                                seriesId = id
-                            )
-                        } else {
-                            TmdbClient.api.getMovieCredits(
-                                bearerToken = BuildConfig.TMDB_TOKEN,
-                                movieId = id
-                            )
-                        }
-
-                    credits.cast.take(16)
-                } else {
-                    emptyList()
-                }
+                credits.cast.take(16)
             } catch (e: Exception) {
                 emptyList()
             }
 
+        castList = freshCast
+        saveCastCache(context, id, item.type, freshCast)
         castLoading = false
     }
 
@@ -95,7 +104,7 @@ fun DetailScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(330.dp)
+                    .height(350.dp)
             ) {
                 item.backdropUrl?.let {
                     Image(
@@ -112,8 +121,8 @@ fun DetailScreen(
                         .background(
                             Brush.verticalGradient(
                                 listOf(
-                                    Color.Black.copy(alpha = 0.10f),
-                                    Color.Black.copy(alpha = 0.62f),
+                                    Color.Black.copy(alpha = 0.12f),
+                                    Color.Black.copy(alpha = 0.60f),
                                     Color.Black
                                 )
                             )
@@ -160,13 +169,34 @@ fun DetailScreen(
                             overflow = TextOverflow.Ellipsis
                         )
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.horizontalScroll(rememberScrollState())
+                        ) {
+                            LogoRatingBadge(
+                                type = "tmdb",
+                                value = formatRating(item.rating)
+                            )
+
+                            LogoRatingBadge(
+                                type = "imdb",
+                                value = item.imdbRating ?: "N/A"
+                            )
+
+                            LogoRatingBadge(
+                                type = "rt",
+                                value = item.rottenTomatoesRating ?: "N/A"
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.horizontalScroll(rememberScrollState())
                         ) {
-                            DetailChip("TMDB ${formatRating(item.rating)}")
                             DetailChip(item.type.uppercase())
                             DetailChip(item.video.name.substringAfterLast(".").uppercase())
                         }
@@ -217,7 +247,7 @@ fun DetailScreen(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 when {
-                    castLoading -> {
+                    castLoading && castList.isEmpty() -> {
                         Text(
                             text = "Loading cast...",
                             color = Color.Gray,
@@ -257,7 +287,9 @@ fun DetailScreen(
                 ) {
                     DetailChip("TYPE ${item.type.uppercase()}")
                     DetailChip("FILE ${item.video.name.substringAfterLast(".").uppercase()}")
-                    DetailChip("RATING ${formatRating(item.rating)}")
+                    DetailChip("TMDB ${formatRating(item.rating)}")
+                    DetailChip("IMDb ${item.imdbRating ?: "N/A"}")
+                    DetailChip("RT ${item.rottenTomatoesRating ?: "N/A"}")
                 }
 
                 Spacer(modifier = Modifier.height(26.dp))
@@ -305,6 +337,40 @@ fun DetailScreen(
                 .background(Color.Black.copy(alpha = 0.48f))
                 .clickable { onBack() }
                 .padding(horizontal = 14.dp, vertical = 8.dp)
+        )
+    }
+}
+
+@Composable
+private fun LogoRatingBadge(
+    type: String,
+    value: String
+) {
+
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(40.dp))
+            .background(Color.Black.copy(alpha = 0.52f))
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = when (type) {
+                "imdb" -> "IMDb"
+                "rt" -> "RT"
+                else -> "TMDB"
+            },
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Text(
+            text = value,
+            color = Color.White,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold
         )
     }
 }
@@ -414,5 +480,49 @@ private fun formatRating(rating: Double?): String {
         "N/A"
     } else {
         String.format("%.1f", rating)
+    }
+}
+
+private fun castCacheKey(tmdbId: Int?, type: String): String {
+    return "cast_${type}_${tmdbId ?: 0}"
+}
+
+private fun saveCastCache(
+    context: Context,
+    tmdbId: Int,
+    type: String,
+    cast: List<TmdbCastMember>
+) {
+    try {
+        val json = Gson().toJson(cast)
+        context
+            .getSharedPreferences("cinevault_cast_cache", Context.MODE_PRIVATE)
+            .edit()
+            .putString(castCacheKey(tmdbId, type), json)
+            .apply()
+    } catch (_: Exception) {
+    }
+}
+
+private fun loadCastCache(
+    context: Context,
+    tmdbId: Int?,
+    type: String
+): List<TmdbCastMember> {
+    if (tmdbId == null) return emptyList()
+
+    return try {
+        val json =
+            context
+                .getSharedPreferences("cinevault_cast_cache", Context.MODE_PRIVATE)
+                .getString(castCacheKey(tmdbId, type), null)
+                ?: return emptyList()
+
+        val listType =
+            object : TypeToken<List<TmdbCastMember>>() {}.type
+
+        Gson().fromJson(json, listType)
+    } catch (_: Exception) {
+        emptyList()
     }
 }

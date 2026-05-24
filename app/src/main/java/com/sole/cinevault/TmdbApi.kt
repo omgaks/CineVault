@@ -30,6 +30,7 @@ interface TmdbApi {
         @Header("Authorization") bearerToken: String,
         @Path("series_id") seriesId: Int
     ): TmdbCreditsResponse
+
     @GET("tv/{series_id}/season/{season_number}/episode/{episode_number}")
     suspend fun getEpisodeDetails(
         @Header("Authorization") bearerToken: String,
@@ -37,4 +38,20 @@ interface TmdbApi {
         @Path("season_number") seasonNumber: Int,
         @Path("episode_number") episodeNumber: Int
     ): TmdbEpisode
+
+    @GET("movie/{movie_id}/external_ids")
+    suspend fun getMovieExternalIds(
+        @Header("Authorization") bearerToken: String,
+        @Path("movie_id") movieId: Int
+    ): TmdbExternalIds
+
+    @GET("tv/{series_id}/external_ids")
+    suspend fun getTvExternalIds(
+        @Header("Authorization") bearerToken: String,
+        @Path("series_id") seriesId: Int
+    ): TmdbExternalIds
 }
+
+data class TmdbExternalIds(
+    val imdb_id: String?
+)

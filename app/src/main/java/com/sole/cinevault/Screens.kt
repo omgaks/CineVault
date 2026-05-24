@@ -1,8 +1,11 @@
 package com.sole.cinevault
 
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.asImageBitmap
 import android.app.Activity
 import android.content.Context
 import android.view.WindowManager
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -39,6 +42,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -164,28 +168,19 @@ fun HomeScreen(
                         )
                 )
 
-                Column(
+                Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(16.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(Color.Black.copy(alpha = 0.48f))
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    horizontalAlignment = Alignment.End
+                        .size(144.dp)
+                        .clip(RoundedCornerShape(36.dp))
+                        .background(Color.Black.copy(alpha = 0.42f)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    AsyncImage(
-                        model = R.drawable.cinevault_circle_logo,
+                    Image(
+                        painter = painterResource(id = R.drawable.cinevault_circle_logo),
                         contentDescription = "CineVault Logo",
-                        modifier = Modifier.size(82.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Text(
-                        text = "Premium Media Experience",
-                        color = Color.White.copy(alpha = 0.86f),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold
+                        modifier = Modifier.size(117.dp)
                     )
                 }
 
@@ -764,16 +759,58 @@ fun SearchScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
+            columns = GridCells.Fixed(4),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(filteredVideos) { videoItem ->
-                LibraryGridCard(
+                SearchPosterCard(
                     item = videoItem,
                     onClick = { onVideoClick(videoItem) }
                 )
             }
+        }
+    }
+}
+
+
+@Composable
+private fun SearchPosterCard(
+    item: VideoWithMetadata,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+    ) {
+        PosterBox(
+            posterUrl = item.posterUrl,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(210.dp),
+            videoPath = item.video.path
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = item.title,
+            color = Color.White,
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            fontWeight = FontWeight.SemiBold
+        )
+
+        if (item.subtitle.isNotBlank()) {
+            Text(
+                text = item.subtitle,
+                color = Color.Gray,
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -785,47 +822,86 @@ fun PosterBox(
     progress: Float = 0f,
     videoPath: String? = null
 ) {
+    val context = LocalContext.current
+
+    var localBitmap by remember(videoPath) {
+        mutableStateOf<android.graphics.Bitmap?>(null)
+    }
+
+    var thumbnailFailed by remember(videoPath) {
+        mutableStateOf(false)
+    }
+
+    LaunchedEffect(posterUrl, videoPath) {
+        if (posterUrl.isNullOrBlank() && !videoPath.isNullOrBlank() && !thumbnailFailed) {
+            val bitmap =
+                VideoThumbnailHelper.generateLocalThumbnail(
+                    context = context,
+                    videoPath = videoPath
+                )
+
+            if (bitmap != null) {
+                localBitmap = bitmap
+            } else {
+                thumbnailFailed = true
+            }
+        }
+    }
+
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(18.dp))
             .background(Color(0xFF141414))
     ) {
-        val imageModel = posterUrl ?: videoPath
-
-        if (!imageModel.isNullOrBlank()) {
-            AsyncImage(
-                model = imageModel,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                Color.Transparent,
-                                Color.Black.copy(alpha = 0.70f)
-                            )
-                        )
-                    )
-            )
-        } else {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.PlayArrow,
+        when {
+            !posterUrl.isNullOrBlank() -> {
+                AsyncImage(
+                    model = posterUrl,
                     contentDescription = null,
-                    tint = Color.Gray,
-                    modifier = Modifier.size(34.dp)
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
                 )
             }
+
+            localBitmap != null -> {
+                Image(
+                    bitmap = localBitmap!!.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            else -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF101010)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.75f),
+                        modifier = Modifier.size(42.dp)
+                    )
+                }
+            }
         }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.72f)
+                        )
+                    )
+                )
+        )
 
         if (progress > 0f) {
             Box(
@@ -1032,8 +1108,6 @@ private fun getWatchedPercent(
 
     if (savedPosition <= 15_000L) return 0f
 
-    // Safe fallback because poster/list screens usually don't know real video duration.
-    // This gives a premium Continue Watching visual without crashing.
     val estimatedDuration = 90L * 60L * 1000L
     return (savedPosition.toFloat() / estimatedDuration.toFloat()).coerceIn(0.03f, 0.98f)
 }
@@ -1053,9 +1127,7 @@ fun groupTvShows(videos: List<VideoWithMetadata>): List<TvGroup> {
         .sortedBy { it.showName }
 }
 
-fun mediaBadgesFromName(
-    fileName: String
-): List<String> {
+fun mediaBadgesFromName(fileName: String): List<String> {
     val lower = fileName.lowercase()
     val badges = mutableListOf<String>()
 

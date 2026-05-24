@@ -46,8 +46,6 @@ private fun Context.findCineActivity(): Activity? {
 
 @Composable
 private fun ForceCineVaultBrightness() {
-    ForceCineVaultBrightness()
-
     val context = LocalContext.current
     val activity = context.findCineActivity()
 
@@ -165,42 +163,59 @@ fun LocalVideoLibraryScreen(
                         } else {
                             val movieSearchName = cleanMovieFilename(item.video.name)
 
-                            val movieResults =
-                                try {
-                                    TmdbClient.api.searchMovie(
-                                        bearerToken = BuildConfig.TMDB_TOKEN,
-                                        query = movieSearchName
-                                    ).results
-                                } catch (e: Exception) {
-                                    emptyList()
-                                }
 
-                            val movie =
-                                if (movieSearchName.contains("sassy girl", ignoreCase = true)) {
-                                    movieResults.firstOrNull {
-                                        it.release_date?.startsWith("2001") == true
-                                    } ?: movieResults.firstOrNull()
-                                } else {
-                                    movieResults.firstOrNull()
-                                }
+                            if (looksLikePersonalOrCameraVideo(item.video.name, movieSearchName)) {
+                                VideoWithMetadata(
+                                    video = item.video,
+                                    title = item.video.name.substringBeforeLast("."),
+                                    subtitle = "Personal video",
+                                    posterUrl = null,
+                                    backdropUrl = null,
+                                    overview = item.overview,
+                                    rating = item.rating,
+                                    imdbRating = item.imdbRating,
+                                    rottenTomatoesRating = item.rottenTomatoesRating,
+                                    tmdbId = item.tmdbId,
+                                    type = "local"
+                                )
+                            } else {
+                                val movieResults =
+                                    try {
+                                        TmdbClient.api.searchMovie(
+                                            bearerToken = BuildConfig.TMDB_TOKEN,
+                                            query = movieSearchName
+                                        ).results
+                                    } catch (e: Exception) {
+                                        emptyList()
+                                    }
 
-                            VideoWithMetadata(
-                                video = item.video,
-                                title = movie?.title ?: item.title,
-                                subtitle = movie?.release_date?.take(4) ?: item.subtitle,
-                                posterUrl = movie?.poster_path?.let {
-                                    "https://image.tmdb.org/t/p/w500$it"
-                                },
-                                backdropUrl = movie?.backdrop_path?.let {
-                                    "https://image.tmdb.org/t/p/original$it"
-                                },
-                                overview = movie?.overview ?: item.overview,
-                                rating = movie?.vote_average ?: item.rating,
-                                imdbRating = item.imdbRating,
-                                rottenTomatoesRating = item.rottenTomatoesRating,
-                                tmdbId = movie?.id ?: item.tmdbId,
-                                type = "movie"
-                            )
+                                val movie =
+                                    if (movieSearchName.contains("sassy girl", ignoreCase = true)) {
+                                        movieResults.firstOrNull {
+                                            it.release_date?.startsWith("2001") == true
+                                        } ?: movieResults.firstOrNull()
+                                    } else {
+                                        movieResults.firstOrNull()
+                                    }
+
+                                VideoWithMetadata(
+                                    video = item.video,
+                                    title = movie?.title ?: item.title,
+                                    subtitle = movie?.release_date?.take(4) ?: item.subtitle,
+                                    posterUrl = movie?.poster_path?.let {
+                                        "https://image.tmdb.org/t/p/w500$it"
+                                    },
+                                    backdropUrl = movie?.backdrop_path?.let {
+                                        "https://image.tmdb.org/t/p/original$it"
+                                    },
+                                    overview = movie?.overview ?: item.overview,
+                                    rating = movie?.vote_average ?: item.rating,
+                                    imdbRating = item.imdbRating,
+                                    rottenTomatoesRating = item.rottenTomatoesRating,
+                                    tmdbId = movie?.id ?: item.tmdbId,
+                                    type = "movie"
+                                )
+                            }
                         }
                     }
 
@@ -356,7 +371,7 @@ fun LocalVideoLibraryScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(360.dp),
+                        .height(220.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -426,20 +441,20 @@ fun LocalVideoLibraryScreen(
             item {
                 if (isGridMode) {
                     val rowCount =
-                        ((filteredVideos.size + 2) / 3).coerceAtLeast(1)
+                        ((filteredVideos.size + 3) / 4).coerceAtLeast(1)
 
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(3),
+                        columns = GridCells.Fixed(4),
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalArrangement = Arrangement.spacedBy(18.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height((rowCount * 255).dp)
+                            .height((rowCount * 205).dp)
                     ) {
                         items(items = filteredVideos) { item ->
                             Box(
                                 modifier = Modifier
-                                    .width(145.dp)
+                                    .fillMaxWidth()
                             ) {
                                 LibraryGridCard(
                                     item = item,
@@ -460,5 +475,122 @@ fun LocalVideoLibraryScreen(
                 }
             }
         }
+    }
+}
+
+private fun looksLikePersonalOrCameraVideo(fileName: String, cleanedName: String): Boolean {
+    val lower = fileName.lowercase()
+    val cleaned = cleanedName.trim().lowercase()
+
+    if (cleaned.length < 4) return true
+
+    return lower.startsWith("vid_") ||
+            lower.startsWith("img_") ||
+            lower.startsWith("video_") ||
+            lower.startsWith("screenrecord") ||
+            lower.startsWith("screen_record") ||
+            lower.contains("whatsapp video") ||
+            lower.contains("camera") ||
+            lower.matches(Regex(".*\\b(19|20)\\d{6}[_-]?(19|20)?\\d{0,6}.*"))
+}
+
+
+
+private fun isLikelyPersonalVideo(fileName: String): Boolean {
+    val lower = fileName.lowercase()
+    val cleaned = cleanMovieFilename(fileName)
+
+    if (cleaned.length < 4) return true
+
+    return lower.startsWith("vid_") ||
+            lower.startsWith("img_") ||
+            lower.startsWith("video_") ||
+            lower.startsWith("screenrecord") ||
+            lower.startsWith("screen_record") ||
+            lower.contains("whatsapp video") ||
+            lower.contains("camera") ||
+            lower.contains("dcim") ||
+            lower.matches(Regex(".*\\b(19|20)\\d{6}[-_]?(19|20)?\\d{0,6}.*"))
+}
+private suspend fun fetchOmdbRatings(
+    title: String,
+    year: String?,
+    type: String?
+): Pair<String?, String?> {
+    return try {
+        val imdbId = getImdbId(title, year, type)
+
+        if (imdbId == null) {
+            return null to null
+        }
+
+        val response = TmdbClient.omdbApi.getRatings(
+            apiKey = BuildConfig.OMDB_API_KEY,
+            imdbId = imdbId
+        )
+
+        val imdb = response.imdbRating?.takeIf { it.isNotBlank() && it != "N/A" }
+
+        val rotten = response.Ratings
+            ?.firstOrNull { it.Source.equals("Rotten Tomatoes", ignoreCase = true) }
+            ?.Value
+
+        imdb to rotten
+    } catch (e: Exception) {
+        null to null
+    }
+}
+
+private suspend fun getImdbId(
+    title: String,
+    year: String?,
+    type: String?
+): String? {
+
+    return try {
+
+        if (type == "tv") {
+
+            val tvResults =
+                TmdbClient.api.searchTv(
+                    bearerToken = BuildConfig.TMDB_TOKEN,
+                    query = title
+                )
+
+            val tvId =
+                tvResults.results.firstOrNull()?.id
+                    ?: return null
+
+            val external =
+                TmdbClient.api.getTvExternalIds(
+                    bearerToken = BuildConfig.TMDB_TOKEN,
+                    seriesId = tvId
+                )
+
+            external.imdb_id
+
+        } else {
+
+            val movieResults =
+                TmdbClient.api.searchMovie(
+                    bearerToken = BuildConfig.TMDB_TOKEN,
+                    query = title
+                )
+
+            val movieId =
+                movieResults.results.firstOrNull()?.id
+                    ?: return null
+
+            val external =
+                TmdbClient.api.getMovieExternalIds(
+                    bearerToken = BuildConfig.TMDB_TOKEN,
+                    movieId = movieId
+                )
+
+            external.imdb_id
+        }
+
+    } catch (e: Exception) {
+        null
     }
 }
