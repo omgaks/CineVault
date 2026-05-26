@@ -30,6 +30,37 @@ fun loadPlaybackPosition(
         .getLong(videoPath, 0L)
 }
 
+fun clearPlaybackPosition(
+    context: Context,
+    videoPath: String
+) {
+    context
+        .getSharedPreferences("playback_memory", Context.MODE_PRIVATE)
+        .edit()
+        .remove(videoPath)
+        .apply()
+}
+
+fun clearPlaybackFolderPositions(
+    context: Context,
+    folderPath: String
+) {
+    val prefs =
+        context.getSharedPreferences("playback_memory", Context.MODE_PRIVATE)
+
+    val editor = prefs.edit()
+
+    prefs.all.keys
+        .filter { savedPath ->
+            savedPath.startsWith(folderPath)
+        }
+        .forEach { savedPath ->
+            editor.remove(savedPath)
+        }
+
+    editor.apply()
+}
+
 fun saveLibraryCache(
     context: Context,
     videos: List<VideoWithMetadata>

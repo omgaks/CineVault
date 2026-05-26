@@ -108,7 +108,7 @@ private fun EpisodePosterCard(
             modifier = Modifier.padding(22.dp)
         ) {
             Text(
-                text = episode.subtitle.ifBlank { "Episode $episodeNumber" },
+                text = cleanEpisodeSubtitle(episode, episodeNumber),
                 color = Color.Gray,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold
@@ -117,7 +117,7 @@ private fun EpisodePosterCard(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = cleanTvTitle(episode.title),
+                text = cleanEpisodeTitle(episode, episodeNumber),
                 color = Color.White,
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Bold
@@ -162,18 +162,67 @@ private fun EpisodePosterCard(
     }
 }
 
+private fun cleanEpisodeSubtitle(
+    episode: VideoWithMetadata,
+    episodeNumber: Int
+): String {
+    val fileName = episode.video.name
+    val match = Regex("s(\\d{1,2})e(\\d{1,2})", RegexOption.IGNORE_CASE).find(fileName)
+
+    return if (match != null) {
+        val season = match.groupValues[1].padStart(2, '0')
+        val ep = match.groupValues[2].padStart(2, '0')
+        "S${season}E${ep}"
+    } else {
+        episode.subtitle
+            .substringBefore("•")
+            .trim()
+            .ifBlank { "Episode $episodeNumber" }
+    }
+}
+
+private fun cleanEpisodeTitle(
+    episode: VideoWithMetadata,
+    episodeNumber: Int
+): String {
+    val fromSubtitle = episode.subtitle.substringAfter("•", "").trim()
+    if (fromSubtitle.isNotBlank()) return fromSubtitle
+
+    val fileNameTitle = cleanTvTitle(episode.video.name)
+    val showTitle = cleanTvTitle(episode.title)
+
+    return when {
+        fileNameTitle.isNotBlank() && !fileNameTitle.equals(showTitle, ignoreCase = true) -> fileNameTitle
+        showTitle.isNotBlank() -> showTitle
+        else -> "Episode $episodeNumber"
+    }
+}
+
 private fun cleanTvTitle(title: String): String {
-    return title
+    var cleaned = title
+        .substringAfterLast("/")
+        .substringAfterLast("\\")
+        .substringBeforeLast(".")
+        .replace(Regex("\\[.*?]"), " ")
+        .replace(Regex("\\(.*?\\)"), " ")
         .replace(".", " ")
         .replace("_", " ")
         .replace("-", " ")
-        .replace(
-            Regex(
-                "\\b(1080p|720p|2160p|4k|x264|x265|h264|h265|web|webrip|bluray|brrip|hdrip|dvdrip|aac|dts|yts|rarbg|mkv|mp4|avi)\\b",
-                RegexOption.IGNORE_CASE
-            ),
-            ""
-        )
+
+    cleaned = cleaned.replace(Regex("s\\d{1,2}e\\d{1,2}", RegexOption.IGNORE_CASE), " ")
+    cleaned = cleaned.replace(Regex("\\bseason\\s*\\d+\\b", RegexOption.IGNORE_CASE), " ")
+    cleaned = cleaned.replace(Regex("\\bepisode\\s*\\d+\\b", RegexOption.IGNORE_CASE), " ")
+
+    cleaned = cleaned.replace(
+        Regex(
+            "\\b(2160p|1080p|720p|480p|4k|uhd|hdr10\\+?|hdr|dv|dolby|vision|x264|x265|h264|h265|hevc|web|webdl|webrip|bluray|brrip|hdrip|dvdrip|aac|ddp|dts|atmos|10bit|nf|amzn|yts|rarbg|eztv|tgx|mkv|mp4|avi)\\b",
+            RegexOption.IGNORE_CASE
+        ),
+        " "
+    )
+
+    return cleaned
+        .replace(Regex("\\b(19|20)\\d{2}\\b"), " ")
         .replace(Regex("\\s+"), " ")
         .trim()
 }

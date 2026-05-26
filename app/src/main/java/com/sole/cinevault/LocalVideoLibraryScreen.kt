@@ -3,26 +3,25 @@ package com.sole.cinevault
 import android.Manifest
 import android.app.Activity
 import android.content.Context
-import android.view.WindowManager
 import android.os.Build
+import android.app.KeyguardManager
+import android.widget.Toast
+import android.view.WindowManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.ActivityResult
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,30 +33,48 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
+
+enum class LibrarySortOption(val label: String) {
+    TITLE_AZ("A-Z"),
+    TITLE_ZA("Z-A"),
+    NEWEST("Newest"),
+    OLDEST("Oldest"),
+    SIZE_BIG("Size ↓"),
+    SIZE_SMALL("Size ↑")
+}
 
 private fun Context.findCineActivity(): Activity? {
     var ctx = this
+
     while (ctx is android.content.ContextWrapper) {
         if (ctx is Activity) return ctx
         ctx = ctx.baseContext
     }
+
     return null
 }
 
 @Composable
 private fun ForceCineVaultBrightness() {
+
     val context = LocalContext.current
     val activity = context.findCineActivity()
 
     DisposableEffect(Unit) {
-        activity?.window?.attributes = activity?.window?.attributes?.apply {
-            screenBrightness = 1.0f
-        }
+
+        activity?.window?.attributes =
+            activity.window.attributes.apply {
+                screenBrightness = 1.0f
+            }
 
         onDispose {
-            activity?.window?.attributes = activity?.window?.attributes?.apply {
-                screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-            }
+
+            activity?.window?.attributes =
+                activity.window.attributes.apply {
+                    screenBrightness =
+                        WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                }
         }
     }
 }
@@ -67,15 +84,162 @@ fun LocalVideoLibraryScreen(
     videos: List<VideoWithMetadata>,
     onVideosLoaded: (List<VideoWithMetadata>) -> Unit,
     onItemClick: (VideoWithMetadata) -> Unit,
-    onTvGroupClick: (TvGroup) -> Unit
+    onTvGroupClick: (TvGroup) -> Unit,
+    onSecretChanged: () -> Unit = {}
 ) {
+
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     var isLoading by remember { mutableStateOf(false) }
     var scanStatus by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("All") }
-    var isGridMode by remember { mutableStateOf(true) }
+
+    var selectedCategory by remember {
+        mutableStateOf("All")
+    }
+
+    var isGridMode by remember {
+        mutableStateOf(true)
+    }
+
+    var sortOption by remember {
+        mutableStateOf(LibrarySortOption.TITLE_AZ)
+    }
+
+    var sortMenuExpanded by remember {
+        mutableStateOf(false)
+    }
+
+    var secretUnlocked by remember {
+        mutableStateOf(false)
+    }
+
+    var hiddenPaths by remember {
+        mutableStateOf<Set<String>>(loadSecretVideoPaths(context))
+    }
+
+    var hiddenFolders by remember {
+        mutableStateOf<Set<String>>(loadSecretFolderPaths(context))
+    }
+
+    var favoritePaths by remember {
+        mutableStateOf(loadFavoriteVideoPaths(context))
+    }
+
+    var actionMenuItem by remember {
+        mutableStateOf<VideoWithMetadata?>(null)
+    }
+
+    var actionMenuExpanded by remember {
+        mutableStateOf(false)
+    }
+
+    val keyguardManager =
+        remember {
+            context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+        }
+
+    val secretUnlockLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.StartActivityForResult()
+        ) { result: ActivityResult ->
+
+            if (result.resultCode == Activity.RESULT_OK) {
+                secretUnlocked = true
+                Toast.makeText(context, "Secret folder unlocked", Toast.LENGTH_SHORT).show()
+            } else {
+                secretUnlocked = false
+                selectedCategory = "All"
+                Toast.makeText(context, "Secret folder locked", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+    fun openSecretFolder() {
+        if (secretUnlocked) {
+            selectedCategory = "Secret"
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && keyguardManager.isKeyguardSecure) {
+            val intent =
+                keyguardManager.createConfirmDeviceCredentialIntent(
+                    "Unlock Secret Folder",
+                    "Confirm fingerprint, PIN, pattern, or password"
+                )
+
+            if (intent != null) {
+                secretUnlockLauncher.launch(intent)
+            } else {
+                Toast.makeText(context, "Device lock is not available", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(context, "Set phone screen lock first to secure this folder", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun hideVideo(item: VideoWithMetadata) {
+        val updated = hiddenPaths + item.video.path
+        hiddenPaths = updated
+        saveSecretVideoPaths(context, updated)
+
+        clearPlaybackPosition(context, item.video.path)
+        onSecretChanged()
+
+        Toast.makeText(context, "Moved to Secret folder", Toast.LENGTH_SHORT).show()
+    }
+
+    fun hideEntireFolder(item: VideoWithMetadata) {
+        val folderPath = getVideoFolderKey(item)
+        if (folderPath.isBlank()) return
+
+        val updatedFolders = hiddenFolders + folderPath
+        hiddenFolders = updatedFolders
+        saveSecretFolderPaths(context, updatedFolders)
+
+        clearPlaybackFolderPositions(context, folderPath)
+        createNoMediaFileForFolder(folderPath)
+        onSecretChanged()
+
+        Toast.makeText(
+            context,
+            "Folder hidden in CineVault. Gallery hide is not guaranteed on all Android versions.",
+            Toast.LENGTH_LONG
+        ).show()
+    }
+
+    fun unhideEntireFolder(item: VideoWithMetadata) {
+        val folderPath =
+            hiddenFolders.firstOrNull { folder ->
+                item.video.path.startsWith(folder)
+            } ?: File(item.video.path).parent ?: return
+
+        val updatedFolders = hiddenFolders - folderPath
+        hiddenFolders = updatedFolders
+        saveSecretFolderPaths(context, updatedFolders)
+
+        Toast.makeText(context, "Folder removed from Secret", Toast.LENGTH_SHORT).show()
+    }
+
+    fun unhideVideo(item: VideoWithMetadata) {
+        val updated = hiddenPaths - item.video.path
+        hiddenPaths = updated
+        saveSecretVideoPaths(context, updated)
+        Toast.makeText(context, "Removed from Secret folder", Toast.LENGTH_SHORT).show()
+    }
+
+    fun addFavorite(item: VideoWithMetadata) {
+        val updated = favoritePaths + item.video.path
+        favoritePaths = updated
+        saveFavoriteVideoPaths(context, updated)
+        Toast.makeText(context, "Added to Favorites", Toast.LENGTH_SHORT).show()
+    }
+
+    fun removeFavorite(item: VideoWithMetadata) {
+        val updated = favoritePaths - item.video.path
+        favoritePaths = updated
+        saveFavoriteVideoPaths(context, updated)
+        Toast.makeText(context, "Removed from Favorites", Toast.LENGTH_SHORT).show()
+    }
 
     val permission =
         if (Build.VERSION.SDK_INT >= 33) {
@@ -95,129 +259,71 @@ fun LocalVideoLibraryScreen(
             }
 
             scope.launch {
+
                 isLoading = true
                 scanStatus = "Scanning device videos..."
 
-                val scannedVideos = scanDeviceVideos(context)
+                val scannedVideos =
+                    try {
+                        scanDeviceVideos(context)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        scanStatus = "Scan failed: ${e.message ?: "Unknown error"}"
+                        isLoading = false
+                        return@launch
+                    }
 
-                scanStatus = "Found ${scannedVideos.size} videos. Fetching posters..."
+                scanStatus =
+                    "Found ${scannedVideos.size} videos. Loading cached posters..."
 
-                val finalList =
-                    scannedVideos.mapIndexed { index, item ->
+                val instantList =
+                    scannedVideos.map { item ->
+                        applyCachedMetadataIfAvailable(context, item)
+                    }
+
+                onVideosLoaded(instantList)
+
+                saveLibraryCache(
+                    context = context,
+                    videos = instantList
+                )
+
+                scanStatus =
+                    "Loaded ${instantList.size} videos. Updating missing posters..."
+
+                val workingList = instantList.toMutableList()
+                var updatedCount = 0
+
+                instantList.forEachIndexed { index, item ->
+
+                    if (!hasUsefulOnlineMetadata(item)) {
 
                         scanStatus =
-                            "Loading ${index + 1}/${scannedVideos.size}: ${item.video.name.take(28)}"
+                            "Poster ${index + 1}/${instantList.size}: ${item.video.name.take(28)}"
 
-                        val episodeInfo = extractEpisodeInfo(item.video.name)
-
-                        if (episodeInfo != null) {
-                            val tv =
-                                try {
-                                    TmdbClient.api.searchTv(
-                                        bearerToken = BuildConfig.TMDB_TOKEN,
-                                        query = episodeInfo.showName
-                                    ).results.firstOrNull()
-                                } catch (e: Exception) {
-                                    null
-                                }
-                            val episodeDetails =
-                                try {
-
-                                    if (tv?.id != null) {
-
-                                        TmdbClient.api.getEpisodeDetails(
-                                            bearerToken = BuildConfig.TMDB_TOKEN,
-                                            seriesId = tv.id,
-                                            seasonNumber = episodeInfo.season,
-                                            episodeNumber = episodeInfo.episode
-                                        )
-
-                                    } else null
-
-                                } catch (e: Exception) {
-                                    null
-                                }
-
-                            VideoWithMetadata(
-                                video = item.video,
-                                title = tv?.name ?: episodeInfo.showName,
-                                subtitle =
-                                    "S${episodeInfo.season.toString().padStart(2, '0')}E${episodeInfo.episode.toString().padStart(2, '0')} • ${episodeDetails?.name ?: ""}",
-                                posterUrl = tv?.poster_path?.let {
-                                    "https://image.tmdb.org/t/p/w500$it"
-                                },
-                                backdropUrl = tv?.backdrop_path?.let {
-                                    "https://image.tmdb.org/t/p/original$it"
-                                },
-                                episodeStill =
-                                    episodeDetails?.still_path?.let {
-                                        "https://image.tmdb.org/t/p/w780$it"
-                                    },
-                                overview = tv?.overview ?: item.overview,
-                                rating = tv?.vote_average ?: item.rating,
-                                imdbRating = item.imdbRating,
-                                rottenTomatoesRating = item.rottenTomatoesRating,
-                                tmdbId = tv?.id ?: item.tmdbId,
-                                type = "tv"
+                        val enriched =
+                            enrichVideoWithOnlineMetadata(
+                                context = context,
+                                item = item
                             )
-                        } else {
-                            val movieSearchName = cleanMovieFilename(item.video.name)
 
+                        if (enriched != item) {
+                            workingList[index] = enriched
+                            updatedCount++
 
-                            if (looksLikePersonalOrCameraVideo(item.video.name, movieSearchName)) {
-                                VideoWithMetadata(
-                                    video = item.video,
-                                    title = item.video.name.substringBeforeLast("."),
-                                    subtitle = "Personal video",
-                                    posterUrl = null,
-                                    backdropUrl = null,
-                                    overview = item.overview,
-                                    rating = item.rating,
-                                    imdbRating = item.imdbRating,
-                                    rottenTomatoesRating = item.rottenTomatoesRating,
-                                    tmdbId = item.tmdbId,
-                                    type = "local"
-                                )
-                            } else {
-                                val movieResults =
-                                    try {
-                                        TmdbClient.api.searchMovie(
-                                            bearerToken = BuildConfig.TMDB_TOKEN,
-                                            query = movieSearchName
-                                        ).results
-                                    } catch (e: Exception) {
-                                        emptyList()
-                                    }
-
-                                val movie =
-                                    if (movieSearchName.contains("sassy girl", ignoreCase = true)) {
-                                        movieResults.firstOrNull {
-                                            it.release_date?.startsWith("2001") == true
-                                        } ?: movieResults.firstOrNull()
-                                    } else {
-                                        movieResults.firstOrNull()
-                                    }
-
-                                VideoWithMetadata(
-                                    video = item.video,
-                                    title = movie?.title ?: item.title,
-                                    subtitle = movie?.release_date?.take(4) ?: item.subtitle,
-                                    posterUrl = movie?.poster_path?.let {
-                                        "https://image.tmdb.org/t/p/w500$it"
-                                    },
-                                    backdropUrl = movie?.backdrop_path?.let {
-                                        "https://image.tmdb.org/t/p/original$it"
-                                    },
-                                    overview = movie?.overview ?: item.overview,
-                                    rating = movie?.vote_average ?: item.rating,
-                                    imdbRating = item.imdbRating,
-                                    rottenTomatoesRating = item.rottenTomatoesRating,
-                                    tmdbId = movie?.id ?: item.tmdbId,
-                                    type = "movie"
+                            if (updatedCount % 5 == 0) {
+                                val partialList = workingList.toList()
+                                onVideosLoaded(partialList)
+                                saveLibraryCache(
+                                    context = context,
+                                    videos = partialList
                                 )
                             }
                         }
                     }
+                }
+
+                val finalList = workingList.toList()
 
                 onVideosLoaded(finalList)
 
@@ -226,251 +332,641 @@ fun LocalVideoLibraryScreen(
                     videos = finalList
                 )
 
-                scanStatus = "Loaded ${finalList.size} videos"
-                delay(1200)
+                scanStatus = "Library updated: ${finalList.size} videos"
+
+                delay(500)
+
                 scanStatus = ""
                 isLoading = false
             }
         }
 
-    val categories = listOf("All", "Movies", "TV Shows", "Downloads")
-    val tvGroups = groupTvShows(videos)
+    val categories =
+        listOf(
+            "All",
+            "Movies",
+            "TV Shows",
+            "Downloads",
+            "Favorites",
+            "Secret"
+        )
+
+    val sortedVideos =
+        remember(videos, sortOption) {
+
+            when (sortOption) {
+
+                LibrarySortOption.TITLE_AZ ->
+                    videos.sortedBy {
+                        it.title.lowercase()
+                    }
+
+                LibrarySortOption.TITLE_ZA ->
+                    videos.sortedByDescending {
+                        it.title.lowercase()
+                    }
+
+                LibrarySortOption.NEWEST ->
+                    videos.sortedByDescending {
+                        File(it.video.path).lastModified()
+                    }
+
+                LibrarySortOption.OLDEST ->
+                    videos.sortedBy {
+                        File(it.video.path).lastModified()
+                    }
+
+                LibrarySortOption.SIZE_BIG ->
+                    videos.sortedByDescending {
+                        File(it.video.path).length()
+                    }
+
+                LibrarySortOption.SIZE_SMALL ->
+                    videos.sortedBy {
+                        File(it.video.path).length()
+                    }
+            }
+        }
+
+    val visibleSortedVideos =
+        sortedVideos.filter {
+            !hiddenPaths.contains(it.video.path) &&
+                    !videoIsInsideSecretFolder(it, hiddenFolders)
+        }
+
+    val secretVideos =
+        sortedVideos.filter {
+            hiddenPaths.contains(it.video.path) ||
+                    videoIsInsideSecretFolder(it, hiddenFolders)
+        }
+
+    val favoriteVideos =
+        visibleSortedVideos.filter {
+            favoritePaths.contains(it.video.path)
+        }
 
     val filteredVideos =
         when (selectedCategory) {
+
+            "Secret" ->
+                if (secretUnlocked)
+                    secretVideos
+                else
+                    emptyList()
+
+            "Favorites" -> favoriteVideos
+
             "TV Shows" -> emptyList()
-            "Downloads" -> videos.filter {
-                it.video.path.contains("download", ignoreCase = true)
+
+            "Downloads" -> visibleSortedVideos.filter {
+
+                !it.type.equals("movie", ignoreCase = true) &&
+                        !it.type.equals("tv", ignoreCase = true)
             }
-            "Movies" -> videos.filter { it.type != "tv" }
-            else -> videos.filter { it.type != "tv" }
+
+            "Movies" -> visibleSortedVideos.filter {
+                it.type.equals("movie", ignoreCase = true)
+            }
+
+            else -> visibleSortedVideos.filter {
+                !it.type.equals("tv", ignoreCase = true)
+            }
         }
 
-    LazyColumn(
+    val tvGroups =
+        groupTvShows(
+            sortedVideos.filter {
+                it.type.equals("tv", ignoreCase = true) &&
+                        !hiddenPaths.contains(it.video.path) &&
+                        !videoIsInsideSecretFolder(it, hiddenFolders)
+            }
+        )
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF070707))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        contentPadding = PaddingValues(bottom = 24.dp)
     ) {
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Library",
-                    color = Color.White,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
-                )
 
-                Button(
-                    onClick = { isGridMode = !isGridMode },
-                    shape = RoundedCornerShape(30.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.Gray.copy(alpha = 0.28f),
-                        contentColor = Color.White
-                    )
-                ) {
-                    Text(if (isGridMode) "List" else "Grid")
-                }
-            }
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+            contentPadding = PaddingValues(top = 16.dp, bottom = 28.dp)
+        ) {
 
-            Spacer(modifier = Modifier.height(14.dp))
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Column {
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(
-                    enabled = !isLoading,
-                    onClick = {
-                        permissionLauncher.launch(permission)
-                    },
-                    shape = RoundedCornerShape(40.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.Gray.copy(alpha = 0.30f),
-                        contentColor = Color.White
-                    )
-                ) {
-                    Text(
-                        if (isLoading)
-                            scanStatus.ifBlank { "Scanning..." }
-                        else
-                            "Scan Device Videos"
-                    )
-                }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
 
-                OutlinedButton(
-                    enabled = !isLoading,
-                    onClick = {
-                        clearLibraryCache(context)
-                        onVideosLoaded(emptyList())
-                        scanStatus = "Cache cleared. Scan again."
-                    },
-                    shape = RoundedCornerShape(40.dp)
-                ) {
-                    Text("Refresh")
-                }
-            }
-
-            if (scanStatus.isNotBlank()) {
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(Color.White.copy(alpha = 0.08f))
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                ) {
-                    Text(
-                        text = scanStatus,
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-
-            val cachedLibrary = loadLibraryCache(context)
-
-            cachedLibrary?.let {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Last Scan: " + java.text.SimpleDateFormat(
-                        "hh:mm a",
-                        java.util.Locale.getDefault()
-                    ).format(java.util.Date(it.timestamp)),
-                    color = Color.Gray,
-                    fontSize = 11.sp
-                )
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(items = categories) { category ->
-                    FilterChip(
-                        selected = selectedCategory == category,
-                        onClick = { selectedCategory = category },
-                        label = { Text(category) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color.White.copy(alpha = 0.18f),
-                            selectedLabelColor = Color.White,
-                            containerColor = Color.Transparent,
-                            labelColor = Color(0xFFB8B8B8)
+                        Text(
+                            text = "Library",
+                            color = Color.White,
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
                         )
-                    )
-                }
-            }
-        }
 
-        if (!isLoading && filteredVideos.isEmpty() && tvGroups.isEmpty()) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(220.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "No videos found. Tap Scan Device Videos.",
-                        color = Color(0xFFBDBDD0),
-                        fontSize = 15.sp
-                    )
-                }
-            }
-        }
-
-        if (tvGroups.isNotEmpty() && selectedCategory in listOf("All", "TV Shows")) {
-            item {
-                Text(
-                    text = "TV Shows",
-                    color = Color.White,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    items(items = tvGroups) { show ->
-                        Column(
-                            modifier = Modifier
-                                .width(145.dp)
-                                .clickable { onTvGroupClick(show) }
-                        ) {
-                            PosterBox(
-                                posterUrl = show.posterUrl,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(210.dp)
+                        Button(
+                            onClick = {
+                                isGridMode = !isGridMode
+                            },
+                            shape = RoundedCornerShape(30.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color.White.copy(alpha = 0.10f),
+                                contentColor = Color.White
                             )
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
+                        ) {
                             Text(
-                                text = show.showName,
+                                if (isGridMode)
+                                    "List"
+                                else
+                                    "Grid"
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+
+                        Button(
+                            enabled = !isLoading,
+                            onClick = {
+                                permissionLauncher.launch(permission)
+                            },
+                            shape = RoundedCornerShape(40.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color.White.copy(alpha = 0.10f),
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text(
+                                if (isLoading)
+                                    scanStatus.ifBlank { "Scanning..." }
+                                else
+                                    "Scan Device Videos"
+                            )
+                        }
+
+                        OutlinedButton(
+                            enabled = !isLoading,
+                            onClick = {
+                                clearLibraryCache(context)
+                                onVideosLoaded(emptyList())
+                                scanStatus = "Cache cleared. Scan again."
+                            },
+                            shape = RoundedCornerShape(40.dp)
+                        ) {
+                            Text("Refresh")
+                        }
+                    }
+
+                    if (scanStatus.isNotBlank()) {
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(Color.White.copy(alpha = 0.08f))
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                        ) {
+                            Text(
+                                text = scanStatus,
                                 color = Color.White,
-                                maxLines = 1,
+                                fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
+                        }
+                    }
 
-                            Text(
-                                text = "${show.episodes.size} Episodes",
-                                color = Color.Gray,
-                                fontSize = 12.sp
+                    val cachedLibrary = loadLibraryCache(context)
+
+                    cachedLibrary?.let {
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text =
+                                "Last Scan: " +
+                                        java.text.SimpleDateFormat(
+                                            "hh:mm a",
+                                            java.util.Locale.getDefault()
+                                        ).format(java.util.Date(it.timestamp)),
+                            color = Color.Gray,
+                            fontSize = 11.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(items = categories) { category ->
+                            FilterChip(
+                                selected = selectedCategory == category,
+                                onClick = {
+                                    if (category == "Secret") {
+                                        openSecretFolder()
+                                    } else {
+                                        selectedCategory = category
+                                    }
+                                },
+                                label = {
+                                    Text(category)
+                                },
+                                colors =
+                                    FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = Color.White.copy(alpha = 0.18f),
+                                        selectedLabelColor = Color.White,
+                                        containerColor = Color.Transparent,
+                                        labelColor = Color(0xFFB8B8B8)
+                                    )
                             )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Box {
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(Color(0xFFFFB300).copy(alpha = 0.22f))
+                                .clickable {
+                                    sortMenuExpanded = true
+                                }
+                                .padding(horizontal = 18.dp, vertical = 10.dp)
+                        ) {
+                            Text(
+                                text = "Sort by: ${sortOption.label}",
+                                color = Color(0xFFFFD54F),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = sortMenuExpanded,
+                            onDismissRequest = {
+                                sortMenuExpanded = false
+                            },
+                            modifier = Modifier.background(Color(0xFF151515))
+                        ) {
+
+                            LibrarySortOption.values().forEach { option ->
+
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = option.label,
+                                            color =
+                                                if (sortOption == option)
+                                                    Color(0xFFFFD54F)
+                                                else
+                                                    Color.White,
+                                            fontWeight =
+                                                if (sortOption == option)
+                                                    FontWeight.Bold
+                                                else
+                                                    FontWeight.Normal
+                                        )
+                                    },
+                                    onClick = {
+                                        sortOption = option
+                                        sortMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
+            }
+
+            if (selectedCategory == "Secret" && !secretUnlocked) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "🔒 Secret folder is locked",
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Button(
+                                onClick = { openSecretFolder() },
+                                shape = RoundedCornerShape(40.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFFFB300).copy(alpha = 0.85f),
+                                    contentColor = Color.Black
+                                )
+                            ) {
+                                Text("Unlock Secret Folder")
+                            }
                         }
                     }
                 }
             }
-        }
 
-        if (filteredVideos.isNotEmpty()) {
-            item {
-                Text(
-                    text = "Movies",
-                    color = Color.White,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            item {
-                if (isGridMode) {
-                    val rowCount =
-                        ((filteredVideos.size + 3) / 4).coerceAtLeast(1)
-
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(4),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(18.dp),
+            if (
+                !isLoading &&
+                filteredVideos.isEmpty() &&
+                tvGroups.isEmpty() &&
+                !(selectedCategory == "Secret" && !secretUnlocked)
+            ) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height((rowCount * 205).dp)
+                            .height(220.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        items(items = filteredVideos) { item ->
+                        Text(
+                            text = "No videos found. Tap Scan Device Videos.",
+                            color = Color(0xFFBDBDD0),
+                            fontSize = 15.sp
+                        )
+                    }
+                }
+            }
+
+            if (
+                tvGroups.isNotEmpty() &&
+                selectedCategory in listOf("All", "TV Shows")
+            ) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column {
+                        Text(
+                            text = "TV Shows",
+                            color = Color.White,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            items(
+                                items = tvGroups,
+                                key = { it.showName }
+                            ) { show ->
+
+                                Column(
+                                    modifier = Modifier.width(145.dp)
+                                ) {
+
+                                    Box {
+                                        PosterBox(
+                                            posterUrl = show.posterUrl,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(210.dp)
+                                                .clickable {
+                                                    onTvGroupClick(show)
+                                                }
+                                        )
+
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(8.dp)
+                                                .size(34.dp)
+                                                .clip(RoundedCornerShape(50))
+                                                .background(Color.Black.copy(alpha = 0.66f))
+                                                .clickable {
+                                                    show.episodes.firstOrNull()?.let { episode ->
+                                                        actionMenuItem = episode
+                                                        actionMenuExpanded = true
+                                                    }
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "⋮",
+                                                color = Color(0xFFFFD54F),
+                                                fontSize = 22.sp,
+                                                fontWeight = FontWeight.Black
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Text(
+                                        text = show.showName,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+
+                                    Text(
+                                        text = "${show.episodes.size} Episodes",
+                                        color = Color.Gray,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (filteredVideos.isNotEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Text(
+                        text =
+                            when (selectedCategory) {
+                                "Movies" -> "Movies"
+                                "Downloads" -> "Downloads"
+                                "Favorites" -> "Favorites"
+                                "Secret" -> "Secret Folder"
+                                else -> "Movies & Downloads"
+                            },
+                        color = Color.White,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                if (isGridMode) {
+                    items(
+                        items = filteredVideos,
+                        key = { it.video.path }
+                    ) { item ->
+                        Box(
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            LibraryGridCard(
+                                item = item,
+                                onClick = {
+                                    onItemClick(item)
+                                }
+                            )
+
                             Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
+                                    .align(Alignment.TopEnd)
+                                    .padding(8.dp)
+                                    .size(34.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(Color.Black.copy(alpha = 0.66f))
+                                    .clickable {
+                                        actionMenuItem = item
+                                        actionMenuExpanded = true
+                                    },
+                                contentAlignment = Alignment.Center
                             ) {
-                                LibraryGridCard(
-                                    item = item,
-                                    onClick = { onItemClick(item) }
+                                Text(
+                                    text = "⋮",
+                                    color = Color(0xFFFFD54F),
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.Black
                                 )
                             }
                         }
                     }
                 } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        filteredVideos.forEach { item ->
+                    items(
+                        items = filteredVideos,
+                        key = { it.video.path },
+                        span = { GridItemSpan(maxLineSpan) }
+                    ) { item ->
+                        Box {
                             LibraryCard(
                                 item = item,
-                                onClick = { onItemClick(item) }
+                                onClick = {
+                                    onItemClick(item)
+                                }
                             )
+
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(10.dp)
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(Color.Black.copy(alpha = 0.66f))
+                                    .clickable {
+                                        actionMenuItem = item
+                                        actionMenuExpanded = true
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "⋮",
+                                    color = Color(0xFFFFD54F),
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
                         }
+                    }
+                }
+            }
+        }
+
+        if (actionMenuExpanded && actionMenuItem != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.18f))
+                    .clickable {
+                        actionMenuExpanded = false
+                        actionMenuItem = null
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                val selectedItem = actionMenuItem
+
+                if (selectedItem != null) {
+                    Column(
+                        modifier = Modifier
+                            .width(120.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(Color(0xFF111111).copy(alpha = 0.96f))
+                            .clickable { }
+                            .padding(vertical = 6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(2.dp)
+                                .background(Color(0xFFFFB300))
+                        )
+
+                        MiniLibraryActionItem(
+                            text =
+                                if (hiddenPaths.contains(selectedItem.video.path))
+                                    "Unhide"
+                                else
+                                    "Secret",
+                            onClick = {
+                                if (hiddenPaths.contains(selectedItem.video.path)) {
+                                    unhideVideo(selectedItem)
+                                } else {
+                                    hideVideo(selectedItem)
+                                }
+                                actionMenuExpanded = false
+                                actionMenuItem = null
+                            }
+                        )
+
+                        MiniLibraryActionItem(
+                            text =
+                                if (videoIsInsideSecretFolder(selectedItem, hiddenFolders))
+                                    "Unlock Folder"
+                                else
+                                    "Hide Folder",
+                            onClick = {
+                                if (videoIsInsideSecretFolder(selectedItem, hiddenFolders)) {
+                                    unhideEntireFolder(selectedItem)
+                                } else {
+                                    hideEntireFolder(selectedItem)
+                                }
+                                actionMenuExpanded = false
+                                actionMenuItem = null
+                            }
+                        )
+                        MiniLibraryActionItem(
+                            text =
+                                if (favoritePaths.contains(selectedItem.video.path))
+                                    "Unfavorite"
+                                else
+                                    "Favorite",
+                            onClick = {
+                                if (favoritePaths.contains(selectedItem.video.path)) {
+                                    removeFavorite(selectedItem)
+                                } else {
+                                    addFavorite(selectedItem)
+                                }
+                                actionMenuExpanded = false
+                                actionMenuItem = null
+                            }
+                        )
                     }
                 }
             }
@@ -478,7 +974,35 @@ fun LocalVideoLibraryScreen(
     }
 }
 
-private fun looksLikePersonalOrCameraVideo(fileName: String, cleanedName: String): Boolean {
+@Composable
+private fun MiniLibraryActionItem(
+    text: String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 3.dp)
+            .clip(RoundedCornerShape(50))
+            .background(Color.White)
+            .clickable { onClick() }
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = Color.Black,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1
+        )
+    }
+}
+
+private fun looksLikePersonalOrCameraVideo(
+    fileName: String,
+    cleanedName: String
+): Boolean {
     val lower = fileName.lowercase()
     val cleaned = cleanedName.trim().lowercase()
 
@@ -492,105 +1016,4 @@ private fun looksLikePersonalOrCameraVideo(fileName: String, cleanedName: String
             lower.contains("whatsapp video") ||
             lower.contains("camera") ||
             lower.matches(Regex(".*\\b(19|20)\\d{6}[_-]?(19|20)?\\d{0,6}.*"))
-}
-
-
-
-private fun isLikelyPersonalVideo(fileName: String): Boolean {
-    val lower = fileName.lowercase()
-    val cleaned = cleanMovieFilename(fileName)
-
-    if (cleaned.length < 4) return true
-
-    return lower.startsWith("vid_") ||
-            lower.startsWith("img_") ||
-            lower.startsWith("video_") ||
-            lower.startsWith("screenrecord") ||
-            lower.startsWith("screen_record") ||
-            lower.contains("whatsapp video") ||
-            lower.contains("camera") ||
-            lower.contains("dcim") ||
-            lower.matches(Regex(".*\\b(19|20)\\d{6}[-_]?(19|20)?\\d{0,6}.*"))
-}
-private suspend fun fetchOmdbRatings(
-    title: String,
-    year: String?,
-    type: String?
-): Pair<String?, String?> {
-    return try {
-        val imdbId = getImdbId(title, year, type)
-
-        if (imdbId == null) {
-            return null to null
-        }
-
-        val response = TmdbClient.omdbApi.getRatings(
-            apiKey = BuildConfig.OMDB_API_KEY,
-            imdbId = imdbId
-        )
-
-        val imdb = response.imdbRating?.takeIf { it.isNotBlank() && it != "N/A" }
-
-        val rotten = response.Ratings
-            ?.firstOrNull { it.Source.equals("Rotten Tomatoes", ignoreCase = true) }
-            ?.Value
-
-        imdb to rotten
-    } catch (e: Exception) {
-        null to null
-    }
-}
-
-private suspend fun getImdbId(
-    title: String,
-    year: String?,
-    type: String?
-): String? {
-
-    return try {
-
-        if (type == "tv") {
-
-            val tvResults =
-                TmdbClient.api.searchTv(
-                    bearerToken = BuildConfig.TMDB_TOKEN,
-                    query = title
-                )
-
-            val tvId =
-                tvResults.results.firstOrNull()?.id
-                    ?: return null
-
-            val external =
-                TmdbClient.api.getTvExternalIds(
-                    bearerToken = BuildConfig.TMDB_TOKEN,
-                    seriesId = tvId
-                )
-
-            external.imdb_id
-
-        } else {
-
-            val movieResults =
-                TmdbClient.api.searchMovie(
-                    bearerToken = BuildConfig.TMDB_TOKEN,
-                    query = title
-                )
-
-            val movieId =
-                movieResults.results.firstOrNull()?.id
-                    ?: return null
-
-            val external =
-                TmdbClient.api.getMovieExternalIds(
-                    bearerToken = BuildConfig.TMDB_TOKEN,
-                    movieId = movieId
-                )
-
-            external.imdb_id
-        }
-
-    } catch (e: Exception) {
-        null
-    }
 }

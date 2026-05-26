@@ -1,5 +1,9 @@
 package com.sole.cinevault
 
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontStyle
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -33,6 +37,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+private val AshSignatureFont = FontFamily(
+    Font(R.font.great_vibes)
+)
 @Composable
 fun SettingsScreen() {
     val context = LocalContext.current
@@ -238,6 +245,18 @@ fun SettingsScreen() {
                 lineHeight = 18.sp
             )
         }
+
+        Spacer(modifier = Modifier.height(34.dp))
+
+        Text(
+            text = "Ashish • May 2026",
+            color = Color(0xFFFFD37A).copy(alpha = 0.92f),
+            fontSize = 34.sp,
+            fontFamily = AshSignatureFont,
+            letterSpacing = 0.5.sp,
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+        )
 
         Spacer(modifier = Modifier.height(90.dp))
     }

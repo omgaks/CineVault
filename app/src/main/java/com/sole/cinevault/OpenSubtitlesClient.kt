@@ -39,6 +39,19 @@ object OpenSubtitlesClient {
 
             if (cleanName.isBlank()) return@withContext null
 
+            val subtitleDir = File(context.cacheDir, "subtitles")
+            if (!subtitleDir.exists()) subtitleDir.mkdirs()
+
+            val safeFileName = cleanName
+                .replace(Regex("[^A-Za-z0-9._ -]"), "")
+                .take(80)
+                .ifBlank { "subtitle" }
+
+            val cachedSubtitleFile = File(subtitleDir, "$safeFileName.en.srt")
+            if (cachedSubtitleFile.exists() && cachedSubtitleFile.length() > 0L) {
+                return@withContext Uri.fromFile(cachedSubtitleFile)
+            }
+
             val token = loginAndGetToken()
                 ?: return@withContext null
             val fileId = searchFileId(cleanName)
@@ -48,19 +61,10 @@ object OpenSubtitlesClient {
             val subtitleLink = getDownloadLink(fileId, token) ?: return@withContext null
             val srtText = downloadSrt(subtitleLink) ?: return@withContext null
 
-            val subtitleDir = File(context.cacheDir, "subtitles")
-            if (!subtitleDir.exists()) subtitleDir.mkdirs()
+            cachedSubtitleFile.writeText(srtText, Charsets.UTF_8)
 
-            val safeFileName = cleanName
-                .replace(Regex("[^A-Za-z0-9._ -]"), "")
-                .take(80)
-                .ifBlank { "subtitle" }
-
-            val subtitleFile = File(subtitleDir, "$safeFileName.en.srt")
-            subtitleFile.writeText(srtText, Charsets.UTF_8)
-
-            Log.d(TAG, "Subtitle saved: ${subtitleFile.absolutePath}")
-            Uri.fromFile(subtitleFile)
+            Log.d(TAG, "Subtitle saved: ${cachedSubtitleFile.absolutePath}")
+            Uri.fromFile(cachedSubtitleFile)
 
         } catch (e: Exception) {
             Log.e(TAG, "Subtitle error: ${e.message}", e)

@@ -1,5 +1,8 @@
 package com.sole.cinevault
 
+import androidx.compose.runtime.Immutable
+
+@Immutable
 data class VideoWithMetadata(
     val video: VideoFile,
     val title: String,

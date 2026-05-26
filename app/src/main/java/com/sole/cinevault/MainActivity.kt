@@ -10,6 +10,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
@@ -254,6 +255,7 @@ fun CineVaultApp() {
     var currentEpisodeList by remember { mutableStateOf<List<VideoWithMetadata>>(emptyList()) }
     var libraryVideos by remember { mutableStateOf<List<VideoWithMetadata>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
+    val homeListState = rememberLazyListState()
 
     LaunchedEffect(Unit) {
         val cached = loadLibraryCache(context)
@@ -261,6 +263,19 @@ fun CineVaultApp() {
             libraryVideos = cached.videos
         }
     }
+
+    var secretRefreshKey by remember { mutableStateOf(0) }
+
+    val visibleLibraryVideos =
+        remember(libraryVideos, secretRefreshKey) {
+            val hiddenPaths = loadSecretVideoPaths(context)
+            val hiddenFolders = loadSecretFolderPaths(context)
+
+            libraryVideos.filter { item ->
+                !hiddenPaths.contains(item.video.path) &&
+                        !videoIsInsideSecretFolder(item, hiddenFolders)
+            }
+        }
 
     BackHandler {
         when {
@@ -296,7 +311,7 @@ fun CineVaultApp() {
                         video = selectedVideo!!,
                         episodeList = currentEpisodeList,
                         onBack = { selectedVideo = null },
-                        onPlayNext = { nextVideo ->
+                        onPlayNext = { nextVideo: VideoWithMetadata ->
                             selectedVideo = nextVideo.video
                         }
                     )
@@ -315,22 +330,6 @@ fun CineVaultApp() {
                     )
                 }
 
-                selectedTab == 2 -> {
-                    SearchScreen(
-                        videos = libraryVideos,
-                        query = searchQuery,
-                        onQueryChange = { newQuery -> searchQuery = newQuery },
-                        onVideoClick = { item ->
-                            currentEpisodeList = emptyList()
-                            selectedDetail = item
-                        }
-                    )
-                }
-
-                selectedTab == 3 -> {
-                    SettingsScreen()
-                }
-
                 selectedDetail != null -> {
                     DetailScreen(
                         item = selectedDetail!!,
@@ -342,6 +341,22 @@ fun CineVaultApp() {
                             selectedVideo = selectedDetail!!.video
                         }
                     )
+                }
+
+                selectedTab == 2 -> {
+                    SearchScreen(
+                        videos = visibleLibraryVideos,
+                        query = searchQuery,
+                        onQueryChange = { newQuery -> searchQuery = newQuery },
+                        onVideoClick = { item ->
+                            currentEpisodeList = emptyList()
+                            selectedDetail = item
+                        }
+                    )
+                }
+
+                selectedTab == 3 -> {
+                    SettingsScreen()
                 }
 
                 selectedTab == 1 -> {
@@ -360,18 +375,22 @@ fun CineVaultApp() {
                         },
                         onTvGroupClick = { group ->
                             selectedTvGroup = group
+                        },
+                        onSecretChanged = {
+                            secretRefreshKey++
                         }
                     )
                 }
 
                 else -> {
                     HomeScreen(
-                        videos = libraryVideos,
+                        videos = visibleLibraryVideos,
                         onScanRequest = { selectedTab = 1 },
                         onItemClick = { item ->
                             currentEpisodeList = emptyList()
                             selectedDetail = item
-                        }
+                        },
+                        listState = homeListState
                     )
                 }
             }

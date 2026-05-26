@@ -1,5 +1,6 @@
 package com.sole.cinevault
 
+import android.content.ContentUris
 import android.content.Context
 import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
@@ -12,8 +13,10 @@ suspend fun scanDeviceVideos(
     val videoList = mutableListOf<VideoWithMetadata>()
 
     val projection = arrayOf(
-        MediaStore.Video.Media.DATA,
-        MediaStore.Video.Media.DISPLAY_NAME
+        MediaStore.Video.Media._ID,
+        MediaStore.Video.Media.DISPLAY_NAME,
+        MediaStore.Video.Media.RELATIVE_PATH,
+        MediaStore.Video.Media.DATE_ADDED
     )
 
     val cursor = context.contentResolver.query(
@@ -21,84 +24,97 @@ suspend fun scanDeviceVideos(
         projection,
         null,
         null,
-        "${MediaStore.Video.Media.DATE_ADDED} DESC"
+        null
     )
 
-    cursor?.use {
+    cursor?.use { cursorData ->
 
-        val pathColumn =
-            it.getColumnIndexOrThrow(MediaStore.Video.Media.DATA)
+        val idColumn =
+            cursorData.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
 
         val nameColumn =
-            it.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
+            cursorData.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
 
-        while (it.moveToNext()) {
+        val relativePathColumn =
+            cursorData.getColumnIndex(MediaStore.Video.Media.RELATIVE_PATH)
 
-            val path =
-                it.getString(pathColumn) ?: continue
+        while (cursorData.moveToNext()) {
+
+            val id = cursorData.getLong(idColumn)
+
+            val contentUri =
+                ContentUris.withAppendedId(
+                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                    id
+                )
 
             val name =
-                it.getString(nameColumn)
-                    ?: path.substringAfterLast("/")
+                cursorData.getString(nameColumn)
+                    ?: "Video_$id.mp4"
 
-            val cleanedTitle =
-                cleanMovieFilename(name)
-
-            // ALWAYS create local fallback first
-            var videoItem = VideoWithMetadata(
-                video = VideoFile(
-                    name = name,
-                    path = path
-                ),
-                title = cleanedTitle,
-                subtitle = "Movie",
-                posterUrl = null,
-                backdropUrl = null,
-                overview = "",
-                rating = 0.0,
-                imdbRating = null,
-                rottenTomatoesRating = null,
-                tmdbId = null,
-                type = "movie"
-            )
-
-            // THEN try TMDB enrichment
-            try {
-
-                val tmdb =
-                    TmdbClient.api.searchMovie(
-                        bearerToken = BuildConfig.TMDB_TOKEN,
-                        query = cleanedTitle
-                    )
-
-                val result =
-                    tmdb.results.firstOrNull()
-
-                if (result != null) {
-
-                    videoItem = videoItem.copy(
-                        title = result.title ?: cleanedTitle,
-                        posterUrl =
-                            result.poster_path?.let {
-                                "https://image.tmdb.org/t/p/w500$it"
-                            },
-                        backdropUrl =
-                            result.backdrop_path?.let {
-                                "https://image.tmdb.org/t/p/original$it"
-                            },
-                        overview = result.overview,
-                        rating = result.vote_average,
-                        tmdbId = result.id
-                    )
+            val folderPath =
+                if (relativePathColumn >= 0) {
+                    cursorData.getString(relativePathColumn) ?: ""
+                } else {
+                    ""
                 }
 
-            } catch (e: Exception) {
-                e.printStackTrace()
+            val scanCheckPath = "$folderPath/$name"
+
+            if (shouldSkipCineVaultScanPath(scanCheckPath)) {
+                continue
             }
 
-            videoList.add(videoItem)
+            val episodeInfo = extractEpisodeInfo(name)
+            val isTv = episodeInfo != null
+            val cleanedTitle =
+                if (isTv) {
+                    episodeInfo?.showName ?: cleanMovieFilename(name)
+                } else {
+                    cleanMovieFilename(name)
+                }
+
+            videoList.add(
+                VideoWithMetadata(
+                    video = VideoFile(
+                        name = name,
+                        path = contentUri.toString(),
+                        folderPath = folderPath
+                    ),
+                    title = cleanedTitle,
+                    subtitle =
+                        if (isTv && episodeInfo != null) {
+                            "S${episodeInfo.season.toString().padStart(2, '0')}E${episodeInfo.episode.toString().padStart(2, '0')}"
+                        } else {
+                            "Movie"
+                        },
+                    posterUrl = null,
+                    backdropUrl = null,
+                    episodeStill = null,
+                    overview = "",
+                    rating = 0.0,
+                    imdbRating = null,
+                    rottenTomatoesRating = null,
+                    tmdbId = null,
+                    type = if (isTv) "tv" else "movie"
+                )
+            )
         }
     }
 
     videoList
+}
+
+private fun shouldSkipCineVaultScanPath(path: String): Boolean {
+    val lower = path.lowercase()
+
+    return lower.contains("/whatsapp/") ||
+            lower.contains("whatsapp video") ||
+            lower.contains("/android/media/com.whatsapp/") ||
+            lower.contains("/whatsapp business/") ||
+            lower.contains("/android/media/com.whatsapp.w4b/") ||
+            lower.contains("/telegram/") ||
+            lower.contains("/screenrecord") ||
+            lower.contains("/screen_record") ||
+            lower.contains("/screenshots/")
 }

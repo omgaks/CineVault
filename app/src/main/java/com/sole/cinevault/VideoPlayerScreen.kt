@@ -21,6 +21,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -39,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -98,16 +100,22 @@ fun VideoPlayerScreen(
     var showSubtitleSettings by remember { mutableStateOf(false) }
 
     var subtitleTextSizeSp by remember { mutableFloatStateOf(18f) }
-    var subtitleBottomPadding by remember { mutableFloatStateOf(0.08f) }
+    var subtitleBottomPadding by remember { mutableFloatStateOf(0.13f) }
     var subtitleSyncOffset by remember { mutableFloatStateOf(0.0f) }
     var subtitleMenuTouchKey by remember { mutableIntStateOf(0) }
     var subtitlesEnabled by remember { mutableStateOf(true) }
+    var autoSubtitleAttemptedForPath by remember { mutableStateOf<String?>(null) }
+    var autoSubtitleStatus by remember { mutableStateOf("") }
+    var subtitleDownloadInProgress by remember { mutableStateOf(false) }
     var menuTouchKey by remember { mutableIntStateOf(0) }
     var playerViewForSubtitleStyle by remember { mutableStateOf<PlayerView?>(null) }
 
     var position by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(1L) }
     var isPlaying by remember { mutableStateOf(true) }
+    var pendingNextEpisode by remember { mutableStateOf<VideoWithMetadata?>(null) }
+    var nextEpisodeCountdown by remember { mutableIntStateOf(0) }
+    var showNextEpisodeOverlay by remember { mutableStateOf(false) }
 
     var showSeekPreview by remember { mutableStateOf(false) }
     var previewPosition by remember { mutableLongStateOf(0L) }
@@ -161,34 +169,56 @@ fun VideoPlayerScreen(
     }
 
     fun downloadExternalSubtitle() {
+        if (subtitleDownloadInProgress) {
+            Toast.makeText(context, "Subtitle search already running", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         showControls = true
         showSubtitleSettings = false
-
-        Toast.makeText(context, "Searching subtitles...", Toast.LENGTH_SHORT).show()
+        autoSubtitleStatus = "Searching subtitles..."
+        subtitleDownloadInProgress = true
 
         scope.launch {
             val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
 
-            val subtitleUri = OpenSubtitlesClient.downloadBestEnglishSubtitle(
-                context = context,
-                videoPath = currentVideo.path
-            )
+            try {
+                val subtitleUri =
+                    OpenSubtitlesClient.downloadBestEnglishSubtitle(
+                        context = context,
+                        videoPath = currentVideo.path
+                    )
 
-            if (subtitleUri != null) {
-                Toast.makeText(context, "Subtitle loaded", Toast.LENGTH_SHORT).show()
-                subtitlesEnabled = true
+                if (subtitleUri != null) {
+                    autoSubtitleStatus = "Subtitle loaded"
+                    Toast.makeText(context, "Subtitle loaded", Toast.LENGTH_SHORT).show()
+                    subtitlesEnabled = true
 
-                trackSelector.parameters =
-                    trackSelector.buildUponParameters()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                        .build()
+                    trackSelector.parameters =
+                        trackSelector.buildUponParameters()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                            .build()
 
-                playCurrentVideoWithSubtitle(
-                    subtitleUri = subtitleUri,
-                    resumePosition = resumeAt
-                )
-            } else {
-                Toast.makeText(context, "No subtitle found", Toast.LENGTH_SHORT).show()
+                    playCurrentVideoWithSubtitle(
+                        subtitleUri = subtitleUri,
+                        resumePosition = resumeAt
+                    )
+
+                    delay(1400)
+                    autoSubtitleStatus = ""
+                } else {
+                    autoSubtitleStatus = "No subtitle found"
+                    Toast.makeText(context, "No subtitle found", Toast.LENGTH_SHORT).show()
+                    delay(1400)
+                    autoSubtitleStatus = ""
+                }
+            } catch (e: Exception) {
+                autoSubtitleStatus = "Subtitle failed"
+                Toast.makeText(context, "Subtitle failed", Toast.LENGTH_SHORT).show()
+                delay(1400)
+                autoSubtitleStatus = ""
+            } finally {
+                subtitleDownloadInProgress = false
             }
         }
     }
@@ -202,10 +232,72 @@ fun VideoPlayerScreen(
         showTopBar = true
         showAudioSelector = false
         showSubtitleSettings = false
+        pendingNextEpisode = null
+        nextEpisodeCountdown = 0
+        showNextEpisodeOverlay = false
         previewBitmap = null
         previewFrames = emptyList()
 
+        recordWatchHistory(
+            context = context,
+            videoPath = currentVideo.path,
+            title = cleanVideoTitle(currentVideo.path)
+        )
+
         playCurrentVideoWithSubtitle(resumePosition = savedPosition)
+
+        if (autoSubtitleAttemptedForPath != currentVideo.path) {
+            autoSubtitleAttemptedForPath = currentVideo.path
+            autoSubtitleStatus = ""
+
+            scope.launch {
+                delay(1200)
+
+                if (subtitleDownloadInProgress) {
+                    return@launch
+                }
+
+                subtitleDownloadInProgress = true
+                val resumeAt = exoPlayer.currentPosition.coerceAtLeast(savedPosition)
+                autoSubtitleStatus = "Searching subtitles..."
+
+                try {
+                    val subtitleUri =
+                        OpenSubtitlesClient.downloadBestEnglishSubtitle(
+                            context = context,
+                            videoPath = currentVideo.path
+                        )
+
+                    if (subtitleUri != null) {
+                        subtitlesEnabled = true
+                        trackSelector.parameters =
+                            trackSelector.buildUponParameters()
+                                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                                .build()
+
+                        autoSubtitleStatus = "Subtitle loaded"
+
+                        playCurrentVideoWithSubtitle(
+                            subtitleUri = subtitleUri,
+                            resumePosition = resumeAt
+                        )
+
+                        delay(1400)
+                        autoSubtitleStatus = ""
+                    } else {
+                        autoSubtitleStatus = "No subtitle found"
+                        delay(1100)
+                        autoSubtitleStatus = ""
+                    }
+                } catch (e: Exception) {
+                    autoSubtitleStatus = "Subtitle failed"
+                    delay(1100)
+                    autoSubtitleStatus = ""
+                } finally {
+                    subtitleDownloadInProgress = false
+                }
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -214,6 +306,11 @@ fun VideoPlayerScreen(
         activity?.window?.attributes = activity?.window?.attributes?.apply {
             screenBrightness = 1.0f
         }
+
+        activity?.window?.decorView?.systemUiVisibility =
+            android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or
+                    android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
     }
 
     DisposableEffect(exoPlayer, currentVideo.path, episodeList) {
@@ -226,8 +323,11 @@ fun VideoPlayerScreen(
                     val nextEpisode = episodeList.getOrNull(currentIndex + 1)
 
                     if (nextEpisode != null) {
-                        currentVideo = nextEpisode.video
-                        onPlayNext(nextEpisode)
+                        pendingNextEpisode = nextEpisode
+                        nextEpisodeCountdown = 5
+                        showNextEpisodeOverlay = true
+                        showControls = true
+                        showTopBar = true
                     }
                 }
             }
@@ -263,6 +363,9 @@ fun VideoPlayerScreen(
             activity?.window?.attributes = activity?.window?.attributes?.apply {
                 screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
             }
+
+            activity?.window?.decorView?.systemUiVisibility =
+                android.view.View.SYSTEM_UI_FLAG_VISIBLE
         }
     }
     LaunchedEffect(exoPlayer) {
@@ -282,9 +385,10 @@ fun VideoPlayerScreen(
 
             // Fast warm-up cache first, so dragging never shows a blank preview.
             val quickFrames = VideoThumbnailHelper.generatePreviewCache(
+                context = context,
                 videoPath = currentVideo.path,
                 durationMs = duration,
-                frameCount = 36
+                frameCount = 18
             )
 
             if (quickFrames.isNotEmpty()) {
@@ -294,9 +398,10 @@ fun VideoPlayerScreen(
 
             // Dense cache loads after the quick cache for better sync while scrubbing.
             val denseFrames = VideoThumbnailHelper.generatePreviewCache(
+                context = context,
                 videoPath = currentVideo.path,
                 durationMs = duration,
-                frameCount = 180
+                frameCount = 72
             )
 
             if (denseFrames.isNotEmpty()) {
@@ -339,6 +444,12 @@ fun VideoPlayerScreen(
                     context = context,
                     videoPath = currentVideo.path,
                     position = current
+                )
+
+                recordWatchHistory(
+                    context = context,
+                    videoPath = currentVideo.path,
+                    title = cleanVideoTitle(currentVideo.path)
                 )
             }
         }
@@ -396,19 +507,70 @@ fun VideoPlayerScreen(
         )
     }
 
+
+    LaunchedEffect(showNextEpisodeOverlay, pendingNextEpisode) {
+        if (showNextEpisodeOverlay && pendingNextEpisode != null) {
+            for (count in 5 downTo 1) {
+                nextEpisodeCountdown = count
+                delay(1000)
+                if (!showNextEpisodeOverlay || pendingNextEpisode == null) {
+                    return@LaunchedEffect
+                }
+            }
+
+            val next = pendingNextEpisode
+            if (next != null) {
+                showNextEpisodeOverlay = false
+                pendingNextEpisode = null
+                currentVideo = next.video
+                onPlayNext(next)
+            }
+        }
+    }
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
         val isLandscape = maxWidth > maxHeight
+        val isSmallPhone = maxWidth < 430.dp || maxHeight < 760.dp
+        val isCompactLandscape = isLandscape && maxHeight < 430.dp
 
-        val playButton = if (isLandscape) 62.dp else 70.dp
-        val smallButton = if (isLandscape) 40.dp else 46.dp
-        val hudSize = if (isLandscape) 65.dp else 73.dp
-        val pillHeight = if (isLandscape) 38.dp else 40.dp
-        val pillFont = if (isLandscape) 10.sp else 11.sp
-        val popupWidth = if (isLandscape) 300.dp else 280.dp
+        val scale = when {
+            isCompactLandscape -> 0.70f
+            isSmallPhone && !isLandscape -> 0.78f
+            isSmallPhone -> 0.82f
+            isLandscape -> 0.90f
+            else -> 1f
+        }
+
+        val playButton = (98 * scale).dp
+        val smallButton = (66 * scale).dp
+        val hudSize = (72 * scale).dp
+        val pillHeight = (54 * scale).dp
+        val pillFont = (17 * scale).sp
+        val sidePadding = if (isCompactLandscape) 8.dp else 16.dp
+
+        // Dock sits clearly ABOVE the seekbar in landscape.
+        val bottomDockPadding =
+            when {
+                isCompactLandscape -> 112.dp
+                isLandscape -> 126.dp
+                else -> 152.dp
+            }
+
+        // Seekbar stays low but never covers the control dock.
+        val seekBottomPadding =
+            when {
+                isCompactLandscape -> 18.dp
+                isLandscape -> 24.dp
+                else -> 30.dp
+            }
+
+        val showIntroSkip =
+            position in 5_000L..95_000L &&
+                    (episodeList.isNotEmpty() || looksLikeEpisodeFile(currentVideo.name))
 
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -563,10 +725,14 @@ fun VideoPlayerScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(
-                        bottom = if (isLandscape) 265.dp else 320.dp,
-                        end = 22.dp
+                        bottom = if (isCompactLandscape) 160.dp else if (isLandscape) 240.dp else 300.dp,
+                        end = sidePadding
                     )
-                    .width(if (isLandscape) 260.dp else 270.dp),
+                    .width(
+                        if (isCompactLandscape) 145.dp
+                        else if (isLandscape) 170.dp
+                        else 190.dp
+                    ),
                 rows = audioTracks.flatMap { group ->
                     List(group.length) { index ->
                         val format = group.getTrackFormat(index)
@@ -666,7 +832,7 @@ fun VideoPlayerScreen(
             },
             onReset = {
                 subtitleTextSizeSp = 18f
-                subtitleBottomPadding = 0.08f
+                subtitleBottomPadding = 0.13f
                 subtitleSyncOffset = 0.0f
                 subtitlesEnabled = true
 
@@ -704,6 +870,74 @@ fun VideoPlayerScreen(
                 }
 
                 AnimatedVisibility(
+                    visible = autoSubtitleStatus.isNotBlank() && !showSeekPreview,
+                    enter = fadeIn(animationSpec = tween(120)),
+                    exit = fadeOut(animationSpec = tween(120)),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = if (isLandscape) 54.dp else 86.dp)
+                ) {
+                    Text(
+                        text = autoSubtitleStatus,
+                        color = Color(0xFFFFD36A),
+                        fontSize = if (isLandscape) 11.sp else 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(Color.Black.copy(alpha = 0.52f))
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+
+
+                AnimatedVisibility(
+                    visible = showNextEpisodeOverlay && pendingNextEpisode != null && !showSeekPreview,
+                    enter = fadeIn(animationSpec = tween(140)),
+                    exit = fadeOut(animationSpec = tween(120)),
+                    modifier = Modifier.align(Alignment.Center)
+                ) {
+                    NextEpisodeCountdownOverlay(
+                        nextEpisode = pendingNextEpisode,
+                        countdown = nextEpisodeCountdown,
+                        isLandscape = isLandscape,
+                        onPlayNow = {
+                            val next = pendingNextEpisode
+                            if (next != null) {
+                                showNextEpisodeOverlay = false
+                                pendingNextEpisode = null
+                                currentVideo = next.video
+                                onPlayNext(next)
+                            }
+                        },
+                        onCancel = {
+                            showNextEpisodeOverlay = false
+                            pendingNextEpisode = null
+                            nextEpisodeCountdown = 0
+                            showControls = true
+                        }
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = showIntroSkip && !showSeekPreview && !isDraggingSeekbar,
+                    enter = fadeIn(animationSpec = tween(120)),
+                    exit = fadeOut(animationSpec = tween(120)),
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = sidePadding)
+                ) {
+                    SkipIntroButton(
+                        isLandscape = isLandscape,
+                        onClick = {
+                            val target = 95_000L.coerceAtMost(duration.coerceAtLeast(1L))
+                            exoPlayer.seekTo(target)
+                            position = target
+                            showControls = true
+                        }
+                    )
+                }
+
+                AnimatedVisibility(
                     visible = !showSeekPreview && !isDraggingSeekbar,
                     enter = fadeIn(animationSpec = tween(120)),
                     exit = fadeOut(animationSpec = tween(90)),
@@ -712,9 +946,9 @@ fun VideoPlayerScreen(
                     Row(
                         modifier = Modifier
                             .padding(
-                                bottom = if (isLandscape) 118.dp else 140.dp,
-                                start = 18.dp,
-                                end = 18.dp
+                                bottom = bottomDockPadding,
+                                start = sidePadding,
+                                end = sidePadding
                             )
                             .clip(RoundedCornerShape(42.dp))
                             .background(
@@ -726,11 +960,11 @@ fun VideoPlayerScreen(
                                     )
                                 )
                             )
-                            .padding(horizontal = 18.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(if (isLandscape) 14.dp else 12.dp),
+                            .padding(horizontal = (12 * scale).dp, vertical = (6 * scale).dp),
+                        horizontalArrangement = Arrangement.spacedBy((7 * scale).dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        ControlCircle("◀◀", smallButton + 8.dp) {
+                        ControlCircle("◀◀", smallButton) {
                             exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0))
                             position = exoPlayer.currentPosition
                             showControls = true
@@ -738,13 +972,13 @@ fun VideoPlayerScreen(
 
                         ControlCircle(
                             text = if (isPlaying) "Ⅱ" else "▶",
-                            size = playButton + 12.dp
+                            size = playButton
                         ) {
                             if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
                             showControls = true
                         }
 
-                        ControlCircle("▶▶", smallButton + 8.dp) {
+                        ControlCircle("▶▶", smallButton) {
                             exoPlayer.seekTo(
                                 (exoPlayer.currentPosition + 10000)
                                     .coerceAtMost(exoPlayer.duration.coerceAtLeast(0))
@@ -753,7 +987,7 @@ fun VideoPlayerScreen(
                             showControls = true
                         }
 
-                        Spacer(modifier = Modifier.width(if (isLandscape) 18.dp else 8.dp))
+                        Spacer(modifier = Modifier.width((8 * scale).dp))
 
                         PlayerPill("≡", pillHeight, pillFont) {
                             showSubtitleSettings = false
@@ -794,7 +1028,7 @@ fun VideoPlayerScreen(
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(start = 18.dp, end = 18.dp, bottom = 28.dp)
+                        .padding(start = sidePadding, end = sidePadding, bottom = seekBottomPadding)
                         .clip(RoundedCornerShape(30.dp))
                         .background(
                             Brush.verticalGradient(
@@ -805,7 +1039,7 @@ fun VideoPlayerScreen(
                                 )
                             )
                         )
-                        .padding(horizontal = 18.dp, vertical = 8.dp)
+                        .padding(horizontal = (14 * scale).dp, vertical = (7 * scale).dp)
                 ) {
                     CinematicSeekBar(
                         position = position,
@@ -845,6 +1079,7 @@ fun VideoPlayerScreen(
 
                             scope.launch {
                                 val exactBitmap = VideoThumbnailHelper.generateFrameAtTime(
+                                    context = context,
                                     videoPath = currentVideo.path,
                                     positionMs = safePosition
                                 )
@@ -1027,6 +1262,10 @@ private fun SeekPreviewBubble(
         exit = fadeOut(animationSpec = tween(80)),
         modifier = Modifier.fillMaxSize()
     ) {
+
+
+
+
         BoxWithConstraints(
             modifier = Modifier.fillMaxSize()
         ) {
@@ -1050,15 +1289,26 @@ private fun SeekPreviewBubble(
                         x = horizontalPadding + safeOffset,
                         y = 0.dp
                     )
-                    .padding(bottom = if (isLandscape) 110.dp else 128.dp)
+                    .padding(bottom = if (isLandscape) 116.dp else 134.dp)
+                    .graphicsLayer {
+                        val animatedScale = if (isLarge) 1.02f else 0.98f
+                        scaleX = animatedScale
+                        scaleY = animatedScale
+                        shadowElevation = if (isLarge) 18f else 10f
+                    }
                     .clip(RoundedCornerShape(18.dp))
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color.White.copy(alpha = 0.12f),
-                                Color.Black.copy(alpha = 0.52f)
+                                Color.White.copy(alpha = 0.15f),
+                                Color.Black.copy(alpha = 0.58f)
                             )
                         )
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = Color(0xFFFFD36A).copy(alpha = if (isLarge) 0.55f else 0.25f),
+                        shape = RoundedCornerShape(18.dp)
                     )
                     .padding(8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -1115,9 +1365,9 @@ private fun TopGlassTitleBar(
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                start = 16.dp,
-                end = 16.dp,
-                top = if (isLandscape) 14.dp else 18.dp
+                start = if (isLandscape) 8.dp else 12.dp,
+                end = if (isLandscape) 8.dp else 12.dp,
+                top = if (isLandscape) 0.dp else 4.dp
             )
             .clip(RoundedCornerShape(34.dp))
             .background(
@@ -1129,18 +1379,21 @@ private fun TopGlassTitleBar(
                     )
                 )
             )
-            .padding(horizontal = 16.dp, vertical = 11.dp),
+            .padding(
+                horizontal = if (isLandscape) 10.dp else 13.dp,
+                vertical = if (isLandscape) 3.dp else 7.dp
+            ),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = "← Back",
             color = Color.White,
-            fontSize = if (isLandscape) 14.sp else 16.sp,
+            fontSize = if (isLandscape) 13.sp else 15.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier
                 .clip(RoundedCornerShape(30.dp))
                 .background(Color.White.copy(alpha = 0.11f))
-                .padding(horizontal = 14.dp, vertical = 8.dp)
+                .padding(horizontal = if (isLandscape) 10.dp else 12.dp, vertical = if (isLandscape) 5.dp else 7.dp)
                 .pointerInput(Unit) {
                     detectTapGestures { onBack() }
                 }
@@ -1151,7 +1404,7 @@ private fun TopGlassTitleBar(
         Text(
             text = title,
             color = Color.White,
-            fontSize = if (isLandscape) 15.sp else 17.sp,
+            fontSize = if (isLandscape) 13.sp else 17.sp,
             fontWeight = FontWeight.Black,
             maxLines = 1,
             modifier = Modifier.weight(1f)
@@ -1160,7 +1413,7 @@ private fun TopGlassTitleBar(
         Text(
             text = "⋮",
             color = Color.White.copy(alpha = 0.95f),
-            fontSize = 28.sp,
+            fontSize = if (isLandscape) 24.sp else 26.sp,
             fontWeight = FontWeight.Black
         )
     }
@@ -1293,50 +1546,61 @@ private fun ControlCircle(
             .size(size)
             .clip(shape)
             .background(
-                if (isPlayPause) {
-                    Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFFFFA726).copy(alpha = 0.22f),
-                            Color(0xFFFF5A36).copy(alpha = 0.18f),
-                            Color.White.copy(alpha = 0.10f),
-                            Color.Black.copy(alpha = 0.18f)
-                        )
-                    )
-                } else {
-                    Brush.radialGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.18f),
-                            Color.White.copy(alpha = 0.09f),
-                            Color.Black.copy(alpha = 0.18f)
-                        )
-                    )
-                }
+                brush = Brush.radialGradient(
+                    colors =
+                        if (isPlayPause) {
+                            listOf(
+                                Color.Black.copy(alpha = 0.32f),
+                                Color.Black.copy(alpha = 0.32f)
+                            )
+                        } else {
+                            listOf(
+                                Color.White.copy(alpha = 0.14f),
+                                Color.White.copy(alpha = 0.07f),
+                                Color.Black.copy(alpha = 0.20f)
+                            )
+                        }
+                )
+            )
+            .border(
+                width = if (isPlayPause) 1.7.dp else 1.dp,
+                color = if (isPlayPause)
+                    Color(0xFFFFC857).copy(alpha = 0.78f)
+                else
+                    Color.White.copy(alpha = 0.18f),
+                shape = shape
             )
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
         if (isPlayPause) {
             Canvas(modifier = Modifier.matchParentSize()) {
+                val outer = size.toPx() * 0.48f
+                val ringWidth = size.toPx() * 0.045f
+
                 drawCircle(
-                    color = Color(0xFFFF8A00).copy(alpha = 0.30f),
-                    radius = size.toPx() * 0.49f,
-                    center = center
+                    color = Color(0xFFFF8A00).copy(alpha = 0.26f),
+                    radius = outer,
+                    center = center,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = ringWidth)
                 )
+
                 drawCircle(
-                    color = Color(0xFFFFC857).copy(alpha = 0.18f),
-                    radius = size.toPx() * 0.34f,
-                    center = center
+                    color = Color(0xFFFFD66B).copy(alpha = 0.18f),
+                    radius = outer * 0.82f,
+                    center = center,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = ringWidth * 0.65f)
                 )
             }
         }
 
         Text(
             text = text,
-            color = if (isPlayPause) Color(0xFFFF5A36) else Color.White,
+            color = if (isPlayPause) Color(0xFFFF7A2F) else Color.White,
             fontSize = when {
-                isPlayPause && text == "▶" -> 36.sp
-                isPlayPause -> 34.sp
-                else -> 24.sp
+                isPlayPause && text == "▶" -> (size.value * 0.48f).sp
+                isPlayPause -> (size.value * 0.46f).sp
+                else -> (size.value * 0.42f).sp
             },
             fontWeight = FontWeight.Black,
             modifier = Modifier.offset(
@@ -1346,6 +1610,7 @@ private fun ControlCircle(
         )
     }
 }
+
 @Composable
 private fun PlayerPill(
     text: String,
@@ -1356,7 +1621,7 @@ private fun PlayerPill(
     Box(
         modifier = Modifier
             .height(height)
-            .widthIn(min = 58.dp)
+            .widthIn(min = height * 1.45f)
             .clip(RoundedCornerShape(18.dp))
             .background(
                 Brush.radialGradient(
@@ -1368,13 +1633,13 @@ private fun PlayerPill(
                 )
             )
             .clickable { onClick() }
-            .padding(horizontal = 13.dp),
+            .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
             color = Color.White,
-            fontSize = if (text == "CC") 18.sp else 19.sp,
+            fontSize = if (text == "CC") fontSize else (fontSize.value + 1).sp,
             fontWeight = FontWeight.Black
         )
     }
@@ -1410,24 +1675,24 @@ private fun cleanVideoTitle(path: String): String {
         .substringAfterLast("/")
         .substringAfterLast("\\")
         .substringBeforeLast(".")
+        .replace(Regex("\\[.*?]"), " ")
+        .replace(Regex("\\(.*?\\)"), " ")
         .replace(".", " ")
         .replace("_", " ")
         .replace("-", " ")
-        .replace(Regex("\\[.*?]"), "")
-        .replace(Regex("\\(.*?\\)"), "")
 
     title = title.replace(
         Regex(
-            "\\b(1080p|720p|2160p|4k|imax|aac5|aac|ddp|5 1|7 1|x264|x265|h264|h265|bluray|brrip|hdrip|webrip|web|dts|yts|rarbg|mkv|mp4|avi|bz|proper|repack|extended|remux|multi|dual|audio|english|hindi|ita|eng|amzn|pir8|yts|ag)\\b",
+            "\\b(2160p|1080p|720p|480p|4k|uhd|hdr10\\+?|hdr|dv|dolby\\s*vision|dolby|vision|imax|remux|bluray|blu\\s*ray|brrip|hdrip|webrip|web\\s*dl|webdl|web|nf|amzn|dsnp|hulu|itunes|x264|x265|h264|h265|hevc|10bit|8bit|aac5?|aac|ddp5?\\.?1?|dd\\+|dts|truehd|atmos|5\\s*1|7\\s*1|yts|rarbg|tgx|eztv|pir8|ag|proper|repack|extended|theatrical|directors?\\s*cut|multi|dual|audio|english|hindi|ita|eng|mkv|mp4|avi|subs?|esub)\\b",
             RegexOption.IGNORE_CASE
         ),
-        ""
+        " "
     )
 
-    title = title.replace(
-        Regex("\\b(19|20)\\d{2}\\b.*$", RegexOption.IGNORE_CASE),
-        ""
-    )
+    title = title.replace(Regex("\\bS\\d{1,2}E\\d{1,2}\\b", RegexOption.IGNORE_CASE), " ")
+    title = title.replace(Regex("\\bseason\\s*\\d+\\b", RegexOption.IGNORE_CASE), " ")
+    title = title.replace(Regex("\\bepisode\\s*\\d+\\b", RegexOption.IGNORE_CASE), " ")
+    title = title.replace(Regex("\\b(19|20)\\d{2}\\b.*$", RegexOption.IGNORE_CASE), " ")
 
     return title.replace(Regex("\\s+"), " ").trim().ifBlank { "Now Playing" }
 }
@@ -1444,6 +1709,165 @@ private fun formatTime(ms: Long): String {
         "%02d:%02d".format(minutes, seconds)
     }
 }
+private fun looksLikeEpisodeFile(fileName: String): Boolean {
+    return fileName.contains(
+        Regex("(s\\d{1,2}e\\d{1,2}|season\\s*\\d+|episode\\s*\\d+)", RegexOption.IGNORE_CASE)
+    )
+}
+
+@Composable
+private fun SkipIntroButton(
+    isLandscape: Boolean,
+    onClick: () -> Unit
+) {
+    Text(
+        text = "SKIP INTRO",
+        color = Color.Black,
+        fontSize = if (isLandscape) 11.sp else 12.sp,
+        fontWeight = FontWeight.Black,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(
+                Brush.horizontalGradient(
+                    colors = listOf(
+                        Color(0xFFFFD36A),
+                        Color(0xFFFFA000)
+                    )
+                )
+            )
+            .clickable { onClick() }
+            .padding(
+                horizontal = if (isLandscape) 13.dp else 15.dp,
+                vertical = if (isLandscape) 7.dp else 8.dp
+            )
+    )
+}
+
+
+@Composable
+private fun NextEpisodeCountdownOverlay(
+    nextEpisode: VideoWithMetadata?,
+    countdown: Int,
+    isLandscape: Boolean,
+    onPlayNow: () -> Unit,
+    onCancel: () -> Unit
+) {
+    if (nextEpisode == null) return
+
+    Column(
+        modifier = Modifier
+            .width(if (isLandscape) 310.dp else 300.dp)
+            .clip(RoundedCornerShape(26.dp))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Black.copy(alpha = 0.72f),
+                        Color.Black.copy(alpha = 0.50f)
+                    )
+                )
+            )
+            .border(
+                width = 1.dp,
+                color = Color(0xFFFFD36A).copy(alpha = 0.38f),
+                shape = RoundedCornerShape(26.dp)
+            )
+            .padding(horizontal = 18.dp, vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "Next episode starts in",
+            color = Color.White.copy(alpha = 0.82f),
+            fontSize = if (isLandscape) 13.sp else 14.sp,
+            fontWeight = FontWeight.Bold
+        )
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Text(
+            text = countdown.coerceAtLeast(1).toString(),
+            color = Color(0xFFFFD36A),
+            fontSize = if (isLandscape) 38.sp else 42.sp,
+            fontWeight = FontWeight.Black
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = nextEpisode.subtitle.ifBlank { cleanEpisodeDisplayName(nextEpisode.video.name) },
+            color = Color.White,
+            fontSize = if (isLandscape) 13.sp else 14.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Cancel",
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.White.copy(alpha = 0.12f))
+                    .clickable { onCancel() }
+                    .padding(horizontal = 15.dp, vertical = 8.dp)
+            )
+
+            Text(
+                text = "Play Now",
+                color = Color.Black,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Black,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(Color(0xFFFFD36A))
+                    .clickable { onPlayNow() }
+                    .padding(horizontal = 15.dp, vertical = 8.dp)
+            )
+        }
+    }
+}
+
+private fun cleanEpisodeDisplayName(fileName: String): String {
+    val seasonEpisode = Regex("s(\\d{1,2})e(\\d{1,2})", RegexOption.IGNORE_CASE).find(fileName)
+    val prefix = if (seasonEpisode != null) {
+        val s = seasonEpisode.groupValues[1].padStart(2, '0')
+        val e = seasonEpisode.groupValues[2].padStart(2, '0')
+        "S${s}E${e}"
+    } else {
+        "Episode"
+    }
+
+    var name = fileName
+        .substringAfterLast("/")
+        .substringAfterLast("\\")
+        .substringBeforeLast(".")
+        .replace(Regex("\\[.*?]"), " ")
+        .replace(Regex("\\(.*?\\)"), " ")
+        .replace(".", " ")
+        .replace("_", " ")
+        .replace("-", " ")
+
+    name = name.replace(Regex("s\\d{1,2}e\\d{1,2}", RegexOption.IGNORE_CASE), " ")
+    name = name.replace(
+        Regex(
+            "\\b(2160p|1080p|720p|480p|4k|uhd|hdr10\\+?|hdr|dv|dolby|vision|bluray|brrip|webrip|webdl|web|x264|x265|h264|h265|hevc|10bit|aac|ddp|dts|atmos|mkv|mp4|avi|rarbg|yts|eztv|tgx|nf|amzn)\\b",
+            RegexOption.IGNORE_CASE
+        ),
+        " "
+    )
+
+    name = name.replace(Regex("\\s+"), " ").trim()
+
+    return if (name.isBlank()) prefix else "$prefix • $name"
+}
+
+
 @Composable
 private fun FloatingTrackPopup(
     title: String,
@@ -1454,53 +1878,53 @@ private fun FloatingTrackPopup(
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(24.dp))
-            .background(Color.Black.copy(alpha = 0.42f))
-            .padding(12.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.Black.copy(alpha = 0.52f))
+            .padding(7.dp)
     ) {
         Text(
             text = title,
             color = Color.White,
-            fontSize = 14.sp,
+            fontSize = 11.sp,
             fontWeight = FontWeight.Bold
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(5.dp))
 
         rows.forEach { row ->
             Text(
                 text = row.title,
                 color = Color.White,
-                fontSize = 13.sp,
+                fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(10.dp))
                     .background(Color.White.copy(alpha = 0.10f))
                     .clickable {
                         onAnyClick()
                         row.onClick()
                     }
-                    .padding(12.dp)
+                    .padding(7.dp)
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(5.dp))
         }
 
         Text(
             text = "Close",
             color = Color.White,
-            fontSize = 13.sp,
+            fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(10.dp))
                 .background(Color.White.copy(alpha = 0.10f))
                 .clickable {
                     onAnyClick()
                     onClose()
                 }
-                .padding(12.dp)
+                .padding(7.dp)
         )
     }
 }

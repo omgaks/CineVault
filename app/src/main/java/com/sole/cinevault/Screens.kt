@@ -1,6 +1,10 @@
 package com.sole.cinevault
 
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.*
 import androidx.compose.ui.graphics.asImageBitmap
 import android.app.Activity
 import android.content.Context
@@ -40,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -48,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
 
 private fun Context.findCineActivity(): Activity? {
     var ctx = this
@@ -110,143 +116,499 @@ fun CineBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
 fun HomeScreen(
     videos: List<VideoWithMetadata>,
     onScanRequest: () -> Unit,
-    onItemClick: (VideoWithMetadata) -> Unit
+    onItemClick: (VideoWithMetadata) -> Unit,
+    listState: androidx.compose.foundation.lazy.LazyListState =
+        androidx.compose.foundation.lazy.rememberLazyListState()
 ) {
     ForceCineVaultBrightness()
 
     val context = LocalContext.current
-    var continueMode by remember { mutableStateOf("List") }
-    var featuredMode by remember { mutableStateOf("Grid") }
+    var heroIndex by remember { mutableStateOf(0) }
 
     val continueWatching =
-        videos.filter {
-            loadPlaybackPosition(context, it.video.path) > 15_000L
-        }.take(12)
+        remember(videos) {
+            videos.filter {
+                loadPlaybackPosition(context, it.video.path) > 15_000L
+            }.take(12)
+        }
 
-    val heroImage =
-        continueWatching.firstOrNull { it.backdropUrl != null }?.backdropUrl
-            ?: videos.firstOrNull { it.backdropUrl != null }?.backdropUrl
-            ?: videos.firstOrNull { it.posterUrl != null }?.posterUrl
+    val watchHistory =
+        remember(videos, continueWatching) {
+            loadWatchHistoryItems(context, videos)
+                .filterNot { historyItem ->
+                    continueWatching.any { it.video.path == historyItem.video.path }
+                }
+                .take(12)
+        }
+
+    val recentlyAdded =
+        remember(videos) {
+            videos.take(18)
+        }
+
+    val movieItems =
+        remember(videos) {
+            videos.filter { it.type.equals("movie", ignoreCase = true) }.take(18)
+        }
+
+    val tvItems =
+        remember(videos) {
+            videos
+                .filter { it.type.equals("tv", ignoreCase = true) }
+                .groupBy { it.title }
+                .mapNotNull { (_, episodes) ->
+                    episodes.firstOrNull()
+                }
+                .take(18)
+        }
+
+    val localItems =
+        remember(videos) {
+            videos.filter {
+                !it.type.equals("movie", ignoreCase = true) &&
+                        !it.type.equals("tv", ignoreCase = true)
+            }.take(18)
+        }
+
+    val heroCandidates =
+        remember(videos, continueWatching) {
+            val preferred =
+                (continueWatching + videos)
+                    .distinctBy { it.video.path }
+                    .filter {
+                        !it.backdropUrl.isNullOrBlank() ||
+                                !it.posterUrl.isNullOrBlank() ||
+                                !it.episodeStill.isNullOrBlank()
+                    }
+
+            preferred.ifEmpty {
+                videos.take(8)
+            }
+        }
+
+    val heroItem =
+        heroCandidates.getOrNull(
+            if (heroCandidates.isNotEmpty()) {
+                heroIndex % heroCandidates.size
+            } else {
+                0
+            }
+        )
+
+    LaunchedEffect(heroCandidates.size) {
+        while (heroCandidates.size > 1) {
+            delay(8500)
+            heroIndex = (heroIndex + 1) % heroCandidates.size
+        }
+    }
+
+    val heroMotion = rememberInfiniteTransition(label = "homeHeroMotion")
+    val heroShift by heroMotion.animateFloat(
+        initialValue = -8f,
+        targetValue = 8f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 18000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "heroShift"
+    )
 
     androidx.compose.foundation.lazy.LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF070707))
             .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        contentPadding = PaddingValues(bottom = 30.dp)
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+        contentPadding = PaddingValues(bottom = 34.dp)
     ) {
         item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(285.dp)
-                    .clip(RoundedCornerShape(30.dp))
-                    .background(Color(0xFF161616))
-            ) {
-                if (heroImage != null) {
-                    AsyncImage(
-                        model = heroImage,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        alpha = 0.98f,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color(0x66000000),
-                                    Color(0xCC070707)
-                                )
-                            )
-                        )
-                )
-
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(16.dp)
-                        .size(144.dp)
-                        .clip(RoundedCornerShape(36.dp))
-                        .background(Color.Black.copy(alpha = 0.42f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.cinevault_circle_logo),
-                        contentDescription = "CineVault Logo",
-                        modifier = Modifier.size(117.dp)
-                    )
-                }
-
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(24.dp)
-                ) {
-                    Text(
-                        text = "Your Cinema Library",
-                        color = Color.White,
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Text(
-                        text = "Movies • TV Shows • Local Playback",
-                        color = Color(0xFFE6E6E6),
-                        fontSize = 15.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Button(
-                        onClick = onScanRequest,
-                        shape = RoundedCornerShape(40.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.Gray.copy(alpha = 0.32f),
-                            contentColor = Color.White
-                        )
-                    ) {
-                        Text(if (videos.isEmpty()) "Scan Library" else "Open Library")
-                    }
-                }
-            }
+            CinematicHeroSection(
+                item = heroItem,
+                heroShift = heroShift,
+                videosCount = videos.size,
+                continueCount = continueWatching.size,
+                onScanRequest = onScanRequest,
+                onItemClick = onItemClick
+            )
         }
 
         if (continueWatching.isNotEmpty()) {
             item {
-                ContinueWatchingSection(
+                CinematicPosterRow(
+                    title = "Continue Watching",
+                    subtitle = "Pick up where you left off",
                     items = continueWatching,
-                    mode = continueMode,
-                    onModeChange = { continueMode = it },
+                    large = true,
+                    showProgress = true,
                     onItemClick = onItemClick
                 )
             }
         }
 
-        if (videos.isNotEmpty()) {
+        if (recentlyAdded.isNotEmpty()) {
             item {
-                FeaturedLibrarySection(
-                    items = videos.take(18),
-                    mode = featuredMode,
-                    onModeChange = { featuredMode = it },
+                CinematicPosterRow(
+                    title = "Recently Added",
+                    subtitle = "Fresh from your local vault",
+                    items = recentlyAdded,
+                    large = false,
+                    showProgress = false,
                     onItemClick = onItemClick
                 )
             }
-        } else {
+        }
+
+        if (movieItems.isNotEmpty()) {
             item {
-                Text(
-                    text = "Scan your library to see posters and Continue Watching here.",
-                    color = Color(0xFFBDBDD0),
-                    fontSize = 15.sp
+                CinematicPosterRow(
+                    title = "Movies",
+                    subtitle = "Your cinema shelf",
+                    items = movieItems,
+                    large = false,
+                    showProgress = true,
+                    onItemClick = onItemClick
                 )
+            }
+        }
+
+        if (tvItems.isNotEmpty()) {
+            item {
+                CinematicPosterRow(
+                    title = "TV Shows",
+                    subtitle = "Episodes and seasons",
+                    items = tvItems,
+                    large = false,
+                    showProgress = true,
+                    onItemClick = onItemClick
+                )
+            }
+        }
+
+        if (watchHistory.isNotEmpty()) {
+            item {
+                CinematicPosterRow(
+                    title = "Watch History",
+                    subtitle = "Recently played",
+                    items = watchHistory,
+                    large = false,
+                    showProgress = false,
+                    onItemClick = onItemClick
+                )
+            }
+        }
+
+        if (localItems.isNotEmpty()) {
+            item {
+                CinematicPosterRow(
+                    title = "Downloads & Local",
+                    subtitle = "Personal and unmatched videos",
+                    items = localItems,
+                    large = false,
+                    showProgress = true,
+                    onItemClick = onItemClick
+                )
+            }
+        }
+
+        if (videos.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(Color.White.copy(alpha = 0.07f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Scan your library to unlock your cinematic home screen.",
+                        color = Color(0xFFBDBDD0),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CinematicHeroSection(
+    item: VideoWithMetadata?,
+    heroShift: Float,
+    videosCount: Int,
+    continueCount: Int,
+    onScanRequest: () -> Unit,
+    onItemClick: (VideoWithMetadata) -> Unit
+) {
+    val heroImage =
+        item?.backdropUrl
+            ?: item?.episodeStill
+            ?: item?.posterUrl
+            ?: item?.video?.path
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(335.dp)
+            .clip(RoundedCornerShape(34.dp))
+            .background(Color(0xFF151515))
+    ) {
+        if (!heroImage.isNullOrBlank()) {
+            AsyncImage(
+                model = heroImage,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                alpha = 0.98f,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = 1.06f
+                        scaleY = 1.06f
+                        translationX = heroShift * 0.35f
+                        translationY = heroShift * 0.08f
+                    }
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.12f),
+                            Color.Black.copy(alpha = 0.38f),
+                            Color(0xFF070707).copy(alpha = 0.92f)
+                        )
+                    )
+                )
+        )
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(16.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color.Black.copy(alpha = 0.44f))
+                .padding(horizontal = 12.dp, vertical = 7.dp)
+        ) {
+            Text(
+                text = "$videosCount videos",
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(16.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color(0xFFFFC857).copy(alpha = 0.88f))
+                .padding(horizontal = 12.dp, vertical = 7.dp)
+        ) {
+            Text(
+                text = "CINEVAULT",
+                color = Color.Black,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(22.dp)
+        ) {
+            Text(
+                text = item?.title ?: "Your Cinema Library",
+                color = Color.White,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Black,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(7.dp))
+
+            Text(
+                text =
+                    if (item != null) {
+                        listOf(
+                            item.subtitle.ifBlank { item.type.uppercase() },
+                            item.type.uppercase(),
+                            if ((item.rating ?: 0.0) > 0.0) "TMDB ${String.format("%.1f", item.rating)}" else null
+                        ).filterNotNull().joinToString(" • ")
+                    } else {
+                        "Movies • TV Shows • Local Playback"
+                    },
+                color = Color(0xFFE8E8E8),
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = {
+                        if (item != null) {
+                            onItemClick(item)
+                        } else {
+                            onScanRequest()
+                        }
+                    },
+                    shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = Color.Black
+                    )
+                ) {
+                    Text(
+                        text = if (item != null) "▶ Play" else "Scan Library",
+                        fontWeight = FontWeight.Black
+                    )
+                }
+
+                Button(
+                    onClick = onScanRequest,
+                    shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White.copy(alpha = 0.16f),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text(
+                        text = if (continueCount > 0) "$continueCount Continue" else "Open Library",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CinematicPosterRow(
+    title: String,
+    subtitle: String,
+    items: List<VideoWithMetadata>,
+    large: Boolean,
+    showProgress: Boolean,
+    onItemClick: (VideoWithMetadata) -> Unit
+) {
+    val context = LocalContext.current
+    val posterWidth = if (large) 168.dp else 118.dp
+    val posterHeight = if (large) 108.dp else 165.dp
+
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    color = Color.White,
+                    fontSize = if (large) 22.sp else 20.sp,
+                    fontWeight = FontWeight.Black
+                )
+
+                Text(
+                    text = subtitle,
+                    color = Color.Gray,
+                    fontSize = 11.sp,
+                    maxLines = 1
+                )
+            }
+
+            Text(
+                text = "${items.size}",
+                color = Color(0xFFFFD36A),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.White.copy(alpha = 0.08f))
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(
+                items = items,
+                key = { it.video.path }
+            ) { item ->
+                val watchedPercent =
+                    if (showProgress) getWatchedPercent(context, item) else 0f
+
+                Column(
+                    modifier = Modifier
+                        .width(posterWidth)
+                        .clip(RoundedCornerShape(20.dp))
+                        .clickable { onItemClick(item) }
+                ) {
+                    Box {
+                        PosterBox(
+                            posterUrl = item.backdropUrl ?: item.episodeStill ?: item.posterUrl,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(posterHeight),
+                            progress = watchedPercent,
+                            videoPath = item.video.path
+                        )
+
+                        MediaBadgeRow(
+                            badges = mediaBadgesFromName(item.video.name).take(2),
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(7.dp)
+                        )
+
+                        if ((item.rating ?: 0.0) > 0.0) {
+                            Text(
+                                text = String.format("%.1f", item.rating),
+                                color = Color.Black,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black,
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(7.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(Color(0xFFFFD36A))
+                                    .padding(horizontal = 7.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(7.dp))
+
+                    Text(
+                        text = item.title,
+                        color = Color.White,
+                        fontSize = if (large) 11.sp else 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = item.subtitle.ifBlank { item.type.uppercase() },
+                        color = Color.Gray,
+                        fontSize = 9.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
@@ -299,7 +661,7 @@ fun ContinueWatchingSection(
 
         if (mode == "List") {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                items(items) { item ->
+                items(items = items, key = { it.video.path }) { item ->
                     val watchedPercent = getWatchedPercent(context, item)
 
                     Box(
@@ -401,6 +763,72 @@ fun ContinueWatchingSection(
                             Spacer(modifier = Modifier.weight(1f))
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+fun WatchHistorySection(
+    items: List<VideoWithMetadata>,
+    onItemClick: (VideoWithMetadata) -> Unit
+) {
+    Column {
+        Text(
+            text = "Watch History",
+            color = Color.White,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(items = items, key = { it.video.path }) { item ->
+                val badges = mediaBadgesFromName(item.video.name)
+
+                Column(
+                    modifier = Modifier
+                        .width(132.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .clickable { onItemClick(item) }
+                ) {
+                    Box {
+                        PosterBox(
+                            posterUrl = item.posterUrl,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(178.dp),
+                            videoPath = item.video.path
+                        )
+
+                        MediaBadgeRow(
+                            badges = badges.take(2),
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(7.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = item.title,
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Text(
+                        text = "Recently played",
+                        color = Color(0xFFFFD36A),
+                        fontSize = 9.sp,
+                        maxLines = 1
+                    )
                 }
             }
         }
@@ -601,13 +1029,22 @@ fun FeaturedLibrarySection(
                                     .weight(1f)
                                     .clickable { onItemClick(item) }
                             ) {
-                                PosterBox(
-                                    posterUrl = item.posterUrl,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(132.dp),
-                                    videoPath = item.video.path
-                                )
+                                Box {
+                                    PosterBox(
+                                        posterUrl = item.posterUrl,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(132.dp),
+                                        videoPath = item.video.path
+                                    )
+
+                                    MediaBadgeRow(
+                                        badges = mediaBadgesFromName(item.video.name).take(2),
+                                        modifier = Modifier
+                                            .align(Alignment.TopStart)
+                                            .padding(6.dp)
+                                    )
+                                }
 
                                 Spacer(modifier = Modifier.height(5.dp))
 
@@ -670,7 +1107,7 @@ fun HomeRow(
         Spacer(modifier = Modifier.height(14.dp))
 
         LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            items(items) { item ->
+            items(items = items, key = { it.video.path }) { item ->
                 val watchedPercent = getWatchedPercent(context, item)
 
                 Column(
@@ -732,9 +1169,11 @@ fun SearchScreen(
     ForceCineVaultBrightness()
 
     val filteredVideos =
-        videos.filter {
-            it.title.contains(query, ignoreCase = true) ||
-                    it.video.name.contains(query, ignoreCase = true)
+        remember(videos, query) {
+            videos.filter {
+                it.title.contains(query, ignoreCase = true) ||
+                        it.video.name.contains(query, ignoreCase = true)
+            }
         }
 
     Column(
@@ -759,14 +1198,21 @@ fun SearchScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
+            columns = GridCells.Adaptive(minSize = 105.dp),
+            modifier = Modifier.fillMaxSize(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(bottom = 24.dp)
         ) {
-            items(filteredVideos) { videoItem ->
+            items(
+                items = filteredVideos,
+                key = { it.video.path }
+            ) { videoItem ->
                 SearchPosterCard(
                     item = videoItem,
-                    onClick = { onVideoClick(videoItem) }
+                    onClick = {
+                        onVideoClick(videoItem)
+                    }
                 )
             }
         }
@@ -782,20 +1228,43 @@ private fun SearchPosterCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .clip(RoundedCornerShape(18.dp))
+            .clickable {
+                onClick()
+            }
     ) {
-        PosterBox(
-            posterUrl = item.posterUrl,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(210.dp),
-            videoPath = item.video.path
-        )
+        Box {
+            PosterBox(
+                posterUrl =
+                    if (item.type.equals("tv", ignoreCase = true))
+                        item.episodeStill ?: item.backdropUrl ?: item.posterUrl
+                    else
+                        item.posterUrl,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+                    .clickable {
+                        onClick()
+                    },
+                videoPath = item.video.path
+            )
+
+            MediaBadgeRow(
+                badges = mediaBadgesFromName(item.video.name).take(2),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(7.dp)
+            )
+        }
 
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = item.title,
+            text =
+                if (item.type.equals("tv", ignoreCase = true))
+                    item.subtitle.ifBlank { item.title }
+                else
+                    item.title,
             color = Color.White,
             fontSize = 11.sp,
             maxLines = 1,
@@ -805,7 +1274,11 @@ private fun SearchPosterCard(
 
         if (item.subtitle.isNotBlank()) {
             Text(
-                text = item.subtitle,
+                text =
+                    if (item.type.equals("tv", ignoreCase = true))
+                        item.title
+                    else
+                        item.subtitle,
                 color = Color.Gray,
                 fontSize = 10.sp,
                 maxLines = 1,
@@ -922,6 +1395,38 @@ fun PosterBox(
     }
 }
 
+
+@Composable
+private fun MediaBadgeRow(
+    badges: List<String>,
+    modifier: Modifier = Modifier
+) {
+    if (badges.isEmpty()) return
+
+    LazyRow(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        items(items = badges) { badge ->
+            Text(
+                text = badge,
+                color = Color.White,
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(
+                        if (badge.contains("DOLBY", ignoreCase = true) || badge.contains("ATMOS", ignoreCase = true))
+                            Color(0xFFFFB300).copy(alpha = 0.82f)
+                        else
+                            Color.Black.copy(alpha = 0.70f)
+                    )
+                    .padding(horizontal = 7.dp, vertical = 3.dp)
+            )
+        }
+    }
+}
+
 @Composable
 fun LibraryGridCard(
     item: VideoWithMetadata,
@@ -944,27 +1449,12 @@ fun LibraryGridCard(
                 videoPath = item.video.path
             )
 
-            if (badges.isNotEmpty()) {
-                LazyRow(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    items(items = badges) { badge ->
-                        Text(
-                            text = badge,
-                            color = Color.White,
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(Color.Black.copy(alpha = 0.70f))
-                                .padding(horizontal = 7.dp, vertical = 3.dp)
-                        )
-                    }
-                }
-            }
+            MediaBadgeRow(
+                badges = badges.take(3),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+            )
 
             if (watchedPercent > 0f) {
                 Text(
@@ -1132,6 +1622,42 @@ fun mediaBadgesFromName(fileName: String): List<String> {
     val badges = mutableListOf<String>()
 
     if (
+        lower.contains("dolby vision") ||
+        lower.contains("dovi") ||
+        lower.contains(".dv.") ||
+        lower.contains(" dv ") ||
+        lower.contains("dvhe")
+    ) {
+        badges.add("DOLBY VISION")
+    }
+
+    if (
+        lower.contains("atmos") ||
+        lower.contains("dolby atmos")
+    ) {
+        badges.add("ATMOS")
+    }
+
+    if (
+        lower.contains("truehd") ||
+        lower.contains("eac3") ||
+        lower.contains("e-ac3") ||
+        lower.contains("ddp") ||
+        lower.contains("dolby digital") ||
+        lower.contains("dolby")
+    ) {
+        badges.add("DOLBY")
+    }
+
+    if (
+        lower.contains("dts") ||
+        lower.contains("dts-hd") ||
+        lower.contains("dtsx")
+    ) {
+        badges.add("DTS")
+    }
+
+    if (
         lower.contains("3d") ||
         lower.contains("sbs") ||
         lower.contains("hsbs") ||
@@ -1142,16 +1668,9 @@ fun mediaBadgesFromName(fileName: String): List<String> {
     }
 
     if (
-        lower.contains("hevc") ||
-        lower.contains("x265") ||
-        lower.contains("h265")
-    ) {
-        badges.add("HEVC")
-    }
-
-    if (
         lower.contains("2160p") ||
-        lower.contains("4k")
+        lower.contains("4k") ||
+        lower.contains("uhd")
     ) {
         badges.add("4K")
     } else if (lower.contains("1080p")) {
@@ -1160,12 +1679,36 @@ fun mediaBadgesFromName(fileName: String): List<String> {
         badges.add("720p")
     }
 
-    if (lower.contains("hdr")) {
+    if (
+        lower.contains("hdr10+") ||
+        lower.contains("hdr10plus") ||
+        lower.contains("hdr10 plus")
+    ) {
+        badges.add("HDR10+")
+    } else if (
+        lower.contains("hdr10")
+    ) {
+        badges.add("HDR10")
+    } else if (
+        lower.contains("hdr")
+    ) {
         badges.add("HDR")
     }
 
-    if (lower.contains("atmos")) {
-        badges.add("ATMOS")
+    if (
+        lower.contains("10bit") ||
+        lower.contains("10-bit") ||
+        lower.contains("10 bit")
+    ) {
+        badges.add("10-BIT")
+    }
+
+    if (
+        lower.contains("hevc") ||
+        lower.contains("x265") ||
+        lower.contains("h265")
+    ) {
+        badges.add("HEVC")
     }
 
     return badges.distinct()
