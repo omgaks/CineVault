@@ -78,6 +78,7 @@ private fun Context.findActivity(): Activity? {
 fun VideoPlayerScreen(
     video: VideoFile,
     episodeList: List<VideoWithMetadata>,
+    mediaType: String = "local",
     onBack: () -> Unit,
     onPlayNext: (VideoWithMetadata) -> Unit
 ) {
@@ -86,6 +87,7 @@ fun VideoPlayerScreen(
     val scope = rememberCoroutineScope()
 
     var currentVideo by remember { mutableStateOf(video) }
+    var currentMediaType by remember { mutableStateOf(mediaType) }
     var showControls by remember { mutableStateOf(true) }
     var showTopBar by remember { mutableStateOf(true) }
     var isDraggingSeekbar by remember { mutableStateOf(false) }
@@ -146,6 +148,16 @@ fun VideoPlayerScreen(
             .build()
     }
 
+    val canDownloadExternalSubtitles =
+        currentMediaType.equals("movie", ignoreCase = true) ||
+                currentMediaType.equals("tv", ignoreCase = true)
+
+    val isCurrentTvShow =
+        currentMediaType.equals("tv", ignoreCase = true)
+
+    val isStreamMedia =
+        currentMediaType.equals("stream", ignoreCase = true)
+
     fun playCurrentVideoWithSubtitle(subtitleUri: Uri? = null, resumePosition: Long = 0L) {
         val mediaItemBuilder = MediaItem.Builder()
             .setUri(currentVideo.path)
@@ -169,6 +181,13 @@ fun VideoPlayerScreen(
     }
 
     fun downloadExternalSubtitle() {
+        if (!canDownloadExternalSubtitles) {
+            Toast.makeText(context, "Subtitle download is only for Movies and TV Shows", Toast.LENGTH_SHORT).show()
+            showSubtitleSettings = false
+            autoSubtitleStatus = ""
+            return
+        }
+
         if (subtitleDownloadInProgress) {
             Toast.makeText(context, "Subtitle search already running", Toast.LENGTH_SHORT).show()
             return
@@ -224,7 +243,12 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(currentVideo.path) {
-        val savedPosition = loadPlaybackPosition(context, currentVideo.path)
+        val savedPosition =
+            if (isStreamMedia) {
+                0L
+            } else {
+                loadPlaybackPosition(context, currentVideo.path)
+            }
 
         position = savedPosition
         duration = 1L
@@ -238,15 +262,17 @@ fun VideoPlayerScreen(
         previewBitmap = null
         previewFrames = emptyList()
 
-        recordWatchHistory(
-            context = context,
-            videoPath = currentVideo.path,
-            title = cleanVideoTitle(currentVideo.path)
-        )
+        if (!isStreamMedia) {
+            recordWatchHistory(
+                context = context,
+                videoPath = currentVideo.path,
+                title = cleanVideoTitle(currentVideo.path)
+            )
+        }
 
         playCurrentVideoWithSubtitle(resumePosition = savedPosition)
 
-        if (autoSubtitleAttemptedForPath != currentVideo.path) {
+        if (!isStreamMedia && canDownloadExternalSubtitles && autoSubtitleAttemptedForPath != currentVideo.path) {
             autoSubtitleAttemptedForPath = currentVideo.path
             autoSubtitleStatus = ""
 
@@ -320,14 +346,23 @@ fun VideoPlayerScreen(
                     val currentIndex = episodeList.indexOfFirst {
                         it.video.path == currentVideo.path
                     }
-                    val nextEpisode = episodeList.getOrNull(currentIndex + 1)
 
-                    if (nextEpisode != null) {
-                        pendingNextEpisode = nextEpisode
-                        nextEpisodeCountdown = 5
-                        showNextEpisodeOverlay = true
-                        showControls = true
-                        showTopBar = true
+                    val nextItem = episodeList.getOrNull(currentIndex + 1)
+
+                    if (nextItem != null) {
+                        if (currentMediaType.equals("local", ignoreCase = true)) {
+                            showNextEpisodeOverlay = false
+                            pendingNextEpisode = null
+                            currentMediaType = "local"
+                            currentVideo = nextItem.video
+                            onPlayNext(nextItem)
+                        } else if (currentMediaType.equals("tv", ignoreCase = true)) {
+                            pendingNextEpisode = nextItem
+                            nextEpisodeCountdown = 5
+                            showNextEpisodeOverlay = true
+                            showControls = true
+                            showTopBar = true
+                        }
                     }
                 }
             }
@@ -346,11 +381,13 @@ fun VideoPlayerScreen(
 
     DisposableEffect(Unit) {
         onDispose {
-            savePlaybackPosition(
-                context = context,
-                videoPath = currentVideo.path,
-                position = exoPlayer.currentPosition.coerceAtLeast(0L)
-            )
+            if (!isStreamMedia) {
+                savePlaybackPosition(
+                    context = context,
+                    videoPath = currentVideo.path,
+                    position = exoPlayer.currentPosition.coerceAtLeast(0L)
+                )
+            }
 
             exoPlayer.release()
 
@@ -380,7 +417,7 @@ fun VideoPlayerScreen(
         }
     }
     LaunchedEffect(currentVideo.path, duration) {
-        if (duration > 1000L) {
+        if (!isStreamMedia && duration > 1000L) {
             previewFrames = emptyList()
 
             // Fast warm-up cache first, so dragging never shows a blank preview.
@@ -439,7 +476,7 @@ fun VideoPlayerScreen(
             val current = exoPlayer.currentPosition.coerceAtLeast(0L)
             val total = exoPlayer.duration.coerceAtLeast(1L)
 
-            if (current > 5000L && current < total - 5000L) {
+            if (!isStreamMedia && current > 5000L && current < total - 5000L) {
                 savePlaybackPosition(
                     context = context,
                     videoPath = currentVideo.path,
@@ -522,6 +559,7 @@ fun VideoPlayerScreen(
             if (next != null) {
                 showNextEpisodeOverlay = false
                 pendingNextEpisode = null
+                currentMediaType = next.type
                 currentVideo = next.video
                 onPlayNext(next)
             }
@@ -569,8 +607,8 @@ fun VideoPlayerScreen(
             }
 
         val showIntroSkip =
-            position in 5_000L..95_000L &&
-                    (episodeList.isNotEmpty() || looksLikeEpisodeFile(currentVideo.name))
+            isCurrentTvShow &&
+                    position in 5_000L..95_000L
 
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -863,7 +901,7 @@ fun VideoPlayerScreen(
                     exit = fadeOut()
                 ) {
                     TopGlassTitleBar(
-                        title = cleanVideoTitle(currentVideo.path),
+                        title = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path),
                         isLandscape = isLandscape,
                         onBack = onBack
                     )
@@ -905,6 +943,7 @@ fun VideoPlayerScreen(
                             if (next != null) {
                                 showNextEpisodeOverlay = false
                                 pendingNextEpisode = null
+                                currentMediaType = next.type
                                 currentVideo = next.video
                                 onPlayNext(next)
                             }
@@ -996,11 +1035,13 @@ fun VideoPlayerScreen(
                             menuTouchKey++
                         }
 
-                        PlayerPill("CC", pillHeight, pillFont) {
-                            showAudioSelector = false
-                            showSubtitleSettings = !showSubtitleSettings
-                            showControls = true
-                            menuTouchKey++
+                        if (!isStreamMedia) {
+                            PlayerPill("CC", pillHeight, pillFont) {
+                                showAudioSelector = false
+                                showSubtitleSettings = !showSubtitleSettings
+                                showControls = true
+                                menuTouchKey++
+                            }
                         }
 
                         PlayerPill("⛶", pillHeight, pillFont) {
@@ -1077,20 +1118,29 @@ fun VideoPlayerScreen(
 
                             showSeekPreview = true
 
-                            scope.launch {
-                                val exactBitmap = VideoThumbnailHelper.generateFrameAtTime(
-                                    context = context,
-                                    videoPath = currentVideo.path,
-                                    positionMs = safePosition
-                                )
-
-                                if (exactBitmap != null && previewPosition == safePosition) {
-                                    previewBitmap = exactBitmap
+                            if (isStreamMedia) {
+                                scope.launch {
+                                    delay(360)
+                                    if (!isDraggingSeekbar) {
+                                        showSeekPreview = false
+                                    }
                                 }
+                            } else {
+                                scope.launch {
+                                    val exactBitmap = VideoThumbnailHelper.generateFrameAtTime(
+                                        context = context,
+                                        videoPath = currentVideo.path,
+                                        positionMs = safePosition
+                                    )
 
-                                delay(620)
-                                if (previewPosition == safePosition && !isDraggingSeekbar) {
-                                    showSeekPreview = false
+                                    if (exactBitmap != null && previewPosition == safePosition) {
+                                        previewBitmap = exactBitmap
+                                    }
+
+                                    delay(620)
+                                    if (previewPosition == safePosition && !isDraggingSeekbar) {
+                                        showSeekPreview = false
+                                    }
                                 }
                             }
 
@@ -1262,10 +1312,6 @@ private fun SeekPreviewBubble(
         exit = fadeOut(animationSpec = tween(80)),
         modifier = Modifier.fillMaxSize()
     ) {
-
-
-
-
         BoxWithConstraints(
             modifier = Modifier.fillMaxSize()
         ) {
@@ -1275,12 +1321,13 @@ private fun SeekPreviewBubble(
             val rawOffset = targetCenter - (previewWidth / 2)
             val maxOffset = availableWidth - previewWidth
 
-            val safeOffset = when {
-                maxOffset < 0.dp -> 0.dp
-                rawOffset < 0.dp -> 0.dp
-                rawOffset > maxOffset -> maxOffset
-                else -> rawOffset
-            }
+            val safeOffset =
+                when {
+                    maxOffset < 0.dp -> 0.dp
+                    rawOffset < 0.dp -> 0.dp
+                    rawOffset > maxOffset -> maxOffset
+                    else -> rawOffset
+                }
 
             Column(
                 modifier = Modifier

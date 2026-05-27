@@ -1,9 +1,5 @@
 package com.sole.cinevault
 
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.text.font.FontStyle
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -20,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -32,6 +29,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -40,8 +39,12 @@ import androidx.compose.ui.unit.sp
 private val AshSignatureFont = FontFamily(
     Font(R.font.great_vibes)
 )
+
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(
+    onOpenScanSources: () -> Unit,
+    onOpenStreamUrl: () -> Unit
+) {
     val context = LocalContext.current
     var selectedFolders by remember {
         mutableStateOf(loadMediaFolders(context))
@@ -85,6 +88,144 @@ fun SettingsScreen() {
         Spacer(modifier = Modifier.height(22.dp))
 
         SettingsHeroCard()
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        SettingsSectionCard(
+            title = "Scan Manager",
+            subtitle = "Choose default scan sources and keep library clean."
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(Color.White.copy(alpha = 0.08f))
+                    .clickable { onOpenScanSources() }
+                    .padding(16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(Color(0xFFFFD37A).copy(alpha = 0.18f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = null,
+                            tint = Color(0xFFFFD37A),
+                            modifier = Modifier.size(23.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(14.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Scan Sources",
+                            color = Color.White,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Text(
+                            text = "Movies, TV Shows, Downloads, Anime, Camera",
+                            color = Color.Gray,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Text(
+                        text = "OPEN",
+                        color = Color(0xFFFFD37A),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "After changing scan sources, go to Library and rescan.",
+                color = Color.Gray,
+                fontSize = 12.sp,
+                lineHeight = 17.sp
+            )
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        SettingsSectionCard(
+            title = "Stream Player",
+            subtitle = "Play direct online video links."
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(
+                                Color(0xFF0D2A2A),
+                                Color(0xFF111111)
+                            )
+                        )
+                    )
+                    .clickable { onOpenStreamUrl() }
+                    .padding(16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(Color(0xFFFFD36A).copy(alpha = 0.18f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("🌐", fontSize = 22.sp)
+                    }
+
+                    Spacer(modifier = Modifier.width(14.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Stream URL",
+                            color = Color.White,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Text(
+                            text = "Play MP4 / M3U8 / WEBM links instantly",
+                            color = Color.Gray,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Text(
+                        text = "OPEN",
+                        color = Color(0xFFFFD37A),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "For direct video links only. Torrent/magnet links are not supported.",
+                color = Color.Gray,
+                fontSize = 12.sp,
+                lineHeight = 17.sp
+            )
+        }
 
         Spacer(modifier = Modifier.height(18.dp))
 
@@ -163,9 +304,7 @@ fun SettingsScreen() {
                     }
                     .padding(16.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
                             .size(44.dp)
@@ -254,8 +393,7 @@ fun SettingsScreen() {
             fontSize = 34.sp,
             fontFamily = AshSignatureFont,
             letterSpacing = 0.5.sp,
-            modifier = Modifier
-                .align(Alignment.CenterHorizontally)
+            modifier = Modifier.align(Alignment.CenterHorizontally)
         )
 
         Spacer(modifier = Modifier.height(90.dp))

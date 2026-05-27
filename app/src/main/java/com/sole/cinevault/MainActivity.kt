@@ -152,7 +152,6 @@ fun CineVaultSplashScreen() {
             ),
         contentAlignment = Alignment.Center
     ) {
-        // soft galaxy horizon under the emblem
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -171,40 +170,6 @@ fun CineVaultSplashScreen() {
                         )
                     )
                 )
-        )
-
-        // distant star dots / sparks
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(x = (-110).dp, y = (-145).dp)
-                .size(5.dp)
-                .clip(RoundedCornerShape(50))
-                .background(Color(0xFFFFD36B).copy(alpha = 0.70f))
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(x = 120.dp, y = (-95).dp)
-                .size(4.dp)
-                .clip(RoundedCornerShape(50))
-                .background(Color.White.copy(alpha = 0.65f))
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(x = (-145).dp, y = 52.dp)
-                .size(3.dp)
-                .clip(RoundedCornerShape(50))
-                .background(Color(0xFFFFC107).copy(alpha = 0.68f))
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(x = 150.dp, y = 92.dp)
-                .size(3.dp)
-                .clip(RoundedCornerShape(50))
-                .background(Color.White.copy(alpha = 0.55f))
         )
 
         Box(
@@ -246,19 +211,33 @@ fun CineVaultSplashScreen() {
 
 @Composable
 fun CineVaultApp() {
+
     val context = androidx.compose.ui.platform.LocalContext.current
 
     var selectedTab by remember { mutableStateOf(0) }
+    var showScanSources by remember { mutableStateOf(false) }
+    var showStreamUrlDialog by remember { mutableStateOf(false) }
+
     var selectedVideo by remember { mutableStateOf<VideoFile?>(null) }
+    var selectedPlayerMediaType by remember { mutableStateOf("local") }
     var selectedDetail by remember { mutableStateOf<VideoWithMetadata?>(null) }
     var selectedTvGroup by remember { mutableStateOf<TvGroup?>(null) }
-    var currentEpisodeList by remember { mutableStateOf<List<VideoWithMetadata>>(emptyList()) }
-    var libraryVideos by remember { mutableStateOf<List<VideoWithMetadata>>(emptyList()) }
+
+    var currentEpisodeList by remember {
+        mutableStateOf<List<VideoWithMetadata>>(emptyList())
+    }
+
+    var libraryVideos by remember {
+        mutableStateOf<List<VideoWithMetadata>>(emptyList())
+    }
+
     var searchQuery by remember { mutableStateOf("") }
+
     val homeListState = rememberLazyListState()
 
     LaunchedEffect(Unit) {
         val cached = loadLibraryCache(context)
+
         if (cached != null && cached.videos.isNotEmpty()) {
             libraryVideos = cached.videos
         }
@@ -277,8 +256,48 @@ fun CineVaultApp() {
             }
         }
 
+    fun shouldOpenDetailPage(item: VideoWithMetadata): Boolean {
+        val isMovieOrTv =
+            item.type.equals("movie", ignoreCase = true) ||
+                    item.type.equals("tv", ignoreCase = true)
+
+        val hasUsefulMetadata =
+            !item.posterUrl.isNullOrBlank() ||
+                    !item.backdropUrl.isNullOrBlank() ||
+                    !item.episodeStill.isNullOrBlank() ||
+                    !item.overview.isNullOrBlank() ||
+                    item.tmdbId != null ||
+                    (item.rating ?: 0.0) > 0.0 ||
+                    !item.imdbRating.isNullOrBlank() ||
+                    !item.rottenTomatoesRating.isNullOrBlank()
+
+        return isMovieOrTv && hasUsefulMetadata
+    }
+
+    fun localAutoplayList(): List<VideoWithMetadata> {
+        return visibleLibraryVideos
+            .filter { item ->
+                !shouldOpenDetailPage(item) &&
+                        !item.type.equals("tv", ignoreCase = true)
+            }
+            .distinctBy { it.video.path }
+    }
+
+    fun openMediaItem(item: VideoWithMetadata) {
+        if (shouldOpenDetailPage(item)) {
+            currentEpisodeList = emptyList()
+            selectedDetail = item
+        } else {
+            currentEpisodeList = localAutoplayList()
+            selectedPlayerMediaType = "local"
+            selectedVideo = item.video
+        }
+    }
+
     BackHandler {
         when {
+            showStreamUrlDialog -> showStreamUrlDialog = false
+            showScanSources -> showScanSources = false
             selectedVideo != null -> selectedVideo = null
             selectedDetail != null -> selectedDetail = null
             selectedTvGroup != null -> selectedTvGroup = null
@@ -289,9 +308,11 @@ fun CineVaultApp() {
     Scaffold(
         containerColor = Color(0xFF070707),
         bottomBar = {
-            if (selectedVideo == null) {
+            if (selectedVideo == null && !showScanSources && !showStreamUrlDialog) {
                 CineBottomBar(selectedTab) { tab ->
                     selectedTab = tab
+                    showScanSources = false
+                    showStreamUrlDialog = false
                     selectedVideo = null
                     selectedDetail = null
                     selectedTvGroup = null
@@ -310,8 +331,18 @@ fun CineVaultApp() {
                     VideoPlayerScreen(
                         video = selectedVideo!!,
                         episodeList = currentEpisodeList,
-                        onBack = { selectedVideo = null },
-                        onPlayNext = { nextVideo: VideoWithMetadata ->
+                        mediaType = selectedPlayerMediaType,
+                        onBack = {
+                            selectedVideo = null
+                        },
+                        onPlayNext = { nextVideo ->
+                            selectedPlayerMediaType =
+                                if (selectedPlayerMediaType.equals("local", ignoreCase = true)) {
+                                    "local"
+                                } else {
+                                    nextVideo.type
+                                }
+
                             selectedVideo = nextVideo.video
                         }
                     )
@@ -324,7 +355,10 @@ fun CineVaultApp() {
                             selectedTvGroup = null
                         },
                         onEpisodeClick = { episode ->
-                            currentEpisodeList = selectedTvGroup?.episodes ?: emptyList()
+                            currentEpisodeList =
+                                selectedTvGroup?.episodes ?: emptyList()
+
+                            selectedPlayerMediaType = "tv"
                             selectedVideo = episode.video
                         }
                     )
@@ -337,26 +371,42 @@ fun CineVaultApp() {
                             selectedDetail = null
                         },
                         onPlay = {
-                            currentEpisodeList = listOf(selectedDetail!!)
-                            selectedVideo = selectedDetail!!.video
+                            currentEpisodeList =
+                                listOf(selectedDetail!!)
+
+                            selectedPlayerMediaType = selectedDetail!!.type
+                            selectedVideo =
+                                selectedDetail!!.video
                         }
                     )
+                }
+
+                showScanSources -> {
+                    ScanSourcesScreen()
                 }
 
                 selectedTab == 2 -> {
                     SearchScreen(
                         videos = visibleLibraryVideos,
                         query = searchQuery,
-                        onQueryChange = { newQuery -> searchQuery = newQuery },
+                        onQueryChange = { newQuery ->
+                            searchQuery = newQuery
+                        },
                         onVideoClick = { item ->
-                            currentEpisodeList = emptyList()
-                            selectedDetail = item
+                            openMediaItem(item)
                         }
                     )
                 }
 
                 selectedTab == 3 -> {
-                    SettingsScreen()
+                    SettingsScreen(
+                        onOpenScanSources = {
+                            showScanSources = true
+                        },
+                        onOpenStreamUrl = {
+                            showStreamUrlDialog = true
+                        }
+                    )
                 }
 
                 selectedTab == 1 -> {
@@ -364,14 +414,14 @@ fun CineVaultApp() {
                         videos = libraryVideos,
                         onVideosLoaded = { loadedVideos ->
                             libraryVideos = loadedVideos
+
                             saveLibraryCache(
                                 context = context,
                                 videos = loadedVideos
                             )
                         },
                         onItemClick = { item ->
-                            currentEpisodeList = emptyList()
-                            selectedDetail = item
+                            openMediaItem(item)
                         },
                         onTvGroupClick = { group ->
                             selectedTvGroup = group
@@ -385,14 +435,33 @@ fun CineVaultApp() {
                 else -> {
                     HomeScreen(
                         videos = visibleLibraryVideos,
-                        onScanRequest = { selectedTab = 1 },
+                        onScanRequest = {
+                            selectedTab = 1
+                        },
                         onItemClick = { item ->
-                            currentEpisodeList = emptyList()
-                            selectedDetail = item
+                            openMediaItem(item)
                         },
                         listState = homeListState
                     )
                 }
+            }
+
+            if (showStreamUrlDialog) {
+                StreamUrlDialog(
+                    onDismiss = {
+                        showStreamUrlDialog = false
+                    },
+                    onPlayUrl = { url ->
+                        showStreamUrlDialog = false
+                        currentEpisodeList = emptyList()
+                        selectedPlayerMediaType = "stream"
+                        selectedVideo = VideoFile(
+                            name = "Stream URL",
+                            path = url,
+                            folderPath = "Online Stream"
+                        )
+                    }
+                )
             }
         }
     }
