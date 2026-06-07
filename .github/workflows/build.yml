@@ -1,0 +1,42 @@
+name: Build CineVault APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # lets you trigger a build manually from GitHub too
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Inject API keys into local.properties
+        run: |
+          echo "TMDB_TOKEN=${{ secrets.TMDB_TOKEN }}" >> local.properties
+          echo "OMDB_API_KEY=${{ secrets.OMDB_API_KEY }}" >> local.properties
+          echo "OPENSUB_API_KEY=${{ secrets.OPENSUB_API_KEY }}" >> local.properties
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CineVault-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
