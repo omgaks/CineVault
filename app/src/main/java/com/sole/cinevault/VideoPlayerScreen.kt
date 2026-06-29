@@ -616,7 +616,7 @@ fun VideoPlayerScreen(
                 PlayerView(it).apply {
                     player = exoPlayer
                     useController = false
-                    resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     subtitleView?.setViewType(SubtitleView.VIEW_TYPE_CANVAS)
                     playerViewForSubtitleStyle = this
                 }
