@@ -318,7 +318,10 @@ fun CineVaultApp() {
                     )
                 }
 
-                selectedTab == 3 -> SettingsScreen()
+                selectedTab == 3 -> SettingsScreen(
+                    onOpenScanSources = { selectedTab = 1 },
+                    onOpenStreamUrl = { selectedTab = 1 }
+                )
 
                 selectedTab == 2 -> {
                     SearchScreen(
