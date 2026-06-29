@@ -3,7 +3,6 @@ package com.sole.cinevault
 import android.os.Build
 import android.os.Bundle
 import android.app.Activity
-import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -37,17 +36,8 @@ object CineVaultPlayerHolder {
     var currentPlayer: ExoPlayer? = null
 }
 
-// FIX: Shared helper to find the Activity from any Context (used to manage system bars)
-fun Context.findCineActivity(): Activity? {
-    var ctx = this
-    while (ctx is android.content.ContextWrapper) {
-        if (ctx is Activity) return ctx
-        ctx = ctx.baseContext
-    }
-    return null
-}
-
 // FIX: Player screen hides system bars completely (true immersive/fullscreen)
+// NOTE: findCineActivity() already exists in Screens.kt — reused here, not redefined.
 fun Activity.enterImmersiveModeForPlayer() {
     WindowInsetsControllerCompat(window, window.decorView).apply {
         hide(WindowInsetsCompat.Type.systemBars())
