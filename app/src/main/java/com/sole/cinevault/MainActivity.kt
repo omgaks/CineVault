@@ -15,12 +15,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.ui.theme.CineVaultTheme
 import kotlinx.coroutines.delay
@@ -67,13 +70,13 @@ fun CineVaultRoot() {
     var showSplash by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
-        delay(1500)
+        delay(2200)
         showSplash = false
     }
 
     Crossfade(
         targetState = showSplash,
-        animationSpec = tween(durationMillis = 450),
+        animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
         label = "cinevaultRootFade"
     ) { splashVisible ->
         if (splashVisible) {
@@ -88,151 +91,135 @@ fun CineVaultRoot() {
 fun CineVaultSplashScreen() {
     var started by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { started = true }
+    LaunchedEffect(Unit) {
+        delay(120)
+        started = true
+    }
 
-    val riseOffset by animateFloatAsState(
-        targetValue = if (started) 0f else 90f,
-        animationSpec = tween(durationMillis = 1250, easing = FastOutSlowInEasing),
-        label = "logoRise"
-    )
-
+    // Logo rises and fades in
     val logoAlpha by animateFloatAsState(
         targetValue = if (started) 1f else 0f,
-        animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 1100, easing = FastOutSlowInEasing),
         label = "logoAlpha"
     )
 
-    val infiniteTransition = rememberInfiniteTransition(label = "cineGalaxySplash")
-
-    val pulse by infiniteTransition.animateFloat(
-        initialValue = 0.92f,
-        targetValue = 1.08f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1400, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse"
+    val logoRise by animateFloatAsState(
+        targetValue = if (started) 0f else 60f,
+        animationSpec = tween(durationMillis = 1100, easing = FastOutSlowInEasing),
+        label = "logoRise"
     )
 
-    val haloAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.18f,
-        targetValue = 0.72f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1150, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
+    // Tagline fades in after logo
+    val taglineAlpha by animateFloatAsState(
+        targetValue = if (started) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = 900,
+            delayMillis = 600,
+            easing = FastOutSlowInEasing
         ),
-        label = "haloAlpha"
+        label = "taglineAlpha"
     )
 
-    val slowRotate by infiniteTransition.animateFloat(
-        initialValue = -2.5f,
-        targetValue = 2.5f,
+    // Subtle glow breathe — very slow, very gentle
+    val infiniteTransition = rememberInfiniteTransition(label = "glowBreathe")
+
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.50f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2800, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 2200, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "slowRotate"
+        label = "glowAlpha"
     )
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFF3A2200),
-                        Color(0xFF090909),
-                        Color(0xFF000000)
-                    )
-                )
-            ),
+            .background(Color(0xFF080808)),
         contentAlignment = Alignment.Center
     ) {
+        // Single warm glow behind logo — blurred, cinematic
+        Box(
+            modifier = Modifier
+                .size(320.dp)
+                .graphicsLayer { alpha = glowAlpha * logoAlpha }
+                .blur(80.dp)
+                .background(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFE8A020).copy(alpha = 0.9f),
+                            Color(0xFFB07818).copy(alpha = 0.4f),
+                            Color.Transparent
+                        )
+                    ),
+                    shape = RoundedCornerShape(160.dp)
+                )
+        )
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Logo
+            Box(
+                modifier = Modifier
+                    .size(148.dp)
+                    .graphicsLayer {
+                        alpha = logoAlpha
+                        translationY = logoRise
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.cinevault_circle_logo),
+                    contentDescription = "CineVault Logo",
+                    modifier = Modifier.size(148.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // App name
+            androidx.compose.material3.Text(
+                text = "CINEVAULT",
+                color = Color.White.copy(alpha = logoAlpha),
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 6.sp
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Tagline
+            androidx.compose.material3.Text(
+                text = "Your Personal Cinema",
+                color = Color(0xFFE8A020).copy(alpha = taglineAlpha),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 1.sp
+            )
+        }
+
+        // Thin amber line at bottom — like a cinema screen edge
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 120.dp)
-                .width(310.dp)
-                .height(58.dp)
-                .clip(RoundedCornerShape(100.dp))
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color(0xFFFFC107).copy(alpha = 0.38f),
-                            Color(0xFFFFE08A).copy(alpha = 0.62f),
-                            Color(0xFFFFC107).copy(alpha = 0.38f),
-                            Color.Transparent
+                .padding(bottom = 60.dp)
+                .graphicsLayer { alpha = taglineAlpha }
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(180.dp)
+                    .height(1.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color(0xFFE8A020).copy(alpha = 0.6f),
+                                Color.Transparent
+                            )
                         )
                     )
-                )
-        )
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(x = (-110).dp, y = (-145).dp)
-                .size(5.dp)
-                .clip(RoundedCornerShape(50))
-                .background(Color(0xFFFFD36B).copy(alpha = 0.70f))
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(x = 120.dp, y = (-95).dp)
-                .size(4.dp)
-                .clip(RoundedCornerShape(50))
-                .background(Color.White.copy(alpha = 0.65f))
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(x = (-145).dp, y = 52.dp)
-                .size(3.dp)
-                .clip(RoundedCornerShape(50))
-                .background(Color(0xFFFFC107).copy(alpha = 0.68f))
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(x = 150.dp, y = 92.dp)
-                .size(3.dp)
-                .clip(RoundedCornerShape(50))
-                .background(Color.White.copy(alpha = 0.55f))
-        )
-
-        Box(
-            modifier = Modifier
-                .size(345.dp)
-                .clip(RoundedCornerShape(300.dp))
-                .background(Color(0xFFFFC107).copy(alpha = haloAlpha * 0.28f))
-        )
-
-        Box(
-            modifier = Modifier
-                .size(275.dp)
-                .clip(RoundedCornerShape(240.dp))
-                .background(Color(0xFFFFB300).copy(alpha = haloAlpha * 0.34f))
-        )
-
-        Box(
-            modifier = Modifier
-                .size(238.dp)
-                .clip(RoundedCornerShape(210.dp))
-                .background(Color.Black.copy(alpha = 0.58f))
-                .graphicsLayer {
-                    translationY = riseOffset
-                    alpha = logoAlpha
-                    scaleX = pulse
-                    scaleY = pulse
-                    rotationZ = slowRotate
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Image(
-                painter = painterResource(id = R.drawable.cinevault_circle_logo),
-                contentDescription = "CineVault Logo",
-                modifier = Modifier.size(210.dp)
             )
         }
     }
