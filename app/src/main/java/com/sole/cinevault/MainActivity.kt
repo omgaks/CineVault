@@ -24,6 +24,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.ui.theme.CineVaultTheme
 import kotlinx.coroutines.delay
@@ -40,6 +41,9 @@ class MainActivity : ComponentActivity() {
         window.attributes = window.attributes.apply {
             screenBrightness = 1.0f
         }
+
+        // Required: allows player to draw behind system bars for true immersive mode
+        WindowCompat.setDecorFitsSystemWindows(window, false)
 
         setContent {
             CineVaultTheme {
@@ -96,7 +100,6 @@ fun CineVaultSplashScreen() {
         started = true
     }
 
-    // Logo rises and fades in
     val logoAlpha by animateFloatAsState(
         targetValue = if (started) 1f else 0f,
         animationSpec = tween(durationMillis = 1100, easing = FastOutSlowInEasing),
@@ -109,7 +112,6 @@ fun CineVaultSplashScreen() {
         label = "logoRise"
     )
 
-    // Tagline fades in after logo
     val taglineAlpha by animateFloatAsState(
         targetValue = if (started) 1f else 0f,
         animationSpec = tween(
@@ -120,7 +122,6 @@ fun CineVaultSplashScreen() {
         label = "taglineAlpha"
     )
 
-    // Subtle glow breathe — very slow, very gentle
     val infiniteTransition = rememberInfiniteTransition(label = "glowBreathe")
 
     val glowAlpha by infiniteTransition.animateFloat(
@@ -139,7 +140,6 @@ fun CineVaultSplashScreen() {
             .background(Color(0xFF080808)),
         contentAlignment = Alignment.Center
     ) {
-        // Single warm glow behind logo — blurred, cinematic
         Box(
             modifier = Modifier
                 .size(320.dp)
@@ -160,7 +160,6 @@ fun CineVaultSplashScreen() {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Logo
             Box(
                 modifier = Modifier
                     .size(148.dp)
@@ -179,7 +178,6 @@ fun CineVaultSplashScreen() {
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // App name
             androidx.compose.material3.Text(
                 text = "CINEVAULT",
                 color = Color.White.copy(alpha = logoAlpha),
@@ -190,7 +188,6 @@ fun CineVaultSplashScreen() {
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Tagline
             androidx.compose.material3.Text(
                 text = "Your Personal Cinema",
                 color = Color(0xFFE8A020).copy(alpha = taglineAlpha),
@@ -200,7 +197,6 @@ fun CineVaultSplashScreen() {
             )
         }
 
-        // Thin amber line at bottom — like a cinema screen edge
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
