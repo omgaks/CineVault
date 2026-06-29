@@ -17,12 +17,13 @@ import java.util.concurrent.TimeUnit
 
 object OpenSubtitlesClient {
 
-    private const val API_KEY = "BEkvR8mckzRqXsNNCd53o3hkK806U7jn"
+    private val API_KEY: String get() = BuildConfig.OPENSUB_API_KEY
     private const val BASE_URL = "https://api.opensubtitles.com/api/v1"
     private const val USER_AGENT = "CineVault v1.0"
     private const val TAG = "OpenSubtitlesClient"
-    private const val USERNAME = "omgaks"
-    private const val PASSWORD = "Ashish#3580"
+
+    // USERNAME and PASSWORD removed — OpenSubtitles free tier works without login for search
+    // If you need login, store credentials in local.properties and add to build.gradle.kts
 
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -39,6 +40,13 @@ object OpenSubtitlesClient {
 
             if (cleanName.isBlank()) return@withContext null
 
+            val fileId = searchFileId(cleanName)
+                ?: searchFileId(cleanName.substringBeforeLast(" "))
+                ?: return@withContext null
+
+            val subtitleLink = getDownloadLink(fileId) ?: return@withContext null
+            val srtText = downloadSrt(subtitleLink) ?: return@withContext null
+
             val subtitleDir = File(context.cacheDir, "subtitles")
             if (!subtitleDir.exists()) subtitleDir.mkdirs()
 
@@ -47,24 +55,11 @@ object OpenSubtitlesClient {
                 .take(80)
                 .ifBlank { "subtitle" }
 
-            val cachedSubtitleFile = File(subtitleDir, "$safeFileName.en.srt")
-            if (cachedSubtitleFile.exists() && cachedSubtitleFile.length() > 0L) {
-                return@withContext Uri.fromFile(cachedSubtitleFile)
-            }
+            val subtitleFile = File(subtitleDir, "$safeFileName.en.srt")
+            subtitleFile.writeText(srtText, Charsets.UTF_8)
 
-            val token = loginAndGetToken()
-                ?: return@withContext null
-            val fileId = searchFileId(cleanName)
-                ?: searchFileId(cleanName.substringBeforeLast(" "))
-                ?: return@withContext null
-
-            val subtitleLink = getDownloadLink(fileId, token) ?: return@withContext null
-            val srtText = downloadSrt(subtitleLink) ?: return@withContext null
-
-            cachedSubtitleFile.writeText(srtText, Charsets.UTF_8)
-
-            Log.d(TAG, "Subtitle saved: ${cachedSubtitleFile.absolutePath}")
-            Uri.fromFile(cachedSubtitleFile)
+            Log.d(TAG, "Subtitle saved: ${subtitleFile.absolutePath}")
+            Uri.fromFile(subtitleFile)
 
         } catch (e: Exception) {
             Log.e(TAG, "Subtitle error: ${e.message}", e)
@@ -100,37 +95,6 @@ object OpenSubtitlesClient {
 
         return name.replace(Regex("\\s+"), " ").trim()
     }
-    private fun loginAndGetToken(): String? {
-
-        val body = FormBody.Builder()
-            .add("username", USERNAME)
-            .add("password", PASSWORD)
-            .build()
-
-        val request = Request.Builder()
-            .url("$BASE_URL/login")
-            .post(body)
-            .addHeader("Api-Key", API_KEY)
-            .addHeader("User-Agent", USER_AGENT)
-            .addHeader("Accept", "application/json")
-            .build()
-
-        httpClient.newCall(request).execute().use { response ->
-
-            val responseBody = response.body?.string().orEmpty()
-
-            Log.d(TAG, "Login response code: ${response.code}")
-            Log.d(TAG, "Login body: $responseBody")
-
-            if (!response.isSuccessful || responseBody.isBlank()) {
-                return null
-            }
-
-            val json = JSONObject(responseBody)
-            return json.optString("token", "")
-                .takeIf { it.isNotBlank() }
-        }
-    }
 
     private fun searchFileId(searchName: String): Int? {
         if (searchName.isBlank()) return null
@@ -150,7 +114,6 @@ object OpenSubtitlesClient {
         httpClient.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             Log.d(TAG, "Search response code: ${response.code}")
-            Log.d(TAG, "Search body: $body")
 
             if (!response.isSuccessful || body.isBlank()) return null
 
@@ -174,10 +137,7 @@ object OpenSubtitlesClient {
         return null
     }
 
-    private fun getDownloadLink(
-        fileId: Int,
-        token: String
-    ): String? {
+    private fun getDownloadLink(fileId: Int): String? {
         val payload = JSONObject()
             .put("file_id", fileId)
             .put("sub_format", "srt")
@@ -187,7 +147,6 @@ object OpenSubtitlesClient {
             .url("$BASE_URL/download")
             .post(payload.toRequestBody("application/json".toMediaType()))
             .addHeader("Api-Key", API_KEY)
-            .addHeader("Authorization", "Bearer $token")
             .addHeader("User-Agent", USER_AGENT)
             .addHeader("Content-Type", "application/json")
             .addHeader("Accept", "application/json")
@@ -196,7 +155,6 @@ object OpenSubtitlesClient {
         httpClient.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             Log.d(TAG, "Download response code: ${response.code}")
-            Log.d(TAG, "Download body: $body")
 
             if (!response.isSuccessful || body.isBlank()) return null
 
@@ -215,7 +173,6 @@ object OpenSubtitlesClient {
         httpClient.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
             Log.d(TAG, "SRT response code: ${response.code}")
-            Log.d(TAG, "SRT size: ${text.length}")
 
             if (!response.isSuccessful || text.isBlank()) return null
             return text
