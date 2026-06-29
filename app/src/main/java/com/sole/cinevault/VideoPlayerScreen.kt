@@ -406,6 +406,7 @@ fun VideoPlayerScreen(
                 android.view.View.SYSTEM_UI_FLAG_VISIBLE
         }
     }
+
     LaunchedEffect(exoPlayer) {
         while (true) {
             if (!isDraggingSeekbar) {
@@ -417,11 +418,11 @@ fun VideoPlayerScreen(
             delay(350)
         }
     }
+
     LaunchedEffect(currentVideo.path, duration) {
         if (!isStreamMedia && duration > 1000L) {
             previewFrames = emptyList()
 
-            // Fast warm-up cache first, so dragging never shows a blank preview.
             val quickFrames = VideoThumbnailHelper.generatePreviewCache(
                 context = context,
                 videoPath = currentVideo.path,
@@ -434,7 +435,6 @@ fun VideoPlayerScreen(
                 previewBitmap = quickFrames.firstOrNull()?.bitmap ?: previewBitmap
             }
 
-            // Dense cache loads after the quick cache for better sync while scrubbing.
             val denseFrames = VideoThumbnailHelper.generatePreviewCache(
                 context = context,
                 videoPath = currentVideo.path,
@@ -517,6 +517,7 @@ fun VideoPlayerScreen(
             showAudioSelector = false
         }
     }
+
     LaunchedEffect(showSubtitleSettings, subtitleMenuTouchKey) {
         if (showSubtitleSettings) {
             delay(9000)
@@ -544,7 +545,6 @@ fun VideoPlayerScreen(
             )
         )
     }
-
 
     LaunchedEffect(showNextEpisodeOverlay, pendingNextEpisode) {
         if (showNextEpisodeOverlay && pendingNextEpisode != null) {
@@ -591,7 +591,6 @@ fun VideoPlayerScreen(
         val pillFont = (17 * scale).sp
         val sidePadding = if (isCompactLandscape) 8.dp else 16.dp
 
-        // Dock sits clearly ABOVE the seekbar in landscape.
         val bottomDockPadding =
             when {
                 isCompactLandscape -> 112.dp
@@ -599,7 +598,6 @@ fun VideoPlayerScreen(
                 else -> 152.dp
             }
 
-        // Seekbar stays low but never covers the control dock.
         val seekBottomPadding =
             when {
                 isCompactLandscape -> 18.dp
@@ -613,20 +611,27 @@ fun VideoPlayerScreen(
 
         AndroidView(
             modifier = Modifier.fillMaxSize(),
-            factory = {
-                PlayerView(it).apply {
+            factory = { ctx ->
+                PlayerView(ctx).apply {
                     player = exoPlayer
                     useController = false
-                   resizeMode = if (isZoomMode) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    resizeMode = if (isZoomMode)
+                        androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    else
+                        androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                     subtitleView?.setViewType(SubtitleView.VIEW_TYPE_CANVAS)
                     playerViewForSubtitleStyle = this
                 }
             },
-           update = {
-                it.player = exoPlayer
-                it.resizeMode = if (isZoomMode) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                playerViewForSubtitleStyle = it
+            update = { playerView ->
+                playerView.player = exoPlayer
+                playerView.resizeMode = if (isZoomMode)
+                    androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                else
+                    androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                playerViewForSubtitleStyle = playerView
             }
+        )
 
         Box(
             modifier = Modifier
@@ -668,6 +673,8 @@ fun VideoPlayerScreen(
                                 showTopBar = true
                             }
                         }
+                    )
+                }
                 .pointerInput(currentVideo.path) {
                     detectDragGestures(
                         onDrag = { change, dragAmount ->
@@ -930,7 +937,6 @@ fun VideoPlayerScreen(
                     )
                 }
 
-
                 AnimatedVisibility(
                     visible = showNextEpisodeOverlay && pendingNextEpisode != null && !showSeekPreview,
                     enter = fadeIn(animationSpec = tween(140)),
@@ -976,6 +982,27 @@ fun VideoPlayerScreen(
                             position = target
                             showControls = true
                         }
+                    )
+                }
+
+                // Zoom mode indicator
+                AnimatedVisibility(
+                    visible = isZoomMode && !showSeekPreview,
+                    enter = fadeIn(animationSpec = tween(120)),
+                    exit = fadeOut(animationSpec = tween(120)),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = if (isLandscape) 54.dp else 90.dp)
+                ) {
+                    Text(
+                        text = "⛶  Fill",
+                        color = Color(0xFFFFD36A),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(Color.Black.copy(alpha = 0.52f))
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
                     )
                 }
 
@@ -1059,7 +1086,6 @@ fun VideoPlayerScreen(
                     }
                 }
 
-
                 SeekPreviewBubble(
                     isVisible = showSeekPreview,
                     bitmap = previewBitmap,
@@ -1112,8 +1138,6 @@ fun VideoPlayerScreen(
                             exoPlayer.seekTo(safePosition)
                             isDraggingSeekbar = false
 
-                            // Keep preview visible after release. First show nearest cached frame instantly,
-                            // then replace it with the exact release frame once it is generated.
                             previewBitmap = VideoThumbnailHelper.nearestPreviewFrame(
                                 previewFrames,
                                 safePosition
@@ -1164,7 +1188,6 @@ fun VideoPlayerScreen(
         }
     }
 }
-
 
 @Composable
 private fun CinematicSeekBar(
@@ -1404,7 +1427,6 @@ private fun SeekPreviewBubble(
     }
 }
 
-
 @Composable
 private fun TopGlassTitleBar(
     title: String,
@@ -1443,7 +1465,10 @@ private fun TopGlassTitleBar(
             modifier = Modifier
                 .clip(RoundedCornerShape(30.dp))
                 .background(Color.White.copy(alpha = 0.11f))
-                .padding(horizontal = if (isLandscape) 10.dp else 12.dp, vertical = if (isLandscape) 5.dp else 7.dp)
+                .padding(
+                    horizontal = if (isLandscape) 10.dp else 12.dp,
+                    vertical = if (isLandscape) 5.dp else 7.dp
+                )
                 .pointerInput(Unit) {
                     detectTapGestures { onBack() }
                 }
@@ -1468,6 +1493,7 @@ private fun TopGlassTitleBar(
         )
     }
 }
+
 @Composable
 private fun TimePill(text: String) {
     Text(
@@ -1496,12 +1522,7 @@ private fun VerticalBrightnessHud(
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = "☀",
-            color = Color.White,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold
-        )
+        Text(text = "☀", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
 
         Spacer(modifier = Modifier.width(9.dp))
 
@@ -1520,10 +1541,7 @@ private fun VerticalBrightnessHud(
                     .clip(RoundedCornerShape(50))
                     .background(
                         Brush.verticalGradient(
-                            colors = listOf(
-                                Color(0xFFFFF3D6),
-                                Color(0xFFFFC857)
-                            )
+                            colors = listOf(Color(0xFFFFF3D6), Color(0xFFFFC857))
                         )
                     )
             )
@@ -1531,12 +1549,7 @@ private fun VerticalBrightnessHud(
 
         Spacer(modifier = Modifier.width(9.dp))
 
-        Text(
-            text = "$value%",
-            color = Color.White,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold
-        )
+        Text(text = "$value%", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -1566,18 +1579,8 @@ private fun FilledCircleHud(
         )
 
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = icon,
-                color = if (value > 60) Color.Black else Color.White,
-                fontSize = 18.sp
-            )
-
-            Text(
-                text = "$value%",
-                color = if (value > 60) Color.Black else Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold
-            )
+            Text(text = icon, color = if (value > 60) Color.Black else Color.White, fontSize = 18.sp)
+            Text(text = "$value%", color = if (value > 60) Color.Black else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -1597,27 +1600,16 @@ private fun ControlCircle(
             .clip(shape)
             .background(
                 brush = Brush.radialGradient(
-                    colors =
-                        if (isPlayPause) {
-                            listOf(
-                                Color.Black.copy(alpha = 0.32f),
-                                Color.Black.copy(alpha = 0.32f)
-                            )
-                        } else {
-                            listOf(
-                                Color.White.copy(alpha = 0.14f),
-                                Color.White.copy(alpha = 0.07f),
-                                Color.Black.copy(alpha = 0.20f)
-                            )
-                        }
+                    colors = if (isPlayPause) {
+                        listOf(Color.Black.copy(alpha = 0.32f), Color.Black.copy(alpha = 0.32f))
+                    } else {
+                        listOf(Color.White.copy(alpha = 0.14f), Color.White.copy(alpha = 0.07f), Color.Black.copy(alpha = 0.20f))
+                    }
                 )
             )
             .border(
                 width = if (isPlayPause) 1.7.dp else 1.dp,
-                color = if (isPlayPause)
-                    Color(0xFFFFC857).copy(alpha = 0.78f)
-                else
-                    Color.White.copy(alpha = 0.18f),
+                color = if (isPlayPause) Color(0xFFFFC857).copy(alpha = 0.78f) else Color.White.copy(alpha = 0.18f),
                 shape = shape
             )
             .clickable { onClick() },
@@ -1653,10 +1645,7 @@ private fun ControlCircle(
                 else -> (size.value * 0.42f).sp
             },
             fontWeight = FontWeight.Black,
-            modifier = Modifier.offset(
-                x = if (text == "▶") 2.dp else 0.dp,
-                y = 0.dp
-            )
+            modifier = Modifier.offset(x = if (text == "▶") 2.dp else 0.dp, y = 0.dp)
         )
     }
 }
@@ -1759,10 +1748,39 @@ private fun formatTime(ms: Long): String {
         "%02d:%02d".format(minutes, seconds)
     }
 }
-private fun looksLikeEpisodeFile(fileName: String): Boolean {
-    return fileName.contains(
-        Regex("(s\\d{1,2}e\\d{1,2}|season\\s*\\d+|episode\\s*\\d+)", RegexOption.IGNORE_CASE)
+
+private fun cleanEpisodeDisplayName(fileName: String): String {
+    val seasonEpisode = Regex("s(\\d{1,2})e(\\d{1,2})", RegexOption.IGNORE_CASE).find(fileName)
+    val prefix = if (seasonEpisode != null) {
+        val s = seasonEpisode.groupValues[1].padStart(2, '0')
+        val e = seasonEpisode.groupValues[2].padStart(2, '0')
+        "S${s}E${e}"
+    } else {
+        "Episode"
+    }
+
+    var name = fileName
+        .substringAfterLast("/")
+        .substringAfterLast("\\")
+        .substringBeforeLast(".")
+        .replace(Regex("\\[.*?]"), " ")
+        .replace(Regex("\\(.*?\\)"), " ")
+        .replace(".", " ")
+        .replace("_", " ")
+        .replace("-", " ")
+
+    name = name.replace(Regex("s\\d{1,2}e\\d{1,2}", RegexOption.IGNORE_CASE), " ")
+    name = name.replace(
+        Regex(
+            "\\b(2160p|1080p|720p|480p|4k|uhd|hdr10\\+?|hdr|dv|dolby|vision|bluray|brrip|webrip|webdl|web|x264|x265|h264|h265|hevc|10bit|aac|ddp|dts|atmos|mkv|mp4|avi|rarbg|yts|eztv|tgx|nf|amzn)\\b",
+            RegexOption.IGNORE_CASE
+        ),
+        " "
     )
+
+    name = name.replace(Regex("\\s+"), " ").trim()
+
+    return if (name.isBlank()) prefix else "$prefix • $name"
 }
 
 @Composable
@@ -1779,10 +1797,7 @@ private fun SkipIntroButton(
             .clip(RoundedCornerShape(50))
             .background(
                 Brush.horizontalGradient(
-                    colors = listOf(
-                        Color(0xFFFFD36A),
-                        Color(0xFFFFA000)
-                    )
+                    colors = listOf(Color(0xFFFFD36A), Color(0xFFFFA000))
                 )
             )
             .clickable { onClick() }
@@ -1792,7 +1807,6 @@ private fun SkipIntroButton(
             )
     )
 }
-
 
 @Composable
 private fun NextEpisodeCountdownOverlay(
@@ -1810,10 +1824,7 @@ private fun NextEpisodeCountdownOverlay(
             .clip(RoundedCornerShape(26.dp))
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(
-                        Color.Black.copy(alpha = 0.72f),
-                        Color.Black.copy(alpha = 0.50f)
-                    )
+                    colors = listOf(Color.Black.copy(alpha = 0.72f), Color.Black.copy(alpha = 0.50f))
                 )
             )
             .border(
@@ -1883,41 +1894,6 @@ private fun NextEpisodeCountdownOverlay(
     }
 }
 
-private fun cleanEpisodeDisplayName(fileName: String): String {
-    val seasonEpisode = Regex("s(\\d{1,2})e(\\d{1,2})", RegexOption.IGNORE_CASE).find(fileName)
-    val prefix = if (seasonEpisode != null) {
-        val s = seasonEpisode.groupValues[1].padStart(2, '0')
-        val e = seasonEpisode.groupValues[2].padStart(2, '0')
-        "S${s}E${e}"
-    } else {
-        "Episode"
-    }
-
-    var name = fileName
-        .substringAfterLast("/")
-        .substringAfterLast("\\")
-        .substringBeforeLast(".")
-        .replace(Regex("\\[.*?]"), " ")
-        .replace(Regex("\\(.*?\\)"), " ")
-        .replace(".", " ")
-        .replace("_", " ")
-        .replace("-", " ")
-
-    name = name.replace(Regex("s\\d{1,2}e\\d{1,2}", RegexOption.IGNORE_CASE), " ")
-    name = name.replace(
-        Regex(
-            "\\b(2160p|1080p|720p|480p|4k|uhd|hdr10\\+?|hdr|dv|dolby|vision|bluray|brrip|webrip|webdl|web|x264|x265|h264|h265|hevc|10bit|aac|ddp|dts|atmos|mkv|mp4|avi|rarbg|yts|eztv|tgx|nf|amzn)\\b",
-            RegexOption.IGNORE_CASE
-        ),
-        " "
-    )
-
-    name = name.replace(Regex("\\s+"), " ").trim()
-
-    return if (name.isBlank()) prefix else "$prefix • $name"
-}
-
-
 @Composable
 private fun FloatingTrackPopup(
     title: String,
@@ -1932,12 +1908,7 @@ private fun FloatingTrackPopup(
             .background(Color.Black.copy(alpha = 0.52f))
             .padding(7.dp)
     ) {
-        Text(
-            text = title,
-            color = Color.White,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold
-        )
+        Text(text = title, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
 
         Spacer(modifier = Modifier.height(5.dp))
 
