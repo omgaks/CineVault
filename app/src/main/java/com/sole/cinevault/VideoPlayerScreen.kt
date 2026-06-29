@@ -60,7 +60,6 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.C
@@ -77,32 +76,9 @@ import androidx.media3.ui.SubtitleView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private fun Context.findActivity(): Activity? {
-    var ctx = this
-    while (ctx is android.content.ContextWrapper) {
-        if (ctx is Activity) return ctx
-        ctx = ctx.baseContext
-    }
-    return null
-}
-
-// ─── FIX 1: Proper immersive mode using WindowInsetsControllerCompat ──────────
-private fun Activity.enterImmersiveMode() {
-    WindowCompat.setDecorFitsSystemWindows(window, false)
-    WindowInsetsControllerCompat(window, window.decorView).apply {
-        hide(WindowInsetsCompat.Type.systemBars())
-        systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-    }
-}
-
-private fun Activity.exitImmersiveMode() {
-    WindowCompat.setDecorFitsSystemWindows(window, true)
-    WindowInsetsControllerCompat(window, window.decorView).apply {
-        show(WindowInsetsCompat.Type.systemBars())
-    }
-}
-// ──────────────────────────────────────────────────────────────────────────────
+// NOTE: findCineActivity(), enterImmersiveModeForPlayer(), and exitImmersiveModeForPlayer()
+// are defined once in MainActivity.kt (same package) and reused here to avoid duplicate
+// system-bar logic conflicting between the player and the rest of the app.
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -114,7 +90,7 @@ fun VideoPlayerScreen(
     onPlayNext: (VideoWithMetadata) -> Unit
 ) {
     val context = LocalContext.current
-    val activity = context.findActivity()
+    val activity = context.findCineActivity()
     val scope = rememberCoroutineScope()
 
     var currentVideo by remember { mutableStateOf(video) }
@@ -351,7 +327,7 @@ fun VideoPlayerScreen(
         activity?.window?.attributes = activity?.window?.attributes?.apply {
             screenBrightness = 1.0f
         }
-        activity?.enterImmersiveMode()
+        activity?.enterImmersiveModeForPlayer()
     }
 
     DisposableEffect(exoPlayer, currentVideo.path, episodeList) {
@@ -400,7 +376,7 @@ fun VideoPlayerScreen(
                 screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
             }
             // FIX 1: Restore system bars when leaving player
-            activity?.exitImmersiveMode()
+            activity?.exitImmersiveModeForPlayer()
         }
     }
 
