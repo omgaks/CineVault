@@ -348,6 +348,10 @@ fun CineVaultApp() {
                         },
                         onTvGroupClick = { group ->
                             selectedTvGroup = group
+                        },
+                        onSecretChanged = {
+                            val cached = loadLibraryCache(context)
+                            if (cached != null) libraryVideos = cached.videos
                         }
                     )
                 }
