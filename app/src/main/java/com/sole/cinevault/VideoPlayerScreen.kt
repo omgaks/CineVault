@@ -119,6 +119,7 @@ fun VideoPlayerScreen(
     var nextEpisodeCountdown by remember { mutableIntStateOf(0) }
     var showNextEpisodeOverlay by remember { mutableStateOf(false) }
 
+    var isZoomMode by remember { mutableStateOf(false) }
     var showSeekPreview by remember { mutableStateOf(false) }
     var previewPosition by remember { mutableLongStateOf(0L) }
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -616,16 +617,16 @@ fun VideoPlayerScreen(
                 PlayerView(it).apply {
                     player = exoPlayer
                     useController = false
-                    resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                   resizeMode = if (isZoomMode) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                     subtitleView?.setViewType(SubtitleView.VIEW_TYPE_CANVAS)
                     playerViewForSubtitleStyle = this
                 }
             },
-            update = {
+           update = {
                 it.player = exoPlayer
+                it.resizeMode = if (isZoomMode) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                 playerViewForSubtitleStyle = it
             }
-        )
 
         Box(
             modifier = Modifier
@@ -661,10 +662,12 @@ fun VideoPlayerScreen(
                                 position = exoPlayer.currentPosition
                                 showControls = true
                                 showTopBar = true
+                            } else {
+                                isZoomMode = !isZoomMode
+                                showControls = true
+                                showTopBar = true
                             }
                         }
-                    )
-                }
                 .pointerInput(currentVideo.path) {
                     detectDragGestures(
                         onDrag = { change, dragAmount ->
