@@ -2,6 +2,8 @@ package com.sole.cinevault
 
 import android.os.Build
 import android.os.Bundle
+import android.app.Activity
+import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -25,12 +27,39 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.ui.theme.CineVaultTheme
 import kotlinx.coroutines.delay
 
 object CineVaultPlayerHolder {
     var currentPlayer: ExoPlayer? = null
+}
+
+// FIX: Shared helper to find the Activity from any Context (used to manage system bars)
+fun Context.findCineActivity(): Activity? {
+    var ctx = this
+    while (ctx is android.content.ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
+}
+
+// FIX: Player screen hides system bars completely (true immersive/fullscreen)
+fun Activity.enterImmersiveModeForPlayer() {
+    WindowInsetsControllerCompat(window, window.decorView).apply {
+        hide(WindowInsetsCompat.Type.systemBars())
+        systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    }
+}
+
+// FIX: Every other screen (Home/Library/Search/Settings) shows normal system bars
+fun Activity.exitImmersiveModeForPlayer() {
+    WindowInsetsControllerCompat(window, window.decorView).apply {
+        show(WindowInsetsCompat.Type.systemBars())
+    }
 }
 
 class MainActivity : ComponentActivity() {
@@ -227,6 +256,7 @@ fun CineVaultApp() {
 
     var selectedTab by remember { mutableStateOf(0) }
     var selectedVideo by remember { mutableStateOf<VideoFile?>(null) }
+    var selectedMediaType by remember { mutableStateOf("local") }
     var selectedDetail by remember { mutableStateOf<VideoWithMetadata?>(null) }
     var selectedTvGroup by remember { mutableStateOf<TvGroup?>(null) }
     var currentEpisodeList by remember { mutableStateOf<List<VideoWithMetadata>>(emptyList()) }
@@ -246,6 +276,18 @@ fun CineVaultApp() {
             selectedDetail != null -> selectedDetail = null
             selectedTvGroup != null -> selectedTvGroup = null
             selectedTab != 0 -> selectedTab = 0
+        }
+    }
+
+    // FIX: Only the player screen should be immersive (nav bar hidden).
+    // Every other screen (Home/Library/Search/Settings) must show normal system bars.
+    val activity = context.findCineActivity()
+
+    LaunchedEffect(selectedVideo) {
+        if (selectedVideo != null) {
+            activity?.enterImmersiveModeForPlayer()
+        } else {
+            activity?.exitImmersiveModeForPlayer()
         }
     }
 
@@ -272,8 +314,10 @@ fun CineVaultApp() {
                     VideoPlayerScreen(
                         video = selectedVideo!!,
                         episodeList = currentEpisodeList,
+                        mediaType = selectedMediaType,
                         onBack = { selectedVideo = null },
                         onPlayNext = { nextVideo ->
+                            selectedMediaType = nextVideo.type
                             selectedVideo = nextVideo.video
                         }
                     )
@@ -285,6 +329,7 @@ fun CineVaultApp() {
                         onBack = { selectedTvGroup = null },
                         onEpisodeClick = { episode ->
                             currentEpisodeList = selectedTvGroup?.episodes ?: emptyList()
+                            selectedMediaType = episode.type
                             selectedVideo = episode.video
                         }
                     )
@@ -296,6 +341,7 @@ fun CineVaultApp() {
                         onBack = { selectedDetail = null },
                         onPlay = {
                             currentEpisodeList = listOf(selectedDetail!!)
+                            selectedMediaType = selectedDetail!!.type
                             selectedVideo = selectedDetail!!.video
                         }
                     )
