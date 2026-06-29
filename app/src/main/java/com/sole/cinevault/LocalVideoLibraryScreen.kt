@@ -6,7 +6,6 @@ import android.content.Context
 import android.os.Build
 import android.app.KeyguardManager
 import android.widget.Toast
-import android.view.WindowManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.ActivityResult
@@ -44,40 +43,9 @@ enum class LibrarySortOption(val label: String) {
     SIZE_SMALL("Size ↑")
 }
 
-private fun Context.findCineActivity(): Activity? {
-    var ctx = this
-
-    while (ctx is android.content.ContextWrapper) {
-        if (ctx is Activity) return ctx
-        ctx = ctx.baseContext
-    }
-
-    return null
-}
-
-@Composable
-private fun ForceCineVaultBrightness() {
-
-    val context = LocalContext.current
-    val activity = context.findCineActivity()
-
-    DisposableEffect(Unit) {
-
-        activity?.window?.attributes =
-            activity.window.attributes.apply {
-                screenBrightness = 1.0f
-            }
-
-        onDispose {
-
-            activity?.window?.attributes =
-                activity.window.attributes.apply {
-                    screenBrightness =
-                        WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-                }
-        }
-    }
-}
+// NOTE: findCineActivity() and ForceCineVaultBrightness() were removed from this file.
+// They were unused here (dead code) and duplicated the versions now living in Screens.kt,
+// which caused "Conflicting overloads" / "Overload resolution ambiguity" build errors.
 
 @Composable
 fun LocalVideoLibraryScreen(
