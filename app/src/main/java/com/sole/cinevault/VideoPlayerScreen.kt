@@ -30,9 +30,16 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.BrightnessHigh
+import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.VolumeMute
+import androidx.compose.material.icons.rounded.VolumeDown
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +57,9 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -71,6 +81,22 @@ private fun Context.findActivity(): Activity? {
         ctx = ctx.baseContext
     }
     return null
+}
+
+// FIX: Proper immersive mode helper using WindowInsetsController (replaces deprecated systemUiVisibility)
+private fun Activity.enterImmersiveMode() {
+    WindowCompat.setDecorFitsSystemWindows(window, false)
+    WindowInsetsControllerCompat(window, window.decorView).apply {
+        hide(WindowInsetsCompat.Type.systemBars())
+        systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    }
+}
+
+private fun Activity.exitImmersiveMode() {
+    WindowCompat.setDecorFitsSystemWindows(window, true)
+    WindowInsetsControllerCompat(window, window.decorView).apply {
+        show(WindowInsetsCompat.Type.systemBars())
+    }
 }
 
 @OptIn(UnstableApi::class)
@@ -97,6 +123,10 @@ fun VideoPlayerScreen(
 
     var showVolumeCircle by remember { mutableStateOf(false) }
     var showBrightnessCircle by remember { mutableStateOf(false) }
+
+    // FIX: Separate gesture-active state from display state so icon dismisses correctly
+    var isBrightnessDragging by remember { mutableStateOf(false) }
+    var isVolumeDragging by remember { mutableStateOf(false) }
 
     var showAudioSelector by remember { mutableStateOf(false) }
     var showSubtitleSettings by remember { mutableStateOf(false) }
@@ -327,6 +357,7 @@ fun VideoPlayerScreen(
         }
     }
 
+    // FIX: Use WindowInsetsController for proper immersive mode — hides system nav bar completely
     LaunchedEffect(Unit) {
         CineVaultPlayerHolder.currentPlayer = exoPlayer
 
@@ -334,10 +365,7 @@ fun VideoPlayerScreen(
             screenBrightness = 1.0f
         }
 
-        activity?.window?.decorView?.systemUiVisibility =
-            android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or
-                    android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                    android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        activity?.enterImmersiveMode()
     }
 
     DisposableEffect(exoPlayer, currentVideo.path, episodeList) {
@@ -402,8 +430,8 @@ fun VideoPlayerScreen(
                 screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
             }
 
-            activity?.window?.decorView?.systemUiVisibility =
-                android.view.View.SYSTEM_UI_FLAG_VISIBLE
+            // FIX: Restore system bars when leaving player
+            activity?.exitImmersiveMode()
         }
     }
 
@@ -522,6 +550,23 @@ fun VideoPlayerScreen(
         if (showSubtitleSettings) {
             delay(9000)
             showSubtitleSettings = false
+        }
+    }
+
+    // FIX: Brightness HUD dismiss — watch isBrightnessDragging, not brightnessPercent value
+    // Previously watched brightnessPercent which restarted the timer on every drag tick
+    LaunchedEffect(isBrightnessDragging) {
+        if (!isBrightnessDragging && showBrightnessCircle) {
+            delay(1200)
+            showBrightnessCircle = false
+        }
+    }
+
+    // FIX: Volume HUD dismiss — same fix
+    LaunchedEffect(isVolumeDragging) {
+        if (!isVolumeDragging && showVolumeCircle) {
+            delay(1200)
+            showVolumeCircle = false
         }
     }
 
@@ -676,7 +721,9 @@ fun VideoPlayerScreen(
                     )
                 }
                 .pointerInput(currentVideo.path) {
+                    // FIX: Track drag start/end to correctly dismiss HUD icons
                     detectDragGestures(
+                        onDragStart = { _ -> },
                         onDrag = { change, dragAmount ->
                             val x = change.position.x
                             val screenWidth = size.width
@@ -691,6 +738,7 @@ fun VideoPlayerScreen(
                                         screenBrightness = brightnessPercent / 100f
                                     }
 
+                                isBrightnessDragging = true
                                 showBrightnessCircle = true
                             } else {
                                 volumePercent =
@@ -709,13 +757,24 @@ fun VideoPlayerScreen(
                                     0
                                 )
 
+                                isVolumeDragging = true
                                 showVolumeCircle = true
                             }
+                        },
+                        onDragEnd = {
+                            isBrightnessDragging = false
+                            isVolumeDragging = false
+                        },
+                        onDragCancel = {
+                            isBrightnessDragging = false
+                            isVolumeDragging = false
                         }
                     )
                 }
         )
 
+        // FIX: Brightness HUD — no longer uses LaunchedEffect inside AnimatedVisibility
+        // Dismissal is now controlled by isBrightnessDragging LaunchedEffect above
         AnimatedVisibility(
             visible = showBrightnessCircle,
             enter = fadeIn(),
@@ -724,17 +783,13 @@ fun VideoPlayerScreen(
                 .align(Alignment.TopStart)
                 .padding(top = 86.dp, start = 28.dp)
         ) {
-            LaunchedEffect(brightnessPercent) {
-                delay(1000)
-                showBrightnessCircle = false
-            }
-
             VerticalBrightnessHud(
                 value = brightnessPercent,
                 size = hudSize
             )
         }
 
+        // FIX: Volume HUD — same, no LaunchedEffect inside
         AnimatedVisibility(
             visible = showVolumeCircle,
             enter = fadeIn(),
@@ -743,22 +798,16 @@ fun VideoPlayerScreen(
                 .align(Alignment.TopEnd)
                 .padding(top = 86.dp, end = 28.dp)
         ) {
-            LaunchedEffect(volumePercent) {
-                delay(1000)
-                showVolumeCircle = false
-            }
-
             val volumeColor = when {
                 volumePercent > 120 -> Color.Red
                 volumePercent > 90 -> Color(0xFFFF9800)
                 else -> Color.White
             }
 
-            FilledCircleHud(
+            FilledVolumeHud(
                 value = volumePercent,
                 maxValue = 150,
                 color = volumeColor,
-                icon = "🔊",
                 size = hudSize
             )
         }
@@ -905,6 +954,8 @@ fun VideoPlayerScreen(
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
 
+                // FIX: TopBar now only shows title + 3-dot menu, no back button
+                // Back button has moved to the bottom control row
                 AnimatedVisibility(
                     visible = (showTopBar || showAudioSelector || showSubtitleSettings) && !showSeekPreview,
                     enter = fadeIn(),
@@ -912,8 +963,7 @@ fun VideoPlayerScreen(
                 ) {
                     TopGlassTitleBar(
                         title = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path),
-                        isLandscape = isLandscape,
-                        onBack = onBack
+                        isLandscape = isLandscape
                     )
                 }
 
@@ -1006,6 +1056,7 @@ fun VideoPlayerScreen(
                     )
                 }
 
+                // FIX: Bottom control row now includes back button as first item
                 AnimatedVisibility(
                     visible = !showSeekPreview && !isDraggingSeekbar,
                     enter = fadeIn(animationSpec = tween(120)),
@@ -1033,6 +1084,9 @@ fun VideoPlayerScreen(
                         horizontalArrangement = Arrangement.spacedBy((7 * scale).dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // FIX: Back button moved here from top bar — easy thumb reach
+                        BackCircle(size = smallButton, onClick = onBack)
+
                         ControlCircle("◀◀", smallButton) {
                             exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0))
                             position = exoPlayer.currentPosition
@@ -1427,11 +1481,11 @@ private fun SeekPreviewBubble(
     }
 }
 
+// FIX: TopGlassTitleBar no longer has back button — just title + 3-dot menu
 @Composable
 private fun TopGlassTitleBar(
     title: String,
-    isLandscape: Boolean,
-    onBack: () -> Unit
+    isLandscape: Boolean
 ) {
     Row(
         modifier = Modifier
@@ -1458,25 +1512,6 @@ private fun TopGlassTitleBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "← Back",
-            color = Color.White,
-            fontSize = if (isLandscape) 13.sp else 15.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier
-                .clip(RoundedCornerShape(30.dp))
-                .background(Color.White.copy(alpha = 0.11f))
-                .padding(
-                    horizontal = if (isLandscape) 10.dp else 12.dp,
-                    vertical = if (isLandscape) 5.dp else 7.dp
-                )
-                .pointerInput(Unit) {
-                    detectTapGestures { onBack() }
-                }
-        )
-
-        Spacer(modifier = Modifier.width(16.dp))
-
-        Text(
             text = title,
             color = Color.White,
             fontSize = if (isLandscape) 13.sp else 17.sp,
@@ -1490,6 +1525,42 @@ private fun TopGlassTitleBar(
             color = Color.White.copy(alpha = 0.95f),
             fontSize = if (isLandscape) 24.sp else 26.sp,
             fontWeight = FontWeight.Black
+        )
+    }
+}
+
+// FIX: New back button as a circle control matching the existing skip buttons
+@Composable
+private fun BackCircle(
+    size: androidx.compose.ui.unit.Dp,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(RoundedCornerShape(20.dp))
+            .background(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xFFFFD36A).copy(alpha = 0.18f),
+                        Color.White.copy(alpha = 0.07f),
+                        Color.Black.copy(alpha = 0.20f)
+                    )
+                )
+            )
+            .border(
+                width = 1.dp,
+                color = Color(0xFFFFD36A).copy(alpha = 0.45f),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.ArrowBack,
+            contentDescription = "Back",
+            tint = Color(0xFFFFD36A),
+            modifier = Modifier.size((size.value * 0.46f).dp)
         )
     }
 }
@@ -1508,6 +1579,7 @@ private fun TimePill(text: String) {
     )
 }
 
+// FIX: Brightness HUD — replaced emoji ☀ with Material Icon, styled to match design
 @Composable
 private fun VerticalBrightnessHud(
     value: Int,
@@ -1518,11 +1590,17 @@ private fun VerticalBrightnessHud(
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(26.dp))
-            .background(Color.Black.copy(alpha = 0.62f))
+            .background(Color.Black.copy(alpha = 0.72f))
+            .border(1.dp, Color(0xFFFFD36A).copy(alpha = 0.30f), RoundedCornerShape(26.dp))
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = "☀", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Icon(
+            imageVector = Icons.Rounded.BrightnessHigh,
+            contentDescription = "Brightness",
+            tint = Color(0xFFFFD36A),
+            modifier = Modifier.size(20.dp)
+        )
 
         Spacer(modifier = Modifier.width(9.dp))
 
@@ -1553,35 +1631,63 @@ private fun VerticalBrightnessHud(
     }
 }
 
+// FIX: Volume HUD — replaced emoji 🔊 with Material Icon, icon changes based on volume level
 @Composable
-private fun FilledCircleHud(
+private fun FilledVolumeHud(
     value: Int,
     maxValue: Int,
     color: Color,
-    icon: String,
     size: androidx.compose.ui.unit.Dp
 ) {
     val fill = (value.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f)
 
-    Box(
+    val volumeIcon = when {
+        value == 0 -> Icons.Rounded.VolumeMute
+        value < 50 -> Icons.Rounded.VolumeDown
+        else -> Icons.Rounded.VolumeUp
+    }
+
+    Row(
         modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.70f)),
-        contentAlignment = Alignment.Center
+            .clip(RoundedCornerShape(26.dp))
+            .background(Color.Black.copy(alpha = 0.72f))
+            .border(1.dp, color.copy(alpha = 0.35f), RoundedCornerShape(26.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(fill)
-                .align(Alignment.BottomCenter)
-                .background(color.copy(alpha = 0.70f))
+        Icon(
+            imageVector = volumeIcon,
+            contentDescription = "Volume",
+            tint = color,
+            modifier = Modifier.size(20.dp)
         )
 
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = icon, color = if (value > 60) Color.Black else Color.White, fontSize = 18.sp)
-            Text(text = "$value%", color = if (value > 60) Color.Black else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.width(9.dp))
+
+        Box(
+            modifier = Modifier
+                .width(9.dp)
+                .height(size)
+                .clip(RoundedCornerShape(50))
+                .background(Color.White.copy(alpha = 0.16f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(fill)
+                    .align(Alignment.BottomCenter)
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(color.copy(alpha = 0.9f), color)
+                        )
+                    )
+            )
         }
+
+        Spacer(modifier = Modifier.width(9.dp))
+
+        Text(text = "$value%", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 
