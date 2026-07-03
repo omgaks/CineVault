@@ -38,19 +38,6 @@ object CineVaultPlayerHolder {
 
 // FIX: Player screen hides system bars completely (true immersive/fullscreen)
 // NOTE: findCineActivity() already exists in Screens.kt — reused here, not redefined.
-fun Activity.enterImmersiveModeForPlayer() {
-    WindowInsetsControllerCompat(window, window.decorView).apply {
-        hide(WindowInsetsCompat.Type.systemBars())
-        systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-    }
-}
-
-// FIX: Every other screen (Home/Library/Search/Settings) shows normal system bars
-fun Activity.exitImmersiveModeForPlayer() {
-    WindowInsetsControllerCompat(window, window.decorView).apply {
-        show(WindowInsetsCompat.Type.systemBars())
-    }
-}
 
 class MainActivity : ComponentActivity() {
 
