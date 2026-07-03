@@ -53,14 +53,6 @@ import coil.compose.AsyncImage
 // FIX: This is now the ONE shared findCineActivity() for the whole app.
 // Removed the duplicate private copies from LocalVideoLibraryScreen.kt and MainActivity.kt
 // to resolve "Conflicting overloads" / "Overload resolution ambiguity" build errors.
-fun Context.findCineActivity(): Activity? {
-    var ctx = this
-    while (ctx is android.content.ContextWrapper) {
-        if (ctx is Activity) return ctx
-        ctx = ctx.baseContext
-    }
-    return null
-}
 
 @Composable
 private fun ForceCineVaultBrightness() {
