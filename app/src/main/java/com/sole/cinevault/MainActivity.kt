@@ -330,7 +330,8 @@ fun CineVaultApp() {
                         item = selectedDetail!!,
                         onBack = { selectedDetail = null },
                         onPlay = {
-                            currentEpisodeList = listOf(selectedDetail!!)
+                            // Pass full library so autoplay can find next video
+                            currentEpisodeList = libraryVideos
                             selectedMediaType = selectedDetail!!.type
                             selectedVideo = selectedDetail!!.video
                         }
@@ -348,7 +349,7 @@ fun CineVaultApp() {
                         query = searchQuery,
                         onQueryChange = { newQuery -> searchQuery = newQuery },
                         onVideoClick = { item ->
-                            currentEpisodeList = emptyList()
+                            currentEpisodeList = libraryVideos
                             selectedDetail = item
                         }
                     )
@@ -365,7 +366,7 @@ fun CineVaultApp() {
                             )
                         },
                         onItemClick = { item ->
-                            currentEpisodeList = emptyList()
+                            currentEpisodeList = libraryVideos
                             selectedDetail = item
                         },
                         onTvGroupClick = { group ->
@@ -383,11 +384,11 @@ fun CineVaultApp() {
                         videos = libraryVideos,
                         onScanRequest = { selectedTab = 1 },
                         onItemClick = { item ->
-                            currentEpisodeList = emptyList()
+                            currentEpisodeList = libraryVideos
                             selectedDetail = item
                         },
                         onPlayClick = { item ->
-                            currentEpisodeList = listOf(item)
+                            currentEpisodeList = libraryVideos
                             selectedMediaType = item.type
                             selectedVideo = item.video
                         }
