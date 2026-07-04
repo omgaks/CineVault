@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -50,9 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 
-// FIX: This is now the ONE shared findCineActivity() for the whole app.
-// Removed the duplicate private copies from LocalVideoLibraryScreen.kt and MainActivity.kt
-// to resolve "Conflicting overloads" / "Overload resolution ambiguity" build errors.
+// Single shared findCineActivity() for the whole app
 fun Context.findCineActivity(): Activity? {
     var ctx = this
     while (ctx is android.content.ContextWrapper) {
@@ -71,7 +70,6 @@ private fun ForceCineVaultBrightness() {
         activity?.window?.attributes = activity?.window?.attributes?.apply {
             screenBrightness = 1.0f
         }
-
         onDispose {
             activity?.window?.attributes = activity?.window?.attributes?.apply {
                 screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
@@ -137,7 +135,8 @@ fun CineBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
 fun HomeScreen(
     videos: List<VideoWithMetadata>,
     onScanRequest: () -> Unit,
-    onItemClick: (VideoWithMetadata) -> Unit
+    onItemClick: (VideoWithMetadata) -> Unit,
+    onPlayClick: (VideoWithMetadata) -> Unit = {}
 ) {
     ForceCineVaultBrightness()
 
@@ -158,7 +157,7 @@ fun HomeScreen(
     androidx.compose.foundation.lazy.LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF080808))
+            .background(Color(0xFF0F0F0F))
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(bottom = 30.dp)
@@ -167,7 +166,7 @@ fun HomeScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(285.dp)
+                    .height(260.dp)
                     .clip(RoundedCornerShape(30.dp))
                     .background(Color(0xFF161616))
             ) {
@@ -189,25 +188,26 @@ fun HomeScreen(
                                 colors = listOf(
                                     Color.Transparent,
                                     Color(0x66000000),
-                                    Color(0xCC080808)
+                                    Color(0xCC0F0F0F)
                                 )
                             )
                         )
                 )
 
+                // FIX: Logo reduced from 144dp to 80dp — less intrusive, more cinematic
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(16.dp)
-                        .size(144.dp)
-                        .clip(RoundedCornerShape(36.dp))
-                        .background(Color.Black.copy(alpha = 0.42f)),
+                        .padding(14.dp)
+                        .size(80.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color.Black.copy(alpha = 0.38f)),
                     contentAlignment = Alignment.Center
                 ) {
                     androidx.compose.foundation.Image(
                         painter = painterResource(id = R.drawable.cinevault_circle_logo),
                         contentDescription = "CineVault Logo",
-                        modifier = Modifier.size(117.dp)
+                        modifier = Modifier.size(64.dp)
                     )
                 }
 
@@ -219,16 +219,16 @@ fun HomeScreen(
                     Text(
                         text = "Your Cinema Library",
                         color = Color.White,
-                        fontSize = 26.sp,
+                        fontSize = 24.sp,
                         fontWeight = FontWeight.Bold
                     )
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(5.dp))
 
                     Text(
                         text = "Movies • TV Shows • Local Playback",
                         color = Color(0xFFE6E6E6),
-                        fontSize = 15.sp
+                        fontSize = 14.sp
                     )
 
                     Spacer(modifier = Modifier.height(14.dp))
@@ -264,7 +264,8 @@ fun HomeScreen(
                     items = videos.take(18),
                     mode = featuredMode,
                     onModeChange = { featuredMode = it },
-                    onItemClick = onItemClick
+                    onItemClick = onItemClick,
+                    onPlayClick = onPlayClick
                 )
             }
         } else {
@@ -308,16 +309,8 @@ fun ContinueWatchingSection(
                     .padding(3.dp),
                 horizontalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                SmallToggleChip(
-                    text = "List",
-                    selected = mode == "List",
-                    onClick = { onModeChange("List") }
-                )
-                SmallToggleChip(
-                    text = "Grid",
-                    selected = mode == "Grid",
-                    onClick = { onModeChange("Grid") }
-                )
+                SmallToggleChip(text = "List", selected = mode == "List", onClick = { onModeChange("List") })
+                SmallToggleChip(text = "Grid", selected = mode == "Grid", onClick = { onModeChange("Grid") })
             }
         }
 
@@ -376,9 +369,7 @@ fun ContinueWatchingSection(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-
                             Spacer(modifier = Modifier.height(3.dp))
-
                             ProgressBar(progress = watchedPercent)
                         }
 
@@ -403,7 +394,6 @@ fun ContinueWatchingSection(
             }
         } else {
             val gridItems = items.take(6)
-
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 gridItems.chunked(3).forEach { rowItems ->
                     Row(
@@ -412,20 +402,14 @@ fun ContinueWatchingSection(
                     ) {
                         rowItems.forEach { item ->
                             val watchedPercent = getWatchedPercent(context, item)
-
                             ResumePosterBox(
                                 item = item,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(155.dp),
+                                modifier = Modifier.weight(1f).height(155.dp),
                                 progress = watchedPercent,
                                 onClick = { onItemClick(item) }
                             )
                         }
-
-                        repeat(3 - rowItems.size) {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
+                        repeat(3 - rowItems.size) { Spacer(modifier = Modifier.weight(1f)) }
                     }
                 }
             }
@@ -456,16 +440,8 @@ private fun ResumePosterBox(
                 modifier = Modifier.fillMaxSize()
             )
         } else {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = null,
-                    tint = Color.Gray,
-                    modifier = Modifier.size(30.dp)
-                )
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(30.dp))
             }
         }
 
@@ -477,17 +453,8 @@ private fun ResumePosterBox(
                 .padding(horizontal = 7.dp, vertical = 5.dp)
         ) {
             Column {
-                Text(
-                    text = item.title,
-                    color = Color.White,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
+                Text(text = item.title, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(modifier = Modifier.height(3.dp))
-
                 ProgressBar(progress = progress, compact = true)
             }
         }
@@ -495,12 +462,8 @@ private fun ResumePosterBox(
 }
 
 @Composable
-private fun ProgressBar(
-    progress: Float,
-    compact: Boolean = false
-) {
+private fun ProgressBar(progress: Float, compact: Boolean = false) {
     val barHeight = if (compact) 3.dp else 4.dp
-
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -518,27 +481,35 @@ private fun ProgressBar(
 }
 
 @Composable
-private fun SmallToggleChip(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
+private fun SmallToggleChip(text: String, selected: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(50))
-            .background(
-                if (selected) Color(0xFFE8A020).copy(alpha = 0.85f)
-                else Color.Transparent
-            )
+            .background(if (selected) Color(0xFFE8A020).copy(alpha = 0.85f) else Color.Transparent)
             .clickable { onClick() }
             .padding(horizontal = 12.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = text,
-            color = Color.White,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold
+        Text(text = text, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+// Quick play button overlay — gold circle in bottom-right of poster
+@Composable
+private fun QuickPlayButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(Color(0xFFE8A020).copy(alpha = 0.92f))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Filled.PlayArrow,
+            contentDescription = "Play",
+            tint = Color.Black,
+            modifier = Modifier.size(22.dp)
         )
     }
 }
@@ -548,7 +519,8 @@ fun FeaturedLibrarySection(
     items: List<VideoWithMetadata>,
     mode: String,
     onModeChange: (String) -> Unit,
-    onItemClick: (VideoWithMetadata) -> Unit
+    onItemClick: (VideoWithMetadata) -> Unit,
+    onPlayClick: (VideoWithMetadata) -> Unit = {}
 ) {
     Column {
         Row(
@@ -562,7 +534,6 @@ fun FeaturedLibrarySection(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f)
             )
-
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
@@ -570,16 +541,8 @@ fun FeaturedLibrarySection(
                     .padding(3.dp),
                 horizontalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                SmallToggleChip(
-                    text = "Grid",
-                    selected = mode == "Grid",
-                    onClick = { onModeChange("Grid") }
-                )
-                SmallToggleChip(
-                    text = "List",
-                    selected = mode == "List",
-                    onClick = { onModeChange("List") }
-                )
+                SmallToggleChip(text = "Grid", selected = mode == "Grid", onClick = { onModeChange("Grid") })
+                SmallToggleChip(text = "List", selected = mode == "List", onClick = { onModeChange("List") })
             }
         }
 
@@ -587,7 +550,6 @@ fun FeaturedLibrarySection(
 
         if (mode == "Grid") {
             val gridItems = items.take(9)
-
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 gridItems.chunked(3).forEach { rowItems ->
                     Row(
@@ -595,18 +557,26 @@ fun FeaturedLibrarySection(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         rowItems.forEach { item ->
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { onItemClick(item) }
-                            ) {
-                                PosterBox(
-                                    posterUrl = item.posterUrl,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(148.dp),
-                                    videoPath = item.video.path
-                                )
+                            Column(modifier = Modifier.weight(1f)) {
+                                // Poster with quick play button
+                                Box {
+                                    PosterBox(
+                                        posterUrl = item.posterUrl,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(160.dp)
+                                            .clickable { onItemClick(item) },
+                                        videoPath = item.video.path
+                                    )
+                                    // Quick play button — bottom right corner
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .padding(6.dp)
+                                    ) {
+                                        QuickPlayButton { onPlayClick(item) }
+                                    }
+                                }
 
                                 Spacer(modifier = Modifier.height(5.dp))
 
@@ -630,20 +600,14 @@ fun FeaturedLibrarySection(
                                 }
                             }
                         }
-
-                        repeat(3 - rowItems.size) {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
+                        repeat(3 - rowItems.size) { Spacer(modifier = Modifier.weight(1f)) }
                     }
                 }
             }
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items.take(10).forEach { item ->
-                    LibraryCard(
-                        item = item,
-                        onClick = { onItemClick(item) }
-                    )
+                    LibraryCard(item = item, onClick = { onItemClick(item) })
                 }
             }
         }
@@ -657,55 +621,26 @@ fun HomeRow(
     onItemClick: (VideoWithMetadata) -> Unit
 ) {
     val context = LocalContext.current
-
     Column {
-        Text(
-            text = title,
-            color = Color.White,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold
-        )
-
+        Text(text = title, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(14.dp))
-
         LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             items(items) { item ->
                 val watchedPercent = getWatchedPercent(context, item)
-
                 Column(
-                    modifier = Modifier
-                        .width(145.dp)
-                        .clickable { onItemClick(item) }
+                    modifier = Modifier.width(145.dp).clickable { onItemClick(item) }
                 ) {
                     PosterBox(
                         posterUrl = item.posterUrl,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(180.dp),
+                        modifier = Modifier.fillMaxWidth().height(180.dp),
                         progress = watchedPercent,
                         videoPath = item.video.path
                     )
-
                     Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        text = item.title,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        fontWeight = FontWeight.SemiBold
-                    )
-
+                    Text(text = item.title, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                     if (item.subtitle.isNotBlank()) {
-                        Text(
-                            text = item.subtitle,
-                            color = Color(0xFF888888),
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Text(text = item.subtitle, color = Color(0xFF888888), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-
                     if (watchedPercent > 0f) {
                         Spacer(modifier = Modifier.height(5.dp))
                         ProgressBar(progress = watchedPercent)
@@ -725,16 +660,15 @@ fun SearchScreen(
 ) {
     ForceCineVaultBrightness()
 
-    val filteredVideos =
-        videos.filter {
-            it.title.contains(query, ignoreCase = true) ||
-                    it.video.name.contains(query, ignoreCase = true)
-        }
+    val filteredVideos = videos.filter {
+        it.title.contains(query, ignoreCase = true) ||
+                it.video.name.contains(query, ignoreCase = true)
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF080808))
+            .background(Color(0xFF0F0F0F))
             .padding(16.dp)
     ) {
         OutlinedTextField(
@@ -758,52 +692,24 @@ fun SearchScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(filteredVideos) { videoItem ->
-                SearchPosterCard(
-                    item = videoItem,
-                    onClick = { onVideoClick(videoItem) }
-                )
+                SearchPosterCard(item = videoItem, onClick = { onVideoClick(videoItem) })
             }
         }
     }
 }
 
 @Composable
-private fun SearchPosterCard(
-    item: VideoWithMetadata,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-    ) {
+private fun SearchPosterCard(item: VideoWithMetadata, onClick: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().clickable { onClick() }) {
         PosterBox(
             posterUrl = item.posterUrl,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(210.dp),
+            modifier = Modifier.fillMaxWidth().height(210.dp),
             videoPath = item.video.path
         )
-
         Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = item.title,
-            color = Color.White,
-            fontSize = 11.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            fontWeight = FontWeight.SemiBold
-        )
-
+        Text(text = item.title, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
         if (item.subtitle.isNotBlank()) {
-            Text(
-                text = item.subtitle,
-                color = Color(0xFF888888),
-                fontSize = 10.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Text(text = item.subtitle, color = Color(0xFF888888), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -817,26 +723,13 @@ fun PosterBox(
 ) {
     val context = LocalContext.current
 
-    var localBitmap by remember(videoPath) {
-        mutableStateOf<android.graphics.Bitmap?>(null)
-    }
-
-    var thumbnailFailed by remember(videoPath) {
-        mutableStateOf(false)
-    }
+    var localBitmap by remember(videoPath) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var thumbnailFailed by remember(videoPath) { mutableStateOf(false) }
 
     LaunchedEffect(posterUrl, videoPath) {
         if (posterUrl.isNullOrBlank() && !videoPath.isNullOrBlank() && !thumbnailFailed) {
-            val bitmap = VideoThumbnailHelper.generateLocalThumbnail(
-                context = context,
-                videoPath = videoPath
-            )
-
-            if (bitmap != null) {
-                localBitmap = bitmap
-            } else {
-                thumbnailFailed = true
-            }
+            val bitmap = VideoThumbnailHelper.generateLocalThumbnail(context = context, videoPath = videoPath)
+            if (bitmap != null) localBitmap = bitmap else thumbnailFailed = true
         }
     }
 
@@ -847,36 +740,14 @@ fun PosterBox(
     ) {
         when {
             !posterUrl.isNullOrBlank() -> {
-                AsyncImage(
-                    model = posterUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
+                AsyncImage(model = posterUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }
-
             localBitmap != null -> {
-                Image(
-                    bitmap = localBitmap!!.asImageBitmap(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
+                Image(bitmap = localBitmap!!.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }
-
             else -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color(0xFF111111)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = null,
-                        tint = Color(0xFF444444),
-                        modifier = Modifier.size(42.dp)
-                    )
+                Box(modifier = Modifier.fillMaxSize().background(Color(0xFF111111)), contentAlignment = Alignment.Center) {
+                    Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null, tint = Color(0xFF444444), modifier = Modifier.size(42.dp))
                 }
             }
         }
@@ -886,11 +757,7 @@ fun PosterBox(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.65f)
-                        )
+                        colors = listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.65f))
                     )
                 )
         )
@@ -903,12 +770,7 @@ fun PosterBox(
                     .height(4.dp)
                     .background(Color.White.copy(alpha = 0.15f))
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(progress.coerceIn(0f, 1f))
-                        .fillMaxHeight()
-                        .background(Color(0xFFE8A020))
-                )
+                Box(modifier = Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(Color(0xFFE8A020)))
             }
         }
     }
@@ -917,30 +779,25 @@ fun PosterBox(
 @Composable
 fun LibraryGridCard(
     item: VideoWithMetadata,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onPlayClick: (VideoWithMetadata) -> Unit = {}
 ) {
     val context = LocalContext.current
     val badges = mediaBadgesFromName(item.video.name)
     val watchedPercent = getWatchedPercent(context, item)
 
-    Column(
-        modifier = Modifier.clickable { onClick() }
-    ) {
+    Column(modifier = Modifier.clickable { onClick() }) {
         Box {
             PosterBox(
                 posterUrl = item.posterUrl,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(138.dp),
+                modifier = Modifier.fillMaxWidth().height(160.dp),
                 progress = watchedPercent,
                 videoPath = item.video.path
             )
 
             if (badges.isNotEmpty()) {
                 LazyRow(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(8.dp),
+                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     items(items = badges) { badge ->
@@ -980,34 +837,22 @@ fun LibraryGridCard(
                     .background(Color.Black.copy(alpha = 0.26f))
                     .padding(horizontal = 7.dp, vertical = 5.dp)
             ) {
-                Text(
-                    text = item.title,
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Bold
-                )
-
+                Text(text = item.title, color = Color.White, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
                 if (item.subtitle.isNotBlank()) {
-                    Text(
-                        text = item.subtitle,
-                        color = Color.White.copy(alpha = 0.65f),
-                        fontSize = 9.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Text(text = item.subtitle, color = Color.White.copy(alpha = 0.65f), fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+            }
+
+            // Quick play button — bottom right
+            Box(modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp)) {
+                QuickPlayButton { onPlayClick(item) }
             }
         }
     }
 }
 
 @Composable
-fun LibraryCard(
-    item: VideoWithMetadata,
-    onClick: () -> Unit
-) {
+fun LibraryCard(item: VideoWithMetadata, onClick: () -> Unit) {
     val context = LocalContext.current
     val watchedPercent = getWatchedPercent(context, item)
 
@@ -1022,9 +867,7 @@ fun LibraryCard(
     ) {
         PosterBox(
             posterUrl = item.posterUrl,
-            modifier = Modifier
-                .width(72.dp)
-                .height(106.dp),
+            modifier = Modifier.width(72.dp).height(106.dp),
             progress = watchedPercent,
             videoPath = item.video.path
         )
@@ -1032,54 +875,26 @@ fun LibraryCard(
         Spacer(modifier = Modifier.width(14.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = item.title,
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-
+            Text(text = item.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = item.subtitle.ifBlank { item.video.name },
-                color = Color(0xFF888888),
-                fontSize = 13.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+            Text(text = item.subtitle.ifBlank { item.video.name }, color = Color(0xFF888888), fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
 
             if (watchedPercent > 0f) {
                 Spacer(modifier = Modifier.height(8.dp))
                 ProgressBar(progress = watchedPercent)
                 Spacer(modifier = Modifier.height(5.dp))
-                Text(
-                    text = "${(watchedPercent * 100).toInt().coerceIn(1, 99)}% watched",
-                    color = Color(0xFFE8A020),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Text(text = "${(watchedPercent * 100).toInt().coerceIn(1, 99)}% watched", color = Color(0xFFE8A020), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             }
 
             if ((item.rating ?: 0.0) > 0.0) {
                 Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "★ ${String.format("%.1f", item.rating)}",
-                    color = Color(0xFFE8A020),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Text(text = "★ ${String.format("%.1f", item.rating)}", color = Color(0xFFE8A020), fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
 }
 
-private fun getWatchedPercent(
-    context: Context,
-    item: VideoWithMetadata
-): Float {
+private fun getWatchedPercent(context: Context, item: VideoWithMetadata): Float {
     val savedPosition = loadPlaybackPosition(context, item.video.path)
     if (savedPosition <= 15_000L) return 0f
     val estimatedDuration = 90L * 60L * 1000L
@@ -1105,21 +920,12 @@ fun mediaBadgesFromName(fileName: String): List<String> {
     val lower = fileName.lowercase()
     val badges = mutableListOf<String>()
 
-    if (lower.contains("3d") || lower.contains("sbs") ||
-        lower.contains("hsbs") || lower.contains("half sbs") ||
-        lower.contains("ou")) badges.add("3D")
-
-    if (lower.contains("hevc") || lower.contains("x265") ||
-        lower.contains("h265")) badges.add("HEVC")
-
-    if (lower.contains("2160p") || lower.contains("4k")) {
-        badges.add("4K")
-    } else if (lower.contains("1080p")) {
-        badges.add("1080p")
-    } else if (lower.contains("720p")) {
-        badges.add("720p")
-    }
-
+    if (lower.contains("3d") || lower.contains("sbs") || lower.contains("hsbs") ||
+        lower.contains("half sbs") || lower.contains("ou")) badges.add("3D")
+    if (lower.contains("hevc") || lower.contains("x265") || lower.contains("h265")) badges.add("HEVC")
+    if (lower.contains("2160p") || lower.contains("4k")) badges.add("4K")
+    else if (lower.contains("1080p")) badges.add("1080p")
+    else if (lower.contains("720p")) badges.add("720p")
     if (lower.contains("hdr")) badges.add("HDR")
     if (lower.contains("atmos")) badges.add("ATMOS")
 
