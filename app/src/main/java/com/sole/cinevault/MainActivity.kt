@@ -360,14 +360,16 @@ fun CineVaultApp() {
                         videos = libraryVideos,
                         onVideosLoaded = { loadedVideos ->
                             libraryVideos = loadedVideos
-                            saveLibraryCache(
-                                context = context,
-                                videos = loadedVideos
-                            )
+                            saveLibraryCache(context = context, videos = loadedVideos)
                         },
                         onItemClick = { item ->
                             currentEpisodeList = libraryVideos
                             selectedDetail = item
+                        },
+                        onPlayClick = { item ->
+                            currentEpisodeList = libraryVideos
+                            selectedMediaType = item.type
+                            selectedVideo = item.video
                         },
                         onTvGroupClick = { group ->
                             selectedTvGroup = group
