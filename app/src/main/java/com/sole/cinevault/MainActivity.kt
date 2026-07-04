@@ -385,6 +385,11 @@ fun CineVaultApp() {
                         onItemClick = { item ->
                             currentEpisodeList = emptyList()
                             selectedDetail = item
+                        },
+                        onPlayClick = { item ->
+                            currentEpisodeList = listOf(item)
+                            selectedMediaType = item.type
+                            selectedVideo = item.video
                         }
                     )
                 }
