@@ -357,21 +357,22 @@ fun LocalVideoLibraryScreen(
                             }
                         }
 
-                        // Expanded folder contents — 3-column grid
+                        // Expanded folder contents — respects isGridMode toggle
                         if (expandedFolders.contains(folder.folderPath)) {
-                            items(items = folder.videos, key = { it.video.path }) { item ->
-                                LibraryGridCard(
-                                    item = item,
-                                    onClick = { onItemClick(item) }
-                                )
-                            }
-
-                            // Fill remaining columns if last row isn't complete
-                            val remainder = folder.videos.size % 3
-                            if (remainder != 0) {
-                                val fillers = 3 - remainder
-                                repeat(fillers) {
-                                    item { Spacer(modifier = Modifier.fillMaxWidth()) }
+                            if (isGridMode) {
+                                items(items = folder.videos, key = { it.video.path }) { item ->
+                                    LibraryGridCard(item = item, onClick = { onItemClick(item) })
+                                }
+                                // Fill remaining columns if last row isn't complete
+                                val remainder = folder.videos.size % 3
+                                if (remainder != 0) {
+                                    repeat(3 - remainder) {
+                                        item { Spacer(modifier = Modifier.fillMaxWidth()) }
+                                    }
+                                }
+                            } else {
+                                items(items = folder.videos, key = { it.video.path }, span = { GridItemSpan(maxLineSpan) }) { item ->
+                                    LibraryCard(item = item, onClick = { onItemClick(item) })
                                 }
                             }
                         }
