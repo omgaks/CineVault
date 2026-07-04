@@ -75,6 +75,7 @@ fun LocalVideoLibraryScreen(
     videos: List<VideoWithMetadata>,
     onVideosLoaded: (List<VideoWithMetadata>) -> Unit,
     onItemClick: (VideoWithMetadata) -> Unit,
+    onPlayClick: (VideoWithMetadata) -> Unit = {},
     onTvGroupClick: (TvGroup) -> Unit,
     onSecretChanged: () -> Unit = {}
 ) {
@@ -361,7 +362,7 @@ fun LocalVideoLibraryScreen(
                         if (expandedFolders.contains(folder.folderPath)) {
                             if (isGridMode) {
                                 items(items = folder.videos, key = { it.video.path }) { item ->
-                                    LibraryGridCard(item = item, onClick = { onItemClick(item) })
+                                    LibraryGridCard(item = item, onClick = { onItemClick(item) }, onPlayClick = onPlayClick)
                                 }
                                 // Fill remaining columns if last row isn't complete
                                 val remainder = folder.videos.size % 3
@@ -428,7 +429,7 @@ fun LocalVideoLibraryScreen(
                 if (isGridMode) {
                     items(items = filteredVideos, key = { it.video.path }) { item ->
                         Box(modifier = Modifier.fillMaxWidth()) {
-                            LibraryGridCard(item = item, onClick = { onItemClick(item) })
+                            LibraryGridCard(item = item, onClick = { onItemClick(item) }, onPlayClick = onPlayClick)
                             Box(modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(34.dp).clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.66f)).clickable { actionMenuItem = item; actionMenuExpanded = true }, contentAlignment = Alignment.Center) {
                                 Text(text = "⋮", color = Color(0xFFFFD54F), fontSize = 22.sp, fontWeight = FontWeight.Black)
                             }
