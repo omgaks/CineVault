@@ -180,17 +180,12 @@ fun VideoPlayerScreen(
     val isStreamMedia = currentMediaType.equals("stream", ignoreCase = true)
 
     // SRT FILE PICKER — launches system file browser filtered to .srt
+    // Uses a state variable to trigger load after the local fun is defined
+    var pendingSrtUri by remember { mutableStateOf<Uri?>(null) }
     val srtPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
-            subtitlesEnabled = true
-            trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-            autoSubtitleStatus = "SRT loaded"
-            playCurrentVideoWithSubtitle(subtitleUri = uri, resumePosition = resumeAt)
-            scope.launch { delay(1400); autoSubtitleStatus = "" }
-            showSubtitleSettings = false; showControls = true
-            Toast.makeText(context, "SRT file loaded", Toast.LENGTH_SHORT).show()
+            try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
+            pendingSrtUri = uri
         }
     }
 
@@ -451,6 +446,20 @@ fun VideoPlayerScreen(
     LaunchedEffect(showSubtitleSettings, subtitleMenuTouchKey) { if (showSubtitleSettings) { delay(9000); showSubtitleSettings = false } }
     LaunchedEffect(brightnessGestureKey) { if (brightnessGestureKey > 0) { delay(1400); showBrightnessCircle = false } }
     LaunchedEffect(volumeGestureKey) { if (volumeGestureKey > 0) { delay(1400); showVolumeCircle = false } }
+
+    // Handle SRT file picked from system file browser
+    LaunchedEffect(pendingSrtUri) {
+        val uri = pendingSrtUri ?: return@LaunchedEffect
+        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+        subtitlesEnabled = true
+        trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
+        autoSubtitleStatus = "SRT loaded"
+        playCurrentVideoWithSubtitle(subtitleUri = uri, resumePosition = resumeAt)
+        showSubtitleSettings = false; showControls = true
+        Toast.makeText(context, "SRT file loaded", Toast.LENGTH_SHORT).show()
+        delay(1400); autoSubtitleStatus = ""
+        pendingSrtUri = null
+    }
 
     LaunchedEffect(playerViewForSubtitleStyle, subtitleTextSizeSp, subtitleBottomPadding) {
         val sv = playerViewForSubtitleStyle?.subtitleView
