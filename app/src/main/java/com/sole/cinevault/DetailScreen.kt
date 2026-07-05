@@ -3,6 +3,7 @@ package com.sole.cinevault
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,7 +17,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -26,8 +29,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -56,6 +62,11 @@ fun DetailScreen(
     // Resume position
     val savedPosition = remember { loadPlaybackPosition(context, item.video.path) }
     val hasResumePosition = savedPosition > 15_000L
+
+    // TRAILER: open YouTube search for this title's trailer
+    val trailerSearchUrl = remember(item.title) {
+        "https://www.youtube.com/results?search_query=${Uri.encode("${item.title} official trailer")}"
+    }
 
     var castList by remember(item.video.path) {
         mutableStateOf(loadCastCache(context, item.tmdbId, item.type))
@@ -193,38 +204,39 @@ fun DetailScreen(
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // Play / Resume buttons
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Play / Resume / Trailer buttons
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
                     if (hasResumePosition) {
-                        // Resume button — primary gold
-                        Button(
-                            onClick = onPlay,
-                            shape = RoundedCornerShape(40.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFE8A020),
-                                contentColor = Color.Black
-                            ),
-                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
-                        ) {
+                        Button(onClick = onPlay, shape = RoundedCornerShape(40.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE8A020), contentColor = Color.Black),
+                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)) {
                             Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Resume ${formatResumeTime(savedPosition)}", fontWeight = FontWeight.Black, fontSize = 14.sp)
                         }
                     } else {
-                        // Play button — primary gold
-                        Button(
-                            onClick = onPlay,
-                            shape = RoundedCornerShape(40.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFE8A020),
-                                contentColor = Color.Black
-                            ),
-                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp)
-                        ) {
+                        Button(onClick = onPlay, shape = RoundedCornerShape(40.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE8A020), contentColor = Color.Black),
+                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp)) {
                             Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Play", fontWeight = FontWeight.Black, fontSize = 14.sp)
                         }
+                    }
+
+                    // Trailer button — always shows, opens YouTube search
+                    Button(
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(trailerSearchUrl))
+                            context.startActivity(intent)
+                        },
+                        shape = RoundedCornerShape(40.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.14f), contentColor = Color.White),
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
+                    ) {
+                        Icon(imageVector = Icons.Filled.VideoLibrary, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Trailer", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                 }
 
@@ -277,6 +289,7 @@ fun DetailScreen(
 
 // ── Rating badge composables ──────────────────────────────────────────────────
 
+// TMDB badge — dark navy with green TMDB text + star icon
 @Composable
 private fun TmdbBadge(value: String) {
     Row(
@@ -285,13 +298,23 @@ private fun TmdbBadge(value: String) {
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // TMDB logo — blue/teal squares approximated with text
-        Text(text = "TMDB", color = Color(0xFF01D277), fontSize = 10.sp, fontWeight = FontWeight.Black)
+        // TMDB logo — drawn as colored blocks to match brand
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(3.dp))
+                .background(Color(0xFF01D277))
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+        ) {
+            Text(text = "TMDB", color = Color(0xFF032541), fontSize = 8.sp, fontWeight = FontWeight.Black)
+        }
         Spacer(modifier = Modifier.width(6.dp))
+        Icon(imageVector = Icons.Rounded.Star, contentDescription = null, tint = Color(0xFF01D277), modifier = Modifier.size(12.dp))
+        Spacer(modifier = Modifier.width(3.dp))
         Text(text = value, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 
+// IMDb badge — yellow background, black text, classic style
 @Composable
 private fun ImdbBadge(value: String) {
     Row(
@@ -302,16 +325,18 @@ private fun ImdbBadge(value: String) {
     ) {
         Text(text = "IMDb", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Black)
         Spacer(modifier = Modifier.width(6.dp))
+        Icon(imageVector = Icons.Rounded.Star, contentDescription = null, tint = Color.Black, modifier = Modifier.size(12.dp))
+        Spacer(modifier = Modifier.width(3.dp))
         Text(text = value, color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 
+// Rotten Tomatoes badge — drawn tomato icon using Canvas
 @Composable
 private fun RottenTomatoesBadge(value: String) {
-    // Determine fresh (>=60%) or rotten (<60%)
     val percent = value.replace("%", "").trim().toIntOrNull() ?: 0
     val isFresh = percent >= 60
-    val bgColor = if (isFresh) Color(0xFFFA320A) else Color(0xFF2D7D46)
+    val bgColor = if (isFresh) Color(0xFFFA320A) else Color(0xFF4A7C59)
 
     Row(
         modifier = Modifier.clip(RoundedCornerShape(8.dp))
@@ -319,8 +344,22 @@ private fun RottenTomatoesBadge(value: String) {
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Tomato icon — drawn with emoji for simplicity
-        Text(text = if (isFresh) "🍅" else "🦠", fontSize = 11.sp)
+        // Drawn tomato / splat icon
+        Canvas(modifier = Modifier.size(16.dp)) {
+            val cx = size.width / 2f; val cy = size.height / 2f; val r = size.width * 0.38f
+            if (isFresh) {
+                // Fresh tomato — red circle with green stem
+                drawCircle(color = Color(0xFFFF6B47), radius = r, center = Offset(cx, cy + 2f))
+                drawCircle(color = Color(0xFFCC2200), radius = r * 0.7f, center = Offset(cx - r * 0.2f, cy + 2f))
+                // Stem
+                val path = Path().apply { moveTo(cx, cy - r * 0.3f); lineTo(cx - 2f, cy - r); lineTo(cx + 2f, cy - r) }
+                drawPath(path, color = Color(0xFF2E7D32), style = Fill)
+            } else {
+                // Rotten splat — green blob
+                drawCircle(color = Color(0xFF8BC34A).copy(alpha = 0.9f), radius = r, center = Offset(cx, cy))
+                drawCircle(color = Color(0xFF558B2F), radius = r * 0.5f, center = Offset(cx + r * 0.2f, cy - r * 0.1f))
+            }
+        }
         Spacer(modifier = Modifier.width(5.dp))
         Text(text = value, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
