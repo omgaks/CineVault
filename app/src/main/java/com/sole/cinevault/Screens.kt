@@ -897,8 +897,10 @@ fun LibraryCard(item: VideoWithMetadata, onClick: () -> Unit) {
 private fun getWatchedPercent(context: Context, item: VideoWithMetadata): Float {
     val savedPosition = loadPlaybackPosition(context, item.video.path)
     if (savedPosition <= 15_000L) return 0f
-    val estimatedDuration = 90L * 60L * 1000L
-    return (savedPosition.toFloat() / estimatedDuration.toFloat()).coerceIn(0.03f, 0.98f)
+    // Use real saved duration if available, fall back to 90min estimate
+    val realDuration = loadDuration(context, item.video.path)
+    val duration = if (realDuration > 60_000L) realDuration else 90L * 60L * 1000L
+    return (savedPosition.toFloat() / duration.toFloat()).coerceIn(0.03f, 0.98f)
 }
 
 fun groupTvShows(videos: List<VideoWithMetadata>): List<TvGroup> {
