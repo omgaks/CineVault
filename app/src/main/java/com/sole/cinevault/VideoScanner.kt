@@ -1,293 +1,135 @@
 package com.sole.cinevault
 
-import android.content.ContentUris
 import android.content.Context
-import android.net.Uri
-import android.provider.DocumentsContract
 import android.provider.MediaStore
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 
-suspend fun scanDeviceVideos(
-    context: Context
-): List<VideoWithMetadata> = withContext(Dispatchers.IO) {
+suspend fun scanDeviceVideos(context: Context): List<VideoWithMetadata> =
+    withContext(Dispatchers.IO) {
+        val results = mutableListOf<VideoFile>()
 
-    val videoList = mutableListOf<VideoWithMetadata>()
+        val projection = arrayOf(
+            MediaStore.Video.Media._ID,
+            MediaStore.Video.Media.DISPLAY_NAME,
+            MediaStore.Video.Media.DATA,
+            MediaStore.Video.Media.DURATION,
+            MediaStore.Video.Media.SIZE
+        )
 
-    val scannedCache = loadScannedVideoPaths(context).toMutableSet()
-    val newScannedPaths = mutableSetOf<String>()
+        // Only videos longer than 10 minutes (600,000ms) and larger than 50MB
+        // This filters out camera clips, WhatsApp videos, screen recordings etc.
+        val selection =
+            "${MediaStore.Video.Media.DURATION} >= ? AND ${MediaStore.Video.Media.SIZE} >= ?"
+        val selectionArgs = arrayOf(
+            "600000",           // 10 minutes in ms
+            "${50 * 1024 * 1024}" // 50 MB
+        )
 
-    scanMediaStoreVideos(
-        context = context,
-        videoList = videoList,
-        scannedCache = scannedCache,
-        newScannedPaths = newScannedPaths
-    )
-
-    scanCustomFolderVideos(
-        context = context,
-        videoList = videoList,
-        scannedCache = scannedCache,
-        newScannedPaths = newScannedPaths
-    )
-
-    saveScannedVideoPaths(
-        context = context,
-        paths = scannedCache + newScannedPaths
-    )
-
-    videoList.distinctBy { it.video.path }
-}
-
-private fun scanMediaStoreVideos(
-    context: Context,
-    videoList: MutableList<VideoWithMetadata>,
-    scannedCache: Set<String>,
-    newScannedPaths: MutableSet<String>
-) {
-    val projection = arrayOf(
-        MediaStore.Video.Media._ID,
-        MediaStore.Video.Media.DISPLAY_NAME,
-        MediaStore.Video.Media.RELATIVE_PATH,
-        MediaStore.Video.Media.DATE_ADDED
-    )
-
-    val cursor = context.contentResolver.query(
-        MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-        projection,
-        null,
-        null,
-        "${MediaStore.Video.Media.DATE_ADDED} DESC"
-    )
-
-    cursor?.use { cursorData ->
-
-        val idColumn =
-            cursorData.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
-
-        val nameColumn =
-            cursorData.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
-
-        val relativePathColumn =
-            cursorData.getColumnIndex(MediaStore.Video.Media.RELATIVE_PATH)
-
-        while (cursorData.moveToNext()) {
-
-            val id = cursorData.getLong(idColumn)
-
-            val contentUri =
-                ContentUris.withAppendedId(
-                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                    id
-                )
-
-            val name =
-                cursorData.getString(nameColumn)
-                    ?: "Video_$id.mp4"
-
-            val folderPath =
-                if (relativePathColumn >= 0) {
-                    cursorData.getString(relativePathColumn) ?: ""
-                } else {
-                    ""
-                }
-
-            val scanCheckPath = "$folderPath$name"
-
-            if (shouldSkipCineVaultScanPath(scanCheckPath)) {
-                continue
-            }
-
-            if (!isVideoAllowedByScanSources(context, scanCheckPath)) {
-                continue
-            }
-
-            if (scannedCache.contains(scanCheckPath)) {
-                continue
-            }
-
-            videoList.add(
-                createVideoMetadataItem(
-                    name = name,
-                    path = contentUri.toString(),
-                    folderPath = folderPath
-                )
-            )
-
-            newScannedPaths.add(scanCheckPath)
-        }
-    }
-}
-
-private fun scanCustomFolderVideos(
-    context: Context,
-    videoList: MutableList<VideoWithMetadata>,
-    scannedCache: Set<String>,
-    newScannedPaths: MutableSet<String>
-) {
-    val customFolders = loadCustomScanFolders(context)
-
-    customFolders.forEach { folderUriString ->
+        val sortOrder = "${MediaStore.Video.Media.DISPLAY_NAME} ASC"
 
         try {
-            val folderUri = Uri.parse(folderUriString)
+            context.contentResolver.query(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                projection,
+                selection,
+                selectionArgs,
+                sortOrder
+            )?.use { cursor ->
+                val dataCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA)
+                val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
+                val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
 
-            val childrenUri =
-                DocumentsContract.buildChildDocumentsUriUsingTree(
-                    folderUri,
-                    DocumentsContract.getTreeDocumentId(folderUri)
-                )
+                while (cursor.moveToNext()) {
+                    val path = cursor.getString(dataCol) ?: continue
+                    val name = cursor.getString(nameCol) ?: continue
+                    val size = cursor.getLong(sizeCol)
 
-            val cursor =
-                context.contentResolver.query(
-                    childrenUri,
-                    arrayOf(
-                        DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-                        DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-                        DocumentsContract.Document.COLUMN_MIME_TYPE
-                    ),
-                    null,
-                    null,
-                    null
-                )
+                    // Skip if file doesn't actually exist
+                    if (!File(path).exists()) continue
 
-            cursor?.use { cursorData ->
+                    // Skip obvious personal/camera files by name pattern
+                    if (isPersonalVideo(name)) continue
 
-                val idColumn =
-                    cursorData.getColumnIndexOrThrow(
-                        DocumentsContract.Document.COLUMN_DOCUMENT_ID
-                    )
+                    // Skip scan sources exclusions (user-configured hidden folders)
+                    if (!isVideoAllowedByScanSources(context, path)) continue
 
-                val nameColumn =
-                    cursorData.getColumnIndexOrThrow(
-                        DocumentsContract.Document.COLUMN_DISPLAY_NAME
-                    )
-
-                val mimeColumn =
-                    cursorData.getColumnIndexOrThrow(
-                        DocumentsContract.Document.COLUMN_MIME_TYPE
-                    )
-
-                while (cursorData.moveToNext()) {
-
-                    val documentId = cursorData.getString(idColumn)
-                    val name = cursorData.getString(nameColumn) ?: continue
-                    val mimeType = cursorData.getString(mimeColumn) ?: ""
-
-                    if (mimeType == DocumentsContract.Document.MIME_TYPE_DIR) {
-                        continue
-                    }
-
-                    if (!isSupportedVideoFile(name, mimeType)) {
-                        continue
-                    }
-
-                    val fileUri =
-                        DocumentsContract.buildDocumentUriUsingTree(
-                            folderUri,
-                            documentId
-                        )
-
-                    val scanCheckPath = "$folderUriString/$name"
-
-                    if (shouldSkipCineVaultScanPath(scanCheckPath)) {
-                        continue
-                    }
-
-                    if (scannedCache.contains(scanCheckPath)) {
-                        continue
-                    }
-
-                    videoList.add(
-                        createVideoMetadataItem(
+                    results.add(
+                        VideoFile(
+                            path = path,
                             name = name,
-                            path = fileUri.toString(),
-                            folderPath = folderUriString
+                            size = size
                         )
                     )
-
-                    newScannedPaths.add(scanCheckPath)
                 }
             }
-
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("CineVault", "Scan failed: ${e.message}", e)
         }
+
+        // Convert to VideoWithMetadata with basic info
+        results.map { videoFile ->
+            VideoWithMetadata(
+                video = videoFile,
+                title = cleanScannedTitle(videoFile.name),
+                subtitle = "",
+                posterUrl = null,
+                backdropUrl = null,
+                overview = null,
+                rating = null,
+                type = guessMediaType(videoFile.name)
+            )
+        }
+    }
+
+// Only block obviously personal/camera content by filename pattern
+// Much less aggressive than before — only blocks clear non-movie files
+private fun isPersonalVideo(fileName: String): Boolean {
+    val lower = fileName.lowercase()
+    return when {
+        // Camera roll patterns
+        lower.matches(Regex("^(vid|img|dsc|dcim|cam)_\\d{8}_\\d{6}.*")) -> true
+        lower.matches(Regex("^\\d{8}_\\d{6}.*")) -> true // bare timestamp
+        lower.startsWith("whatsapp video") -> true
+        lower.startsWith("whatsapp animated gif") -> true
+        lower.contains("received_") -> true
+        lower.startsWith("screen_record") || lower.startsWith("screenrecord") -> true
+        lower.startsWith("instagram_") -> true
+        lower.startsWith("snapchat-") -> true
+        lower.startsWith("tiktok_") -> true
+        else -> false
     }
 }
 
-private fun createVideoMetadataItem(
-    name: String,
-    path: String,
-    folderPath: String
-): VideoWithMetadata {
+private fun cleanScannedTitle(fileName: String): String {
+    var title = fileName.substringBeforeLast(".")
+        .replace(Regex("\\[.*?]"), " ")
+        .replace(Regex("\\(\\d{4}\\)"), " ")
+        .replace(".", " ").replace("_", " ").replace("-", " ")
 
-    val episodeInfo = extractEpisodeInfo(name)
-    val isTv = episodeInfo != null
-
-    val cleanedTitle =
-        if (isTv) {
-            episodeInfo?.showName ?: cleanMovieFilename(name)
-        } else {
-            cleanMovieFilename(name)
-        }
-
-    return VideoWithMetadata(
-        video = VideoFile(
-            name = name,
-            path = path,
-            folderPath = folderPath
-        ),
-        title = cleanedTitle,
-        subtitle =
-            if (isTv && episodeInfo != null) {
-                "S${episodeInfo.season.toString().padStart(2, '0')}E${episodeInfo.episode.toString().padStart(2, '0')}"
-            } else {
-                "Movie"
-            },
-        posterUrl = null,
-        backdropUrl = null,
-        episodeStill = null,
-        overview = "",
-        rating = 0.0,
-        imdbRating = null,
-        rottenTomatoesRating = null,
-        tmdbId = null,
-        type = if (isTv) "tv" else "movie"
+    // Strip common release tags
+    title = title.replace(
+        Regex(
+            "\\b(2160p|1080p|720p|480p|4k|uhd|hdr10\\+?|hdr|dv|dolby|vision|imax|remux|" +
+            "bluray|blu.?ray|brrip|hdrip|webrip|web.?dl|webdl|web|nf|amzn|dsnp|hulu|" +
+            "x264|x265|h264|h265|hevc|10bit|8bit|aac|ddp|dts|truehd|atmos|" +
+            "yts|rarbg|tgx|eztv|pir8|proper|repack|extended|theatrical|" +
+            "directors?.?cut|multi|dual|eng|hindi|ita|mkv|mp4|avi|subs?)\\b",
+            RegexOption.IGNORE_CASE
+        ), " "
     )
+    title = title.replace(Regex("\\bS\\d{1,2}E\\d{1,2}\\b", RegexOption.IGNORE_CASE), " ")
+    title = title.replace(Regex("\\b(19|20)\\d{2}\\b.*$"), " ")
+    return title.replace(Regex("\\s+"), " ").trim().ifBlank { fileName.substringBeforeLast(".") }
 }
 
-private fun isSupportedVideoFile(
-    name: String,
-    mimeType: String
-): Boolean {
-    val lower = name.lowercase()
-
-    return mimeType.startsWith("video/") ||
-            lower.endsWith(".mp4") ||
-            lower.endsWith(".mkv") ||
-            lower.endsWith(".avi") ||
-            lower.endsWith(".mov") ||
-            lower.endsWith(".webm") ||
-            lower.endsWith(".m4v") ||
-            lower.endsWith(".3gp") ||
-            lower.endsWith(".ts")
-}
-
-private fun shouldSkipCineVaultScanPath(path: String): Boolean {
-    val lower = path.lowercase()
-
-    return lower.contains("/whatsapp/") ||
-            lower.contains("whatsapp video") ||
-            lower.contains("/android/media/com.whatsapp/") ||
-            lower.contains("/whatsapp business/") ||
-            lower.contains("/android/media/com.whatsapp.w4b/") ||
-            lower.contains("/telegram/") ||
-            lower.contains("/screenrecord") ||
-            lower.contains("/screen_record") ||
-            lower.contains("/screenshots/") ||
-            lower.contains("/instagram/") ||
-            lower.contains("/facebook/") ||
-            lower.contains("/cache/") ||
-            lower.contains("/temp/")
+private fun guessMediaType(fileName: String): String {
+    val lower = fileName.lowercase()
+    return when {
+        Regex("s\\d{1,2}e\\d{1,2}", RegexOption.IGNORE_CASE).containsMatchIn(lower) -> "tv"
+        lower.contains("season") || lower.contains("episode") -> "tv"
+        else -> "movie"
+    }
 }
