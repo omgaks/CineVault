@@ -9,7 +9,7 @@ import java.io.File
 
 suspend fun scanDeviceVideos(context: Context): List<VideoWithMetadata> =
     withContext(Dispatchers.IO) {
-        val results = mutableListOf<VideoFile>()
+        val results = mutableListOf<VideoWithMetadata>()
 
         val projection = arrayOf(
             MediaStore.Video.Media._ID,
@@ -19,13 +19,12 @@ suspend fun scanDeviceVideos(context: Context): List<VideoWithMetadata> =
             MediaStore.Video.Media.SIZE
         )
 
-        // Only videos longer than 10 minutes (600,000ms) and larger than 50MB
-        // This filters out camera clips, WhatsApp videos, screen recordings etc.
+        // Only videos longer than 10 minutes and larger than 50MB
         val selection =
             "${MediaStore.Video.Media.DURATION} >= ? AND ${MediaStore.Video.Media.SIZE} >= ?"
         val selectionArgs = arrayOf(
-            "600000",           // 10 minutes in ms
-            "${50 * 1024 * 1024}" // 50 MB
+            "600000",
+            "${50 * 1024 * 1024}"
         )
 
         val sortOrder = "${MediaStore.Video.Media.DISPLAY_NAME} ASC"
@@ -40,27 +39,27 @@ suspend fun scanDeviceVideos(context: Context): List<VideoWithMetadata> =
             )?.use { cursor ->
                 val dataCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA)
                 val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
-                val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
 
                 while (cursor.moveToNext()) {
                     val path = cursor.getString(dataCol) ?: continue
                     val name = cursor.getString(nameCol) ?: continue
-                    val size = cursor.getLong(sizeCol)
 
-                    // Skip if file doesn't actually exist
                     if (!File(path).exists()) continue
-
-                    // Skip obvious personal/camera files by name pattern
                     if (isPersonalVideo(name)) continue
-
-                    // Skip scan sources exclusions (user-configured hidden folders)
                     if (!isVideoAllowedByScanSources(context, path)) continue
 
+                    val videoFile = VideoFile(path = path, name = name)
+
                     results.add(
-                        VideoFile(
-                            path = path,
-                            name = name,
-                            size = size
+                        VideoWithMetadata(
+                            video = videoFile,
+                            title = cleanScannedTitle(name),
+                            subtitle = "",
+                            posterUrl = null,
+                            backdropUrl = null,
+                            overview = null,
+                            rating = null,
+                            type = guessMediaType(name)
                         )
                     )
                 }
@@ -69,29 +68,14 @@ suspend fun scanDeviceVideos(context: Context): List<VideoWithMetadata> =
             Log.e("CineVault", "Scan failed: ${e.message}", e)
         }
 
-        // Convert to VideoWithMetadata with basic info
-        results.map { videoFile ->
-            VideoWithMetadata(
-                video = videoFile,
-                title = cleanScannedTitle(videoFile.name),
-                subtitle = "",
-                posterUrl = null,
-                backdropUrl = null,
-                overview = null,
-                rating = null,
-                type = guessMediaType(videoFile.name)
-            )
-        }
+        results
     }
 
-// Only block obviously personal/camera content by filename pattern
-// Much less aggressive than before — only blocks clear non-movie files
 private fun isPersonalVideo(fileName: String): Boolean {
     val lower = fileName.lowercase()
     return when {
-        // Camera roll patterns
         lower.matches(Regex("^(vid|img|dsc|dcim|cam)_\\d{8}_\\d{6}.*")) -> true
-        lower.matches(Regex("^\\d{8}_\\d{6}.*")) -> true // bare timestamp
+        lower.matches(Regex("^\\d{8}_\\d{6}.*")) -> true
         lower.startsWith("whatsapp video") -> true
         lower.startsWith("whatsapp animated gif") -> true
         lower.contains("received_") -> true
@@ -109,7 +93,6 @@ private fun cleanScannedTitle(fileName: String): String {
         .replace(Regex("\\(\\d{4}\\)"), " ")
         .replace(".", " ").replace("_", " ").replace("-", " ")
 
-    // Strip common release tags
     title = title.replace(
         Regex(
             "\\b(2160p|1080p|720p|480p|4k|uhd|hdr10\\+?|hdr|dv|dolby|vision|imax|remux|" +
