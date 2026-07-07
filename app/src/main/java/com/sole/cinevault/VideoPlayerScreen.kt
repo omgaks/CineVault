@@ -21,9 +21,7 @@ import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
@@ -45,6 +43,11 @@ import androidx.compose.material.icons.rounded.AllInclusive
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.Replay
+import androidx.compose.material.icons.rounded.Replay10
+import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -56,10 +59,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -78,6 +83,7 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
+import com.sole.cinevault.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
@@ -601,20 +607,23 @@ fun VideoPlayerScreen(
 
         // Edge swipe hint
         AnimatedVisibility(visible = edgeSwipeHint.isNotBlank(), enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(200)), modifier = Modifier.align(Alignment.Center)) {
-            Text(text = edgeSwipeHint, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.65f)).padding(horizontal = 20.dp, vertical = 10.dp))
+            Text(text = edgeSwipeHint, color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 20.dp, vertical = 10.dp))
         }
 
         // Sleep timer remaining label — shown in top center
         if (sleepTimerActive && sleepTimerRemainingMs > 0) {
             val sleepMins = (sleepTimerRemainingMs / 60000).toInt()
             val sleepSecs = ((sleepTimerRemainingMs % 60000) / 1000).toInt()
-            Text(
-                text = "😴 %d:%02d".format(sleepMins, sleepSecs),
-                color = Color(0xFFFFD36A), fontSize = 12.sp, fontWeight = FontWeight.Bold,
+            Row(
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 56.dp)
-                    .clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.52f))
-                    .padding(horizontal = 12.dp, vertical = 5.dp)
-            )
+                    .glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong)
+                    .padding(horizontal = 12.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(imageVector = Icons.Rounded.Timer, contentDescription = null, tint = AmberCore, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(5.dp))
+                Text(text = "%d:%02d".format(sleepMins, sleepSecs), color = AmberCore, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
         }
 
         // Speed menu popup
@@ -694,7 +703,7 @@ fun VideoPlayerScreen(
                 }
 
                 AnimatedVisibility(visible = autoSubtitleStatus.isNotBlank() && !showSeekPreview, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.TopCenter).padding(top = if (isLandscape) 54.dp else 86.dp)) {
-                    Text(text = autoSubtitleStatus, color = Color(0xFFFFD36A), fontSize = if (isLandscape) 11.sp else 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.52f)).padding(horizontal = 12.dp, vertical = 6.dp))
+                    Text(text = autoSubtitleStatus, color = AmberCore, fontSize = if (isLandscape) 11.sp else 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 12.dp, vertical = 6.dp))
                 }
 
                 AnimatedVisibility(visible = showNextEpisodeOverlay && pendingNextEpisode != null && !showSeekPreview, enter = fadeIn(animationSpec = tween(140)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.Center)) {
@@ -709,64 +718,63 @@ fun VideoPlayerScreen(
                 }
 
                 AnimatedVisibility(visible = isZoomMode && !showSeekPreview, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.TopCenter).padding(top = if (isLandscape) 54.dp else 90.dp)) {
-                    Text(text = "⛶  Fill", color = Color(0xFFFFD36A), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.52f)).padding(horizontal = 12.dp, vertical = 6.dp))
+                    Text(text = "⛶  Fill", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 12.dp, vertical = 6.dp))
                 }
 
-                // Bottom control row
+                // Bottom control row — the Glass Control Deck
                 AnimatedVisibility(visible = !showSeekPreview && !isDraggingSeekbar, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(90)), modifier = Modifier.align(Alignment.BottomCenter)) {
                     Row(
                         modifier = Modifier.padding(bottom = bottomDockPadding, start = sidePadding, end = sidePadding)
-                            .clip(RoundedCornerShape(42.dp))
-                            .background(Brush.horizontalGradient(colors = listOf(Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.08f), Color.Black.copy(alpha = 0.32f))))
+                            .glassPanel(cornerRadius = 42.dp, fill = GlassSurfaceStrong)
                             .padding(horizontal = (12 * scale).dp, vertical = (6 * scale).dp),
                         horizontalArrangement = Arrangement.spacedBy((7 * scale).dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         BackIconButton(size = smallButton, onClick = onBack)
 
-                        ControlCircle("◀◀", smallButton) { exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0)); position = exoPlayer.currentPosition; showControls = true }
+                        GlassTransportButton(icon = Icons.Rounded.Replay10, size = smallButton) { exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0)); position = exoPlayer.currentPosition; showControls = true }
 
-                        ControlCircle(text = if (isPlaying) "Ⅱ" else "▶", size = playButton) {
+                        FrostedPlayButton(isPlaying = isPlaying, isEnded = isVideoEnded, size = playButton) {
                             if (isVideoEnded) { exoPlayer.seekTo(0); exoPlayer.play(); isVideoEnded = false; showControls = true }
                             else { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play(); showControls = true }
                         }
 
-                        ControlCircle("▶▶", smallButton) { exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration.coerceAtLeast(0))); position = exoPlayer.currentPosition; showControls = true }
+                        GlassTransportButton(icon = Icons.Rounded.Forward10, size = smallButton) { exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration.coerceAtLeast(0))); position = exoPlayer.currentPosition; showControls = true }
 
                         Spacer(modifier = Modifier.width((4 * scale).dp))
 
                         // Autoplay
-                        IconCircle(icon = Icons.Rounded.AllInclusive, size = smallButton, tint = if (autoPlayEnabled) Color(0xFFFFD36A) else Color.White.copy(alpha = 0.45f)) {
+                        IconCircle(icon = Icons.Rounded.AllInclusive, size = smallButton, tint = if (autoPlayEnabled) AmberCore else TextMuted.copy(alpha = 0.6f)) {
                             autoPlayEnabled = !autoPlayEnabled; showControls = true
                             Toast.makeText(context, if (autoPlayEnabled) "Autoplay on" else "Autoplay off", Toast.LENGTH_SHORT).show()
                         }
 
-                        // Speed — gold if not 1x
-                        IconCircle(icon = Icons.Rounded.Speed, size = smallButton, tint = if (playbackSpeed != 1.0f) Color(0xFFFFD36A) else Color.White) {
+                        // Speed — amber if not 1x
+                        IconCircle(icon = Icons.Rounded.Speed, size = smallButton, tint = if (playbackSpeed != 1.0f) AmberCore else TextBright) {
                             showSleepMenu = false; showTopMenu = false
                             showSpeedMenu = !showSpeedMenu; showControls = true
                         }
 
-                        // Sleep timer — gold if active
-                        IconCircle(icon = Icons.Rounded.Timer, size = smallButton, tint = if (sleepTimerActive) Color(0xFFFFD36A) else Color.White) {
+                        // Sleep timer — amber if active
+                        IconCircle(icon = Icons.Rounded.Timer, size = smallButton, tint = if (sleepTimerActive) AmberCore else TextBright) {
                             showSpeedMenu = false; showTopMenu = false
                             showSleepMenu = !showSleepMenu; showControls = true
                         }
 
                         // Audio
-                        IconCircle(icon = Icons.Rounded.Audiotrack, size = smallButton, tint = if (showAudioSelector) Color(0xFFFFD36A) else Color.White) {
+                        IconCircle(icon = Icons.Rounded.Audiotrack, size = smallButton, tint = if (showAudioSelector) AmberCore else TextBright) {
                             showSubtitleSettings = false; showAudioSelector = !showAudioSelector; showControls = true; menuTouchKey++
                         }
 
                         // Subtitles
                         if (!isStreamMedia) {
-                            IconCircle(icon = Icons.Rounded.ClosedCaption, size = smallButton, tint = if (showSubtitleSettings) Color(0xFFFFD36A) else Color.White) {
+                            IconCircle(icon = Icons.Rounded.ClosedCaption, size = smallButton, tint = if (showSubtitleSettings) AmberCore else TextBright) {
                                 showAudioSelector = false; showSubtitleSettings = !showSubtitleSettings; showControls = true; menuTouchKey++
                             }
                         }
 
                         // PiP
-                        IconCircle(icon = Icons.Rounded.Tv, size = smallButton, tint = Color.White) {
+                        IconCircle(icon = Icons.Rounded.Tv, size = smallButton, tint = TextBright) {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                 activity?.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build())
                             }
@@ -778,8 +786,7 @@ fun VideoPlayerScreen(
 
                 Column(
                     modifier = Modifier.align(Alignment.BottomCenter).padding(start = sidePadding, end = sidePadding, bottom = seekBottomPadding)
-                        .clip(RoundedCornerShape(30.dp))
-                        .background(Brush.verticalGradient(colors = listOf(Color.White.copy(alpha = 0.15f), Color.White.copy(alpha = 0.06f), Color.Black.copy(alpha = 0.35f))))
+                        .glassPanel(cornerRadius = 30.dp, fill = GlassSurface)
                         .padding(horizontal = (14 * scale).dp, vertical = (7 * scale).dp)
                 ) {
                     CinematicSeekBar(
@@ -812,16 +819,16 @@ fun VideoPlayerScreen(
 @Composable
 private fun SpeedMenuPopup(currentSpeed: Float, modifier: Modifier, onSpeedSelected: (Float) -> Unit, onDismiss: () -> Unit) {
     val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
-    Column(modifier = modifier.clip(RoundedCornerShape(16.dp)).background(Color(0xFF111111).copy(alpha = 0.96f)).padding(8.dp)) {
-        Text(text = "Speed", color = Color(0xFFFFD36A), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+    Column(modifier = modifier.glassPanel(cornerRadius = 16.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(8.dp)) {
+        Text(text = "Speed", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
         speeds.forEach { speed ->
             val selected = speed == currentSpeed
             Text(
                 text = if (speed == 1.0f) "1x  Normal" else "${speed}x",
-                color = if (selected) Color(0xFFFFD36A) else Color.White,
+                color = if (selected) AmberCore else TextBright,
                 fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
-                    .background(if (selected) Color.White.copy(alpha = 0.10f) else Color.Transparent)
+                    .background(if (selected) AmberGlow.copy(alpha = 0.14f) else Color.Transparent)
                     .clickable { onSpeedSelected(speed) }.padding(horizontal = 14.dp, vertical = 9.dp)
             )
         }
@@ -832,16 +839,16 @@ private fun SpeedMenuPopup(currentSpeed: Float, modifier: Modifier, onSpeedSelec
 @Composable
 private fun SleepMenuPopup(currentMinutes: Int, modifier: Modifier, onSelected: (Int) -> Unit, onDismiss: () -> Unit) {
     val options = listOf(0 to "Off", 15 to "15 min", 30 to "30 min", 45 to "45 min", 60 to "60 min")
-    Column(modifier = modifier.clip(RoundedCornerShape(16.dp)).background(Color(0xFF111111).copy(alpha = 0.96f)).padding(8.dp)) {
-        Text(text = "Sleep Timer", color = Color(0xFFFFD36A), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+    Column(modifier = modifier.glassPanel(cornerRadius = 16.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(8.dp)) {
+        Text(text = "Sleep Timer", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
         options.forEach { (mins, label) ->
             val selected = mins == currentMinutes
             Text(
                 text = label,
-                color = if (selected) Color(0xFFFFD36A) else Color.White,
+                color = if (selected) AmberCore else TextBright,
                 fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
-                    .background(if (selected) Color.White.copy(alpha = 0.10f) else Color.Transparent)
+                    .background(if (selected) AmberGlow.copy(alpha = 0.14f) else Color.Transparent)
                     .clickable { onSelected(mins) }.padding(horizontal = 14.dp, vertical = 9.dp)
             )
         }
@@ -851,7 +858,7 @@ private fun SleepMenuPopup(currentMinutes: Int, modifier: Modifier, onSelected: 
 // ── Top ⋮ menu ────────────────────────────────────────────────────────────────
 @Composable
 private fun TopMenuPopup(modifier: Modifier, onDeleteFile: () -> Unit, onDismiss: () -> Unit) {
-    Column(modifier = modifier.clip(RoundedCornerShape(16.dp)).background(Color(0xFF111111).copy(alpha = 0.96f)).padding(8.dp)) {
+    Column(modifier = modifier.glassPanel(cornerRadius = 16.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(8.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
                 .clickable { onDeleteFile() }.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -864,22 +871,77 @@ private fun TopMenuPopup(modifier: Modifier, onDeleteFile: () -> Unit, onDismiss
     }
 }
 
-// ── Composables ───────────────────────────────────────────────────────────────
+// ── Glass Control Deck buttons ────────────────────────────────────────────────
 
 @Composable
-private fun BackIconButton(size: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
+private fun BackIconButton(size: Dp, onClick: () -> Unit) {
     Box(modifier = Modifier.size(size).clip(RoundedCornerShape(20.dp))
-        .background(Brush.radialGradient(colors = listOf(Color(0xFFFFD36A).copy(alpha = 0.18f), Color(0xFFFFD36A).copy(alpha = 0.08f), Color.Black.copy(alpha = 0.20f))))
-        .border(1.2.dp, Color(0xFFFFD36A).copy(alpha = 0.55f), RoundedCornerShape(20.dp)).clickable { onClick() }, contentAlignment = Alignment.Center) {
-        Icon(imageVector = Icons.Rounded.ArrowBack, contentDescription = "Back", tint = Color(0xFFFFD36A), modifier = Modifier.size(size * 0.42f))
+        .background(GlassSurface)
+        .background(Brush.verticalGradient(0f to AmberGlow.copy(alpha = 0.10f), 1f to Color.Transparent))
+        .border(1.2.dp, Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.55f), AmberDeep.copy(alpha = 0.25f))), RoundedCornerShape(20.dp))
+        .clickable { onClick() }, contentAlignment = Alignment.Center) {
+        Icon(imageVector = Icons.Rounded.ArrowBack, contentDescription = "Back", tint = AmberCore, modifier = Modifier.size(size * 0.42f))
     }
 }
 
 @Composable
-private fun IconCircle(icon: androidx.compose.ui.graphics.vector.ImageVector, size: androidx.compose.ui.unit.Dp, tint: Color = Color.White, onClick: () -> Unit) {
+private fun GlassTransportButton(icon: ImageVector, size: Dp, onClick: () -> Unit) {
     Box(modifier = Modifier.size(size).clip(RoundedCornerShape(20.dp))
-        .background(Brush.radialGradient(colors = listOf(Color.White.copy(alpha = 0.14f), Color.White.copy(alpha = 0.07f), Color.Black.copy(alpha = 0.20f))))
-        .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(20.dp)).clickable { onClick() }, contentAlignment = Alignment.Center) {
+        .background(GlassSurface)
+        .background(Brush.verticalGradient(0f to GlassHighlight, 0.4f to Color.Transparent, 1f to Color.Transparent))
+        .border(1.dp, Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)), RoundedCornerShape(20.dp))
+        .clickable { onClick() }, contentAlignment = Alignment.Center) {
+        Icon(imageVector = icon, contentDescription = null, tint = TextBright, modifier = Modifier.size(size * 0.46f))
+    }
+}
+
+@Composable
+private fun FrostedPlayButton(isPlaying: Boolean, isEnded: Boolean, size: Dp, onClick: () -> Unit) {
+    val breathe = rememberInfiniteTransition(label = "playGlow")
+    val glowAlpha by breathe.animateFloat(
+        initialValue = 0.20f,
+        targetValue = 0.42f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "playGlowAlpha"
+    )
+    Box(
+        modifier = Modifier
+            .size(size)
+            .amberGlow(radius = size * 0.80f, alpha = glowAlpha)
+            .clip(CircleShape)
+            .background(GlassSurfaceStrong)
+            .background(Brush.verticalGradient(0f to GlassHighlight, 0.45f to Color.Transparent, 1f to Color.Transparent))
+            .border(
+                width = 1.4.dp,
+                brush = Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.75f), AmberDeep.copy(alpha = 0.30f))),
+                shape = CircleShape
+            )
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = when {
+                isEnded -> Icons.Rounded.Replay
+                isPlaying -> Icons.Rounded.Pause
+                else -> Icons.Rounded.PlayArrow
+            },
+            contentDescription = if (isPlaying) "Pause" else "Play",
+            tint = AmberCore,
+            modifier = Modifier.size(size * 0.50f)
+        )
+    }
+}
+
+@Composable
+private fun IconCircle(icon: ImageVector, size: Dp, tint: Color = TextBright, onClick: () -> Unit) {
+    Box(modifier = Modifier.size(size).clip(RoundedCornerShape(20.dp))
+        .background(GlassSurface)
+        .background(Brush.verticalGradient(0f to GlassHighlight, 0.4f to Color.Transparent, 1f to Color.Transparent))
+        .border(1.dp, Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)), RoundedCornerShape(20.dp))
+        .clickable { onClick() }, contentAlignment = Alignment.Center) {
         Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(size * 0.44f))
     }
 }
@@ -919,12 +981,12 @@ private fun SeekPreviewBubble(isVisible: Boolean, bitmap: Bitmap?, timeText: Str
             val safe = when { max < 0.dp -> 0.dp; raw < 0.dp -> 0.dp; raw > max -> max; else -> raw }
             Column(modifier = Modifier.align(Alignment.BottomStart).offset(x = hp + safe).padding(bottom = if (isLandscape) 116.dp else 134.dp)
                 .graphicsLayer { scaleX = if (isLarge) 1.02f else 0.98f; scaleY = if (isLarge) 1.02f else 0.98f; shadowElevation = if (isLarge) 18f else 10f }
-                .clip(RoundedCornerShape(18.dp)).background(Brush.verticalGradient(colors = listOf(Color.White.copy(alpha = 0.15f), Color.Black.copy(alpha = 0.58f))))
-                .border(1.dp, Color(0xFFFFD36A).copy(alpha = if (isLarge) 0.55f else 0.25f), RoundedCornerShape(18.dp)).padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                .glassPanel(cornerRadius = 18.dp, fill = GlassSurfaceStrong)
+                .padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 if (bitmap != null) Image(bitmap = bitmap.asImageBitmap(), contentDescription = null, modifier = Modifier.width(pw).height(ph).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
-                else Box(modifier = Modifier.width(pw).height(ph).clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) { Text(text = timeText, color = Color(0xFFFFE7A3), fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+                else Box(modifier = Modifier.width(pw).height(ph).clip(RoundedCornerShape(14.dp)).background(GlassSurfaceFaint), contentAlignment = Alignment.Center) { Text(text = timeText, color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
                 Spacer(modifier = Modifier.height(6.dp))
-                Text(text = timeText, color = Color(0xFFFFE7A3), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text(text = timeText, color = AmberCore, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -935,63 +997,51 @@ private fun TopGlassTitleBar(title: String, isLandscape: Boolean, speedLabel: St
     Row(
         modifier = Modifier.fillMaxWidth()
             .padding(start = if (isLandscape) 8.dp else 12.dp, end = if (isLandscape) 8.dp else 12.dp, top = if (isLandscape) 0.dp else 4.dp)
-            .clip(RoundedCornerShape(34.dp))
-            .background(Brush.horizontalGradient(colors = listOf(Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.08f), Color.Black.copy(alpha = 0.30f))))
+            .glassPanel(cornerRadius = 34.dp, fill = GlassSurfaceStrong)
             .padding(horizontal = if (isLandscape) 10.dp else 13.dp, vertical = if (isLandscape) 3.dp else 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = title, color = Color.White, fontSize = if (isLandscape) 13.sp else 17.sp, fontWeight = FontWeight.Black, maxLines = 1, modifier = Modifier.weight(1f))
+        Text(text = title, color = TextBright, fontSize = if (isLandscape) 13.sp else 17.sp, fontWeight = FontWeight.Black, maxLines = 1, modifier = Modifier.weight(1f))
         if (speedLabel != null) {
-            Text(text = speedLabel, color = Color(0xFFFFD36A), fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.40f)).padding(horizontal = 8.dp, vertical = 3.dp))
+            Text(text = speedLabel, color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberGlow.copy(alpha = 0.14f)).padding(horizontal = 8.dp, vertical = 3.dp))
             Spacer(modifier = Modifier.width(8.dp))
         }
-        Text(text = "⋮", color = Color.White.copy(alpha = 0.95f), fontSize = if (isLandscape) 24.sp else 26.sp, fontWeight = FontWeight.Black,
+        Text(text = "⋮", color = TextBright.copy(alpha = 0.95f), fontSize = if (isLandscape) 24.sp else 26.sp, fontWeight = FontWeight.Black,
             modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onMenuClick() }.padding(horizontal = 6.dp, vertical = 2.dp))
     }
 }
 
 @Composable
 private fun TimePill(text: String) {
-    Text(text = text, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.08f)).padding(horizontal = 12.dp, vertical = 5.dp))
+    Text(text = text, color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clip(RoundedCornerShape(50)).background(GlassSurfaceFaint).padding(horizontal = 12.dp, vertical = 5.dp))
 }
 
 @Composable
-private fun VerticalBrightnessHud(value: Int, size: androidx.compose.ui.unit.Dp) {
+private fun VerticalBrightnessHud(value: Int, size: Dp) {
     val fill = (value.toFloat() / 100f).coerceIn(0f, 1f)
-    Row(modifier = Modifier.clip(RoundedCornerShape(26.dp)).background(Color.Black.copy(alpha = 0.72f)).border(1.dp, Color(0xFFFFD36A).copy(alpha = 0.30f), RoundedCornerShape(26.dp)).padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(imageVector = Icons.Rounded.BrightnessHigh, contentDescription = null, tint = Color(0xFFFFD36A), modifier = Modifier.size(22.dp))
+    Row(modifier = Modifier.glassPanel(cornerRadius = 26.dp, fill = GlassSurfaceStrong).padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(imageVector = Icons.Rounded.BrightnessHigh, contentDescription = null, tint = AmberCore, modifier = Modifier.size(22.dp))
         Spacer(modifier = Modifier.width(10.dp))
         Box(modifier = Modifier.width(9.dp).height(size).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.16f))) {
             Box(modifier = Modifier.fillMaxWidth().fillMaxHeight(fill).align(Alignment.BottomCenter).clip(RoundedCornerShape(50)).background(Brush.verticalGradient(colors = listOf(Color(0xFFFFF3D6), Color(0xFFFFC857)))))
         }
         Spacer(modifier = Modifier.width(10.dp))
-        Text(text = "$value%", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(text = "$value%", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
-private fun FilledCircleHud(value: Int, maxValue: Int, color: Color, size: androidx.compose.ui.unit.Dp) {
+private fun FilledCircleHud(value: Int, maxValue: Int, color: Color, size: Dp) {
     val fill = (value.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f)
-    Row(modifier = Modifier.clip(RoundedCornerShape(26.dp)).background(Color.Black.copy(alpha = 0.72f)).border(1.dp, color.copy(alpha = 0.35f), RoundedCornerShape(26.dp)).padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier = Modifier.glassPanel(cornerRadius = 26.dp, fill = GlassSurfaceStrong).padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(imageVector = Icons.Rounded.VolumeUp, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
         Spacer(modifier = Modifier.width(10.dp))
         Box(modifier = Modifier.width(9.dp).height(size).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.16f))) {
             Box(modifier = Modifier.fillMaxWidth().fillMaxHeight(fill).align(Alignment.BottomCenter).clip(RoundedCornerShape(50)).background(Brush.verticalGradient(colors = listOf(color.copy(alpha = 0.9f), color.copy(alpha = 0.6f)))))
         }
         Spacer(modifier = Modifier.width(10.dp))
-        Text(text = "$value%", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-private fun ControlCircle(text: String, size: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
-    val isPP = text == "▶" || text == "Ⅱ"; val shape = if (isPP) CircleShape else RoundedCornerShape(20.dp)
-    Box(modifier = Modifier.size(size).clip(shape)
-        .background(brush = Brush.radialGradient(colors = if (isPP) listOf(Color.Black.copy(alpha = 0.32f), Color.Black.copy(alpha = 0.32f)) else listOf(Color.White.copy(alpha = 0.14f), Color.White.copy(alpha = 0.07f), Color.Black.copy(alpha = 0.20f))))
-        .border(width = if (isPP) 1.7.dp else 1.dp, color = if (isPP) Color(0xFFFFC857).copy(alpha = 0.78f) else Color.White.copy(alpha = 0.18f), shape = shape).clickable { onClick() }, contentAlignment = Alignment.Center) {
-        if (isPP) { Canvas(modifier = Modifier.matchParentSize()) { val o = size.toPx() * 0.48f; val rw = size.toPx() * 0.045f; drawCircle(color = Color(0xFFFF8A00).copy(alpha = 0.26f), radius = o, center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = rw)); drawCircle(color = Color(0xFFFFD66B).copy(alpha = 0.18f), radius = o * 0.82f, center = center, style = androidx.compose.ui.graphics.drawscope.Stroke(width = rw * 0.65f)) } }
-        Text(text = text, color = if (isPP) Color(0xFFFF7A2F) else Color.White, fontSize = when { isPP && text == "▶" -> (size.value * 0.48f).sp; isPP -> (size.value * 0.46f).sp; else -> (size.value * 0.42f).sp }, fontWeight = FontWeight.Black, modifier = Modifier.offset(x = if (text == "▶") 2.dp else 0.dp))
+        Text(text = "$value%", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -1026,37 +1076,37 @@ private fun cleanEpisodeDisplayName(fileName: String): String {
 @Composable
 private fun SkipIntroButton(isLandscape: Boolean, onClick: () -> Unit) {
     Text(text = "SKIP INTRO", color = Color.Black, fontSize = if (isLandscape) 11.sp else 12.sp, fontWeight = FontWeight.Black,
-        modifier = Modifier.clip(RoundedCornerShape(50)).background(Brush.horizontalGradient(colors = listOf(Color(0xFFFFD36A), Color(0xFFFFA000)))).clickable { onClick() }.padding(horizontal = if (isLandscape) 13.dp else 15.dp, vertical = if (isLandscape) 7.dp else 8.dp))
+        modifier = Modifier.clip(RoundedCornerShape(50)).background(Brush.horizontalGradient(colors = listOf(AmberCore, AmberGlow))).clickable { onClick() }.padding(horizontal = if (isLandscape) 13.dp else 15.dp, vertical = if (isLandscape) 7.dp else 8.dp))
 }
 
 @Composable
 private fun NextEpisodeCountdownOverlay(nextEpisode: VideoWithMetadata?, countdown: Int, isLandscape: Boolean, onPlayNow: () -> Unit, onCancel: () -> Unit) {
     if (nextEpisode == null) return
-    Column(modifier = Modifier.width(if (isLandscape) 310.dp else 300.dp).clip(RoundedCornerShape(26.dp))
-        .background(Brush.verticalGradient(colors = listOf(Color.Black.copy(alpha = 0.72f), Color.Black.copy(alpha = 0.50f))))
-        .border(1.dp, Color(0xFFFFD36A).copy(alpha = 0.38f), RoundedCornerShape(26.dp)).padding(horizontal = 18.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = "Next episode starts in", color = Color.White.copy(alpha = 0.82f), fontSize = if (isLandscape) 13.sp else 14.sp, fontWeight = FontWeight.Bold)
+    Column(modifier = Modifier.width(if (isLandscape) 310.dp else 300.dp)
+        .glassPanel(cornerRadius = 26.dp, fill = GlassSurfaceStrong)
+        .padding(horizontal = 18.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(text = "Next episode starts in", color = TextBright.copy(alpha = 0.82f), fontSize = if (isLandscape) 13.sp else 14.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(6.dp))
-        Text(text = countdown.coerceAtLeast(1).toString(), color = Color(0xFFFFD36A), fontSize = if (isLandscape) 38.sp else 42.sp, fontWeight = FontWeight.Black)
+        Text(text = countdown.coerceAtLeast(1).toString(), color = AmberCore, fontSize = if (isLandscape) 38.sp else 42.sp, fontWeight = FontWeight.Black)
         Spacer(modifier = Modifier.height(4.dp))
-        Text(text = nextEpisode.subtitle.ifBlank { cleanEpisodeDisplayName(nextEpisode.video.name) }, color = Color.White, fontSize = if (isLandscape) 13.sp else 14.sp, fontWeight = FontWeight.Bold, maxLines = 2)
+        Text(text = nextEpisode.subtitle.ifBlank { cleanEpisodeDisplayName(nextEpisode.video.name) }, color = TextBright, fontSize = if (isLandscape) 13.sp else 14.sp, fontWeight = FontWeight.Bold, maxLines = 2)
         Spacer(modifier = Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(text = "Cancel", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable { onCancel() }.padding(horizontal = 15.dp, vertical = 8.dp))
-            Text(text = "Play Now", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFFFFD36A)).clickable { onPlayNow() }.padding(horizontal = 15.dp, vertical = 8.dp))
+            Text(text = "Cancel", color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable { onCancel() }.padding(horizontal = 15.dp, vertical = 8.dp))
+            Text(text = "Play Now", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore).clickable { onPlayNow() }.padding(horizontal = 15.dp, vertical = 8.dp))
         }
     }
 }
 
 @Composable
 private fun FloatingTrackPopup(title: String, modifier: Modifier, rows: List<TrackPopupRowData>, onAnyClick: () -> Unit = {}, onClose: () -> Unit) {
-    Column(modifier = modifier.clip(RoundedCornerShape(18.dp)).background(Color.Black.copy(alpha = 0.52f)).padding(7.dp)) {
-        Text(text = title, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    Column(modifier = modifier.glassPanel(cornerRadius = 18.dp, fill = GlassSurfaceStrong).padding(7.dp)) {
+        Text(text = title, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(5.dp))
         rows.forEach { row ->
-            Text(text = row.title, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = 0.10f)).clickable { onAnyClick(); row.onClick() }.padding(7.dp))
+            Text(text = row.title, color = TextBright, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = 0.10f)).clickable { onAnyClick(); row.onClick() }.padding(7.dp))
             Spacer(modifier = Modifier.height(5.dp))
         }
-        Text(text = "Close", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = 0.10f)).clickable { onAnyClick(); onClose() }.padding(7.dp))
+        Text(text = "Close", color = TextBright, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = 0.10f)).clickable { onAnyClick(); onClose() }.padding(7.dp))
     }
 }
