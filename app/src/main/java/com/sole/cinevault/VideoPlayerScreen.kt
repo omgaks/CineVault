@@ -64,12 +64,20 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -113,6 +121,17 @@ fun VideoPlayerScreen(
     val context = LocalContext.current
     val activity = context.findCineActivity()
     val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+
+    // AUDIO SYNC: +/- ms offset applied through CineRenderersFactory's audio clock
+    var audioSyncMs by remember { mutableIntStateOf(0) }
+    LaunchedEffect(audioSyncMs) { AudioSyncHolder.offsetUs = audioSyncMs * 1000L }
+
+    // POPUP ANCHORS: each menu icon reports its center X so its popup opens above it
+    var speedIconX by remember { mutableFloatStateOf(0f) }
+    var sleepIconX by remember { mutableFloatStateOf(0f) }
+    var audioIconX by remember { mutableFloatStateOf(0f) }
+    var subIconX by remember { mutableFloatStateOf(0f) }
 
     var currentVideo by remember { mutableStateOf(video) }
     var currentMediaType by remember { mutableStateOf(mediaType) }
@@ -181,7 +200,7 @@ fun VideoPlayerScreen(
         }
     }
 
-    val exoPlayer = remember { ExoPlayer.Builder(context).setTrackSelector(trackSelector).build() }
+    val exoPlayer = remember { ExoPlayer.Builder(context, CineRenderersFactory(context)).setTrackSelector(trackSelector).build() }
 
     val canDownloadExternalSubtitles = currentMediaType.equals("movie", ignoreCase = true) || currentMediaType.equals("tv", ignoreCase = true)
     val isCurrentTvShow = currentMediaType.equals("tv", ignoreCase = true)
@@ -212,6 +231,7 @@ fun VideoPlayerScreen(
     }
 
     fun setPlaybackSpeed(speed: Float) {
+        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         playbackSpeed = speed
         exoPlayer.playbackParameters = PlaybackParameters(speed)
         showSpeedMenu = false; showControls = true
@@ -219,6 +239,7 @@ fun VideoPlayerScreen(
     }
 
     fun setSleepTimer(minutes: Int) {
+        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         sleepTimerMinutes = minutes
         if (minutes == 0) {
             sleepTimerActive = false; sleepTimerRemainingMs = 0
@@ -369,6 +390,7 @@ fun VideoPlayerScreen(
         onDispose {
             if (!isStreamMedia) savePlaybackPosition(context, currentVideo.path, exoPlayer.currentPosition.coerceAtLeast(0L))
             exoPlayer.release()
+            AudioSyncHolder.offsetUs = 0L
             if (CineVaultPlayerHolder.currentPlayer == exoPlayer) CineVaultPlayerHolder.currentPlayer = null
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
@@ -436,6 +458,8 @@ fun VideoPlayerScreen(
     LaunchedEffect(showAudioSelector, menuTouchKey) { if (showAudioSelector) { delay(9000); showAudioSelector = false } }
     LaunchedEffect(showSubtitleSettings, subtitleMenuTouchKey) { if (showSubtitleSettings) { delay(9000); showSubtitleSettings = false } }
     LaunchedEffect(showSrtBrowser) { if (showSrtBrowser) { delay(20000); showSrtBrowser = false } }
+    LaunchedEffect(showSpeedMenu) { if (showSpeedMenu) { delay(8000); showSpeedMenu = false } }
+    LaunchedEffect(showSleepMenu) { if (showSleepMenu) { delay(8000); showSleepMenu = false } }
     LaunchedEffect(brightnessGestureKey) { if (brightnessGestureKey > 0) { delay(1400); showBrightnessCircle = false } }
     LaunchedEffect(volumeGestureKey) { if (volumeGestureKey > 0) { delay(1400); showVolumeCircle = false } }
 
@@ -503,7 +527,11 @@ fun VideoPlayerScreen(
         val isLandscape = maxWidth > maxHeight
         val isSmallPhone = maxWidth < 430.dp || maxHeight < 760.dp
         val isCompactLandscape = isLandscape && maxHeight < 430.dp
-        val scale = when { isCompactLandscape -> 0.70f; isSmallPhone && !isLandscape -> 0.78f; isSmallPhone -> 0.82f; isLandscape -> 0.90f; else -> 1f }
+        val layoutScale = when { isCompactLandscape -> 0.70f; isSmallPhone && !isLandscape -> 0.78f; isSmallPhone -> 0.82f; isLandscape -> 0.90f; else -> 1f }
+        // DECK FIT: shrink controls so the full deck always fits the screen width (portrait!)
+        val deckNaturalWidth = 66f * 8 + 98f + 7f * 9 + 24f  // buttons + gaps + inner padding, dp at scale 1
+        val fitScale = ((maxWidth.value - 32f) / deckNaturalWidth).coerceAtMost(1f)
+        val scale = minOf(layoutScale, fitScale).coerceAtLeast(0.42f)
         val playButton = (98 * scale).dp
         val smallButton = (66 * scale).dp
         val hudSize = (72 * scale).dp
@@ -511,6 +539,16 @@ fun VideoPlayerScreen(
         val bottomDockPadding = when { isCompactLandscape -> 112.dp; isLandscape -> 126.dp; else -> 152.dp }
         val seekBottomPadding = when { isCompactLandscape -> 18.dp; isLandscape -> 24.dp; else -> 30.dp }
         val showIntroSkip = isCurrentTvShow && position in 5_000L..95_000L
+
+        // POPUP ANCHORING: clamp an icon-centered popup within screen bounds
+        val density = LocalDensity.current
+        val screenWidthPx = with(density) { maxWidth.toPx() }
+        fun anchoredX(iconCenterX: Float, popupWidth: Dp): Int {
+            val pw = with(density) { popupWidth.toPx() }
+            val pad = with(density) { 8.dp.toPx() }
+            return (iconCenterX - pw / 2f).coerceIn(pad, (screenWidthPx - pw - pad).coerceAtLeast(pad)).roundToInt()
+        }
+        val popupBottomPadding = bottomDockPadding + playButton + 18.dp
 
         // Metadata for the floating score capsule — exact path match first,
         // then a filename fallback in case paths differ between lists
@@ -640,8 +678,8 @@ fun VideoPlayerScreen(
             }
         }
 
-        // Speed menu popup — fades in/out
-        AnimatedVisibility(visible = showSpeedMenu, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = if (isLandscape) 200.dp else 260.dp, end = sidePadding)) {
+        // Speed menu popup — anchored above the Speed icon
+        AnimatedVisibility(visible = showSpeedMenu, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.BottomStart).padding(bottom = popupBottomPadding).offset { IntOffset(anchoredX(speedIconX, 178.dp), 0) }) {
             SpeedMenuPopup(
                 currentSpeed = playbackSpeed,
                 modifier = Modifier,
@@ -650,8 +688,8 @@ fun VideoPlayerScreen(
             )
         }
 
-        // Sleep menu popup — fades in/out
-        AnimatedVisibility(visible = showSleepMenu, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = if (isLandscape) 200.dp else 260.dp, end = sidePadding + smallButton + 8.dp)) {
+        // Sleep menu popup — anchored above the Sleep icon
+        AnimatedVisibility(visible = showSleepMenu, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.BottomStart).padding(bottom = popupBottomPadding).offset { IntOffset(anchoredX(sleepIconX, 178.dp), 0) }) {
             SleepMenuPopup(
                 currentMinutes = sleepTimerMinutes,
                 modifier = Modifier,
@@ -660,8 +698,8 @@ fun VideoPlayerScreen(
             )
         }
 
-        // SRT file browser popup — glass mini file manager, fades in/out
-        AnimatedVisibility(visible = showSrtBrowser, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = if (isCompactLandscape) 150.dp else if (isLandscape) 200.dp else 280.dp, end = sidePadding)) {
+        // SRT file browser popup — anchored above the Subtitles icon
+        AnimatedVisibility(visible = showSrtBrowser, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.BottomStart).padding(bottom = popupBottomPadding).offset { IntOffset(anchoredX(subIconX, 252.dp), 0) }) {
             val srtFiles = remember(currentVideo.path, showSrtBrowser) { findNearbySrtFiles(currentVideo.path) }
             SrtBrowserPopup(
                 files = srtFiles,
@@ -678,11 +716,14 @@ fun VideoPlayerScreen(
             )
         }
 
-        AnimatedVisibility(visible = showAudioSelector, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = if (isCompactLandscape) 160.dp else if (isLandscape) 240.dp else 300.dp, end = sidePadding)) {
+        val audioPopupWidth = if (isCompactLandscape) 190.dp else if (isLandscape) 205.dp else 220.dp
+        AnimatedVisibility(visible = showAudioSelector, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.BottomStart).padding(bottom = popupBottomPadding).offset { IntOffset(anchoredX(audioIconX, audioPopupWidth), 0) }) {
             val audioTracks = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
             FloatingTrackPopup(
                 title = "Audio",
-                modifier = Modifier.width(if (isCompactLandscape) 165.dp else if (isLandscape) 185.dp else 205.dp),
+                modifier = Modifier.width(audioPopupWidth),
+                audioSyncMs = audioSyncMs,
+                onAudioSyncChange = { audioSyncMs = it; menuTouchKey++ },
                 rows = audioTracks.flatMap { group ->
                     List(group.length) { i ->
                         val fmt = group.getTrackFormat(i); val lang = friendlyLanguageName(fmt.language)
@@ -775,6 +816,7 @@ fun VideoPlayerScreen(
                         GlassTransportButton(icon = Icons.Rounded.Replay10, size = smallButton) { exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0)); position = exoPlayer.currentPosition; showControls = true }
 
                         FrostedPlayButton(isPlaying = isPlaying, isEnded = isVideoEnded, size = playButton) {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             if (isVideoEnded) { exoPlayer.seekTo(0); exoPlayer.play(); isVideoEnded = false; showControls = true }
                             else { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play(); showControls = true }
                         }
@@ -785,30 +827,31 @@ fun VideoPlayerScreen(
 
                         // Autoplay
                         IconCircle(icon = Icons.Rounded.AllInclusive, size = smallButton, tint = if (autoPlayEnabled) AmberCore else TextMuted.copy(alpha = 0.6f)) {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             autoPlayEnabled = !autoPlayEnabled; showControls = true
                             Toast.makeText(context, if (autoPlayEnabled) "Autoplay on" else "Autoplay off", Toast.LENGTH_SHORT).show()
                         }
 
                         // Speed — amber if not 1x
-                        IconCircle(icon = Icons.Rounded.Speed, size = smallButton, tint = if (playbackSpeed != 1.0f) AmberCore else TextBright) {
+                        IconCircle(icon = Icons.Rounded.Speed, size = smallButton, tint = if (playbackSpeed != 1.0f) AmberCore else TextBright, modifier = Modifier.onGloballyPositioned { speedIconX = it.positionInRoot().x + it.size.width / 2f }) {
                             showSleepMenu = false
                             showSpeedMenu = !showSpeedMenu; showControls = true
                         }
 
                         // Sleep timer — amber if active
-                        IconCircle(icon = Icons.Rounded.Timer, size = smallButton, tint = if (sleepTimerActive) AmberCore else TextBright) {
+                        IconCircle(icon = Icons.Rounded.Timer, size = smallButton, tint = if (sleepTimerActive) AmberCore else TextBright, modifier = Modifier.onGloballyPositioned { sleepIconX = it.positionInRoot().x + it.size.width / 2f }) {
                             showSpeedMenu = false
                             showSleepMenu = !showSleepMenu; showControls = true
                         }
 
                         // Audio
-                        IconCircle(icon = Icons.Rounded.Audiotrack, size = smallButton, tint = if (showAudioSelector) AmberCore else TextBright) {
+                        IconCircle(icon = Icons.Rounded.Audiotrack, size = smallButton, tint = if (showAudioSelector) AmberCore else TextBright, modifier = Modifier.onGloballyPositioned { audioIconX = it.positionInRoot().x + it.size.width / 2f }) {
                             showSubtitleSettings = false; showAudioSelector = !showAudioSelector; showControls = true; menuTouchKey++
                         }
 
                         // Subtitles
                         if (!isStreamMedia) {
-                            IconCircle(icon = Icons.Rounded.ClosedCaption, size = smallButton, tint = if (showSubtitleSettings) AmberCore else TextBright) {
+                            IconCircle(icon = Icons.Rounded.ClosedCaption, size = smallButton, tint = if (showSubtitleSettings) AmberCore else TextBright, modifier = Modifier.onGloballyPositioned { subIconX = it.positionInRoot().x + it.size.width / 2f }) {
                                 showAudioSelector = false; showSubtitleSettings = !showSubtitleSettings; showControls = true; menuTouchKey++
                             }
                         }
@@ -1050,8 +1093,8 @@ private fun FrostedPlayButton(isPlaying: Boolean, isEnded: Boolean, size: Dp, on
 }
 
 @Composable
-private fun IconCircle(icon: ImageVector, size: Dp, tint: Color = TextBright, onClick: () -> Unit) {
-    Box(modifier = Modifier.size(size).clip(RoundedCornerShape(20.dp))
+private fun IconCircle(icon: ImageVector, size: Dp, tint: Color = TextBright, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(modifier = modifier.size(size).clip(RoundedCornerShape(20.dp))
         .background(GlassSurface)
         .background(Brush.verticalGradient(0f to GlassHighlight, 0.4f to Color.Transparent, 1f to Color.Transparent))
         .border(1.dp, Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)), RoundedCornerShape(20.dp))
@@ -1070,12 +1113,28 @@ private fun IconCircle(icon: ImageVector, size: Dp, tint: Color = TextBright, on
 private fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolean, seed: Int, onPreviewPositionChanged: (Long) -> Unit, onSeekFinished: (Long) -> Unit) {
     var localPosition by remember { mutableLongStateOf(position) }
     LaunchedEffect(position, isDragging) { if (!isDragging) localPosition = position }
+    val haptic = LocalHapticFeedback.current
+    var lastChapterZone by remember { mutableIntStateOf(-1) }
+    fun zoneOf(p: Long): Int {
+        val fr = p.toFloat() / duration.coerceAtLeast(1L).toFloat()
+        return (fr / 0.25f).toInt().coerceIn(0, 3)
+    }
     val bloom by animateFloatAsState(targetValue = if (isDragging) 1f else 0f, animationSpec = tween(300, easing = FastOutSlowInEasing), label = "liquidBloom")
     val glow by animateFloatAsState(targetValue = if (isDragging) 1f else 0.45f, animationSpec = tween(220), label = "seekGlow")
     fun positionFromX(x: Float, width: Float): Long { if (duration <= 0L || width <= 0f) return 0L; return (duration * (x / width).coerceIn(0f, 1f)).toLong().coerceIn(0L, duration) }
     Box(modifier = Modifier.fillMaxWidth().height(38.dp)
         .pointerInput(duration) { detectTapGestures { o -> val p = positionFromX(o.x, size.width.toFloat()); localPosition = p; onPreviewPositionChanged(p); onSeekFinished(p) } }
-        .pointerInput(duration) { detectDragGestures(onDragStart = { o -> localPosition = positionFromX(o.x, size.width.toFloat()); onPreviewPositionChanged(localPosition) }, onDrag = { c, _ -> localPosition = positionFromX(c.position.x, size.width.toFloat()); onPreviewPositionChanged(localPosition) }, onDragEnd = { onSeekFinished(localPosition) }, onDragCancel = { onSeekFinished(localPosition) }) }
+        .pointerInput(duration) { detectDragGestures(
+            onDragStart = { o -> localPosition = positionFromX(o.x, size.width.toFloat()); lastChapterZone = zoneOf(localPosition); onPreviewPositionChanged(localPosition) },
+            onDrag = { c, _ ->
+                localPosition = positionFromX(c.position.x, size.width.toFloat())
+                // HAPTIC TICK when the playhead crosses a chapter boundary (25/50/75%)
+                val z = zoneOf(localPosition)
+                if (z != lastChapterZone) { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); lastChapterZone = z }
+                onPreviewPositionChanged(localPosition)
+            },
+            onDragEnd = { onSeekFinished(localPosition) },
+            onDragCancel = { onSeekFinished(localPosition) }) }
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val cy = size.height / 2f
@@ -1326,13 +1385,41 @@ private fun NextEpisodeCountdownOverlay(nextEpisode: VideoWithMetadata?, countdo
 }
 
 @Composable
-private fun FloatingTrackPopup(title: String, modifier: Modifier, rows: List<TrackPopupRowData>, onAnyClick: () -> Unit = {}, onClose: () -> Unit) {
+private fun FloatingTrackPopup(title: String, modifier: Modifier, rows: List<TrackPopupRowData>, audioSyncMs: Int = 0, onAudioSyncChange: (Int) -> Unit = {}, onAnyClick: () -> Unit = {}, onClose: () -> Unit) {
     Column(modifier = modifier.glassPanel(cornerRadius = 18.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(8.dp)) {
         Text(text = title, color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
         rows.forEach { row ->
             GlassMenuRow(icon = Icons.Rounded.Audiotrack, label = row.title, selected = false, onClick = { onAnyClick(); row.onClick() })
             Spacer(modifier = Modifier.height(4.dp))
         }
+        // AUDIO DELAY — +/- ms sync adjustment (positive = audio later)
+        Text(text = "Audio Delay", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            SyncStepChip(text = "−50") { onAnyClick(); onAudioSyncChange((audioSyncMs - 50).coerceAtLeast(-2000)) }
+            Text(
+                text = if (audioSyncMs == 0) "0 ms" else "${if (audioSyncMs > 0) "+" else ""}$audioSyncMs ms",
+                color = if (audioSyncMs == 0) TextBright else AmberCore,
+                fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f)
+            )
+            SyncStepChip(text = "+50") { onAnyClick(); onAudioSyncChange((audioSyncMs + 50).coerceAtMost(2000)) }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
         GlassMenuRow(icon = null, label = "Close", selected = false, onClick = { onAnyClick(); onClose() })
+    }
+}
+
+@Composable
+private fun SyncStepChip(text: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(GlassSurface)
+            .border(1.dp, Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)), RoundedCornerShape(10.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text = text, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
