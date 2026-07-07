@@ -1,69 +1,43 @@
 package com.sole.cinevault.ui.theme
 
-import android.app.Activity
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 
-private val DarkColorScheme = darkColorScheme(
-    primary = CineAccent,
-    secondary = CineAccent,
-    tertiary = CineAccent,
+// ============================================================
+//  CineVault 2 Theme — always dark. Cinema doesn't do daylight.
+//  Dynamic color removed on purpose: the space-glass identity
+//  must never be overridden by the device wallpaper palette.
+// ============================================================
 
-    background = CineBackground,
-    surface = CineCard,
+private val CineVaultColorScheme = darkColorScheme(
+    primary = AmberGlow,
+    secondary = AmberDeep,
+    tertiary = AmberCore,
 
-    onPrimary = Color.White,
+    background = SpaceBlack,
+    surface = SpaceMid,
+    surfaceVariant = SpaceDeep,
+
+    onPrimary = Color.Black,        // amber is bright — dark text reads better on it
     onSecondary = Color.White,
-    onBackground = Color.White,
-    onSurface = Color.White
-)
+    onBackground = TextBright,
+    onSurface = TextBright,
+    onSurfaceVariant = TextMuted,
 
-private val LightColorScheme = darkColorScheme(
-    primary = CineAccent,
-    secondary = CineAccent,
-    tertiary = CineAccent,
-
-    background = CineBackground,
-    surface = CineCard,
-
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onBackground = Color.White,
-    onSurface = Color.White
+    outline = GlassBorderTop,
+    scrim = Color(0xCC05060A)
 )
 
 @Composable
 fun CineVaultTheme(
     darkTheme: Boolean = true,
-    dynamicColor: Boolean = false,
+    dynamicColor: Boolean = false,   // kept in the signature so existing calls compile; ignored
     content: @Composable () -> Unit
 ) {
-
-    val colorScheme = when {
-
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-
-            if (darkTheme)
-                dynamicDarkColorScheme(context)
-            else
-                dynamicLightColorScheme(context)
-        }
-
-        darkTheme -> DarkColorScheme
-
-        else -> LightColorScheme
-    }
-
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = CineVaultColorScheme,
         typography = Typography,
         content = content
     )
