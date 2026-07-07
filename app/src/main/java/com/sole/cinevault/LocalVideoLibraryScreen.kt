@@ -33,8 +33,6 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.FavoriteBorder
-import androidx.compose.material.icons.rounded.Folder as RoundedFolder
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -226,7 +224,11 @@ fun LocalVideoLibraryScreen(
             instantList.forEachIndexed { index, item ->
                 // Enrich when metadata is missing OR when IMDb/RT ratings were
                 // never fetched (files cached before the OMDB fix)
-                if (!hasUsefulOnlineMetadata(item) || needsRatingsUpgrade(item)) {
+                val needsUpgrade = (item.type == "movie" || item.type == "tv") &&
+                        (item.tmdbId ?: 0) > 0 &&
+                        item.imdbRating.isNullOrBlank() &&
+                        item.rottenTomatoesRating.isNullOrBlank()
+                if (!hasUsefulOnlineMetadata(item) || needsUpgrade) {
                     scanStatus = "Metadata ${index + 1}/${instantList.size}: ${item.video.name.take(28)}"
                     val enriched = enrichVideoWithOnlineMetadata(context, item)
                     if (enriched != item) {
@@ -561,7 +563,7 @@ fun LocalVideoLibraryScreen(
                             contextSheetItem = null
                         }
                         SheetActionRow(
-                            icon = RoundedFolder,
+                            icon = Icons.Filled.Folder,
                             label = if (isInSecretFolder) "Unlock Folder" else "Hide Entire Folder",
                             tint = TextBright
                         ) {
