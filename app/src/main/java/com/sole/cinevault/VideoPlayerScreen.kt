@@ -2,7 +2,6 @@ package com.sole.cinevault
 
 import androidx.compose.ui.graphics.Brush
 import android.app.Activity
-import android.app.AlertDialog
 import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.Intent
@@ -28,6 +27,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.CircleShape
@@ -42,7 +43,6 @@ import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material.icons.rounded.AllInclusive
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Timer
-import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Replay
@@ -88,7 +88,6 @@ import androidx.media3.ui.SubtitleView
 import com.sole.cinevault.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.io.File
 
 // Duration cache — saves real video duration so progress % is accurate
 private fun saveDuration(context: Context, videoPath: String, durationMs: Long) {
@@ -134,7 +133,8 @@ fun VideoPlayerScreen(
     // NEW: Speed control and Sleep timer menus
     var showSpeedMenu by remember { mutableStateOf(false) }
     var showSleepMenu by remember { mutableStateOf(false) }
-    var showTopMenu by remember { mutableStateOf(false) }
+    var showSrtBrowser by remember { mutableStateOf(false) }
+    var showTitlePill by remember { mutableStateOf(true) }
     var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
 
     // SLEEP TIMER
@@ -142,8 +142,8 @@ fun VideoPlayerScreen(
     var sleepTimerRemainingMs by remember { mutableLongStateOf(0L) }
     var sleepTimerActive by remember { mutableStateOf(false) }
 
-    var subtitleTextSizeSp by remember { mutableFloatStateOf(18f) }
-    var subtitleBottomPadding by remember { mutableFloatStateOf(0.13f) }
+    var subtitleTextSizeSp by remember { mutableFloatStateOf(22f) }
+    var subtitleBottomPadding by remember { mutableFloatStateOf(0.02f) }
     var subtitleSyncOffset by remember { mutableFloatStateOf(0.0f) }
     var subtitleMenuTouchKey by remember { mutableIntStateOf(0) }
     var subtitlesEnabled by remember { mutableStateOf(true) }
@@ -231,30 +231,6 @@ fun VideoPlayerScreen(
         showSleepMenu = false; showControls = true
     }
 
-    fun deleteCurrentFile() {
-        val file = File(currentVideo.path)
-        val title = cleanVideoTitle(currentVideo.path)
-        AlertDialog.Builder(context)
-            .setTitle("Delete File")
-            .setMessage("Delete \"$title\"?\n\nThis cannot be undone.")
-            .setPositiveButton("Delete") { _, _ ->
-                try {
-                    if (file.exists() && file.delete()) {
-                        clearPlaybackPosition(context, currentVideo.path)
-                        Toast.makeText(context, "File deleted", Toast.LENGTH_SHORT).show()
-                        onBack()
-                    } else {
-                        Toast.makeText(context, "Could not delete file", Toast.LENGTH_SHORT).show()
-                    }
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-        showTopMenu = false
-    }
-
     fun playPrevious() {
         val idx = episodeList.indexOfFirst { it.video.path == currentVideo.path }
         val prev = episodeList.getOrNull(idx - 1)
@@ -316,7 +292,7 @@ fun VideoPlayerScreen(
     LaunchedEffect(currentVideo.path) {
         val savedPosition = if (isStreamMedia) 0L else loadPlaybackPosition(context, currentVideo.path)
         position = savedPosition; duration = 1L; showControls = true; showTopBar = true
-        showAudioSelector = false; showSubtitleSettings = false; showSpeedMenu = false; showSleepMenu = false; showTopMenu = false
+        showAudioSelector = false; showSubtitleSettings = false; showSpeedMenu = false; showSleepMenu = false; showSrtBrowser = false
         pendingNextEpisode = null; nextEpisodeCountdown = 0; showNextEpisodeOverlay = false
         previewBitmap = null; previewFrames = emptyList(); isVideoEnded = false
         if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
@@ -341,6 +317,13 @@ fun VideoPlayerScreen(
                 finally { subtitleDownloadInProgress = false }
             }
         }
+    }
+
+    // Title pill: shows the movie name for a few seconds when a video starts, then fades
+    LaunchedEffect(currentVideo.path) {
+        showTitlePill = true
+        delay(4200)
+        showTitlePill = false
     }
 
     LaunchedEffect(Unit) {
@@ -434,16 +417,16 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(showControls, showAudioSelector, showSubtitleSettings, showSpeedMenu, showSleepMenu, showTopMenu, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu || showTopMenu
+    LaunchedEffect(showControls, showAudioSelector, showSubtitleSettings, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
+        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu || showSrtBrowser
         if (showControls && !anyMenuOpen && !isDraggingSeekbar) {
             delay(4500)
             if (!isDraggingSeekbar && !anyMenuOpen) showControls = false
         }
     }
 
-    LaunchedEffect(showTopBar, showAudioSelector, showSubtitleSettings, showSpeedMenu, showSleepMenu, showTopMenu, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu || showTopMenu
+    LaunchedEffect(showTopBar, showAudioSelector, showSubtitleSettings, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
+        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu || showSrtBrowser
         if (showTopBar && !anyMenuOpen && !isDraggingSeekbar) {
             delay(2800)
             if (!isDraggingSeekbar && !anyMenuOpen) showTopBar = false
@@ -452,6 +435,7 @@ fun VideoPlayerScreen(
 
     LaunchedEffect(showAudioSelector, menuTouchKey) { if (showAudioSelector) { delay(9000); showAudioSelector = false } }
     LaunchedEffect(showSubtitleSettings, subtitleMenuTouchKey) { if (showSubtitleSettings) { delay(9000); showSubtitleSettings = false } }
+    LaunchedEffect(showSrtBrowser) { if (showSrtBrowser) { delay(20000); showSrtBrowser = false } }
     LaunchedEffect(brightnessGestureKey) { if (brightnessGestureKey > 0) { delay(1400); showBrightnessCircle = false } }
     LaunchedEffect(volumeGestureKey) { if (volumeGestureKey > 0) { delay(1400); showVolumeCircle = false } }
 
@@ -528,10 +512,11 @@ fun VideoPlayerScreen(
         val seekBottomPadding = when { isCompactLandscape -> 18.dp; isLandscape -> 24.dp; else -> 30.dp }
         val showIntroSkip = isCurrentTvShow && position in 5_000L..95_000L
 
-        // Metadata for the floating score capsule — found by matching the
-        // playing file against the episode/library list already passed in
+        // Metadata for the floating score capsule — exact path match first,
+        // then a filename fallback in case paths differ between lists
         val currentMeta = remember(currentVideo.path, episodeList) {
             episodeList.firstOrNull { it.video.path == currentVideo.path }
+                ?: episodeList.firstOrNull { it.video.name == currentVideo.name }
         }
 
         AndroidView(
@@ -562,7 +547,7 @@ fun VideoPlayerScreen(
                                 showSubtitleSettings -> showSubtitleSettings = false
                                 showSpeedMenu -> showSpeedMenu = false
                                 showSleepMenu -> showSleepMenu = false
-                                showTopMenu -> showTopMenu = false
+                                showSrtBrowser -> showSrtBrowser = false
                                 else -> { val v = !showControls; showControls = v; showTopBar = v }
                             }
                         },
@@ -655,40 +640,49 @@ fun VideoPlayerScreen(
             }
         }
 
-        // Speed menu popup
-        if (showSpeedMenu) {
+        // Speed menu popup — fades in/out
+        AnimatedVisibility(visible = showSpeedMenu, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = if (isLandscape) 200.dp else 260.dp, end = sidePadding)) {
             SpeedMenuPopup(
                 currentSpeed = playbackSpeed,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = if (isLandscape) 200.dp else 260.dp, end = sidePadding),
+                modifier = Modifier,
                 onSpeedSelected = { setPlaybackSpeed(it) },
                 onDismiss = { showSpeedMenu = false }
             )
         }
 
-        // Sleep menu popup
-        if (showSleepMenu) {
+        // Sleep menu popup — fades in/out
+        AnimatedVisibility(visible = showSleepMenu, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = if (isLandscape) 200.dp else 260.dp, end = sidePadding + smallButton + 8.dp)) {
             SleepMenuPopup(
                 currentMinutes = sleepTimerMinutes,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = if (isLandscape) 200.dp else 260.dp, end = sidePadding + smallButton + 8.dp),
+                modifier = Modifier,
                 onSelected = { setSleepTimer(it) },
                 onDismiss = { showSleepMenu = false }
             )
         }
 
-        // Top ⋮ menu popup
-        if (showTopMenu) {
-            TopMenuPopup(
-                modifier = Modifier.align(Alignment.TopEnd).padding(top = if (isLandscape) 40.dp else 60.dp, end = sidePadding),
-                onDeleteFile = { deleteCurrentFile() },
-                onDismiss = { showTopMenu = false }
+        // SRT file browser popup — glass mini file manager, fades in/out
+        AnimatedVisibility(visible = showSrtBrowser, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = if (isCompactLandscape) 150.dp else if (isLandscape) 200.dp else 280.dp, end = sidePadding)) {
+            val srtFiles = remember(currentVideo.path, showSrtBrowser) { findNearbySrtFiles(currentVideo.path) }
+            SrtBrowserPopup(
+                files = srtFiles,
+                modifier = Modifier,
+                onPick = { file ->
+                    showSrtBrowser = false
+                    pendingSrtUri = Uri.fromFile(file)
+                },
+                onSystemPicker = {
+                    showSrtBrowser = false
+                    srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*"))
+                },
+                onClose = { showSrtBrowser = false; showControls = true }
             )
         }
 
-        if (showAudioSelector) {
+        AnimatedVisibility(visible = showAudioSelector, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = if (isCompactLandscape) 160.dp else if (isLandscape) 240.dp else 300.dp, end = sidePadding)) {
             val audioTracks = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
             FloatingTrackPopup(
                 title = "Audio",
-                modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = if (isCompactLandscape) 160.dp else if (isLandscape) 240.dp else 300.dp, end = sidePadding).width(if (isCompactLandscape) 145.dp else if (isLandscape) 170.dp else 190.dp),
+                modifier = Modifier.width(if (isCompactLandscape) 165.dp else if (isLandscape) 185.dp else 205.dp),
                 rows = audioTracks.flatMap { group ->
                     List(group.length) { i ->
                         val fmt = group.getTrackFormat(i); val lang = friendlyLanguageName(fmt.language)
@@ -706,34 +700,46 @@ fun VideoPlayerScreen(
         val hasInternalSubtitles = exoPlayer.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.length > 0 }
         SubtitleSettingsMenu(
             isVisible = showSubtitleSettings, subtitlesEnabled = subtitlesEnabled, hasInternalSubtitles = hasInternalSubtitles,
-            onInternalClick = { subtitlesEnabled = true; trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build(); showSubtitleSettings = false; showControls = true; subtitleMenuTouchKey++ },
+            onInternalClick = {
+                if (hasInternalSubtitles) {
+                    subtitlesEnabled = true; trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build(); showSubtitleSettings = false; showControls = true
+                } else {
+                    // No embedded subtitles — open the glass SRT browser instead
+                    showSubtitleSettings = false; showSrtBrowser = true; showControls = true
+                }
+                subtitleMenuTouchKey++
+            },
             onDownloadClick = { subtitleMenuTouchKey++; downloadExternalSubtitle() },
-            onPickFileClick = { srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
+            onPickFileClick = { showSubtitleSettings = false; showSrtBrowser = true; showControls = true },
             onToggleSubtitles = { subtitlesEnabled = !subtitlesEnabled; trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subtitlesEnabled).build(); showControls = true; subtitleMenuTouchKey++ },
             onDismiss = { showSubtitleSettings = false; showControls = true },
             currentFontSize = subtitleTextSizeSp, onFontSizeChange = { subtitleTextSizeSp = it; showControls = true; subtitleMenuTouchKey++ },
             currentVerticalPosition = subtitleBottomPadding, onVerticalPositionChange = { subtitleBottomPadding = it; showControls = true; subtitleMenuTouchKey++ },
             currentSyncOffset = subtitleSyncOffset, onSyncOffsetChange = { subtitleSyncOffset = it; showControls = true; subtitleMenuTouchKey++ },
-            onReset = { subtitleTextSizeSp = 18f; subtitleBottomPadding = 0.13f; subtitleSyncOffset = 0.0f; subtitlesEnabled = true; trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build(); showControls = true; subtitleMenuTouchKey++ },
+            onReset = { subtitleTextSizeSp = 22f; subtitleBottomPadding = 0.02f; subtitleSyncOffset = 0.0f; subtitlesEnabled = true; trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build(); showControls = true; subtitleMenuTouchKey++ },
             onUserInteraction = { subtitleMenuTouchKey++; showControls = true }
         )
 
-        AnimatedVisibility(visible = showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu || showTopMenu, enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(visible = showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize()) {
 
-                // Top bar with ⋮ menu now interactive
-                AnimatedVisibility(visible = (showTopBar || showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu || showTopMenu) && !showSeekPreview, enter = fadeIn(), exit = fadeOut()) {
-                    TopGlassTitleBar(
-                        title = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path),
-                        isLandscape = isLandscape,
-                        speedLabel = if (playbackSpeed != 1.0f) "${playbackSpeed}x" else null,
-                        onMenuClick = { showTopMenu = !showTopMenu; showControls = true; showTopBar = true }
-                    )
-                }
-
-                // Floating score capsule — IMDb / RT / TMDB in a glass pill, top-left
-                AnimatedVisibility(visible = (showTopBar || showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu || showTopMenu) && !showSeekPreview, enter = fadeIn(animationSpec = tween(160)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.TopStart).padding(top = if (isLandscape) 52.dp else 76.dp, start = sidePadding)) {
-                    FloatingScoreCapsule(meta = currentMeta)
+                // Title pill + score capsule — the full-width bar is gone; cinema stays fullscreen.
+                // The title shows for a few seconds when playback starts, then fades away.
+                Column(modifier = Modifier.align(Alignment.TopStart).padding(top = if (isLandscape) 10.dp else 18.dp, start = sidePadding)) {
+                    AnimatedVisibility(visible = showTitlePill && !showSeekPreview, enter = fadeIn(animationSpec = tween(220)), exit = fadeOut(animationSpec = tween(700))) {
+                        Text(
+                            text = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path),
+                            color = TextBright,
+                            fontSize = if (isLandscape) 13.sp else 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 14.dp, vertical = 7.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(7.dp))
+                    AnimatedVisibility(visible = (showTopBar || showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu) && !showSeekPreview, enter = fadeIn(animationSpec = tween(160)), exit = fadeOut(animationSpec = tween(120))) {
+                        FloatingScoreCapsule(meta = currentMeta)
+                    }
                 }
 
                 AnimatedVisibility(visible = autoSubtitleStatus.isNotBlank() && !showSeekPreview, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.TopCenter).padding(top = if (isLandscape) 54.dp else 86.dp)) {
@@ -785,13 +791,13 @@ fun VideoPlayerScreen(
 
                         // Speed — amber if not 1x
                         IconCircle(icon = Icons.Rounded.Speed, size = smallButton, tint = if (playbackSpeed != 1.0f) AmberCore else TextBright) {
-                            showSleepMenu = false; showTopMenu = false
+                            showSleepMenu = false
                             showSpeedMenu = !showSpeedMenu; showControls = true
                         }
 
                         // Sleep timer — amber if active
                         IconCircle(icon = Icons.Rounded.Timer, size = smallButton, tint = if (sleepTimerActive) AmberCore else TextBright) {
-                            showSpeedMenu = false; showTopMenu = false
+                            showSpeedMenu = false
                             showSleepMenu = !showSleepMenu; showControls = true
                         }
 
@@ -825,6 +831,7 @@ fun VideoPlayerScreen(
                 ) {
                     CinematicSeekBar(
                         position = position, duration = duration, isDragging = isDraggingSeekbar,
+                        seed = currentVideo.path.hashCode(),
                         onPreviewPositionChanged = { pos ->
                             isDraggingSeekbar = true; showSeekPreview = true; showControls = true; showTopBar = true
                             position = pos.coerceIn(0L, duration); previewPosition = position
@@ -849,22 +856,113 @@ fun VideoPlayerScreen(
     }
 }
 
+// ── Unified anchored glass menus (screenshot style) ──────────────────────────
+// One shared row component: icon + label, selected row gets a glowing outline.
+
+@Composable
+private fun GlassMenuRow(icon: ImageVector?, label: String, selected: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(shape)
+            .background(if (selected) AmberGlow.copy(alpha = 0.16f) else Color.Transparent)
+            .then(
+                if (selected) Modifier.border(
+                    width = 1.dp,
+                    brush = Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.85f), AmberDeep.copy(alpha = 0.35f))),
+                    shape = shape
+                ) else Modifier
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (icon != null) {
+            Icon(imageVector = icon, contentDescription = null, tint = if (selected) AmberCore else TextMuted, modifier = Modifier.size(15.dp))
+            Spacer(modifier = Modifier.width(9.dp))
+        }
+        Text(
+            text = label,
+            color = if (selected) AmberCore else TextBright,
+            fontSize = 13.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+        )
+    }
+}
+
+// ── SRT file browser popup ────────────────────────────────────────────────────
+// A glass mini file manager: lists .srt files found near the video (same folder,
+// Subs/Subtitles subfolders, Downloads). Picking one loads it and closes the
+// popup automatically. System picker remains available as a fallback row.
+
+private fun findNearbySrtFiles(videoPath: String): List<java.io.File> {
+    val results = LinkedHashSet<java.io.File>()
+    try {
+        val videoFile = java.io.File(videoPath)
+        val folder = videoFile.parentFile
+        val base = videoFile.nameWithoutExtension.lowercase()
+        val dirs = listOfNotNull(
+            folder,
+            folder?.let { java.io.File(it, "Subs") },
+            folder?.let { java.io.File(it, "Subtitles") },
+            android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+        )
+        for (dir in dirs) {
+            if (!dir.isDirectory) continue
+            dir.listFiles()
+                ?.filter { it.isFile && it.extension.equals("srt", ignoreCase = true) }
+                ?.sortedByDescending { it.nameWithoutExtension.lowercase().contains(base) }
+                ?.take(25)
+                ?.forEach { results.add(it) }
+            if (results.size >= 40) break
+        }
+    } catch (_: Exception) {}
+    return results.toList()
+}
+
+@Composable
+private fun SrtBrowserPopup(
+    files: List<java.io.File>,
+    modifier: Modifier,
+    onPick: (java.io.File) -> Unit,
+    onSystemPicker: () -> Unit,
+    onClose: () -> Unit
+) {
+    Column(modifier = modifier.width(252.dp).heightIn(max = 320.dp).glassPanel(cornerRadius = 18.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(8.dp)) {
+        Text(text = "Subtitle Files", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+        if (files.isEmpty()) {
+            Text(
+                text = "No .srt files found near this video",
+                color = TextMuted, fontSize = 11.sp,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+            )
+        } else {
+            Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                files.forEach { file ->
+                    GlassMenuRow(icon = Icons.Rounded.ClosedCaption, label = file.name, selected = false, onClick = { onPick(file) })
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+            }
+        }
+        GlassMenuRow(icon = null, label = "System file picker…", selected = false, onClick = onSystemPicker)
+        Spacer(modifier = Modifier.height(4.dp))
+        GlassMenuRow(icon = null, label = "Close", selected = false, onClick = onClose)
+    }
+}
+
 // ── Speed Menu ────────────────────────────────────────────────────────────────
 @Composable
 private fun SpeedMenuPopup(currentSpeed: Float, modifier: Modifier, onSpeedSelected: (Float) -> Unit, onDismiss: () -> Unit) {
     val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
-    Column(modifier = modifier.glassPanel(cornerRadius = 16.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(8.dp)) {
-        Text(text = "Speed", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+    Column(modifier = modifier.width(178.dp).glassPanel(cornerRadius = 18.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(8.dp)) {
+        Text(text = "Speed", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
         speeds.forEach { speed ->
-            val selected = speed == currentSpeed
-            Text(
-                text = if (speed == 1.0f) "1x  Normal" else "${speed}x",
-                color = if (selected) AmberCore else TextBright,
-                fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
-                    .background(if (selected) AmberGlow.copy(alpha = 0.14f) else Color.Transparent)
-                    .clickable { onSpeedSelected(speed) }.padding(horizontal = 14.dp, vertical = 9.dp)
+            GlassMenuRow(
+                icon = Icons.Rounded.Speed,
+                label = if (speed == 1.0f) "1x Normal" else "${speed}x",
+                selected = speed == currentSpeed,
+                onClick = { onSpeedSelected(speed) }
             )
+            Spacer(modifier = Modifier.height(4.dp))
         }
     }
 }
@@ -873,34 +971,16 @@ private fun SpeedMenuPopup(currentSpeed: Float, modifier: Modifier, onSpeedSelec
 @Composable
 private fun SleepMenuPopup(currentMinutes: Int, modifier: Modifier, onSelected: (Int) -> Unit, onDismiss: () -> Unit) {
     val options = listOf(0 to "Off", 15 to "15 min", 30 to "30 min", 45 to "45 min", 60 to "60 min")
-    Column(modifier = modifier.glassPanel(cornerRadius = 16.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(8.dp)) {
-        Text(text = "Sleep Timer", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+    Column(modifier = modifier.width(178.dp).glassPanel(cornerRadius = 18.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(8.dp)) {
+        Text(text = "Sleep Timer", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
         options.forEach { (mins, label) ->
-            val selected = mins == currentMinutes
-            Text(
-                text = label,
-                color = if (selected) AmberCore else TextBright,
-                fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
-                    .background(if (selected) AmberGlow.copy(alpha = 0.14f) else Color.Transparent)
-                    .clickable { onSelected(mins) }.padding(horizontal = 14.dp, vertical = 9.dp)
+            GlassMenuRow(
+                icon = Icons.Rounded.Timer,
+                label = label,
+                selected = mins == currentMinutes,
+                onClick = { onSelected(mins) }
             )
-        }
-    }
-}
-
-// ── Top ⋮ menu ────────────────────────────────────────────────────────────────
-@Composable
-private fun TopMenuPopup(modifier: Modifier, onDeleteFile: () -> Unit, onDismiss: () -> Unit) {
-    Column(modifier = modifier.glassPanel(cornerRadius = 16.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
-                .clickable { onDeleteFile() }.padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(imageVector = Icons.Rounded.Delete, contentDescription = "Delete", tint = Color(0xFFFF5252), modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(text = "Delete File", color = Color(0xFFFF5252), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(4.dp))
         }
     }
 }
@@ -980,26 +1060,73 @@ private fun IconCircle(icon: ImageVector, size: Dp, tint: Color = TextBright, on
     }
 }
 
+// ── The Liquid Thread ─────────────────────────────────────────────────────────
+// Resting: a thin 2dp amber thread with a glowing playhead.
+// On touch: the thread BLOOMS into a full-width waveform — amber where played,
+// dim glass where not, brightest around your finger, with a playhead beam.
+// The waveform is simulated: generated deterministically from the file path
+// (seed), so every movie has its own signature pattern with zero scanning cost.
 @Composable
-private fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolean, onPreviewPositionChanged: (Long) -> Unit, onSeekFinished: (Long) -> Unit) {
+private fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolean, seed: Int, onPreviewPositionChanged: (Long) -> Unit, onSeekFinished: (Long) -> Unit) {
     var localPosition by remember { mutableLongStateOf(position) }
     LaunchedEffect(position, isDragging) { if (!isDragging) localPosition = position }
+    val bloom by animateFloatAsState(targetValue = if (isDragging) 1f else 0f, animationSpec = tween(300, easing = FastOutSlowInEasing), label = "liquidBloom")
     val glow by animateFloatAsState(targetValue = if (isDragging) 1f else 0.45f, animationSpec = tween(220), label = "seekGlow")
     fun positionFromX(x: Float, width: Float): Long { if (duration <= 0L || width <= 0f) return 0L; return (duration * (x / width).coerceIn(0f, 1f)).toLong().coerceIn(0L, duration) }
-    Box(modifier = Modifier.fillMaxWidth().height(34.dp)
+    Box(modifier = Modifier.fillMaxWidth().height(38.dp)
         .pointerInput(duration) { detectTapGestures { o -> val p = positionFromX(o.x, size.width.toFloat()); localPosition = p; onPreviewPositionChanged(p); onSeekFinished(p) } }
         .pointerInput(duration) { detectDragGestures(onDragStart = { o -> localPosition = positionFromX(o.x, size.width.toFloat()); onPreviewPositionChanged(localPosition) }, onDrag = { c, _ -> localPosition = positionFromX(c.position.x, size.width.toFloat()); onPreviewPositionChanged(localPosition) }, onDragEnd = { onSeekFinished(localPosition) }, onDragCancel = { onSeekFinished(localPosition) }) }
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val th = 5.dp.toPx(); val cy = size.height / 2f; val r = th / 2f
+            val cy = size.height / 2f
             val prog = (localPosition.toFloat() / duration.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
-            val aw = size.width * prog; val tx = aw.coerceIn(0f, size.width)
-            drawRoundRect(color = Color.White.copy(alpha = 0.13f), topLeft = Offset(0f, cy - th/2f), size = Size(size.width, th), cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r))
-            drawRoundRect(color = Color(0xFFFFC857).copy(alpha = 0.95f), topLeft = Offset(0f, cy - th/2f), size = Size(aw, th), cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r))
-            listOf(0.25f, 0.50f, 0.75f).forEach { drawCircle(color = Color.White.copy(alpha = 0.45f), radius = 2.2.dp.toPx(), center = Offset(size.width * it, cy)) }
-            drawCircle(color = Color(0xFFFFC857).copy(alpha = 0.22f * glow), radius = 16.dp.toPx(), center = Offset(tx, cy))
-            drawCircle(color = Color(0xFFFFE7A3).copy(alpha = 0.45f * glow), radius = 10.dp.toPx(), center = Offset(tx, cy))
-            drawCircle(color = Color(0xFFFFF3D6), radius = if (isDragging) 6.6.dp.toPx() else 5.2.dp.toPx(), center = Offset(tx, cy))
+            val tx = (size.width * prog).coerceIn(0f, size.width)
+
+            // ── Thread state (fades out as the waveform blooms) ──
+            val threadAlpha = 1f - bloom
+            if (threadAlpha > 0.01f) {
+                val th = 2.2.dp.toPx(); val r = th / 2f
+                drawRoundRect(color = Color.White.copy(alpha = 0.15f * threadAlpha), topLeft = Offset(0f, cy - th / 2f), size = Size(size.width, th), cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r))
+                drawRoundRect(color = AmberGlow.copy(alpha = 0.95f * threadAlpha), topLeft = Offset(0f, cy - th / 2f), size = Size(tx, th), cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r))
+            }
+
+            // ── Waveform state (blooms in under the finger) ──
+            if (bloom > 0.01f) {
+                val barW = 3.dp.toPx(); val gap = 2.2.dp.toPx(); val step = barW + gap
+                val n = (size.width / step).toInt().coerceAtLeast(1)
+                val maxH = size.height * 0.92f
+                val cr = androidx.compose.ui.geometry.CornerRadius(barW / 2f, barW / 2f)
+                for (i in 0 until n) {
+                    val bx = i * step + barW / 2f
+                    // Deterministic organic amplitude: layered sine + hash noise
+                    val h1 = i * 374761393 + seed * 668265263
+                    val h2 = (h1 xor (h1 shr 13)) * 1274126177
+                    val noise = ((h2 ushr 16) and 0xFFFF) / 65535f
+                    val wave = 0.5f + 0.5f * kotlin.math.sin(i * 0.31f + (seed % 360) / 57.3f)
+                    val wave2 = 0.5f + 0.5f * kotlin.math.sin(i * 0.071f + (seed % 13).toFloat())
+                    val amp = (0.18f + 0.82f * (0.40f * wave + 0.25f * wave2 + 0.35f * noise)).coerceIn(0.12f, 1f)
+                    val hgt = amp * maxH * bloom
+                    val played = bx <= tx
+                    val prox = 1f - (kotlin.math.abs(bx - tx) / (size.width * 0.30f)).coerceIn(0f, 1f)
+                    val alpha = if (played) bloom * (0.55f + 0.45f * prox) else bloom * (0.20f + 0.45f * prox)
+                    val barColor = if (played) AmberGlow else Color.White
+                    drawRoundRect(color = barColor.copy(alpha = alpha), topLeft = Offset(bx - barW / 2f, cy - hgt / 2f), size = Size(barW, hgt), cornerRadius = cr)
+                }
+            }
+
+            // ── Chapter ticks (float up above the waveform while blooming) ──
+            val tickY = cy - bloom * (size.height * 0.40f)
+            listOf(0.25f, 0.50f, 0.75f).forEach {
+                drawCircle(color = Color.White.copy(alpha = 0.45f + 0.20f * bloom), radius = 2.2.dp.toPx(), center = Offset(size.width * it, tickY))
+            }
+
+            // ── Playhead — glow halo, beam (while blooming), and core dot ──
+            drawCircle(color = AmberGlow.copy(alpha = 0.22f * glow), radius = 16.dp.toPx(), center = Offset(tx, cy))
+            drawCircle(color = AmberCore.copy(alpha = 0.40f * glow), radius = 10.dp.toPx(), center = Offset(tx, cy))
+            if (bloom > 0.01f) {
+                drawLine(color = Color(0xFFFFF3D6).copy(alpha = 0.90f * bloom), start = Offset(tx, cy - size.height * 0.46f), end = Offset(tx, cy + size.height * 0.46f), strokeWidth = 2.dp.toPx())
+            }
+            drawCircle(color = Color(0xFFFFF3D6), radius = if (isDragging) 5.4.dp.toPx() else 4.6.dp.toPx(), center = Offset(tx, cy))
         }
     }
 }
@@ -1023,26 +1150,6 @@ private fun SeekPreviewBubble(isVisible: Boolean, bitmap: Bitmap?, timeText: Str
                 Text(text = timeText, color = AmberCore, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
-    }
-}
-
-@Composable
-private fun TopGlassTitleBar(title: String, isLandscape: Boolean, speedLabel: String? = null, onMenuClick: () -> Unit = {}) {
-    Row(
-        modifier = Modifier.fillMaxWidth()
-            .padding(start = if (isLandscape) 8.dp else 12.dp, end = if (isLandscape) 8.dp else 12.dp, top = if (isLandscape) 0.dp else 4.dp)
-            .glassPanel(cornerRadius = 34.dp, fill = GlassSurfaceStrong)
-            .padding(horizontal = if (isLandscape) 10.dp else 13.dp, vertical = if (isLandscape) 3.dp else 7.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(text = title, color = TextBright, fontSize = if (isLandscape) 13.sp else 17.sp, fontWeight = FontWeight.Black, maxLines = 1, modifier = Modifier.weight(1f))
-        if (speedLabel != null) {
-            Text(text = speedLabel, color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberGlow.copy(alpha = 0.14f)).padding(horizontal = 8.dp, vertical = 3.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-        }
-        Text(text = "⋮", color = TextBright.copy(alpha = 0.95f), fontSize = if (isLandscape) 24.sp else 26.sp, fontWeight = FontWeight.Black,
-            modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onMenuClick() }.padding(horizontal = 6.dp, vertical = 2.dp))
     }
 }
 
@@ -1220,13 +1327,12 @@ private fun NextEpisodeCountdownOverlay(nextEpisode: VideoWithMetadata?, countdo
 
 @Composable
 private fun FloatingTrackPopup(title: String, modifier: Modifier, rows: List<TrackPopupRowData>, onAnyClick: () -> Unit = {}, onClose: () -> Unit) {
-    Column(modifier = modifier.glassPanel(cornerRadius = 18.dp, fill = GlassSurfaceStrong).padding(7.dp)) {
-        Text(text = title, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(5.dp))
+    Column(modifier = modifier.glassPanel(cornerRadius = 18.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(8.dp)) {
+        Text(text = title, color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
         rows.forEach { row ->
-            Text(text = row.title, color = TextBright, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = 0.10f)).clickable { onAnyClick(); row.onClick() }.padding(7.dp))
-            Spacer(modifier = Modifier.height(5.dp))
+            GlassMenuRow(icon = Icons.Rounded.Audiotrack, label = row.title, selected = false, onClick = { onAnyClick(); row.onClick() })
+            Spacer(modifier = Modifier.height(4.dp))
         }
-        Text(text = "Close", color = TextBright, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = 0.10f)).clickable { onAnyClick(); onClose() }.padding(7.dp))
+        GlassMenuRow(icon = null, label = "Close", selected = false, onClick = { onAnyClick(); onClose() })
     }
 }
