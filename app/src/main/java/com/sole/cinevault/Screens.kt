@@ -5,9 +5,12 @@ import androidx.compose.ui.graphics.asImageBitmap
 import android.app.Activity
 import android.content.Context
 import android.view.WindowManager
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -50,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.sole.cinevault.ui.theme.*
 
 // Single shared findCineActivity() for the whole app
 fun Context.findCineActivity(): Activity? {
@@ -88,7 +92,7 @@ fun CineBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
     )
 
     NavigationBar(
-        containerColor = Color(0xFF0D0D0D),
+        containerColor = SpaceDeep,
         tonalElevation = 0.dp
     ) {
         tabs.forEach { (icon, label, index) ->
@@ -99,7 +103,7 @@ fun CineBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
                 label = {
                     Text(
                         text = label,
-                        color = if (selected) Color(0xFFE8A020) else Color(0xFF666666),
+                        color = if (selected) AmberGlow else TextFaint,
                         fontSize = 11.sp,
                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
                     )
@@ -109,7 +113,7 @@ fun CineBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
                         Icon(
                             imageVector = icon,
                             contentDescription = label,
-                            tint = if (selected) Color(0xFFE8A020) else Color(0xFF555555),
+                            tint = if (selected) AmberGlow else TextFaint,
                             modifier = Modifier.size(22.dp)
                         )
                         if (selected) {
@@ -118,7 +122,7 @@ fun CineBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
                                 modifier = Modifier
                                     .size(4.dp)
                                     .clip(RoundedCornerShape(50))
-                                    .background(Color(0xFFE8A020))
+                                    .background(AmberGlow)
                             )
                         }
                     }
@@ -157,7 +161,7 @@ fun HomeScreen(
     androidx.compose.foundation.lazy.LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0F0F0F))
+            .background(SpaceBlack)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(bottom = 30.dp)
@@ -168,7 +172,7 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .height(260.dp)
                     .clip(RoundedCornerShape(30.dp))
-                    .background(Color(0xFF161616))
+                    .background(SpaceMid)
             ) {
                 if (heroImage != null) {
                     AsyncImage(
@@ -188,13 +192,12 @@ fun HomeScreen(
                                 colors = listOf(
                                     Color.Transparent,
                                     Color(0x66000000),
-                                    Color(0xCC0F0F0F)
+                                    SpaceBlack.copy(alpha = 0.85f)
                                 )
                             )
                         )
                 )
 
-                // FIX: Logo reduced from 144dp to 80dp — less intrusive, more cinematic
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -218,7 +221,7 @@ fun HomeScreen(
                 ) {
                     Text(
                         text = "Your Cinema Library",
-                        color = Color.White,
+                        color = TextBright,
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -227,7 +230,7 @@ fun HomeScreen(
 
                     Text(
                         text = "Movies • TV Shows • Local Playback",
-                        color = Color(0xFFE6E6E6),
+                        color = TextMuted,
                         fontSize = 14.sp
                     )
 
@@ -237,11 +240,11 @@ fun HomeScreen(
                         onClick = onScanRequest,
                         shape = RoundedCornerShape(40.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFE8A020).copy(alpha = 0.85f),
-                            contentColor = Color.White
+                            containerColor = AmberGlow.copy(alpha = 0.90f),
+                            contentColor = Color.Black
                         )
                     ) {
-                        Text(if (videos.isEmpty()) "Scan Library" else "Open Library")
+                        Text(if (videos.isEmpty()) "Scan Library" else "Open Library", fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -272,7 +275,7 @@ fun HomeScreen(
             item {
                 Text(
                     text = "Scan your library to see posters and Continue Watching here.",
-                    color = Color(0xFFAAAAAA),
+                    color = TextMuted,
                     fontSize = 15.sp
                 )
             }
@@ -280,6 +283,8 @@ fun HomeScreen(
     }
 }
 
+// ── Continue Watching — screenshot style: clean card, timestamps at the
+//    corners, thin progress line at the bottom edge, title BELOW the card ──
 @Composable
 fun ContinueWatchingSection(
     items: List<VideoWithMetadata>,
@@ -296,7 +301,7 @@ fun ContinueWatchingSection(
         ) {
             Text(
                 text = "Continue Watching",
-                color = Color.White,
+                color = TextBright,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f)
@@ -305,7 +310,7 @@ fun ContinueWatchingSection(
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .background(Color.White.copy(alpha = 0.10f))
+                    .background(GlassSurface)
                     .padding(3.dp),
                 horizontalArrangement = Arrangement.spacedBy(3.dp)
             ) {
@@ -319,76 +324,68 @@ fun ContinueWatchingSection(
         if (mode == "List") {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 items(items) { item ->
+                    val positionMs = loadPlaybackPosition(context, item.video.path)
+                    val durationMs = loadDuration(context, item.video.path)
                     val watchedPercent = getWatchedPercent(context, item)
 
-                    Box(
-                        modifier = Modifier
-                            .width(260.dp)
-                            .height(145.dp)
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(Color(0xFF141414))
-                            .clickable { onItemClick(item) }
-                    ) {
-                        val image = item.backdropUrl ?: item.episodeStill ?: item.posterUrl
-
-                        if (!image.isNullOrBlank()) {
-                            AsyncImage(
-                                model = image,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-
+                    Column(modifier = Modifier.width(250.dp).clickable { onItemClick(item) }) {
                         Box(
                             modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.horizontalGradient(
-                                        colors = listOf(
-                                            Color.Black.copy(alpha = 0.82f),
-                                            Color.Black.copy(alpha = 0.35f),
-                                            Color.Transparent
-                                        )
-                                    )
-                                )
-                        )
-
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
                                 .fillMaxWidth()
-                                .background(Color.Black.copy(alpha = 0.34f))
-                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                                .height(140.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(SpaceMid)
                         ) {
-                            Text(
-                                text = item.title,
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                            val image = item.backdropUrl ?: item.episodeStill ?: item.posterUrl
+                            if (!image.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = image,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+
+                            // Scrim just behind the timestamps
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .height(44.dp)
+                                    .background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.60f))))
                             )
-                            Spacer(modifier = Modifier.height(3.dp))
-                            ProgressBar(progress = watchedPercent)
+
+                            Text(
+                                text = formatClock(positionMs),
+                                color = TextBright, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 8.dp)
+                            )
+                            if (durationMs > 0L) {
+                                Text(
+                                    text = formatClock(durationMs),
+                                    color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 10.dp, bottom = 8.dp)
+                                )
+                            }
+
+                            // Thin progress line hugging the bottom edge
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .height(3.dp)
+                                    .background(Color.White.copy(alpha = 0.18f))
+                            ) {
+                                Box(modifier = Modifier.fillMaxWidth(watchedPercent.coerceIn(0f, 1f)).fillMaxHeight().background(AmberGlow))
+                            }
                         }
 
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(12.dp)
-                                .size(38.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(Color(0xFFE8A020).copy(alpha = 0.85f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.PlayArrow,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(23.dp)
-                            )
-                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = item.title,
+                            color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }
@@ -404,7 +401,7 @@ fun ContinueWatchingSection(
                             val watchedPercent = getWatchedPercent(context, item)
                             ResumePosterBox(
                                 item = item,
-                                modifier = Modifier.weight(1f).height(155.dp),
+                                modifier = Modifier.weight(1f),
                                 progress = watchedPercent,
                                 onClick = { onItemClick(item) }
                             )
@@ -424,40 +421,40 @@ private fun ResumePosterBox(
     progress: Float,
     onClick: () -> Unit
 ) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xFF141414))
-            .clickable { onClick() }
-    ) {
-        val imageModel = item.posterUrl ?: item.video.path
-
-        if (imageModel.isNotBlank()) {
-            AsyncImage(
-                model = imageModel,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(30.dp))
-            }
-        }
-
+    Column(modifier = modifier.clickable { onClick() }) {
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .background(Color.Black.copy(alpha = 0.45f))
-                .padding(horizontal = 7.dp, vertical = 5.dp)
+                .height(132.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(SpaceMid)
         ) {
-            Column {
-                Text(text = item.title, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(modifier = Modifier.height(3.dp))
-                ProgressBar(progress = progress, compact = true)
+            val imageModel = item.posterUrl ?: item.video.path
+            if (imageModel.isNotBlank()) {
+                AsyncImage(
+                    model = imageModel,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null, tint = TextFaint, modifier = Modifier.size(30.dp))
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(Color.White.copy(alpha = 0.18f))
+            ) {
+                Box(modifier = Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(AmberGlow))
             }
         }
+        Spacer(modifier = Modifier.height(5.dp))
+        Text(text = item.title, color = TextBright, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -475,7 +472,7 @@ private fun ProgressBar(progress: Float, compact: Boolean = false) {
             modifier = Modifier
                 .fillMaxWidth(progress.coerceIn(0f, 1f))
                 .fillMaxHeight()
-                .background(Color(0xFFE8A020))
+                .background(AmberGlow)
         )
     }
 }
@@ -485,23 +482,23 @@ private fun SmallToggleChip(text: String, selected: Boolean, onClick: () -> Unit
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(50))
-            .background(if (selected) Color(0xFFE8A020).copy(alpha = 0.85f) else Color.Transparent)
+            .background(if (selected) AmberGlow.copy(alpha = 0.85f) else Color.Transparent)
             .clickable { onClick() }
             .padding(horizontal = 12.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = text, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text(text = text, color = if (selected) Color.Black else TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
 
-// Quick play button overlay — gold circle in bottom-right of poster
+// Quick play button overlay — gold circle, kept from CV1
 @Composable
 private fun QuickPlayButton(onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(36.dp)
             .clip(CircleShape)
-            .background(Color(0xFFE8A020).copy(alpha = 0.92f))
+            .background(AmberGlow.copy(alpha = 0.92f))
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
@@ -512,6 +509,41 @@ private fun QuickPlayButton(onClick: () -> Unit) {
             modifier = Modifier.size(22.dp)
         )
     }
+}
+
+// ── Poster corner chips — small glass badges, screenshot style ───────────────
+
+@Composable
+private fun ImdbCornerChip(value: String, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black.copy(alpha = 0.62f))
+            .padding(horizontal = 5.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.clip(RoundedCornerShape(3.dp)).background(Color(0xFFF5C518)).padding(horizontal = 3.dp, vertical = 1.dp)
+        ) {
+            Text(text = "IMDb", color = Color.Black, fontSize = 6.sp, fontWeight = FontWeight.Black)
+        }
+        Spacer(modifier = Modifier.width(3.dp))
+        Text(text = value, color = TextBright, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun CornerChip(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        color = TextBright,
+        fontSize = 8.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black.copy(alpha = 0.62f))
+            .padding(horizontal = 6.dp, vertical = 3.dp)
+    )
 }
 
 @Composable
@@ -529,7 +561,7 @@ fun FeaturedLibrarySection(
         ) {
             Text(
                 text = "Featured From Your Library",
-                color = Color.White,
+                color = TextBright,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f)
@@ -537,7 +569,7 @@ fun FeaturedLibrarySection(
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .background(Color.White.copy(alpha = 0.10f))
+                    .background(GlassSurface)
                     .padding(3.dp),
                 horizontalArrangement = Arrangement.spacedBy(3.dp)
             ) {
@@ -557,50 +589,8 @@ fun FeaturedLibrarySection(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         rowItems.forEach { item ->
-                            Column(modifier = Modifier.weight(1f)) {
-                                // Poster with quick play button
-                                Box {
-                                    PosterBox(
-                                        posterUrl = item.posterUrl,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(160.dp)
-                                            .clickable { onItemClick(item) },
-                                        videoPath = item.video.path,
-                                        episodeStill = item.episodeStill,
-                                        backdropUrl = item.backdropUrl,
-                                        type = item.type
-                                    )
-                                    // Quick play button — bottom right corner
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.BottomEnd)
-                                            .padding(6.dp)
-                                    ) {
-                                        QuickPlayButton { onPlayClick(item) }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(5.dp))
-
-                                Text(
-                                    text = item.title,
-                                    color = Color.White,
-                                    fontSize = 10.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-
-                                if (item.subtitle.isNotBlank()) {
-                                    Text(
-                                        text = item.subtitle,
-                                        color = Color(0xFF888888),
-                                        fontSize = 9.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
+                            Box(modifier = Modifier.weight(1f)) {
+                                LibraryGridCard(item = item, onClick = { onItemClick(item) }, onPlayClick = onPlayClick)
                             }
                         }
                         repeat(3 - rowItems.size) { Spacer(modifier = Modifier.weight(1f)) }
@@ -625,7 +615,7 @@ fun HomeRow(
 ) {
     val context = LocalContext.current
     Column {
-        Text(text = title, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text(text = title, color = TextBright, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(14.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             items(items) { item ->
@@ -643,13 +633,9 @@ fun HomeRow(
                         type = item.type
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = item.title, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                    Text(text = item.title, color = TextBright, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                     if (item.subtitle.isNotBlank()) {
-                        Text(text = item.subtitle, color = Color(0xFF888888), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    if (watchedPercent > 0f) {
-                        Spacer(modifier = Modifier.height(5.dp))
-                        ProgressBar(progress = watchedPercent)
+                        Text(text = item.subtitle, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -674,19 +660,19 @@ fun SearchScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0F0F0F))
+            .background(SpaceBlack)
             .padding(16.dp)
     ) {
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Search movies or shows...", color = Color(0xFF666666)) },
+            placeholder = { Text("Search movies or shows...", color = TextFaint) },
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = Color(0xFFE8A020),
-                unfocusedBorderColor = Color(0xFF333333)
+                focusedTextColor = TextBright,
+                unfocusedTextColor = TextBright,
+                focusedBorderColor = AmberGlow,
+                unfocusedBorderColor = GlassBorderTop
             )
         )
 
@@ -716,13 +702,15 @@ private fun SearchPosterCard(item: VideoWithMetadata, onClick: () -> Unit) {
             type = item.type
         )
         Spacer(modifier = Modifier.height(8.dp))
-        Text(text = item.title, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+        Text(text = item.title, color = TextBright, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
         if (item.subtitle.isNotBlank()) {
-            Text(text = item.subtitle, color = Color(0xFF888888), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = item.subtitle, color = TextMuted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
 
+// ── PosterBox — CLEAN poster art. No gradients, no text overlays. Just the
+//    poster and (optionally) a thin progress line hugging the bottom edge. ──
 @Composable
 fun PosterBox(
     posterUrl: String?,
@@ -754,8 +742,8 @@ fun PosterBox(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xFF131313))
+            .clip(RoundedCornerShape(16.dp))
+            .background(SpaceMid)
     ) {
         when {
             !displayImage.isNullOrBlank() -> {
@@ -765,47 +753,51 @@ fun PosterBox(
                 Image(bitmap = localBitmap!!.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }
             else -> {
-                Box(modifier = Modifier.fillMaxSize().background(Color(0xFF111111)), contentAlignment = Alignment.Center) {
-                    Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null, tint = Color(0xFF444444), modifier = Modifier.size(42.dp))
+                Box(modifier = Modifier.fillMaxSize().background(SpaceDeep), contentAlignment = Alignment.Center) {
+                    Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null, tint = TextFaint, modifier = Modifier.size(42.dp))
                 }
             }
         }
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.65f))
-                    )
-                )
-        )
 
         if (progress > 0f) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(4.dp)
-                    .background(Color.White.copy(alpha = 0.15f))
+                    .height(3.dp)
+                    .background(Color.White.copy(alpha = 0.18f))
             ) {
-                Box(modifier = Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(Color(0xFFE8A020)))
+                Box(modifier = Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(AmberGlow))
             }
         }
     }
 }
 
+// ── LibraryGridCard — the new poster card. Clean art, corner chips,
+//    gold QuickPlay (CV1), title + year BELOW. Long-press for actions. ──
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibraryGridCard(
     item: VideoWithMetadata,
     onClick: () -> Unit,
-    onPlayClick: (VideoWithMetadata) -> Unit = {}
+    onPlayClick: (VideoWithMetadata) -> Unit = {},
+    onLongPress: (VideoWithMetadata) -> Unit = {}
 ) {
     val context = LocalContext.current
     val badges = mediaBadgesFromName(item.video.name)
     val watchedPercent = getWatchedPercent(context, item)
+    val imdbChip = item.imdbRating?.takeIf { it.isNotBlank() && it != "N/A" }
+    val qualityChip = listOfNotNull(
+        badges.firstOrNull { it == "4K" || it == "1080p" || it == "720p" },
+        badges.firstOrNull { it == "HDR" }
+    ).joinToString(" ")
 
-    Column(modifier = Modifier.clickable { onClick() }) {
+    Column(
+        modifier = Modifier.combinedClickable(
+            onClick = onClick,
+            onLongClick = { onLongPress(item) }
+        )
+    ) {
         Box {
             PosterBox(
                 posterUrl = item.posterUrl,
@@ -817,64 +809,49 @@ fun LibraryGridCard(
                 type = item.type
             )
 
-            if (badges.isNotEmpty()) {
-                LazyRow(
-                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    items(items = badges) { badge ->
-                        Text(
-                            text = badge,
-                            color = Color.White,
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(Color(0xFFE8A020).copy(alpha = 0.85f))
-                                .padding(horizontal = 7.dp, vertical = 3.dp)
-                        )
-                    }
-                }
+            if (imdbChip != null) {
+                ImdbCornerChip(value = imdbChip, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
+            }
+            if (qualityChip.isNotBlank()) {
+                CornerChip(text = qualityChip, modifier = Modifier.align(Alignment.TopEnd).padding(6.dp))
             }
 
-            if (watchedPercent > 0f) {
-                Text(
-                    text = "${(watchedPercent * 100).toInt().coerceIn(1, 99)}%",
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.Black.copy(alpha = 0.72f))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                )
-            }
-
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.26f))
-                    .padding(horizontal = 7.dp, vertical = 5.dp)
-            ) {
-                Text(text = item.title, color = Color.White, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold)
-                if (item.subtitle.isNotBlank()) {
-                    Text(text = item.subtitle, color = Color.White.copy(alpha = 0.65f), fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-
-            // Quick play button — bottom right
+            // Gold QuickPlay — kept from CV1
             Box(modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp)) {
                 QuickPlayButton { onPlayClick(item) }
             }
         }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Text(
+            text = item.title,
+            color = TextBright,
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            fontWeight = FontWeight.SemiBold
+        )
+
+        if (item.subtitle.isNotBlank()) {
+            Text(
+                text = item.subtitle,
+                color = TextMuted,
+                fontSize = 9.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun LibraryCard(item: VideoWithMetadata, onClick: () -> Unit) {
+fun LibraryCard(
+    item: VideoWithMetadata,
+    onClick: () -> Unit,
+    onLongPress: (VideoWithMetadata) -> Unit = {}
+) {
     val context = LocalContext.current
     val watchedPercent = getWatchedPercent(context, item)
 
@@ -882,8 +859,8 @@ fun LibraryCard(item: VideoWithMetadata, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xFF131313))
-            .clickable { onClick() }
+            .background(SpaceMid)
+            .combinedClickable(onClick = onClick, onLongClick = { onLongPress(item) })
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -900,23 +877,28 @@ fun LibraryCard(item: VideoWithMetadata, onClick: () -> Unit) {
         Spacer(modifier = Modifier.width(14.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = item.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(text = item.title, color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(text = item.subtitle.ifBlank { item.video.name }, color = Color(0xFF888888), fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(text = item.subtitle.ifBlank { item.video.name }, color = TextMuted, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
 
             if (watchedPercent > 0f) {
                 Spacer(modifier = Modifier.height(8.dp))
                 ProgressBar(progress = watchedPercent)
                 Spacer(modifier = Modifier.height(5.dp))
-                Text(text = "${(watchedPercent * 100).toInt().coerceIn(1, 99)}% watched", color = Color(0xFFE8A020), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Text(text = "${(watchedPercent * 100).toInt().coerceIn(1, 99)}% watched", color = AmberGlow, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             }
 
             if ((item.rating ?: 0.0) > 0.0) {
                 Spacer(modifier = Modifier.height(6.dp))
-                Text(text = "★ ${String.format("%.1f", item.rating)}", color = Color(0xFFE8A020), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text(text = "★ ${String.format("%.1f", item.rating)}", color = AmberGlow, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
+}
+
+private fun formatClock(ms: Long): String {
+    val s = ms / 1000; val h = s / 3600; val m = (s % 3600) / 60; val sec = s % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%02d:%02d".format(m, sec)
 }
 
 private fun getWatchedPercent(context: Context, item: VideoWithMetadata): Float {
