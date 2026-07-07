@@ -57,6 +57,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -526,6 +528,12 @@ fun VideoPlayerScreen(
         val seekBottomPadding = when { isCompactLandscape -> 18.dp; isLandscape -> 24.dp; else -> 30.dp }
         val showIntroSkip = isCurrentTvShow && position in 5_000L..95_000L
 
+        // Metadata for the floating score capsule — found by matching the
+        // playing file against the episode/library list already passed in
+        val currentMeta = remember(currentVideo.path, episodeList) {
+            episodeList.firstOrNull { it.video.path == currentVideo.path }
+        }
+
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
@@ -568,14 +576,39 @@ fun VideoPlayerScreen(
                         }
                     )
                 }
-                .pointerInput(currentVideo.path) {
+                .pointerInput(currentVideo.path, episodeList) {
+                    // GESTURE FIX: one unified drag handler.
+                    // Vertical-dominant gesture  -> volume (right) / brightness (left), anywhere on screen.
+                    // Horizontal-dominant gesture that STARTED in the outer 12% edge zone
+                    // and moved inward -> previous (from left edge) / next (from right edge).
+                    // A vertical swipe near the edge can no longer trigger next/previous.
+                    var dragStartX = 0f
+                    var dragTotalX = 0f
+                    var dragTotalY = 0f
                     detectDragGestures(
-                        onDragEnd = { brightnessGestureKey++; volumeGestureKey++ },
+                        onDragStart = { offset ->
+                            dragStartX = offset.x; dragTotalX = 0f; dragTotalY = 0f
+                        },
+                        onDragEnd = {
+                            brightnessGestureKey++; volumeGestureKey++
+                            val w = size.width.toFloat()
+                            val isHorizontal = kotlin.math.abs(dragTotalX) > kotlin.math.abs(dragTotalY) * 1.5f &&
+                                    kotlin.math.abs(dragTotalX) > 48.dp.toPx()
+                            if (isHorizontal) {
+                                when {
+                                    dragStartX < w * 0.12f && dragTotalX > 0f -> playPrevious()
+                                    dragStartX > w * 0.88f && dragTotalX < 0f -> playNext()
+                                }
+                            }
+                        },
                         onDragCancel = { brightnessGestureKey++; volumeGestureKey++ },
                         onDrag = { change, dragAmount ->
+                            dragTotalX += dragAmount.x; dragTotalY += dragAmount.y
                             val x = change.position.x; val w = size.width
                             val absX = kotlin.math.abs(dragAmount.x); val absY = kotlin.math.abs(dragAmount.y)
-                            if (absY > absX) {
+                            // Only adjust volume/brightness while the OVERALL gesture is vertical-dominant
+                            val gestureIsVertical = kotlin.math.abs(dragTotalY) >= kotlin.math.abs(dragTotalX)
+                            if (gestureIsVertical && absY > absX) {
                                 if (x < w * 0.50f) {
                                     brightnessPercent = (brightnessPercent - dragAmount.y.toInt() / 8).coerceIn(5, 100)
                                     activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = brightnessPercent / 100f }
@@ -591,10 +624,6 @@ fun VideoPlayerScreen(
                     )
                 }
         )
-
-        // Edge swipe zones
-        Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(0.12f).align(Alignment.CenterStart).pointerInput(episodeList) { detectDragGestures(onDrag = { _, _ -> }, onDragEnd = { playPrevious() }) })
-        Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(0.12f).align(Alignment.CenterEnd).pointerInput(episodeList) { detectDragGestures(onDrag = { _, _ -> }, onDragEnd = { playNext() }) })
 
         // HUDs
         AnimatedVisibility(visible = showBrightnessCircle, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopStart).padding(top = 86.dp, start = 28.dp)) {
@@ -700,6 +729,11 @@ fun VideoPlayerScreen(
                         speedLabel = if (playbackSpeed != 1.0f) "${playbackSpeed}x" else null,
                         onMenuClick = { showTopMenu = !showTopMenu; showControls = true; showTopBar = true }
                     )
+                }
+
+                // Floating score capsule — IMDb / RT / TMDB in a glass pill, top-left
+                AnimatedVisibility(visible = (showTopBar || showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu || showTopMenu) && !showSeekPreview, enter = fadeIn(animationSpec = tween(160)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.TopStart).padding(top = if (isLandscape) 52.dp else 76.dp, start = sidePadding)) {
+                    FloatingScoreCapsule(meta = currentMeta)
                 }
 
                 AnimatedVisibility(visible = autoSubtitleStatus.isNotBlank() && !showSeekPreview, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.TopCenter).padding(top = if (isLandscape) 54.dp else 86.dp)) {
@@ -1009,6 +1043,92 @@ private fun TopGlassTitleBar(title: String, isLandscape: Boolean, speedLabel: St
         }
         Text(text = "⋮", color = TextBright.copy(alpha = 0.95f), fontSize = if (isLandscape) 24.sp else 26.sp, fontWeight = FontWeight.Black,
             modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onMenuClick() }.padding(horizontal = 6.dp, vertical = 2.dp))
+    }
+}
+
+// ── Floating score capsule ───────────────────────────────────────────────────
+// The mockup's "[IMDb 8.7] [RT 94%] [TMDB 89%]" glass pill — with logo marks.
+// Renders nothing if no ratings are available for the current file.
+@Composable
+private fun FloatingScoreCapsule(meta: VideoWithMetadata?) {
+    if (meta == null) return
+    val imdb = meta.imdbRating?.takeIf { it.isNotBlank() && it != "N/A" }
+    val rt = meta.rottenTomatoesRating?.takeIf { it.isNotBlank() && it != "N/A" }
+    val tmdb = meta.rating?.takeIf { it > 0.0 }
+    if (imdb == null && rt == null && tmdb == null) return
+
+    Row(
+        modifier = Modifier
+            .glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        if (imdb != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ImdbLogoMark()
+                Spacer(modifier = Modifier.width(5.dp))
+                Text(text = imdb, color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        if (rt != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TomatoLogoMark(value = rt)
+                Spacer(modifier = Modifier.width(5.dp))
+                Text(text = rt, color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        if (tmdb != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TmdbLogoMark()
+                Spacer(modifier = Modifier.width(5.dp))
+                Text(text = String.format("%.1f", tmdb), color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+// IMDb mark — the classic yellow rounded box
+@Composable
+private fun ImdbLogoMark() {
+    Box(
+        modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(Color(0xFFF5C518))
+            .padding(horizontal = 5.dp, vertical = 2.dp)
+    ) {
+        Text(text = "IMDb", color = Color.Black, fontSize = 8.sp, fontWeight = FontWeight.Black)
+    }
+}
+
+// TMDB mark — teal-to-blue brand gradient block
+@Composable
+private fun TmdbLogoMark() {
+    Box(
+        modifier = Modifier.clip(RoundedCornerShape(4.dp))
+            .background(Brush.horizontalGradient(colors = listOf(Color(0xFF90CEA1), Color(0xFF01B4E4))))
+            .padding(horizontal = 5.dp, vertical = 2.dp)
+    ) {
+        Text(text = "TMDB", color = Color(0xFF032541), fontSize = 8.sp, fontWeight = FontWeight.Black)
+    }
+}
+
+// Rotten Tomatoes mark — drawn tomato (fresh) or splat (rotten), same as DetailScreen
+@Composable
+private fun TomatoLogoMark(value: String) {
+    val percent = value.replace("%", "").trim().toIntOrNull() ?: 0
+    val isFresh = percent >= 60
+    Canvas(modifier = Modifier.size(15.dp)) {
+        val cx = size.width / 2f; val cy = size.height / 2f; val r = size.width * 0.38f
+        if (isFresh) {
+            // Fresh tomato — red circle with green stem
+            drawCircle(color = Color(0xFFFF6B47), radius = r, center = Offset(cx, cy + 2f))
+            drawCircle(color = Color(0xFFCC2200), radius = r * 0.7f, center = Offset(cx - r * 0.2f, cy + 2f))
+            val path = Path().apply { moveTo(cx, cy - r * 0.3f); lineTo(cx - 2f, cy - r); lineTo(cx + 2f, cy - r) }
+            drawPath(path, color = Color(0xFF2E7D32), style = Fill)
+        } else {
+            // Rotten splat — green blob
+            drawCircle(color = Color(0xFF8BC34A).copy(alpha = 0.9f), radius = r, center = Offset(cx, cy))
+            drawCircle(color = Color(0xFF558B2F), radius = r * 0.5f, center = Offset(cx + r * 0.2f, cy - r * 0.1f))
+        }
     }
 }
 
