@@ -20,8 +20,8 @@ android {
         applicationId = "com.sole.cinevault"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "2.0"
 
         buildConfigField(
             "String",
@@ -60,21 +60,24 @@ android {
 }
 
 dependencies {
-    implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.media3:media3-exoplayer-hls:1.3.1")
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.activity:activity-compose:1.9.0")
+    // Icons were removed from newer Compose BOMs — must be pinned explicitly
+    implementation("androidx.compose.material:material-icons-extended:1.7.8")
 
-    implementation(platform("androidx.compose:compose-bom:2024.06.00"))
+    implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.activity:activity-compose:1.10.1")
+
+    implementation(platform("androidx.compose:compose-bom:2026.06.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
 
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
 
-    implementation("androidx.media3:media3-exoplayer:1.3.1")
-    implementation("androidx.media3:media3-ui:1.3.1")
+    // Media3 — 4K / HEVC / AV1 / HDR tone-mapping era
+    implementation("androidx.media3:media3-exoplayer:1.10.0")
+    implementation("androidx.media3:media3-exoplayer-hls:1.10.0")
+    implementation("androidx.media3:media3-ui:1.10.0")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-gif:2.7.0")
@@ -87,7 +90,7 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
-    androidTestImplementation(platform("androidx.compose:compose-bom:2024.06.00"))
+    androidTestImplementation(platform("androidx.compose:compose-bom:2026.06.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
