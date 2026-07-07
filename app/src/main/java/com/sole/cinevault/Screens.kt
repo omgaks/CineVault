@@ -566,7 +566,10 @@ fun FeaturedLibrarySection(
                                             .fillMaxWidth()
                                             .height(160.dp)
                                             .clickable { onItemClick(item) },
-                                        videoPath = item.video.path
+                                        videoPath = item.video.path,
+                                        episodeStill = item.episodeStill,
+                                        backdropUrl = item.backdropUrl,
+                                        type = item.type
                                     )
                                     // Quick play button — bottom right corner
                                     Box(
@@ -634,7 +637,10 @@ fun HomeRow(
                         posterUrl = item.posterUrl,
                         modifier = Modifier.fillMaxWidth().height(180.dp),
                         progress = watchedPercent,
-                        videoPath = item.video.path
+                        videoPath = item.video.path,
+                        episodeStill = item.episodeStill,
+                        backdropUrl = item.backdropUrl,
+                        type = item.type
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(text = item.title, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
@@ -704,7 +710,10 @@ private fun SearchPosterCard(item: VideoWithMetadata, onClick: () -> Unit) {
         PosterBox(
             posterUrl = item.posterUrl,
             modifier = Modifier.fillMaxWidth().height(210.dp),
-            videoPath = item.video.path
+            videoPath = item.video.path,
+            episodeStill = item.episodeStill,
+            backdropUrl = item.backdropUrl,
+            type = item.type
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(text = item.title, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
@@ -719,15 +728,25 @@ fun PosterBox(
     posterUrl: String?,
     modifier: Modifier,
     progress: Float = 0f,
-    videoPath: String? = null
+    videoPath: String? = null,
+    episodeStill: String? = null,
+    backdropUrl: String? = null,
+    type: String = ""
 ) {
     val context = LocalContext.current
+
+    // Only TV episodes use stills — movies always use poster
+    val displayImage = when {
+        type.equals("tv", ignoreCase = true) && !episodeStill.isNullOrBlank() -> episodeStill
+        !posterUrl.isNullOrBlank() -> posterUrl
+        else -> null
+    }
 
     var localBitmap by remember(videoPath) { mutableStateOf<android.graphics.Bitmap?>(null) }
     var thumbnailFailed by remember(videoPath) { mutableStateOf(false) }
 
-    LaunchedEffect(posterUrl, videoPath) {
-        if (posterUrl.isNullOrBlank() && !videoPath.isNullOrBlank() && !thumbnailFailed) {
+    LaunchedEffect(displayImage, videoPath) {
+        if (displayImage.isNullOrBlank() && !videoPath.isNullOrBlank() && !thumbnailFailed) {
             val bitmap = VideoThumbnailHelper.generateLocalThumbnail(context = context, videoPath = videoPath)
             if (bitmap != null) localBitmap = bitmap else thumbnailFailed = true
         }
@@ -739,8 +758,8 @@ fun PosterBox(
             .background(Color(0xFF131313))
     ) {
         when {
-            !posterUrl.isNullOrBlank() -> {
-                AsyncImage(model = posterUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            !displayImage.isNullOrBlank() -> {
+                AsyncImage(model = displayImage, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }
             localBitmap != null -> {
                 Image(bitmap = localBitmap!!.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -792,7 +811,10 @@ fun LibraryGridCard(
                 posterUrl = item.posterUrl,
                 modifier = Modifier.fillMaxWidth().height(160.dp),
                 progress = watchedPercent,
-                videoPath = item.video.path
+                videoPath = item.video.path,
+                episodeStill = item.episodeStill,
+                backdropUrl = item.backdropUrl,
+                type = item.type
             )
 
             if (badges.isNotEmpty()) {
@@ -869,7 +891,10 @@ fun LibraryCard(item: VideoWithMetadata, onClick: () -> Unit) {
             posterUrl = item.posterUrl,
             modifier = Modifier.width(72.dp).height(106.dp),
             progress = watchedPercent,
-            videoPath = item.video.path
+            videoPath = item.video.path,
+            episodeStill = item.episodeStill,
+            backdropUrl = item.backdropUrl,
+            type = item.type
         )
 
         Spacer(modifier = Modifier.width(14.dp))
