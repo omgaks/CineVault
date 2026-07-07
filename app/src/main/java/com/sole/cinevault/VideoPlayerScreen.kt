@@ -2,9 +2,14 @@ package com.sole.cinevault
 
 import androidx.compose.ui.graphics.Brush
 import android.app.Activity
+import android.app.PendingIntent
 import android.app.PictureInPictureParams
+import android.app.RemoteAction
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.graphics.drawable.Icon as AndroidIcon
 import android.media.AudioManager
 import android.util.TypedValue
 import android.net.Uri
@@ -200,7 +205,12 @@ fun VideoPlayerScreen(
         }
     }
 
-    val exoPlayer = remember { ExoPlayer.Builder(context, CineRenderersFactory(context)).setTrackSelector(trackSelector).build() }
+    val exoPlayer: ExoPlayer = remember {
+        ExoPlayer.Builder(context)
+            .setRenderersFactory(CineRenderersFactory(context))
+            .setTrackSelector(trackSelector)
+            .build()
+    }
 
     val canDownloadExternalSubtitles = currentMediaType.equals("movie", ignoreCase = true) || currentMediaType.equals("tv", ignoreCase = true)
     val isCurrentTvShow = currentMediaType.equals("tv", ignoreCase = true)
@@ -425,6 +435,36 @@ fun VideoPlayerScreen(
     LaunchedEffect(isPlaying) {
         if (isPlaying) activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         else activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Update PiP actions to reflect current play state
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                activity?.setPictureInPictureParams(
+                    PictureInPictureParams.Builder()
+                        .setAspectRatio(Rational(16, 9))
+                        .setActions(buildPipActions(context, isPlaying))
+                        .build()
+                )
+            } catch (_: Exception) {}
+        }
+    }
+
+    // PiP broadcast receiver — handles play/pause from PiP controls
+    DisposableEffect(exoPlayer) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                when (intent.getIntExtra("pip_action", -1)) {
+                    0 -> { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play() }
+                    1 -> { exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0)) }
+                    2 -> { exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration.coerceAtLeast(0))) }
+                }
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, IntentFilter("com.sole.cinevault.PIP_ACTION"), Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            context.registerReceiver(receiver, IntentFilter("com.sole.cinevault.PIP_ACTION"))
+        }
+        onDispose { try { context.unregisterReceiver(receiver) } catch (_: Exception) {} }
     }
 
     LaunchedEffect(currentVideo.path) {
@@ -856,10 +896,16 @@ fun VideoPlayerScreen(
                             }
                         }
 
-                        // PiP
+                        // PiP with media controls
                         IconCircle(icon = Icons.Rounded.Tv, size = smallButton, tint = TextBright) {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                activity?.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build())
+                                val actions = buildPipActions(context, exoPlayer.isPlaying)
+                                activity?.enterPictureInPictureMode(
+                                    PictureInPictureParams.Builder()
+                                        .setAspectRatio(Rational(16, 9))
+                                        .setActions(actions)
+                                        .build()
+                                )
                             }
                         }
                     }
@@ -1210,6 +1256,22 @@ private fun SeekPreviewBubble(isVisible: Boolean, bitmap: Bitmap?, timeText: Str
             }
         }
     }
+}
+
+// ── PiP media actions ─────────────────────────────────────────────────────────
+// Builds play/pause, rewind, and forward actions for the PiP window.
+@androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
+private fun buildPipActions(context: Context, isPlaying: Boolean): List<RemoteAction> {
+    fun action(code: Int, iconRes: Int, title: String): RemoteAction {
+        val intent = Intent("com.sole.cinevault.PIP_ACTION").putExtra("pip_action", code)
+        val pi = PendingIntent.getBroadcast(context, code, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        return RemoteAction(AndroidIcon.createWithResource(context, iconRes), title, title, pi)
+    }
+    return listOf(
+        action(1, android.R.drawable.ic_media_rew, "Rewind"),
+        action(0, if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play, if (isPlaying) "Pause" else "Play"),
+        action(2, android.R.drawable.ic_media_ff, "Forward")
+    )
 }
 
 // ── Floating score capsule ───────────────────────────────────────────────────
