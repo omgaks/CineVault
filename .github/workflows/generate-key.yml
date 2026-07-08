@@ -1,0 +1,47 @@
+name: Generate Signing Key (ONE-TIME)
+
+on:
+  workflow_dispatch:  # Manual trigger only
+
+jobs:
+  generate-key:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Keystore
+        run: |
+          keytool -genkeypair \
+            -v \
+            -keystore cinevault-release.jks \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -alias cinevault \
+            -storepass CineVault2026 \
+            -keypass CineVault2026 \
+            -dname "CN=Ashish Singh, OU=CineVault, O=CineVault, L=Apia, ST=Samoa, C=WS"
+
+      - name: Encode keystore as base64
+        id: encode
+        run: |
+          BASE64=$(base64 -w 0 cinevault-release.jks)
+          echo "::notice::=== COPY EVERYTHING BELOW THIS LINE ==="
+          echo "KEYSTORE_BASE64=${BASE64}" >> $GITHUB_OUTPUT
+          echo ""
+          echo "============================================"
+          echo "KEYSTORE BASE64 (copy this entire value):"
+          echo "============================================"
+          echo "${BASE64}"
+          echo "============================================"
+          echo ""
+          echo "Now save these 4 secrets in your repo:"
+          echo "  KEYSTORE_BASE64  = (the long string above)"
+          echo "  KEYSTORE_PASSWORD = CineVault2026"
+          echo "  KEY_ALIAS = cinevault"
+          echo "  KEY_PASSWORD = CineVault2026"
+
+      - name: Upload keystore as artifact (backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: cinevault-keystore
+          path: cinevault-release.jks
+          retention-days: 1
