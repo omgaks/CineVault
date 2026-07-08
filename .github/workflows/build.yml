@@ -27,7 +27,17 @@ jobs:
           echo "OMDB_API_KEY=${{ secrets.OMDB_API_KEY }}" >> local.properties
           echo "OPENSUB_API_KEY=${{ secrets.OPENSUB_API_KEY }}" >> local.properties
 
+      - name: Decode signing keystore
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_BASE64" | base64 -d > cinevault-release.jks
+
       - name: Build Release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Extract version info
@@ -41,10 +51,10 @@ jobs:
           echo "date=${BUILD_DATE}" >> $GITHUB_OUTPUT
           echo "tag=v${VERSION_NAME}-b${VERSION_CODE}" >> $GITHUB_OUTPUT
 
-      - name: Rename APK
+      - name: Find and rename APK
         run: |
-          mv app/build/outputs/apk/release/app-release-unsigned.apk \
-             app/build/outputs/apk/release/CineVault-${{ steps.version.outputs.name }}.apk
+          APK=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
+          mv "$APK" app/build/outputs/apk/release/CineVault-${{ steps.version.outputs.name }}.apk
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
