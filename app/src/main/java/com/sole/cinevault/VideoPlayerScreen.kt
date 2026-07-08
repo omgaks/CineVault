@@ -450,21 +450,24 @@ fun VideoPlayerScreen(
 
     // PiP broadcast receiver — handles play/pause from PiP controls
     DisposableEffect(exoPlayer) {
+        CineVaultPlayerHolder.currentPlayer = exoPlayer
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
+                val player = CineVaultPlayerHolder.currentPlayer ?: return
                 when (intent.getIntExtra("pip_action", -1)) {
-                    0 -> { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play() }
-                    1 -> { exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0)) }
-                    2 -> { exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration.coerceAtLeast(0))) }
+                    0 -> { if (player.isPlaying) player.pause() else { player.play(); player.playWhenReady = true } }
+                    1 -> { player.seekTo((player.currentPosition - 10000).coerceAtLeast(0)) }
+                    2 -> { player.seekTo((player.currentPosition + 10000).coerceAtMost(player.duration.coerceAtLeast(0))) }
                 }
             }
         }
+        val filter = IntentFilter("com.sole.cinevault.PIP_ACTION")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(receiver, IntentFilter("com.sole.cinevault.PIP_ACTION"), Context.RECEIVER_NOT_EXPORTED)
+            context.applicationContext.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
         } else {
-            context.registerReceiver(receiver, IntentFilter("com.sole.cinevault.PIP_ACTION"))
+            context.applicationContext.registerReceiver(receiver, filter)
         }
-        onDispose { try { context.unregisterReceiver(receiver) } catch (_: Exception) {} }
+        onDispose { try { context.applicationContext.unregisterReceiver(receiver) } catch (_: Exception) {} }
     }
 
     LaunchedEffect(currentVideo.path) {
@@ -779,8 +782,12 @@ fun VideoPlayerScreen(
         }
 
         val hasInternalSubtitles = exoPlayer.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.length > 0 }
-        SubtitleSettingsMenu(
-            isVisible = showSubtitleSettings, subtitlesEnabled = subtitlesEnabled, hasInternalSubtitles = hasInternalSubtitles,
+        // Subtitle settings — anchored above the subtitle icon
+        AnimatedVisibility(visible = showSubtitleSettings, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)),
+            modifier = Modifier.align(Alignment.BottomStart).padding(bottom = popupBottomPadding).offset { IntOffset(anchoredX(subIconX, 274.dp), 0) }) {
+            SubtitleSettingsMenu(
+                isVisible = true,
+                subtitlesEnabled = subtitlesEnabled, hasInternalSubtitles = hasInternalSubtitles,
             onInternalClick = {
                 if (hasInternalSubtitles) {
                     subtitlesEnabled = true; trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build(); showSubtitleSettings = false; showControls = true
@@ -800,6 +807,7 @@ fun VideoPlayerScreen(
             onReset = { subtitleTextSizeSp = 22f; subtitleBottomPadding = 0.02f; subtitleSyncOffset = 0.0f; subtitlesEnabled = true; trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build(); showControls = true; subtitleMenuTouchKey++ },
             onUserInteraction = { subtitleMenuTouchKey++; showControls = true }
         )
+        }
 
         AnimatedVisibility(visible = showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize()) {
