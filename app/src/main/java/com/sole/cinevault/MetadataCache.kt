@@ -210,7 +210,7 @@ suspend fun enrichVideoWithOnlineMetadata(
                     "S${episodeInfo.season.toString().padStart(2, '0')}E${episodeInfo.episode.toString().padStart(2, '0')} • ${episodeDetails?.name ?: ""}",
                 posterUrl =
                     tv?.poster_path?.let {
-                        "https://image.tmdb.org/t/p/w500$it"
+                        "https://image.tmdb.org/t/p/w780$it"
                     },
                 backdropUrl =
                     tv?.backdrop_path?.let {
@@ -270,7 +270,7 @@ suspend fun enrichVideoWithOnlineMetadata(
                     subtitle = movie?.release_date?.take(4) ?: item.subtitle,
                     posterUrl =
                         movie?.poster_path?.let {
-                            "https://image.tmdb.org/t/p/w500$it"
+                            "https://image.tmdb.org/t/p/w780$it"
                         },
                     backdropUrl =
                         movie?.backdrop_path?.let {
