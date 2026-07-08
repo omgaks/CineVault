@@ -1,9 +1,8 @@
-name: Build CineVault APK
+name: Build & Release CineVault APK
 
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
 
 jobs:
   build:
@@ -22,31 +21,51 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Inject API keys into local.properties
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Inject API keys from secrets
         run: |
           echo "TMDB_TOKEN=${{ secrets.TMDB_TOKEN }}" >> local.properties
           echo "OMDB_API_KEY=${{ secrets.OMDB_API_KEY }}" >> local.properties
           echo "OPENSUB_API_KEY=${{ secrets.OPENSUB_API_KEY }}" >> local.properties
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon
-
-      - name: Upload Debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: CineVault-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 30
-
       - name: Build Release APK
         run: ./gradlew assembleRelease --no-daemon
 
-      - name: Upload Release APK
-        uses: actions/upload-artifact@v4
+      - name: Extract version info
+        id: version
+        run: |
+          VERSION_NAME=$(grep 'versionName' app/build.gradle.kts | head -1 | grep -oP '"[^"]*"' | tr -d '"')
+          VERSION_CODE=$(grep 'versionCode' app/build.gradle.kts | head -1 | grep -oP '[0-9]+')
+          BUILD_DATE=$(date +'%Y-%m-%d')
+          echo "name=${VERSION_NAME}" >> $GITHUB_OUTPUT
+          echo "code=${VERSION_CODE}" >> $GITHUB_OUTPUT
+          echo "date=${BUILD_DATE}" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION_NAME}-b${VERSION_CODE}" >> $GITHUB_OUTPUT
+
+      - name: Rename APK
+        run: |
+          mv app/build/outputs/apk/release/app-release-unsigned.apk \
+             app/build/outputs/apk/release/CineVault-${{ steps.version.outputs.name }}.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: CineVault-release-unsigned
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
-          retention-days: 30
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "CineVault ${{ steps.version.outputs.name }}"
+          body: |
+            ## CineVault ${{ steps.version.outputs.name }}
+            
+            **Build:** ${{ steps.version.outputs.code }} | **Date:** ${{ steps.version.outputs.date }}
+            
+            ### What's New
+            - Latest updates from main branch
+            
+            ---
+            *Install: Download the APK below, transfer to your Android device, and install.*
+          files: app/build/outputs/apk/release/CineVault-${{ steps.version.outputs.name }}.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
