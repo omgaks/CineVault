@@ -1169,11 +1169,17 @@ private fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolean
     LaunchedEffect(position, isDragging) { if (!isDragging) localPosition = position }
     val haptic = LocalHapticFeedback.current
     var lastChapterZone by remember { mutableIntStateOf(-1) }
+    // LINGER: waveform stays visible for 2s after releasing the drag
+    var waveformVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(isDragging) {
+        if (isDragging) { waveformVisible = true }
+        else if (waveformVisible) { delay(2000); waveformVisible = false }
+    }
     fun zoneOf(p: Long): Int {
         val fr = p.toFloat() / duration.coerceAtLeast(1L).toFloat()
         return (fr / 0.25f).toInt().coerceIn(0, 3)
     }
-    val bloom by animateFloatAsState(targetValue = if (isDragging) 1f else 0f, animationSpec = tween(300, easing = FastOutSlowInEasing), label = "liquidBloom")
+    val bloom by animateFloatAsState(targetValue = if (isDragging || waveformVisible) 1f else 0f, animationSpec = tween(if (isDragging || waveformVisible) 300 else 600, easing = FastOutSlowInEasing), label = "liquidBloom")
     val glow by animateFloatAsState(targetValue = if (isDragging) 1f else 0.45f, animationSpec = tween(220), label = "seekGlow")
     fun positionFromX(x: Float, width: Float): Long { if (duration <= 0L || width <= 0f) return 0L; return (duration * (x / width).coerceIn(0f, 1f)).toLong().coerceIn(0L, duration) }
     Box(modifier = Modifier.fillMaxWidth().height(38.dp)
