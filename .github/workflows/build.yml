@@ -3,7 +3,7 @@ name: Build CineVault APK
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:  # lets you trigger a build manually from GitHub too
+  workflow_dispatch:
 
 jobs:
   build:
@@ -34,9 +34,19 @@ jobs:
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Upload APK
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: CineVault-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CineVault-release-unsigned
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
           retention-days: 30
