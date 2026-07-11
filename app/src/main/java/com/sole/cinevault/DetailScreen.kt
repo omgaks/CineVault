@@ -3,7 +3,6 @@ package com.sole.cinevault
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,7 +18,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Audiotrack
+import androidx.compose.material.icons.rounded.InsertDriveFile
+import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.Tv
+import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -29,13 +32,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.border
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -102,7 +105,7 @@ fun DetailScreen(
             Column(modifier = Modifier.padding(horizontal = 22.dp)) {
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Rating badges
+                // Rating badges — real logo marks, matching the player screen
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
                     if ((item.rating ?: 0.0) > 0.0) TmdbBadge(value = formatRating(item.rating))
                     if (!item.imdbRating.isNullOrBlank() && item.imdbRating != "N/A") ImdbBadge(value = item.imdbRating!!)
@@ -111,32 +114,41 @@ fun DetailScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Tech badges
+                // Tech badges — uniform height, glass-amber border, small icon per type
                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                    TechBadge(item.type.uppercase())
-                    if (resolutionBadge.isNotBlank()) TechBadge(resolutionBadge)
-                    if (audioBadge.isNotBlank()) TechBadge(audioBadge)
-                    TechBadge(item.video.name.substringAfterLast(".").uppercase())
+                    TechBadge(text = item.type.uppercase(), icon = if (item.type.equals("tv", ignoreCase = true)) Icons.Rounded.Tv else Icons.Rounded.Movie)
+                    if (resolutionBadge.isNotBlank()) TechBadge(text = resolutionBadge, icon = Icons.Rounded.Videocam)
+                    if (audioBadge.isNotBlank()) TechBadge(text = audioBadge, icon = Icons.Rounded.Audiotrack)
+                    TechBadge(text = item.video.name.substringAfterLast(".").uppercase(), icon = Icons.Rounded.InsertDriveFile)
                 }
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // Action buttons
+                // Action buttons — Resume shrunk down so it no longer competes visually with Play
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                    Button(onClick = onPlay, shape = RoundedCornerShape(40.dp),
+                    Button(
+                        onClick = onPlay, shape = RoundedCornerShape(40.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = AmberGlow, contentColor = Color.Black),
-                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp)) {
-                        Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(if (hasResumePosition) "Resume ${formatResumeTime(savedPosition)}" else "Play", fontWeight = FontWeight.Black, fontSize = 14.sp)
+                        contentPadding = PaddingValues(
+                            horizontal = if (hasResumePosition) 18.dp else 24.dp,
+                            vertical = if (hasResumePosition) 9.dp else 12.dp
+                        )
+                    ) {
+                        Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(if (hasResumePosition) 15.dp else 18.dp))
+                        Spacer(modifier = Modifier.width(if (hasResumePosition) 5.dp else 6.dp))
+                        Text(
+                            if (hasResumePosition) "Resume · ${formatResumeTime(savedPosition)}" else "Play",
+                            fontWeight = FontWeight.Black,
+                            fontSize = if (hasResumePosition) 12.5.sp else 14.sp
+                        )
                     }
                     Button(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trailerSearchUrl))) },
                         shape = RoundedCornerShape(40.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = GlassSurface, contentColor = TextBright),
-                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)) {
-                        Icon(imageVector = Icons.Filled.VideoLibrary, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Trailer", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 9.dp)) {
+                        Icon(imageVector = Icons.Filled.VideoLibrary, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text("Trailer", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
                     }
                 }
 
@@ -172,28 +184,22 @@ fun DetailScreen(
     }
 }
 
-// ── Rating badges — glass styled ──────────────────────────────────────────────
+// ── Rating badges — real logo marks, uniform 20.dp, matching the player screen ──
 @Composable
 private fun TmdbBadge(value: String) {
-    Row(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF032541)).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(modifier = Modifier.clip(RoundedCornerShape(3.dp)).background(Brush.horizontalGradient(listOf(Color(0xFF90CEA1), Color(0xFF01B4E4)))).padding(horizontal = 4.dp, vertical = 2.dp)) {
-            Text(text = "TMDB", color = Color(0xFF032541), fontSize = 8.sp, fontWeight = FontWeight.Black)
-        }
+    Row(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Image(painter = painterResource(R.drawable.ic_tmdb), contentDescription = "TMDB", modifier = Modifier.height(14.dp), contentScale = ContentScale.Fit)
         Spacer(modifier = Modifier.width(6.dp))
-        Icon(imageVector = Icons.Rounded.Star, contentDescription = null, tint = Color(0xFF01D277), modifier = Modifier.size(12.dp))
-        Spacer(modifier = Modifier.width(3.dp))
         Text(text = value, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
 private fun ImdbBadge(value: String) {
-    Row(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFFF5C518)).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(text = "IMDb", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Black)
+    Row(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Image(painter = painterResource(R.drawable.ic_imdb), contentDescription = "IMDb", modifier = Modifier.height(16.dp), contentScale = ContentScale.Fit)
         Spacer(modifier = Modifier.width(6.dp))
-        Icon(imageVector = Icons.Rounded.Star, contentDescription = null, tint = Color.Black, modifier = Modifier.size(12.dp))
-        Spacer(modifier = Modifier.width(3.dp))
-        Text(text = value, color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(text = value, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -201,29 +207,37 @@ private fun ImdbBadge(value: String) {
 private fun RottenTomatoesBadge(value: String) {
     val percent = value.replace("%", "").trim().toIntOrNull() ?: 0
     val isFresh = percent >= 60
-    val bgColor = if (isFresh) Color(0xFFFA320A) else Color(0xFF4A7C59)
-    Row(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(bgColor).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Canvas(modifier = Modifier.size(16.dp)) {
-            val cx = size.width / 2f; val cy = size.height / 2f; val r = size.width * 0.38f
-            if (isFresh) {
-                drawCircle(color = Color(0xFFFF6B47), radius = r, center = Offset(cx, cy + 2f))
-                drawCircle(color = Color(0xFFCC2200), radius = r * 0.7f, center = Offset(cx - r * 0.2f, cy + 2f))
-                val path = Path().apply { moveTo(cx, cy - r * 0.3f); lineTo(cx - 2f, cy - r); lineTo(cx + 2f, cy - r) }
-                drawPath(path, color = Color(0xFF2E7D32), style = Fill)
-            } else {
-                drawCircle(color = Color(0xFF8BC34A).copy(alpha = 0.9f), radius = r, center = Offset(cx, cy))
-                drawCircle(color = Color(0xFF558B2F), radius = r * 0.5f, center = Offset(cx + r * 0.2f, cy - r * 0.1f))
-            }
-        }
-        Spacer(modifier = Modifier.width(5.dp))
+    Row(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Image(
+            painter = painterResource(R.drawable.ic_rotten_tomatoes),
+            contentDescription = "Rotten Tomatoes",
+            modifier = Modifier.height(16.dp),
+            contentScale = ContentScale.Fit,
+            colorFilter = if (!isFresh) androidx.compose.ui.graphics.ColorFilter.tint(Color(0xFF8BC34A)) else null
+        )
+        Spacer(modifier = Modifier.width(6.dp))
         Text(text = value, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 
+// TECH PILL — uniform height, subtle amber-glass border, small leading icon so
+// format tags (type/resolution/audio/container) read as designed chips instead
+// of plain text-on-background.
 @Composable
-private fun TechBadge(text: String) {
-    Text(text = text, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-        modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(GlassSurface).padding(horizontal = 10.dp, vertical = 5.dp))
+private fun TechBadge(text: String, icon: ImageVector) {
+    Row(
+        modifier = Modifier
+            .height(30.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(GlassSurface)
+            .border(1.dp, Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)), RoundedCornerShape(9.dp))
+            .padding(horizontal = 11.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = AmberCore, modifier = Modifier.size(13.dp))
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(text = text, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
