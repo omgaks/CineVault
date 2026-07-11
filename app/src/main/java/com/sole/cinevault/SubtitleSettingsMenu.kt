@@ -5,8 +5,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FolderOpen
@@ -19,9 +21,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.sole.cinevault.ui.theme.*
 
 @Composable
 fun SubtitleSettingsMenu(
@@ -45,7 +47,26 @@ fun SubtitleSettingsMenu(
     if (!isVisible) return
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val panelMaxHeight = if (isLandscape) 244.dp else 420.dp
+
+    // RESPONSIVE SIZING: derived from actual screen width/height, not fixed constants.
+    // Portrait: popup width scales with screen width (70%), landscape uses a narrower
+    // fraction since horizontal space is shared with the video. Both clamped to
+    // sane min/max so this works on a phone or a tablet.
+    val screenWidthDp = configuration.screenWidthDp
+    val screenHeightDp = configuration.screenHeightDp
+    val popupWidth: Dp = if (isLandscape) {
+        (screenWidthDp * 0.34f).dp.coerceIn(230.dp, 300.dp)
+    } else {
+        (screenWidthDp * 0.70f).dp.coerceIn(240.dp, 340.dp)
+    }
+    // Cap popup height to a fraction of screen height so it can never exceed the
+    // viewport; verticalScroll below handles anything that still overflows.
+    val panelMaxHeight: Dp = if (isLandscape) {
+        (screenHeightDp * 0.78f).dp.coerceAtMost(244.dp)
+    } else {
+        (screenHeightDp * 0.55f).dp.coerceAtMost(420.dp)
+    }
+
     val rowGap = if (isLandscape) 5.dp else 7.dp
     val titleSize = if (isLandscape) 13.sp else 15.sp
     val labelSize = if (isLandscape) 10.sp else 12.sp
@@ -53,11 +74,12 @@ fun SubtitleSettingsMenu(
 
     Column(
         modifier = Modifier
-            .width(if (isLandscape) 264.dp else 274.dp)
+            .width(popupWidth)
             .heightIn(max = panelMaxHeight)
             .glassPanel(cornerRadius = if (isLandscape) 18.dp else 22.dp, fill = SpaceMid.copy(alpha = 0.97f))
             .clickable { onUserInteraction() }
-            .padding(horizontal = if (isLandscape) 10.dp else 12.dp, vertical = if (isLandscape) 8.dp else 10.dp),
+            .padding(horizontal = if (isLandscape) 10.dp else 12.dp, vertical = if (isLandscape) 8.dp else 10.dp)
+            .verticalScroll(rememberScrollState()), // FIX: content can no longer be silently clipped
         verticalArrangement = Arrangement.spacedBy(rowGap)
     ) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
