@@ -21,6 +21,7 @@ import android.graphics.Color as AndroidColor
 import android.graphics.Bitmap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.IntentSenderRequest
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.rounded.BrightnessHigh
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Audiotrack
 import androidx.compose.material.icons.rounded.ClosedCaption
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material.icons.rounded.AllInclusive
 import androidx.compose.material.icons.rounded.Speed
@@ -54,6 +56,7 @@ import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -224,6 +227,28 @@ fun VideoPlayerScreen(
             try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
             pendingSrtUri = uri
         }
+    }
+
+    // FILE DELETE — Android 10+ requires MediaStore consent for shared-storage files
+    // (e.g. subtitle files sitting next to a movie). The launcher shows the system
+    // confirmation dialog; deleteFile() falls back to it automatically when a plain
+    // file.delete() isn't permitted.
+    val deleteConsentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            Toast.makeText(context, "File deleted", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "Delete cancelled", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun requestDeleteSubtitle(file: java.io.File) {
+        FileManagementHelper.deleteFile(
+            context = context,
+            file = file,
+            onNeedsConsent = { intentSender -> deleteConsentLauncher.launch(IntentSenderRequest.Builder(intentSender).build()) },
+            onDeleted = { Toast.makeText(context, "File deleted", Toast.LENGTH_SHORT).show() },
+            onFailed = { e -> Toast.makeText(context, "Couldn't delete: ${e.message}", Toast.LENGTH_SHORT).show() }
+        )
     }
 
     // SLEEP TIMER countdown
@@ -583,7 +608,7 @@ fun VideoPlayerScreen(
         val seekBottomPadding = when { isCompactLandscape -> 18.dp; isLandscape -> 24.dp; else -> 30.dp }
         val showIntroSkip = isCurrentTvShow && position in 5_000L..95_000L
 
-        // POPUP ANCHORING: clamp an icon-centered popup within screen bounds
+        // POPUP ANCHORING: clamp an icon-centered popup within screen bounds (horizontal)
         val density = LocalDensity.current
         val screenWidthPx = with(density) { maxWidth.toPx() }
         fun anchoredX(iconCenterX: Float, popupWidth: Dp): Int {
@@ -591,7 +616,25 @@ fun VideoPlayerScreen(
             val pad = with(density) { 8.dp.toPx() }
             return (iconCenterX - pw / 2f).coerceIn(pad, (screenWidthPx - pw - pad).coerceAtLeast(pad)).roundToInt()
         }
+        // POPUP ANCHORING: clamp the same popup so it can never overflow off the TOP
+        // of the screen either — this is what made the subtitle/SRT popups unusable
+        // in portrait and compact-landscape before.
+        fun anchoredY(desiredBottomPadding: Dp, popupHeightEstimate: Dp): Dp {
+            val screenHeightPx = with(density) { maxHeight.toPx() }
+            val popupHeightPx = with(density) { popupHeightEstimate.toPx() }
+            val desiredPx = with(density) { desiredBottomPadding.toPx() }
+            val pad = with(density) { 12.dp.toPx() }
+            val maxAllowedBottomPx = (screenHeightPx - popupHeightPx - pad).coerceAtLeast(pad)
+            return with(density) { minOf(desiredPx, maxAllowedBottomPx).toDp() }
+        }
         val popupBottomPadding = bottomDockPadding + playButton + 18.dp
+
+        // RESPONSIVE POPUP SIZING — derived from actual screen width/height rather
+        // than fixed dp constants, so subtitle/SRT popups fit phones and tablets alike.
+        val subtitlePopupWidth = if (isLandscape) (maxWidth.value * 0.34f).dp.coerceIn(230.dp, 300.dp) else (maxWidth.value * 0.70f).dp.coerceIn(240.dp, 340.dp)
+        val subtitlePopupHeightEstimate = if (isCompactLandscape || isLandscape) 244.dp else 420.dp
+        val srtPopupWidth = subtitlePopupWidth
+        val srtPopupMaxHeight = if (isCompactLandscape) 180.dp else if (isLandscape) 220.dp else 320.dp
 
         // Metadata for the floating score capsule — exact path match first,
         // then a filename fallback in case paths differ between lists
@@ -741,16 +784,20 @@ fun VideoPlayerScreen(
             )
         }
 
-        // SRT file browser popup — anchored above the Subtitles icon
-        AnimatedVisibility(visible = showSrtBrowser, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.BottomStart).padding(bottom = popupBottomPadding).offset { IntOffset(anchoredX(subIconX, 252.dp), 0) }) {
+        // SRT file browser popup — anchored above the Subtitles icon, now with
+        // responsive width/height and a vertical clamp so it can't run off-screen.
+        AnimatedVisibility(visible = showSrtBrowser, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, srtPopupMaxHeight)).offset { IntOffset(anchoredX(subIconX, srtPopupWidth), 0) }) {
             val srtFiles = remember(currentVideo.path, showSrtBrowser) { findNearbySrtFiles(currentVideo.path) }
             SrtBrowserPopup(
                 files = srtFiles,
                 modifier = Modifier,
+                popupWidth = srtPopupWidth,
+                popupMaxHeight = srtPopupMaxHeight,
                 onPick = { file ->
                     showSrtBrowser = false
                     pendingSrtUri = Uri.fromFile(file)
                 },
+                onDelete = { file -> requestDeleteSubtitle(file) },
                 onSystemPicker = {
                     showSrtBrowser = false
                     srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*"))
@@ -782,9 +829,10 @@ fun VideoPlayerScreen(
         }
 
         val hasInternalSubtitles = exoPlayer.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.length > 0 }
-        // Subtitle settings — anchored above the subtitle icon
+        // Subtitle settings — anchored above the subtitle icon, responsive width +
+        // vertical clamp so it can never overflow the top of the screen in portrait.
         AnimatedVisibility(visible = showSubtitleSettings, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)),
-            modifier = Modifier.align(Alignment.BottomStart).padding(bottom = popupBottomPadding).offset { IntOffset(anchoredX(subIconX, 274.dp), 0) }) {
+            modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, subtitlePopupHeightEstimate)).offset { IntOffset(anchoredX(subIconX, subtitlePopupWidth), 0) }) {
             SubtitleSettingsMenu(
                 isVisible = true,
                 subtitlesEnabled = subtitlesEnabled, hasInternalSubtitles = hasInternalSubtitles,
@@ -989,7 +1037,11 @@ private fun GlassMenuRow(icon: ImageVector?, label: String, selected: Boolean, o
 // ── SRT file browser popup ────────────────────────────────────────────────────
 // A glass mini file manager: lists .srt files found near the video (same folder,
 // Subs/Subtitles subfolders, Downloads). Picking one loads it and closes the
-// popup automatically. System picker remains available as a fallback row.
+// popup automatically. Each row now also has a delete icon (goes through
+// FileManagementHelper, which requests system consent on API 30+ for shared
+// storage files). System picker remains available as a fallback row. Width and
+// max height are now passed in from the caller so this popup responds to
+// screen size/orientation instead of using fixed constants.
 
 private fun findNearbySrtFiles(videoPath: String): List<java.io.File> {
     val results = LinkedHashSet<java.io.File>()
@@ -1020,11 +1072,14 @@ private fun findNearbySrtFiles(videoPath: String): List<java.io.File> {
 private fun SrtBrowserPopup(
     files: List<java.io.File>,
     modifier: Modifier,
+    popupWidth: Dp,
+    popupMaxHeight: Dp,
     onPick: (java.io.File) -> Unit,
+    onDelete: (java.io.File) -> Unit,
     onSystemPicker: () -> Unit,
     onClose: () -> Unit
 ) {
-    Column(modifier = modifier.width(252.dp).heightIn(max = 320.dp).glassPanel(cornerRadius = 18.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(8.dp)) {
+    Column(modifier = modifier.width(popupWidth).heightIn(max = popupMaxHeight).glassPanel(cornerRadius = 18.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(8.dp)) {
         Text(text = "Subtitle Files", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
         if (files.isEmpty()) {
             Text(
@@ -1035,7 +1090,14 @@ private fun SrtBrowserPopup(
         } else {
             Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                 files.forEach { file ->
-                    GlassMenuRow(icon = Icons.Rounded.ClosedCaption, label = file.name, selected = false, onClick = { onPick(file) })
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            GlassMenuRow(icon = Icons.Rounded.ClosedCaption, label = file.name, selected = false, onClick = { onPick(file) })
+                        }
+                        IconButton(onClick = { onDelete(file) }, modifier = Modifier.size(30.dp)) {
+                            Icon(imageVector = Icons.Rounded.Delete, contentDescription = "Delete subtitle file", tint = TextMuted, modifier = Modifier.size(15.dp))
+                        }
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
                 }
             }
@@ -1109,9 +1171,12 @@ private fun GlassTransportButton(icon: ImageVector, size: Dp, onClick: () -> Uni
 @Composable
 private fun FrostedPlayButton(isPlaying: Boolean, isEnded: Boolean, size: Dp, onClick: () -> Unit) {
     val breathe = rememberInfiniteTransition(label = "playGlow")
+    // GLOW FIX: raised ceiling alpha (0.42 -> 0.75) and widened glow radius
+    // (0.80x -> 1.1x of button size) so the pulse is clearly visible instead of
+    // hiding mostly under the button itself.
     val glowAlpha by breathe.animateFloat(
-        initialValue = 0.20f,
-        targetValue = 0.42f,
+        initialValue = 0.35f,
+        targetValue = 0.75f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
@@ -1121,7 +1186,7 @@ private fun FrostedPlayButton(isPlaying: Boolean, isEnded: Boolean, size: Dp, on
     Box(
         modifier = Modifier
             .size(size)
-            .amberGlow(radius = size * 0.80f, alpha = glowAlpha)
+            .amberGlow(radius = size * 1.1f, alpha = glowAlpha)
             .clip(CircleShape)
             .background(GlassSurfaceStrong)
             .background(Brush.verticalGradient(0f to GlassHighlight, 0.45f to Color.Transparent, 1f to Color.Transparent))
@@ -1330,46 +1395,76 @@ private fun FloatingScoreCapsule(meta: VideoWithMetadata?) {
     }
 }
 
-// IMDb mark — the classic yellow rounded box
+// UNIFORM SIZING + GLOW: all three rating marks now render inside an identical
+// 20.dp box with the same breathing glow used on the play button, instead of
+// three different padding/size strategies (text-box, text-box, fixed canvas).
+@Composable
+private fun RatingLogoGlow(size: Dp, content: @Composable BoxScope.() -> Unit) {
+    val breathe = rememberInfiniteTransition(label = "ratingGlow")
+    val glowAlpha by breathe.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.65f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "ratingGlowAlpha"
+    )
+    Box(
+        modifier = Modifier
+            .size(size)
+            .amberGlow(radius = size * 1.4f, alpha = glowAlpha),
+        contentAlignment = Alignment.Center,
+        content = content
+    )
+}
+
+// IMDb mark — the classic yellow rounded box, now fixed 20.dp
 @Composable
 private fun ImdbLogoMark() {
-    Box(
-        modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(Color(0xFFF5C518))
-            .padding(horizontal = 5.dp, vertical = 2.dp)
-    ) {
-        Text(text = "IMDb", color = Color.Black, fontSize = 8.sp, fontWeight = FontWeight.Black)
+    RatingLogoGlow(size = 20.dp) {
+        Box(
+            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(4.dp)).background(Color(0xFFF5C518)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = "IMDb", color = Color.Black, fontSize = 8.sp, fontWeight = FontWeight.Black)
+        }
     }
 }
 
-// TMDB mark — teal-to-blue brand gradient block
+// TMDB mark — teal-to-blue brand gradient block, now fixed 20.dp
 @Composable
 private fun TmdbLogoMark() {
-    Box(
-        modifier = Modifier.clip(RoundedCornerShape(4.dp))
-            .background(Brush.horizontalGradient(colors = listOf(Color(0xFF90CEA1), Color(0xFF01B4E4))))
-            .padding(horizontal = 5.dp, vertical = 2.dp)
-    ) {
-        Text(text = "TMDB", color = Color(0xFF032541), fontSize = 8.sp, fontWeight = FontWeight.Black)
+    RatingLogoGlow(size = 20.dp) {
+        Box(
+            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(4.dp))
+                .background(Brush.horizontalGradient(colors = listOf(Color(0xFF90CEA1), Color(0xFF01B4E4)))),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = "TMDB", color = Color(0xFF032541), fontSize = 8.sp, fontWeight = FontWeight.Black)
+        }
     }
 }
 
-// Rotten Tomatoes mark — drawn tomato (fresh) or splat (rotten), same as DetailScreen
+// Rotten Tomatoes mark — drawn tomato (fresh) or splat (rotten), now fixed 20.dp
 @Composable
 private fun TomatoLogoMark(value: String) {
     val percent = value.replace("%", "").trim().toIntOrNull() ?: 0
     val isFresh = percent >= 60
-    Canvas(modifier = Modifier.size(15.dp)) {
-        val cx = size.width / 2f; val cy = size.height / 2f; val r = size.width * 0.38f
-        if (isFresh) {
-            // Fresh tomato — red circle with green stem
-            drawCircle(color = Color(0xFFFF6B47), radius = r, center = Offset(cx, cy + 2f))
-            drawCircle(color = Color(0xFFCC2200), radius = r * 0.7f, center = Offset(cx - r * 0.2f, cy + 2f))
-            val path = Path().apply { moveTo(cx, cy - r * 0.3f); lineTo(cx - 2f, cy - r); lineTo(cx + 2f, cy - r) }
-            drawPath(path, color = Color(0xFF2E7D32), style = Fill)
-        } else {
-            // Rotten splat — green blob
-            drawCircle(color = Color(0xFF8BC34A).copy(alpha = 0.9f), radius = r, center = Offset(cx, cy))
-            drawCircle(color = Color(0xFF558B2F), radius = r * 0.5f, center = Offset(cx + r * 0.2f, cy - r * 0.1f))
+    RatingLogoGlow(size = 20.dp) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val cx = size.width / 2f; val cy = size.height / 2f; val r = size.width * 0.34f
+            if (isFresh) {
+                // Fresh tomato — red circle with green stem
+                drawCircle(color = Color(0xFFFF6B47), radius = r, center = Offset(cx, cy + 2f))
+                drawCircle(color = Color(0xFFCC2200), radius = r * 0.7f, center = Offset(cx - r * 0.2f, cy + 2f))
+                val path = Path().apply { moveTo(cx, cy - r * 0.3f); lineTo(cx - 2f, cy - r); lineTo(cx + 2f, cy - r) }
+                drawPath(path, color = Color(0xFF2E7D32), style = Fill)
+            } else {
+                // Rotten splat — green blob
+                drawCircle(color = Color(0xFF8BC34A).copy(alpha = 0.9f), radius = r, center = Offset(cx, cy))
+                drawCircle(color = Color(0xFF558B2F), radius = r * 0.5f, center = Offset(cx + r * 0.2f, cy - r * 0.1f))
+            }
         }
     }
 }
