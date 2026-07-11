@@ -43,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -198,21 +199,19 @@ fun HomeScreen(
                         )
                 )
 
-                Box(
+                // LOGO FIX: removed the 80.dp background square (Color.Black alpha 0.38f
+                // + RoundedCornerShape container) that was sitting behind the logo. The
+                // logo now renders directly with a soft drop-shadow for contrast against
+                // varying hero backdrops, instead of a visible box.
+                Image(
+                    painter = painterResource(id = R.drawable.cinevault_circle_logo),
+                    contentDescription = "CineVault Logo",
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(14.dp)
-                        .size(80.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(Color.Black.copy(alpha = 0.38f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.foundation.Image(
-                        painter = painterResource(id = R.drawable.cinevault_circle_logo),
-                        contentDescription = "CineVault Logo",
-                        modifier = Modifier.size(64.dp)
-                    )
-                }
+                        .size(56.dp)
+                        .shadow(elevation = 10.dp, shape = CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
+                )
 
                 Column(
                     modifier = Modifier
