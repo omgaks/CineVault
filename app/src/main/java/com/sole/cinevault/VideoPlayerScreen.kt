@@ -954,7 +954,7 @@ fun VideoPlayerScreen(
                         Spacer(modifier = Modifier.height(10.dp))
 
                         Box(modifier = Modifier.fillMaxWidth()) {
-                            AnimatedVisibility(
+                            androidx.compose.animation.AnimatedVisibility(
                                 visible = topRowVisible,
                                 enter = fadeIn(animationSpec = tween(160)), exit = fadeOut(animationSpec = tween(120)),
                                 modifier = Modifier.align(Alignment.CenterStart).padding(start = sidePadding)
