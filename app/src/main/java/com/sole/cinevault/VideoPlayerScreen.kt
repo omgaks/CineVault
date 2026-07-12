@@ -33,6 +33,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -327,10 +328,14 @@ fun VideoPlayerScreen(
         showControls = true; showSubtitleSettings = false
         autoSubtitleStatus = "Searching subtitles..."; subtitleDownloadInProgress = true
         scope.launch {
-            val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
             try {
                 val subtitleUri = OpenSubtitlesClient.downloadBestEnglishSubtitle(context, currentVideo.path)
                 if (subtitleUri != null) {
+                    // IMPORTANT: capture the resume position HERE, right before the reload —
+                    // not before the (multi-second) network search. Capturing it earlier
+                    // used a stale position and made playback visibly jump backwards
+                    // ("restart") the moment the subtitle finished downloading.
+                    val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
                     autoSubtitleStatus = "Subtitle loaded"
                     Toast.makeText(context, "Subtitle loaded", Toast.LENGTH_SHORT).show()
                     subtitlesEnabled = true
@@ -356,11 +361,13 @@ fun VideoPlayerScreen(
             scope.launch {
                 delay(1200); if (subtitleDownloadInProgress) return@launch
                 subtitleDownloadInProgress = true
-                val resumeAt = exoPlayer.currentPosition.coerceAtLeast(savedPosition)
                 autoSubtitleStatus = "Searching subtitles..."
                 try {
                     val uri = OpenSubtitlesClient.downloadBestEnglishSubtitle(context, currentVideo.path)
                     if (uri != null) {
+                        // Same fix as downloadExternalSubtitle(): grab the current
+                        // position AFTER the download finishes, not before it started.
+                        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
                         subtitlesEnabled = true
                         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                         autoSubtitleStatus = "Subtitle loaded"
@@ -585,7 +592,10 @@ fun VideoPlayerScreen(
         val hudSize = (72 * scale).dp
         val sidePadding = if (isCompactLandscape) 8.dp else 16.dp
         val bottomDockPadding = when { isCompactLandscape -> 112.dp; isLandscape -> 126.dp; else -> 152.dp }
-        val seekBottomPadding = when { isCompactLandscape -> 18.dp; isLandscape -> 24.dp; else -> 30.dp }
+        // Pushed further down — the permanent time labels under the seek bar are
+        // gone now (time only shows while scrubbing), so the bar can sit closer
+        // to the bottom edge.
+        val seekBottomPadding = when { isCompactLandscape -> 8.dp; isLandscape -> 10.dp; else -> 12.dp }
         val showIntroSkip = isCurrentTvShow && position in 5_000L..95_000L
         val topClusterPaddingTop = if (isLandscape) 10.dp else 18.dp
 
@@ -598,24 +608,25 @@ fun VideoPlayerScreen(
             val pad = with(density) { 8.dp.toPx() }
             return (iconCenterX - pw / 2f).coerceIn(pad, (screenWidthPx - pw - pad).coerceAtLeast(pad)).roundToInt()
         }
-        fun anchoredY(desiredBottomPadding: Dp, popupHeightEstimate: Dp): Dp {
-            val screenHeightPx = with(density) { maxHeight.toPx() }
-            val popupHeightPx = with(density) { popupHeightEstimate.toPx() }
-            val desiredPx = with(density) { desiredBottomPadding.toPx() }
-            val pad = with(density) { 12.dp.toPx() }
-            val maxAllowedBottomPx = (screenHeightPx - popupHeightPx - pad).coerceAtLeast(pad)
-            return with(density) { minOf(desiredPx, maxAllowedBottomPx).toDp() }
-        }
+        // Always keeps the popup's bottom edge clear of the transport control
+        // dock. Previously this would shrink the bottom offset for tall popups
+        // to keep their top on-screen, which let the popup's bottom slide down
+        // behind the control panel — exactly the overlap that was reported.
+        // Now the dock clearance always wins; if a popup is very tall it simply
+        // scrolls internally instead of overlapping the controls.
+        fun anchoredY(desiredBottomPadding: Dp, popupHeightEstimate: Dp): Dp = desiredBottomPadding
         val popupBottomPadding = bottomDockPadding + playButton + 18.dp
 
-        val subtitlePopupWidthBase = if (isLandscape) (maxWidth.value * 0.34f).dp.coerceIn(230.dp, 300.dp) else (maxWidth.value * 0.70f).dp.coerceIn(240.dp, 340.dp)
-        val subtitlePopupWidth = (subtitlePopupWidthBase.value * 0.8f * uiScale).dp
-        val subtitlePopupHeightEstimate = ((if (isCompactLandscape || isLandscape) 244f else 420f) * 0.8f * uiScale).dp
+        // Popup sizing — tightened and bounded against BOTH screen width and
+        // height so windows never dwarf the actual device screen.
+        val subtitlePopupWidthBase = if (isLandscape) (maxWidth.value * 0.30f).dp.coerceIn(210.dp, 270.dp) else (maxWidth.value * 0.62f).dp.coerceIn(220.dp, 300.dp)
+        val subtitlePopupWidth = (subtitlePopupWidthBase.value * uiScale).dp.coerceAtMost(maxWidth * 0.86f)
+        val subtitlePopupHeightEstimate = (((if (isCompactLandscape || isLandscape) 220f else 360f) * uiScale).dp).coerceAtMost(maxHeight * 0.6f)
         val srtPopupWidth = subtitlePopupWidth
-        val srtPopupMaxHeight = ((if (isCompactLandscape) 180f else if (isLandscape) 220f else 320f) * 0.8f * uiScale).dp
-        val audioPopupWidth = ((if (isCompactLandscape) 190f else if (isLandscape) 205f else 220f) * 0.8f * uiScale).dp
-        val smallMenuWidth = (178f * 0.8f * uiScale).dp
-        val smallMenuMaxHeight = ((if (isCompactLandscape) 170f else if (isLandscape) 210f else 260f) * uiScale).dp
+        val srtPopupMaxHeight = (((if (isCompactLandscape) 160f else if (isLandscape) 200f else 280f) * uiScale).dp).coerceAtMost(maxHeight * 0.5f)
+        val audioPopupWidth = (((if (isCompactLandscape) 175f else if (isLandscape) 190f else 205f) * uiScale).dp).coerceAtMost(maxWidth * 0.75f)
+        val smallMenuWidth = ((165f * uiScale).dp).coerceAtMost(maxWidth * 0.6f)
+        val smallMenuMaxHeight = (((if (isCompactLandscape) 150f else if (isLandscape) 190f else 230f) * uiScale).dp).coerceAtMost(maxHeight * 0.45f)
         val topIconSize = (44 * uiScale * scale.coerceAtLeast(0.75f)).dp
 
         val currentMeta = remember(currentVideo.path, episodeList) {
@@ -826,12 +837,16 @@ fun VideoPlayerScreen(
             Box(modifier = Modifier.fillMaxSize()) {
 
                 Box(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = topClusterPaddingTop)) {
+                    // Rating pill — now fades with the SAME timer as the rest of the
+                    // controls (it used to be tied to showTopBar's shorter 2.8s timeout,
+                    // which made it vanish well before everything else). Also switches
+                    // to a vertical stack in portrait.
                     AnimatedVisibility(
-                        visible = (showTopBar || showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu) && !showSeekPreview,
+                        visible = !showSeekPreview,
                         enter = fadeIn(animationSpec = tween(160)), exit = fadeOut(animationSpec = tween(120)),
                         modifier = Modifier.align(Alignment.CenterStart).padding(start = sidePadding)
                     ) {
-                        FloatingScoreCapsule(meta = currentMeta)
+                        FloatingScoreCapsule(meta = currentMeta, vertical = !isLandscape)
                     }
 
                     AnimatedVisibility(
@@ -902,7 +917,12 @@ fun VideoPlayerScreen(
                     Row(
                         modifier = Modifier.padding(bottom = bottomDockPadding, start = sidePadding, end = sidePadding)
                             .glassPanel(cornerRadius = 42.dp, fill = GlassSurfaceStrong)
-                            .padding(horizontal = (12 * scale).dp, vertical = (6 * scale).dp),
+                            .padding(horizontal = (12 * scale).dp, vertical = (6 * scale).dp)
+                            // Safety net: if the deck's natural width ever exceeds the
+                            // available screen width on a narrow/portrait device, it now
+                            // scrolls instead of clipping the last icon (the subtitle
+                            // toggle) off-screen.
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy((7 * scale).dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -940,7 +960,11 @@ fun VideoPlayerScreen(
 
                 SeekPreviewBubble(isVisible = showSeekPreview, bitmap = previewBitmap, timeText = formatTime(previewPosition), isLandscape = isLandscape, isLarge = isSeekPreviewLarge, progress = (previewPosition.toFloat() / duration.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f))
 
-                Column(
+                // Bottom dock — time labels removed; the seek bar now sits alone,
+                // closer to the screen edge. Current time only appears as a
+                // floating pill above the scrub thumb while dragging (see
+                // CinematicSeekBar), using the existing soundwave-bloom effect.
+                Box(
                     modifier = Modifier.align(Alignment.BottomCenter).padding(start = sidePadding, end = sidePadding, bottom = seekBottomPadding)
                         .glassPanel(cornerRadius = 30.dp, fill = GlassSurface)
                         .padding(horizontal = (14 * scale).dp, vertical = (7 * scale).dp)
@@ -963,9 +987,6 @@ fun VideoPlayerScreen(
                             showControls = true; showTopBar = true
                         }
                     )
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        TimePill(formatTime(position)); TimePill(formatTime(duration))
-                    }
                 }
             }
         }
@@ -1148,54 +1169,48 @@ private fun GlassTransportButton(icon: ImageVector, size: Dp, onClick: () -> Uni
     }
 }
 
-@Composable
-private fun PlayButtonRipple(size: Dp) {
-    val infinite = rememberInfiniteTransition(label = "playRipple")
-    val progress by infinite.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(animation = tween(1800, easing = LinearOutSlowInEasing), repeatMode = RepeatMode.Restart),
-        label = "rippleProgress"
-    )
-    Canvas(modifier = Modifier.size(size * 1.9f)) {
-        val minRadius = size.toPx() / 2f * 0.92f
-        val maxRadius = size.toPx() / 2f * 1.85f
-        listOf(progress, (progress + 0.5f) % 1f).forEach { p ->
-            val radius = minRadius + (maxRadius - minRadius) * p
-            val alpha = (1f - p) * 0.55f
-            drawCircle(color = AmberGlow.copy(alpha = alpha), radius = radius, style = Stroke(width = 2.4.dp.toPx()), center = Offset(this.size.width / 2f, this.size.height / 2f))
-        }
-    }
-}
-
+// Contained breathing amber glow, drawn INSIDE the button's own circular
+// bounds (radial gradient behind the icon). Replaces the old two-ring
+// expanding ripple, which drew onto a canvas 1.9x the button's size — that
+// oversized canvas was what inflated the whole transport bar's layout height.
+// This version never measures larger than `size`, so the control bar stays
+// its original, correct size.
 @Composable
 private fun FrostedPlayButton(isPlaying: Boolean, isEnded: Boolean, size: Dp, onClick: () -> Unit) {
-    Box(contentAlignment = Alignment.Center) {
-        PlayButtonRipple(size = size)
-        Box(
-            modifier = Modifier
-                .size(size)
-                .clip(CircleShape)
-                .background(GlassSurfaceStrong)
-                .background(Brush.verticalGradient(0f to GlassHighlight, 0.45f to Color.Transparent, 1f to Color.Transparent))
-                .border(
-                    width = 1.4.dp,
-                    brush = Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.75f), AmberDeep.copy(alpha = 0.30f))),
-                    shape = CircleShape
-                )
-                .clickable { onClick() },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = when {
-                    isEnded -> Icons.Rounded.Replay
-                    isPlaying -> Icons.Rounded.Pause
-                    else -> Icons.Rounded.PlayArrow
-                },
-                contentDescription = if (isPlaying) "Pause" else "Play",
-                tint = AmberCore,
-                modifier = Modifier.size(size * 0.50f)
+    val infinite = rememberInfiniteTransition(label = "playGlow")
+    val glowAlpha by infinite.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(animation = tween(1400, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
+        label = "playGlowAlpha"
+    )
+    val density = LocalDensity.current
+    val glowRadiusPx = with(density) { (size / 2f * 1.05f).toPx() }.coerceAtLeast(1f)
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(GlassSurfaceStrong)
+            .background(Brush.verticalGradient(0f to GlassHighlight, 0.45f to Color.Transparent, 1f to Color.Transparent))
+            .background(Brush.radialGradient(colors = listOf(AmberGlow.copy(alpha = glowAlpha * 0.55f), Color.Transparent), radius = glowRadiusPx))
+            .border(
+                width = 1.4.dp,
+                brush = Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.75f + 0.2f * glowAlpha), AmberDeep.copy(alpha = 0.30f))),
+                shape = CircleShape
             )
-        }
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = when {
+                isEnded -> Icons.Rounded.Replay
+                isPlaying -> Icons.Rounded.Pause
+                else -> Icons.Rounded.PlayArrow
+            },
+            contentDescription = if (isPlaying) "Pause" else "Play",
+            tint = AmberCore,
+            modifier = Modifier.size(size * 0.50f)
+        )
     }
 }
 
@@ -1228,64 +1243,91 @@ private fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolean
     val bloom by animateFloatAsState(targetValue = if (isDragging || waveformVisible) 1f else 0f, animationSpec = tween(if (isDragging || waveformVisible) 300 else 600, easing = FastOutSlowInEasing), label = "liquidBloom")
     val glow by animateFloatAsState(targetValue = if (isDragging) 1f else 0.45f, animationSpec = tween(220), label = "seekGlow")
     fun positionFromX(x: Float, width: Float): Long { if (duration <= 0L || width <= 0f) return 0L; return (duration * (x / width).coerceIn(0f, 1f)).toLong().coerceIn(0L, duration) }
-    Box(modifier = Modifier.fillMaxWidth().height(38.dp)
-        .pointerInput(duration) { detectTapGestures { o -> val p = positionFromX(o.x, size.width.toFloat()); localPosition = p; onPreviewPositionChanged(p); onSeekFinished(p) } }
-        .pointerInput(duration) { detectDragGestures(
-            onDragStart = { o -> localPosition = positionFromX(o.x, size.width.toFloat()); lastChapterZone = zoneOf(localPosition); onPreviewPositionChanged(localPosition) },
-            onDrag = { c, _ ->
-                localPosition = positionFromX(c.position.x, size.width.toFloat())
-                val z = zoneOf(localPosition)
-                if (z != lastChapterZone) { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); lastChapterZone = z }
-                onPreviewPositionChanged(localPosition)
-            },
-            onDragEnd = { onSeekFinished(localPosition) },
-            onDragCancel = { onSeekFinished(localPosition) }) }
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val cy = size.height / 2f
-            val prog = (localPosition.toFloat() / duration.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
-            val tx = (size.width * prog).coerceIn(0f, size.width)
 
-            val threadAlpha = 1f - bloom
-            if (threadAlpha > 0.01f) {
-                val th = 2.2.dp.toPx(); val r = th / 2f
-                drawRoundRect(color = Color.White.copy(alpha = 0.15f * threadAlpha), topLeft = Offset(0f, cy - th / 2f), size = Size(size.width, th), cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r))
-                drawRoundRect(color = AmberGlow.copy(alpha = 0.95f * threadAlpha), topLeft = Offset(0f, cy - th / 2f), size = Size(tx, th), cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r))
-            }
+    // BoxWithConstraints so the floating time pill can be positioned in Dp
+    // directly above the scrub thumb, following the existing waveform-bloom
+    // visibility (isDragging || waveformVisible) instead of a permanent label.
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val trackWidth = maxWidth
+        Box(modifier = Modifier.fillMaxWidth().height(38.dp)
+            .pointerInput(duration) { detectTapGestures { o -> val p = positionFromX(o.x, size.width.toFloat()); localPosition = p; onPreviewPositionChanged(p); onSeekFinished(p) } }
+            .pointerInput(duration) { detectDragGestures(
+                onDragStart = { o -> localPosition = positionFromX(o.x, size.width.toFloat()); lastChapterZone = zoneOf(localPosition); onPreviewPositionChanged(localPosition) },
+                onDrag = { c, _ ->
+                    localPosition = positionFromX(c.position.x, size.width.toFloat())
+                    val z = zoneOf(localPosition)
+                    if (z != lastChapterZone) { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); lastChapterZone = z }
+                    onPreviewPositionChanged(localPosition)
+                },
+                onDragEnd = { onSeekFinished(localPosition) },
+                onDragCancel = { onSeekFinished(localPosition) }) }
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val cy = size.height / 2f
+                val prog = (localPosition.toFloat() / duration.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
+                val tx = (size.width * prog).coerceIn(0f, size.width)
 
-            if (bloom > 0.01f) {
-                val barW = 3.dp.toPx(); val gap = 2.2.dp.toPx(); val step = barW + gap
-                val n = (size.width / step).toInt().coerceAtLeast(1)
-                val maxH = size.height * 0.92f
-                val cr = androidx.compose.ui.geometry.CornerRadius(barW / 2f, barW / 2f)
-                for (i in 0 until n) {
-                    val bx = i * step + barW / 2f
-                    val h1 = i * 374761393 + seed * 668265263
-                    val h2 = (h1 xor (h1 shr 13)) * 1274126177
-                    val noise = ((h2 ushr 16) and 0xFFFF) / 65535f
-                    val wave = 0.5f + 0.5f * kotlin.math.sin(i * 0.31f + (seed % 360) / 57.3f)
-                    val wave2 = 0.5f + 0.5f * kotlin.math.sin(i * 0.071f + (seed % 13).toFloat())
-                    val amp = (0.18f + 0.82f * (0.40f * wave + 0.25f * wave2 + 0.35f * noise)).coerceIn(0.12f, 1f)
-                    val hgt = amp * maxH * bloom
-                    val played = bx <= tx
-                    val prox = 1f - (kotlin.math.abs(bx - tx) / (size.width * 0.30f)).coerceIn(0f, 1f)
-                    val alpha = if (played) bloom * (0.55f + 0.45f * prox) else bloom * (0.20f + 0.45f * prox)
-                    val barColor = if (played) AmberGlow else Color.White
-                    drawRoundRect(color = barColor.copy(alpha = alpha), topLeft = Offset(bx - barW / 2f, cy - hgt / 2f), size = Size(barW, hgt), cornerRadius = cr)
+                val threadAlpha = 1f - bloom
+                if (threadAlpha > 0.01f) {
+                    val th = 2.2.dp.toPx(); val r = th / 2f
+                    drawRoundRect(color = Color.White.copy(alpha = 0.15f * threadAlpha), topLeft = Offset(0f, cy - th / 2f), size = Size(size.width, th), cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r))
+                    drawRoundRect(color = AmberGlow.copy(alpha = 0.95f * threadAlpha), topLeft = Offset(0f, cy - th / 2f), size = Size(tx, th), cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r))
                 }
-            }
 
-            val tickY = cy - bloom * (size.height * 0.40f)
-            listOf(0.25f, 0.50f, 0.75f).forEach {
-                drawCircle(color = Color.White.copy(alpha = 0.45f + 0.20f * bloom), radius = 2.2.dp.toPx(), center = Offset(size.width * it, tickY))
-            }
+                if (bloom > 0.01f) {
+                    val barW = 3.dp.toPx(); val gap = 2.2.dp.toPx(); val step = barW + gap
+                    val n = (size.width / step).toInt().coerceAtLeast(1)
+                    val maxH = size.height * 0.92f
+                    val cr = androidx.compose.ui.geometry.CornerRadius(barW / 2f, barW / 2f)
+                    for (i in 0 until n) {
+                        val bx = i * step + barW / 2f
+                        val h1 = i * 374761393 + seed * 668265263
+                        val h2 = (h1 xor (h1 shr 13)) * 1274126177
+                        val noise = ((h2 ushr 16) and 0xFFFF) / 65535f
+                        val wave = 0.5f + 0.5f * kotlin.math.sin(i * 0.31f + (seed % 360) / 57.3f)
+                        val wave2 = 0.5f + 0.5f * kotlin.math.sin(i * 0.071f + (seed % 13).toFloat())
+                        val amp = (0.18f + 0.82f * (0.40f * wave + 0.25f * wave2 + 0.35f * noise)).coerceIn(0.12f, 1f)
+                        val hgt = amp * maxH * bloom
+                        val played = bx <= tx
+                        val prox = 1f - (kotlin.math.abs(bx - tx) / (size.width * 0.30f)).coerceIn(0f, 1f)
+                        val alpha = if (played) bloom * (0.55f + 0.45f * prox) else bloom * (0.20f + 0.45f * prox)
+                        val barColor = if (played) AmberGlow else Color.White
+                        drawRoundRect(color = barColor.copy(alpha = alpha), topLeft = Offset(bx - barW / 2f, cy - hgt / 2f), size = Size(barW, hgt), cornerRadius = cr)
+                    }
+                }
 
-            drawCircle(color = AmberGlow.copy(alpha = 0.22f * glow), radius = 16.dp.toPx(), center = Offset(tx, cy))
-            drawCircle(color = AmberCore.copy(alpha = 0.40f * glow), radius = 10.dp.toPx(), center = Offset(tx, cy))
-            if (bloom > 0.01f) {
-                drawLine(color = Color(0xFFFFF3D6).copy(alpha = 0.90f * bloom), start = Offset(tx, cy - size.height * 0.46f), end = Offset(tx, cy + size.height * 0.46f), strokeWidth = 2.dp.toPx())
+                val tickY = cy - bloom * (size.height * 0.40f)
+                listOf(0.25f, 0.50f, 0.75f).forEach {
+                    drawCircle(color = Color.White.copy(alpha = 0.45f + 0.20f * bloom), radius = 2.2.dp.toPx(), center = Offset(size.width * it, tickY))
+                }
+
+                drawCircle(color = AmberGlow.copy(alpha = 0.22f * glow), radius = 16.dp.toPx(), center = Offset(tx, cy))
+                drawCircle(color = AmberCore.copy(alpha = 0.40f * glow), radius = 10.dp.toPx(), center = Offset(tx, cy))
+                if (bloom > 0.01f) {
+                    drawLine(color = Color(0xFFFFF3D6).copy(alpha = 0.90f * bloom), start = Offset(tx, cy - size.height * 0.46f), end = Offset(tx, cy + size.height * 0.46f), strokeWidth = 2.dp.toPx())
+                }
+                drawCircle(color = Color(0xFFFFF3D6), radius = if (isDragging) 5.4.dp.toPx() else 4.6.dp.toPx(), center = Offset(tx, cy))
             }
-            drawCircle(color = Color(0xFFFFF3D6), radius = if (isDragging) 5.4.dp.toPx() else 4.6.dp.toPx(), center = Offset(tx, cy))
+        }
+
+        val prog = (localPosition.toFloat() / duration.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
+        val pillWidthEstimate = 52.dp
+        AnimatedVisibility(
+            visible = isDragging || waveformVisible,
+            enter = fadeIn(animationSpec = tween(120)),
+            exit = fadeOut(animationSpec = tween(200)),
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .offset(
+                    x = (trackWidth * prog - pillWidthEstimate / 2f).coerceIn(0.dp, (trackWidth - pillWidthEstimate).coerceAtLeast(0.dp)),
+                    y = (-30).dp
+                )
+        ) {
+            Text(
+                text = formatTime(localPosition),
+                color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 4.dp)
+            )
         }
     }
 }
@@ -1327,41 +1369,49 @@ private fun buildPipActions(context: Context, isPlaying: Boolean): List<RemoteAc
 }
 
 @Composable
-private fun FloatingScoreCapsule(meta: VideoWithMetadata?) {
+private fun FloatingScoreCapsule(meta: VideoWithMetadata?, vertical: Boolean = false) {
     if (meta == null) return
     val imdb = meta.imdbRating?.takeIf { it.isNotBlank() && it != "N/A" }
     val rt = meta.rottenTomatoesRating?.takeIf { it.isNotBlank() && it != "N/A" }
     val tmdb = meta.rating?.takeIf { it > 0.0 }
     if (imdb == null && rt == null && tmdb == null) return
 
-    Row(
-        modifier = Modifier
-            .glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        if (imdb != null) {
+    val entries: List<@Composable () -> Unit> = buildList {
+        if (imdb != null) add {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ImdbLogoMark()
                 Spacer(modifier = Modifier.width(5.dp))
                 Text(text = imdb, color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
-        if (rt != null) {
+        if (rt != null) add {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TomatoLogoMark(value = rt)
                 Spacer(modifier = Modifier.width(5.dp))
                 Text(text = rt, color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
-        if (tmdb != null) {
+        if (tmdb != null) add {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TmdbLogoMark()
                 Spacer(modifier = Modifier.width(5.dp))
                 Text(text = String.format("%.1f", tmdb), color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
+    }
+
+    if (vertical) {
+        Column(
+            modifier = Modifier.glassPanel(cornerRadius = 24.dp, fill = GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) { entries.forEach { it() } }
+    } else {
+        Row(
+            modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) { entries.forEach { it() } }
     }
 }
 
@@ -1423,11 +1473,6 @@ private fun TomatoLogoMark(value: String) {
             colorFilter = if (!isFresh) ColorFilter.tint(Color(0xFF8BC34A)) else null
         )
     }
-}
-
-@Composable
-private fun TimePill(text: String) {
-    Text(text = text, color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clip(RoundedCornerShape(50)).background(GlassSurfaceFaint).padding(horizontal = 12.dp, vertical = 5.dp))
 }
 
 @Composable
