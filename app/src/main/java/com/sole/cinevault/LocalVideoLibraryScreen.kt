@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.ActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -25,6 +26,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -69,6 +71,15 @@ enum class LibrarySortOption(val label: String) {
 }
 
 // NOTE: findCineActivity() removed — lives in Screens.kt as the single shared version.
+
+// Persists the library grid's scroll position across navigation (Detail -> back).
+// A plain object survives composable disposal since it isn't tied to the
+// composition, unlike remember/rememberSaveable which reset when this screen
+// leaves the composition entirely.
+private object LibraryScrollState {
+    var index: Int = 0
+    var offset: Int = 0
+}
 
 // Data class for folder grouping
 private data class VideoFolder(
@@ -121,6 +132,17 @@ fun LocalVideoLibraryScreen(
     var expandedFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     val keyguardManager = remember { context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager }
+
+    // Restores the grid's scroll position from LibraryScrollState so returning
+    // from the Detail screen lands you back where you left off, not the top.
+    val gridState = rememberLazyGridState(
+        initialFirstVisibleItemIndex = LibraryScrollState.index,
+        initialFirstVisibleItemScrollOffset = LibraryScrollState.offset
+    )
+    LaunchedEffect(gridState) {
+        snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
+            .collect { (i, o) -> LibraryScrollState.index = i; LibraryScrollState.offset = o }
+    }
 
     val secretUnlockLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result: ActivityResult ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -184,27 +206,43 @@ fun LocalVideoLibraryScreen(
         saveFavoriteVideoPaths(context, updated); Toast.makeText(context, "Removed from Favorites", Toast.LENGTH_SHORT).show()
     }
 
-    // DELETE — moved here from the player. Confirmation dialog, then removes
-    // the file, its saved position, and its library entry.
+    // DELETE — routed through FileManagementHelper's MediaStore consent flow
+    // (same one used for subtitle files). Plain File.delete() fails silently
+    // on Android 10+ scoped storage for files indexed by MediaStore, which is
+    // why this used to throw "Could not delete file".
+    var pendingDeleteResult by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
+    val deleteConsentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        pendingDeleteResult?.invoke(result.resultCode == Activity.RESULT_OK)
+        pendingDeleteResult = null
+    }
+
+    fun finishDeleteSuccess(item: VideoWithMetadata) {
+        clearPlaybackPosition(context, item.video.path)
+        val updated = videos.filter { it.video.path != item.video.path }
+        onVideosLoaded(updated)
+        saveLibraryCache(context, updated)
+        Toast.makeText(context, "File deleted", Toast.LENGTH_SHORT).show()
+    }
+
     fun deleteVideoFile(item: VideoWithMetadata) {
         AlertDialog.Builder(context)
             .setTitle("Delete File")
             .setMessage("Delete \"${item.title}\"?\n\nThis cannot be undone.")
             .setPositiveButton("Delete") { _, _ ->
-                try {
-                    val f = File(item.video.path)
-                    if (f.exists() && f.delete()) {
-                        clearPlaybackPosition(context, item.video.path)
-                        val updated = videos.filter { it.video.path != item.video.path }
-                        onVideosLoaded(updated)
-                        saveLibraryCache(context, updated)
-                        Toast.makeText(context, "File deleted", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(context, "Could not delete file", Toast.LENGTH_SHORT).show()
-                    }
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
+                val f = File(item.video.path)
+                FileManagementHelper.deleteFile(
+                    context = context,
+                    file = f,
+                    onNeedsConsent = { intentSender ->
+                        pendingDeleteResult = { granted ->
+                            if (granted) finishDeleteSuccess(item)
+                            else Toast.makeText(context, "Delete cancelled", Toast.LENGTH_SHORT).show()
+                        }
+                        deleteConsentLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+                    },
+                    onDeleted = { finishDeleteSuccess(item) },
+                    onFailed = { e -> Toast.makeText(context, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show() }
+                )
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -278,6 +316,7 @@ fun LocalVideoLibraryScreen(
 
     Box(modifier = Modifier.fillMaxSize().background(SpaceBlack)) {
         LazyVerticalGrid(
+            state = gridState,
             columns = GridCells.Fixed(3),
             modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
