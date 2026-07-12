@@ -9,10 +9,15 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -22,7 +27,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Theaters
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Audiotrack
@@ -149,16 +153,16 @@ fun DetailScreen(
                             fontSize = if (hasResumePosition) 12.5.sp else 14.sp
                         )
                     }
-                    // Trailer — new icon (film reel, reads as "trailer" more clearly than the
-                    // old library icon) with the same breathing amber glow as the rating pills
+                    // Trailer — custom clapperboard mark instead of a generic library
+                    // icon, with the same strong breathing amber glow as the rating pills
                     val trailerGlow = rememberPillGlowAlpha()
                     Button(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trailerSearchUrl))) },
                         shape = RoundedCornerShape(40.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = GlassSurface, contentColor = TextBright),
                         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 9.dp),
-                        modifier = Modifier.amberGlow(radius = 30.dp, alpha = trailerGlow)) {
-                        Icon(imageVector = Icons.Filled.Theaters, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(5.dp))
+                        modifier = Modifier.strongPillGlow(glow = trailerGlow, cornerRadius = 40.dp, glowRadius = 40.dp)) {
+                        ClapperboardIcon(size = 16.dp, tint = AmberCore)
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text("Trailer", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
                     }
                 }
@@ -197,23 +201,72 @@ fun DetailScreen(
 
 // Shared breathing glow animation reused by all pills/badges on this screen so
 // they all pulse in sync with the same rhythm as the player's rating capsule.
+// Alpha range pushed much higher than the player's subtle version — this was
+// reported as "not visible", so it needs to read clearly at rest, not just at
+// its peak.
 @Composable
 private fun rememberPillGlowAlpha(): Float {
     val infinite = rememberInfiniteTransition(label = "detailPillGlow")
     val alpha by infinite.animateFloat(
-        initialValue = 0.22f,
-        targetValue = 0.60f,
-        animationSpec = infiniteRepeatable(animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
+        initialValue = 0.55f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
         label = "detailPillGlowAlpha"
     )
     return alpha
+}
+
+// A visible glowing amber ring around a pill — combines the soft amberGlow
+// shadow with an explicit gradient border so the effect is unmistakable even
+// if amberGlow's shadow alone renders subtly on some devices.
+private fun Modifier.strongPillGlow(glow: Float, cornerRadius: androidx.compose.ui.unit.Dp = 8.dp, glowRadius: androidx.compose.ui.unit.Dp = 34.dp): Modifier = this
+    .amberGlow(radius = glowRadius, alpha = glow)
+    .border(
+        width = 1.3.dp,
+        brush = Brush.verticalGradient(listOf(AmberGlow.copy(alpha = glow), AmberCore.copy(alpha = glow * 0.7f))),
+        shape = RoundedCornerShape(cornerRadius)
+    )
+
+// Custom-drawn clapperboard mark for the Trailer button — more distinctive
+// and on-theme than a generic library icon, at almost no extra weight.
+@Composable
+private fun ClapperboardIcon(size: androidx.compose.ui.unit.Dp, tint: Color) {
+    Canvas(modifier = Modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val bodyTop = h * 0.42f
+        val corner = androidx.compose.ui.geometry.CornerRadius(w * 0.10f, w * 0.10f)
+
+        // Board body
+        drawRoundRect(color = tint, topLeft = Offset(0f, bodyTop), size = Size(w, h - bodyTop), cornerRadius = corner)
+
+        // Clapper top bar
+        val bar = Path().apply {
+            moveTo(0f, bodyTop * 0.62f)
+            lineTo(w, 0f)
+            lineTo(w, bodyTop * 0.62f)
+            lineTo(0f, bodyTop)
+            close()
+        }
+        drawPath(path = bar, color = tint)
+
+        // Diagonal cut stripes across the bar for the classic clapperboard look
+        val stripeCount = 4
+        val stripeWidth = w * 0.11f
+        for (i in 0 until stripeCount) {
+            val cx = w * (i + 0.5f) / stripeCount
+            rotate(degrees = -18f, pivot = Offset(cx, bodyTop * 0.5f)) {
+                drawRect(color = Color.Black.copy(alpha = 0.55f), topLeft = Offset(cx - stripeWidth / 2f, -h * 0.1f), size = Size(stripeWidth, bodyTop * 1.3f))
+            }
+        }
+    }
 }
 
 // ── Rating badges — real logo marks, uniform 20.dp, matching the player screen, glowing ──
 @Composable
 private fun TmdbBadge(value: String) {
     val glow = rememberPillGlowAlpha()
-    Row(modifier = Modifier.amberGlow(radius = 26.dp, alpha = glow).clip(RoundedCornerShape(8.dp)).background(GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier = Modifier.strongPillGlow(glow).clip(RoundedCornerShape(8.dp)).background(GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Image(painter = painterResource(R.drawable.ic_tmdb), contentDescription = "TMDB", modifier = Modifier.height(14.dp), contentScale = ContentScale.Fit)
         Spacer(modifier = Modifier.width(6.dp))
         Text(text = value, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -223,7 +276,7 @@ private fun TmdbBadge(value: String) {
 @Composable
 private fun ImdbBadge(value: String) {
     val glow = rememberPillGlowAlpha()
-    Row(modifier = Modifier.amberGlow(radius = 26.dp, alpha = glow).clip(RoundedCornerShape(8.dp)).background(GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier = Modifier.strongPillGlow(glow).clip(RoundedCornerShape(8.dp)).background(GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Image(painter = painterResource(R.drawable.ic_imdb), contentDescription = "IMDb", modifier = Modifier.height(16.dp), contentScale = ContentScale.Fit)
         Spacer(modifier = Modifier.width(6.dp))
         Text(text = value, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -235,7 +288,7 @@ private fun RottenTomatoesBadge(value: String) {
     val percent = value.replace("%", "").trim().toIntOrNull() ?: 0
     val isFresh = percent >= 60
     val glow = rememberPillGlowAlpha()
-    Row(modifier = Modifier.amberGlow(radius = 26.dp, alpha = glow).clip(RoundedCornerShape(8.dp)).background(GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier = Modifier.strongPillGlow(glow).clip(RoundedCornerShape(8.dp)).background(GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Image(
             painter = painterResource(R.drawable.ic_rotten_tomatoes),
             contentDescription = "Rotten Tomatoes",
@@ -256,7 +309,7 @@ private fun TechBadge(text: String, icon: ImageVector) {
     val glow = rememberPillGlowAlpha()
     Row(
         modifier = Modifier
-            .amberGlow(radius = 22.dp, alpha = glow * 0.7f)
+            .strongPillGlow(glow = glow, cornerRadius = 9.dp, glowRadius = 28.dp)
             .height(30.dp)
             .clip(RoundedCornerShape(9.dp))
             .background(GlassSurface)
