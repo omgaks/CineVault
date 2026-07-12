@@ -660,11 +660,13 @@ fun VideoPlayerScreen(
 
         // Popup sizing — tightened and bounded against BOTH screen width and
         // height so windows never dwarf the actual device screen.
-        // Subtitle popup: cut another 50% off the width on top of the earlier
-        // pass, and cap its height more aggressively — content scrolls inside
-        // instead (see the SubtitleSettingsMenu wrapper below).
+        // Subtitle popup: SubtitleSettingsMenu.kt now sizes itself internally
+        // via LocalConfiguration (screenWidthDp * 0.17/0.35, halved from the
+        // previous pass) — this mirrors that exact formula so the anchor
+        // positioning lines up with what actually renders, rather than
+        // guessing a width from outside and fighting the component's own size.
         val subtitlePopupWidthBase = if (isLandscape) (maxWidth.value * 0.30f).dp.coerceIn(210.dp, 270.dp) else (maxWidth.value * 0.62f).dp.coerceIn(220.dp, 300.dp)
-        val subtitlePopupWidth = ((subtitlePopupWidthBase.value * uiScale).dp.coerceAtMost(maxWidth * 0.86f)) * 0.5f
+        val subtitlePopupWidth = if (isLandscape) (maxWidth.value * 0.17f).dp.coerceIn(115.dp, 150.dp) else (maxWidth.value * 0.35f).dp.coerceIn(120.dp, 170.dp)
         val subtitlePopupHeightEstimate = (((if (isCompactLandscape || isLandscape) 220f else 360f) * uiScale).dp).coerceAtMost(maxHeight * 0.45f)
         // SRT file browser keeps the pre-reduction width — it's a plain file list, not the dense settings menu
         val srtPopupWidth = (subtitlePopupWidthBase.value * uiScale).dp.coerceAtMost(maxWidth * 0.86f)
@@ -860,9 +862,9 @@ fun VideoPlayerScreen(
         val hasInternalSubtitles = exoPlayer.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.length > 0 }
         AnimatedVisibility(visible = showSubtitleSettings, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)),
             modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, subtitlePopupHeightEstimate)).offset { IntOffset(anchoredX(subIconX, subtitlePopupWidth), 0) }) {
-          // Menu is narrower now — wrap it so tall content scrolls internally
-          // instead of overflowing or getting clipped.
-          Box(modifier = Modifier.width(subtitlePopupWidth).heightIn(max = subtitlePopupHeightEstimate).verticalScroll(rememberScrollState())) {
+            // SubtitleSettingsMenu.kt sizes and scrolls itself internally via
+            // LocalConfiguration — no outer width/scroll wrapper needed (an
+            // earlier pass added one, which just fought its own sizing logic).
             SubtitleSettingsMenu(
                 isVisible = true,
                 subtitlesEnabled = subtitlesEnabled, hasInternalSubtitles = hasInternalSubtitles,
@@ -884,7 +886,6 @@ fun VideoPlayerScreen(
             onReset = { subtitleTextSizeSp = if (isLandscape) 18f else 16f; subtitleBottomPadding = 0.02f; subtitleSyncOffset = 0.0f; subtitlesEnabled = true; trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build(); showControls = true; subtitleMenuTouchKey++ },
             onUserInteraction = { subtitleMenuTouchKey++; showControls = true }
         )
-          }
         }
 
         AnimatedVisibility(visible = showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu, enter = fadeIn(), exit = fadeOut()) {
