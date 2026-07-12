@@ -3,6 +3,12 @@ package com.sole.cinevault
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Theaters
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Audiotrack
@@ -105,7 +112,7 @@ fun DetailScreen(
             Column(modifier = Modifier.padding(horizontal = 22.dp)) {
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Rating badges — real logo marks, matching the player screen
+                // Rating badges — real logo marks, matching the player screen, now with a breathing amber glow
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
                     if ((item.rating ?: 0.0) > 0.0) TmdbBadge(value = formatRating(item.rating))
                     if (!item.imdbRating.isNullOrBlank() && item.imdbRating != "N/A") ImdbBadge(value = item.imdbRating!!)
@@ -114,7 +121,7 @@ fun DetailScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Tech badges — uniform height, glass-amber border, small icon per type
+                // Tech badges — uniform height, glowing amber-glass border, small icon per type
                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
                     TechBadge(text = item.type.uppercase(), icon = if (item.type.equals("tv", ignoreCase = true)) Icons.Rounded.Tv else Icons.Rounded.Movie)
                     if (resolutionBadge.isNotBlank()) TechBadge(text = resolutionBadge, icon = Icons.Rounded.Videocam)
@@ -142,11 +149,15 @@ fun DetailScreen(
                             fontSize = if (hasResumePosition) 12.5.sp else 14.sp
                         )
                     }
+                    // Trailer — new icon (film reel, reads as "trailer" more clearly than the
+                    // old library icon) with the same breathing amber glow as the rating pills
+                    val trailerGlow = rememberPillGlowAlpha()
                     Button(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trailerSearchUrl))) },
                         shape = RoundedCornerShape(40.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = GlassSurface, contentColor = TextBright),
-                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 9.dp)) {
-                        Icon(imageVector = Icons.Filled.VideoLibrary, contentDescription = null, modifier = Modifier.size(15.dp))
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 9.dp),
+                        modifier = Modifier.amberGlow(radius = 30.dp, alpha = trailerGlow)) {
+                        Icon(imageVector = Icons.Filled.Theaters, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(5.dp))
                         Text("Trailer", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
                     }
@@ -184,10 +195,25 @@ fun DetailScreen(
     }
 }
 
-// ── Rating badges — real logo marks, uniform 20.dp, matching the player screen ──
+// Shared breathing glow animation reused by all pills/badges on this screen so
+// they all pulse in sync with the same rhythm as the player's rating capsule.
+@Composable
+private fun rememberPillGlowAlpha(): Float {
+    val infinite = rememberInfiniteTransition(label = "detailPillGlow")
+    val alpha by infinite.animateFloat(
+        initialValue = 0.22f,
+        targetValue = 0.60f,
+        animationSpec = infiniteRepeatable(animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
+        label = "detailPillGlowAlpha"
+    )
+    return alpha
+}
+
+// ── Rating badges — real logo marks, uniform 20.dp, matching the player screen, glowing ──
 @Composable
 private fun TmdbBadge(value: String) {
-    Row(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    val glow = rememberPillGlowAlpha()
+    Row(modifier = Modifier.amberGlow(radius = 26.dp, alpha = glow).clip(RoundedCornerShape(8.dp)).background(GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Image(painter = painterResource(R.drawable.ic_tmdb), contentDescription = "TMDB", modifier = Modifier.height(14.dp), contentScale = ContentScale.Fit)
         Spacer(modifier = Modifier.width(6.dp))
         Text(text = value, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -196,7 +222,8 @@ private fun TmdbBadge(value: String) {
 
 @Composable
 private fun ImdbBadge(value: String) {
-    Row(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    val glow = rememberPillGlowAlpha()
+    Row(modifier = Modifier.amberGlow(radius = 26.dp, alpha = glow).clip(RoundedCornerShape(8.dp)).background(GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Image(painter = painterResource(R.drawable.ic_imdb), contentDescription = "IMDb", modifier = Modifier.height(16.dp), contentScale = ContentScale.Fit)
         Spacer(modifier = Modifier.width(6.dp))
         Text(text = value, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -207,7 +234,8 @@ private fun ImdbBadge(value: String) {
 private fun RottenTomatoesBadge(value: String) {
     val percent = value.replace("%", "").trim().toIntOrNull() ?: 0
     val isFresh = percent >= 60
-    Row(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    val glow = rememberPillGlowAlpha()
+    Row(modifier = Modifier.amberGlow(radius = 26.dp, alpha = glow).clip(RoundedCornerShape(8.dp)).background(GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Image(
             painter = painterResource(R.drawable.ic_rotten_tomatoes),
             contentDescription = "Rotten Tomatoes",
@@ -220,13 +248,15 @@ private fun RottenTomatoesBadge(value: String) {
     }
 }
 
-// TECH PILL — uniform height, subtle amber-glass border, small leading icon so
+// TECH PILL — uniform height, glowing amber-glass border, small leading icon so
 // format tags (type/resolution/audio/container) read as designed chips instead
 // of plain text-on-background.
 @Composable
 private fun TechBadge(text: String, icon: ImageVector) {
+    val glow = rememberPillGlowAlpha()
     Row(
         modifier = Modifier
+            .amberGlow(radius = 22.dp, alpha = glow * 0.7f)
             .height(30.dp)
             .clip(RoundedCornerShape(9.dp))
             .background(GlassSurface)
