@@ -100,7 +100,11 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.exoplayer.source.SingleSampleMediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
@@ -168,6 +172,7 @@ fun VideoPlayerScreen(
     var sleepTimerActive by remember { mutableStateOf(false) }
 
     var subtitleTextSizeSp by remember { mutableFloatStateOf(22f) }
+    var subtitleSizeDefaultApplied by remember { mutableStateOf(false) }
     var subtitleBottomPadding by remember { mutableFloatStateOf(0.02f) }
     var subtitleSyncOffset by remember { mutableFloatStateOf(0.0f) }
     var subtitleMenuTouchKey by remember { mutableIntStateOf(0) }
@@ -319,6 +324,40 @@ fun VideoPlayerScreen(
         isVideoEnded = false
     }
 
+    // Attaches a side-loaded subtitle to the ALREADY PLAYING video without
+    // rebuilding the MediaItem. The previous approach called setMediaItem()
+    // with a brand-new item + prepare() + seekTo(), which tears down and
+    // re-initializes the video decoder — that full reset is what caused the
+    // black-frame blip the instant a subtitle finished downloading, no matter
+    // how accurate the resume position was.
+    //
+    // MergingMediaSource lets us keep the existing video source exactly as-is
+    // and merge in a second source for the subtitle track. setMediaSource(...,
+    // resetPosition = false) then swaps sources while ExoPlayer preserves the
+    // current window index + position internally — no manual seekTo() needed,
+    // and no decoder teardown for the video track.
+    fun attachSubtitleSeamlessly(subtitleUri: Uri) {
+        try {
+            val dataSourceFactory = DefaultDataSource.Factory(context)
+            val videoSource = DefaultMediaSourceFactory(context).createMediaSource(MediaItem.fromUri(currentVideo.path))
+            val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(subtitleUri)
+                .setMimeType(MimeTypes.APPLICATION_SUBRIP)
+                .setLanguage("en")
+                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                .build()
+            val subtitleSource = SingleSampleMediaSource.Factory(dataSourceFactory)
+                .createMediaSource(subtitleConfig, C.TIME_UNSET)
+            val mergedSource = MergingMediaSource(videoSource, subtitleSource)
+            exoPlayer.setMediaSource(mergedSource, /* resetPosition = */ false)
+            if (exoPlayer.playbackState == Player.STATE_IDLE) exoPlayer.prepare()
+            exoPlayer.playWhenReady = true
+            isVideoEnded = false
+        } catch (e: Exception) {
+            // Fall back to the old full-reload path only if the merge itself fails
+            playCurrentVideoWithSubtitle(subtitleUri, exoPlayer.currentPosition.coerceAtLeast(0L))
+        }
+    }
+
     fun downloadExternalSubtitle() {
         if (!canDownloadExternalSubtitles) {
             Toast.makeText(context, "Subtitle download is only for Movies and TV Shows", Toast.LENGTH_SHORT).show()
@@ -331,16 +370,11 @@ fun VideoPlayerScreen(
             try {
                 val subtitleUri = OpenSubtitlesClient.downloadBestEnglishSubtitle(context, currentVideo.path)
                 if (subtitleUri != null) {
-                    // IMPORTANT: capture the resume position HERE, right before the reload —
-                    // not before the (multi-second) network search. Capturing it earlier
-                    // used a stale position and made playback visibly jump backwards
-                    // ("restart") the moment the subtitle finished downloading.
-                    val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
                     autoSubtitleStatus = "Subtitle loaded"
                     Toast.makeText(context, "Subtitle loaded", Toast.LENGTH_SHORT).show()
                     subtitlesEnabled = true
                     trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-                    playCurrentVideoWithSubtitle(subtitleUri, resumeAt)
+                    attachSubtitleSeamlessly(subtitleUri)
                     delay(1400); autoSubtitleStatus = ""
                 } else { autoSubtitleStatus = "No subtitle found"; Toast.makeText(context, "No subtitle found", Toast.LENGTH_SHORT).show(); delay(1400); autoSubtitleStatus = "" }
             } catch (e: Exception) { autoSubtitleStatus = "Subtitle failed"; Toast.makeText(context, "Subtitle failed", Toast.LENGTH_SHORT).show(); delay(1400); autoSubtitleStatus = "" }
@@ -365,13 +399,10 @@ fun VideoPlayerScreen(
                 try {
                     val uri = OpenSubtitlesClient.downloadBestEnglishSubtitle(context, currentVideo.path)
                     if (uri != null) {
-                        // Same fix as downloadExternalSubtitle(): grab the current
-                        // position AFTER the download finishes, not before it started.
-                        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
                         subtitlesEnabled = true
                         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                         autoSubtitleStatus = "Subtitle loaded"
-                        playCurrentVideoWithSubtitle(uri, resumeAt)
+                        attachSubtitleSeamlessly(uri)
                         delay(1400); autoSubtitleStatus = ""
                     } else { autoSubtitleStatus = "No subtitle found"; delay(1100); autoSubtitleStatus = "" }
                 } catch (e: Exception) { autoSubtitleStatus = "Subtitle failed"; delay(1100); autoSubtitleStatus = "" }
@@ -528,11 +559,10 @@ fun VideoPlayerScreen(
 
     LaunchedEffect(pendingSrtUri) {
         val uri = pendingSrtUri ?: return@LaunchedEffect
-        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
         subtitlesEnabled = true
         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
         autoSubtitleStatus = "SRT loaded"
-        playCurrentVideoWithSubtitle(subtitleUri = uri, resumePosition = resumeAt)
+        attachSubtitleSeamlessly(uri)
         showSubtitleSettings = false; showControls = true
         Toast.makeText(context, "SRT file loaded", Toast.LENGTH_SHORT).show()
         delay(1400); autoSubtitleStatus = ""
@@ -591,13 +621,24 @@ fun VideoPlayerScreen(
         val smallButton = (66 * scale).dp
         val hudSize = (72 * scale).dp
         val sidePadding = if (isCompactLandscape) 8.dp else 16.dp
-        val bottomDockPadding = when { isCompactLandscape -> 112.dp; isLandscape -> 126.dp; else -> 152.dp }
-        // Pushed further down — the permanent time labels under the seek bar are
-        // gone now (time only shows while scrubbing), so the bar can sit closer
-        // to the bottom edge.
-        val seekBottomPadding = when { isCompactLandscape -> 8.dp; isLandscape -> 10.dp; else -> 12.dp }
+        // Landscape: controls brought DOWN closer to the seek bar (smaller
+        // dock padding) while the seek bar is brought UP ~30% from where it
+        // was, leaving a modest — not huge — gap between the two.
+        // Portrait: seek bar brought up a bit from the very edge, but still
+        // clearly below (closer to the bottom than) the transport dock.
+        val bottomDockPadding = when { isCompactLandscape -> 66.dp; isLandscape -> 76.dp; else -> 152.dp }
+        val seekBottomPadding = when { isCompactLandscape -> 10.dp; isLandscape -> 13.dp; else -> 24.dp }
         val showIntroSkip = isCurrentTvShow && position in 5_000L..95_000L
         val topClusterPaddingTop = if (isLandscape) 10.dp else 18.dp
+
+        // Default subtitle size: 16sp portrait, 18sp landscape — applied once,
+        // so it doesn't stomp on a size the person already dialed in manually.
+        LaunchedEffect(isLandscape) {
+            if (!subtitleSizeDefaultApplied) {
+                subtitleTextSizeSp = if (isLandscape) 18f else 16f
+                subtitleSizeDefaultApplied = true
+            }
+        }
 
         val uiScale = (maxWidth.value / 400f).coerceIn(0.85f, 1.25f)
 
@@ -619,12 +660,17 @@ fun VideoPlayerScreen(
 
         // Popup sizing — tightened and bounded against BOTH screen width and
         // height so windows never dwarf the actual device screen.
+        // Subtitle popup: cut another 50% off the width on top of the earlier
+        // pass, and cap its height more aggressively — content scrolls inside
+        // instead (see the SubtitleSettingsMenu wrapper below).
         val subtitlePopupWidthBase = if (isLandscape) (maxWidth.value * 0.30f).dp.coerceIn(210.dp, 270.dp) else (maxWidth.value * 0.62f).dp.coerceIn(220.dp, 300.dp)
-        val subtitlePopupWidth = (subtitlePopupWidthBase.value * uiScale).dp.coerceAtMost(maxWidth * 0.86f)
-        val subtitlePopupHeightEstimate = (((if (isCompactLandscape || isLandscape) 220f else 360f) * uiScale).dp).coerceAtMost(maxHeight * 0.6f)
-        val srtPopupWidth = subtitlePopupWidth
+        val subtitlePopupWidth = ((subtitlePopupWidthBase.value * uiScale).dp.coerceAtMost(maxWidth * 0.86f)) * 0.5f
+        val subtitlePopupHeightEstimate = (((if (isCompactLandscape || isLandscape) 220f else 360f) * uiScale).dp).coerceAtMost(maxHeight * 0.45f)
+        // SRT file browser keeps the pre-reduction width — it's a plain file list, not the dense settings menu
+        val srtPopupWidth = (subtitlePopupWidthBase.value * uiScale).dp.coerceAtMost(maxWidth * 0.86f)
         val srtPopupMaxHeight = (((if (isCompactLandscape) 160f else if (isLandscape) 200f else 280f) * uiScale).dp).coerceAtMost(maxHeight * 0.5f)
-        val audioPopupWidth = (((if (isCompactLandscape) 175f else if (isLandscape) 190f else 205f) * uiScale).dp).coerceAtMost(maxWidth * 0.75f)
+        // Audio popup: 40% narrower
+        val audioPopupWidth = ((((if (isCompactLandscape) 175f else if (isLandscape) 190f else 205f) * uiScale).dp).coerceAtMost(maxWidth * 0.75f)) * 0.6f
         val smallMenuWidth = ((165f * uiScale).dp).coerceAtMost(maxWidth * 0.6f)
         val smallMenuMaxHeight = (((if (isCompactLandscape) 150f else if (isLandscape) 190f else 230f) * uiScale).dp).coerceAtMost(maxHeight * 0.45f)
         val topIconSize = (44 * uiScale * scale.coerceAtLeast(0.75f)).dp
@@ -746,7 +792,11 @@ fun VideoPlayerScreen(
         }
 
         val clusterHeightDp = with(density) { clusterHeightPx.toDp() }
-        AnimatedVisibility(visible = showSpeedMenu, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.TopEnd).padding(top = topClusterPaddingTop + clusterHeightDp + 8.dp, end = sidePadding)) {
+        // Portrait now stacks a title row above the icon cluster (title + 10dp
+        // spacer), so popups anchored below the cluster need that extra offset
+        // or they'd land under the title instead of under the icons.
+        val titleRowOffset = if (isLandscape) 0.dp else 46.dp
+        AnimatedVisibility(visible = showSpeedMenu, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.TopEnd).padding(top = topClusterPaddingTop + titleRowOffset + clusterHeightDp + 8.dp, end = sidePadding)) {
             SpeedMenuPopup(
                 currentSpeed = playbackSpeed,
                 popupWidth = smallMenuWidth,
@@ -756,7 +806,7 @@ fun VideoPlayerScreen(
             )
         }
 
-        AnimatedVisibility(visible = showSleepMenu, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.TopEnd).padding(top = topClusterPaddingTop + clusterHeightDp + 8.dp, end = sidePadding)) {
+        AnimatedVisibility(visible = showSleepMenu, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.TopEnd).padding(top = topClusterPaddingTop + titleRowOffset + clusterHeightDp + 8.dp, end = sidePadding)) {
             SleepMenuPopup(
                 currentMinutes = sleepTimerMinutes,
                 popupWidth = smallMenuWidth,
@@ -810,6 +860,9 @@ fun VideoPlayerScreen(
         val hasInternalSubtitles = exoPlayer.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.length > 0 }
         AnimatedVisibility(visible = showSubtitleSettings, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)),
             modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, subtitlePopupHeightEstimate)).offset { IntOffset(anchoredX(subIconX, subtitlePopupWidth), 0) }) {
+          // Menu is narrower now — wrap it so tall content scrolls internally
+          // instead of overflowing or getting clipped.
+          Box(modifier = Modifier.width(subtitlePopupWidth).heightIn(max = subtitlePopupHeightEstimate).verticalScroll(rememberScrollState())) {
             SubtitleSettingsMenu(
                 isVisible = true,
                 subtitlesEnabled = subtitlesEnabled, hasInternalSubtitles = hasInternalSubtitles,
@@ -828,70 +881,103 @@ fun VideoPlayerScreen(
             currentFontSize = subtitleTextSizeSp, onFontSizeChange = { subtitleTextSizeSp = it; showControls = true; subtitleMenuTouchKey++ },
             currentVerticalPosition = subtitleBottomPadding, onVerticalPositionChange = { subtitleBottomPadding = it; showControls = true; subtitleMenuTouchKey++ },
             currentSyncOffset = subtitleSyncOffset, onSyncOffsetChange = { subtitleSyncOffset = it; showControls = true; subtitleMenuTouchKey++ },
-            onReset = { subtitleTextSizeSp = 22f; subtitleBottomPadding = 0.02f; subtitleSyncOffset = 0.0f; subtitlesEnabled = true; trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build(); showControls = true; subtitleMenuTouchKey++ },
+            onReset = { subtitleTextSizeSp = if (isLandscape) 18f else 16f; subtitleBottomPadding = 0.02f; subtitleSyncOffset = 0.0f; subtitlesEnabled = true; trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build(); showControls = true; subtitleMenuTouchKey++ },
             onUserInteraction = { subtitleMenuTouchKey++; showControls = true }
         )
+          }
         }
 
         AnimatedVisibility(visible = showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize()) {
 
-                Box(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = topClusterPaddingTop)) {
-                    // Rating pill — now fades with the SAME timer as the rest of the
-                    // controls (it used to be tied to showTopBar's shorter 2.8s timeout,
-                    // which made it vanish well before everything else). Also switches
-                    // to a vertical stack in portrait.
-                    AnimatedVisibility(
-                        visible = !showSeekPreview,
-                        enter = fadeIn(animationSpec = tween(160)), exit = fadeOut(animationSpec = tween(120)),
-                        modifier = Modifier.align(Alignment.CenterStart).padding(start = sidePadding)
-                    ) {
-                        FloatingScoreCapsule(meta = currentMeta, vertical = !isLandscape)
-                    }
+                // Title, rating pill, and the speed/sleep/PiP cluster all now fade
+                // together with the rest of the controls (showControls' 4.5s timer)
+                // instead of the title/pill previously using showTopBar's shorter
+                // 2.8s timer, which made them vanish noticeably earlier than
+                // everything else.
+                val topRowVisible = !showSeekPreview
+                if (isLandscape) {
+                    Box(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = topClusterPaddingTop)) {
+                        AnimatedVisibility(
+                            visible = topRowVisible,
+                            enter = fadeIn(animationSpec = tween(160)), exit = fadeOut(animationSpec = tween(120)),
+                            modifier = Modifier.align(Alignment.CenterStart).padding(start = sidePadding)
+                        ) {
+                            FloatingScoreCapsule(meta = currentMeta, vertical = false)
+                        }
 
-                    AnimatedVisibility(
-                        visible = showTopBar && !showSeekPreview,
-                        enter = fadeIn(animationSpec = tween(220)), exit = fadeOut(animationSpec = tween(400)),
-                        modifier = Modifier.align(Alignment.Center).padding(horizontal = 96.dp)
-                    ) {
-                        Text(
-                            text = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path),
-                            color = TextBright,
-                            fontSize = if (isLandscape) 13.sp else 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 14.dp, vertical = 7.dp)
+                        AnimatedVisibility(
+                            visible = topRowVisible,
+                            enter = fadeIn(animationSpec = tween(220)), exit = fadeOut(animationSpec = tween(160)),
+                            modifier = Modifier.align(Alignment.Center).padding(horizontal = 96.dp)
+                        ) {
+                            Text(
+                                text = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path),
+                                color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.Center,
+                                modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 14.dp, vertical = 7.dp)
+                            )
+                        }
+
+                        TopIconCluster(
+                            isLandscape = true, iconSize = topIconSize,
+                            playbackSpeed = playbackSpeed, sleepTimerActive = sleepTimerActive,
+                            showSpeedMenu = showSpeedMenu, showSleepMenu = showSleepMenu,
+                            onSpeedClick = { val wasOpen = showSpeedMenu; closeAllMenus(); showSpeedMenu = !wasOpen; showControls = true },
+                            onSleepClick = { val wasOpen = showSleepMenu; closeAllMenus(); showSleepMenu = !wasOpen; showControls = true },
+                            onPipClick = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                    val actions = buildPipActions(context, exoPlayer.isPlaying)
+                                    activity?.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).setActions(actions).build())
+                                }
+                            },
+                            modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)
+                                .onGloballyPositioned { clusterHeightPx = it.size.height.toFloat() }
                         )
                     }
+                } else {
+                    // Portrait: title sits on its own row, above the pill/icon row —
+                    // "on top" rather than overlapping/competing with them.
+                    Column(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = topClusterPaddingTop)) {
+                        AnimatedVisibility(
+                            visible = topRowVisible,
+                            enter = fadeIn(animationSpec = tween(220)), exit = fadeOut(animationSpec = tween(160)),
+                            modifier = Modifier.align(Alignment.CenterHorizontally).padding(horizontal = 72.dp)
+                        ) {
+                            Text(
+                                text = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path),
+                                color = TextBright, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.Center,
+                                modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 14.dp, vertical = 7.dp)
+                            )
+                        }
 
-                    TopIconCluster(
-                        isLandscape = isLandscape,
-                        iconSize = topIconSize,
-                        playbackSpeed = playbackSpeed,
-                        sleepTimerActive = sleepTimerActive,
-                        showSpeedMenu = showSpeedMenu,
-                        showSleepMenu = showSleepMenu,
-                        onSpeedClick = {
-                            val wasOpen = showSpeedMenu; closeAllMenus(); showSpeedMenu = !wasOpen; showControls = true
-                        },
-                        onSleepClick = {
-                            val wasOpen = showSleepMenu; closeAllMenus(); showSleepMenu = !wasOpen; showControls = true
-                        },
-                        onPipClick = {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                val actions = buildPipActions(context, exoPlayer.isPlaying)
-                                activity?.enterPictureInPictureMode(
-                                    PictureInPictureParams.Builder()
-                                        .setAspectRatio(Rational(16, 9))
-                                        .setActions(actions)
-                                        .build()
-                                )
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            AnimatedVisibility(
+                                visible = topRowVisible,
+                                enter = fadeIn(animationSpec = tween(160)), exit = fadeOut(animationSpec = tween(120)),
+                                modifier = Modifier.align(Alignment.CenterStart).padding(start = sidePadding)
+                            ) {
+                                FloatingScoreCapsule(meta = currentMeta, vertical = true)
                             }
-                        },
-                        modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)
-                            .onGloballyPositioned { clusterHeightPx = it.size.height.toFloat() }
-                    )
+
+                            TopIconCluster(
+                                isLandscape = false, iconSize = topIconSize,
+                                playbackSpeed = playbackSpeed, sleepTimerActive = sleepTimerActive,
+                                showSpeedMenu = showSpeedMenu, showSleepMenu = showSleepMenu,
+                                onSpeedClick = { val wasOpen = showSpeedMenu; closeAllMenus(); showSpeedMenu = !wasOpen; showControls = true },
+                                onSleepClick = { val wasOpen = showSleepMenu; closeAllMenus(); showSleepMenu = !wasOpen; showControls = true },
+                                onPipClick = {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                        val actions = buildPipActions(context, exoPlayer.isPlaying)
+                                        activity?.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).setActions(actions).build())
+                                    }
+                                },
+                                modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)
+                                    .onGloballyPositioned { clusterHeightPx = it.size.height.toFloat() }
+                            )
+                        }
+                    }
                 }
 
                 AnimatedVisibility(visible = autoSubtitleStatus.isNotBlank() && !showSeekPreview, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.TopCenter).padding(top = if (isLandscape) 54.dp else 86.dp)) {
@@ -1558,25 +1644,43 @@ private fun NextEpisodeCountdownOverlay(nextEpisode: VideoWithMetadata?, countdo
 
 @Composable
 private fun FloatingTrackPopup(title: String, modifier: Modifier, rows: List<TrackPopupRowData>, audioSyncMs: Int = 0, onAudioSyncChange: (Int) -> Unit = {}, onAnyClick: () -> Unit = {}, onClose: () -> Unit) {
-    Column(modifier = modifier.glassPanel(cornerRadius = 18.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(8.dp)) {
-        Text(text = title, color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+    Column(modifier = modifier.glassPanel(cornerRadius = 16.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(6.dp)) {
+        Text(text = title, color = AmberCore, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
         rows.forEach { row ->
-            GlassMenuRow(icon = Icons.Rounded.Audiotrack, label = row.title, selected = false, onClick = { onAnyClick(); row.onClick() })
-            Spacer(modifier = Modifier.height(4.dp))
+            CompactGlassMenuRow(icon = Icons.Rounded.Audiotrack, label = row.title, onClick = { onAnyClick(); row.onClick() })
+            Spacer(modifier = Modifier.height(3.dp))
         }
-        Text(text = "Audio Delay", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
-        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(text = "Audio Delay", color = AmberCore, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 3.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             SyncStepChip(text = "−50") { onAnyClick(); onAudioSyncChange((audioSyncMs - 50).coerceAtLeast(-2000)) }
             Text(
-                text = if (audioSyncMs == 0) "0 ms" else "${if (audioSyncMs > 0) "+" else ""}$audioSyncMs ms",
+                text = if (audioSyncMs == 0) "0ms" else "${if (audioSyncMs > 0) "+" else ""}$audioSyncMs",
                 color = if (audioSyncMs == 0) TextBright else AmberCore,
-                fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                fontSize = 10.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
                 modifier = Modifier.weight(1f)
             )
             SyncStepChip(text = "+50") { onAnyClick(); onAudioSyncChange((audioSyncMs + 50).coerceAtMost(2000)) }
         }
-        Spacer(modifier = Modifier.height(6.dp))
-        GlassMenuRow(icon = null, label = "Close", selected = false, onClick = { onAnyClick(); onClose() })
+        Spacer(modifier = Modifier.height(5.dp))
+        CompactGlassMenuRow(icon = null, label = "Close", onClick = { onAnyClick(); onClose() })
+    }
+}
+
+// Smaller-footprint row used inside the narrowed audio popup — same visual
+// language as GlassMenuRow but tighter text/padding for the reduced width.
+@Composable
+private fun CompactGlassMenuRow(icon: ImageVector?, label: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 9.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (icon != null) {
+            Icon(imageVector = icon, contentDescription = null, tint = TextMuted, modifier = Modifier.size(13.dp))
+            Spacer(modifier = Modifier.width(7.dp))
+        }
+        Text(text = label, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
     }
 }
 
