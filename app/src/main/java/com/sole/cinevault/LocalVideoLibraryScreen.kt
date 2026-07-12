@@ -3,9 +3,12 @@ package com.sole.cinevault
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ContentUris
 import android.content.Context
+import android.net.Uri
 import android.os.Build
 import android.app.KeyguardManager
+import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -79,6 +82,9 @@ enum class LibrarySortOption(val label: String) {
 private object LibraryScrollState {
     var index: Int = 0
     var offset: Int = 0
+    var category: String = "All"
+    var sort: LibrarySortOption = LibrarySortOption.TITLE_AZ
+    var gridMode: Boolean = true
 }
 
 // Data class for folder grouping
@@ -118,9 +124,9 @@ fun LocalVideoLibraryScreen(
 
     var isLoading by remember { mutableStateOf(false) }
     var scanStatus by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("All") }
-    var isGridMode by remember { mutableStateOf(true) }
-    var sortOption by remember { mutableStateOf(LibrarySortOption.TITLE_AZ) }
+    var selectedCategory by remember { mutableStateOf(LibraryScrollState.category) }
+    var isGridMode by remember { mutableStateOf(LibraryScrollState.gridMode) }
+    var sortOption by remember { mutableStateOf(LibraryScrollState.sort) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
     var secretUnlocked by remember { mutableStateOf(false) }
     var hiddenPaths by remember { mutableStateOf<Set<String>>(loadSecretVideoPaths(context)) }
@@ -142,6 +148,11 @@ fun LocalVideoLibraryScreen(
     LaunchedEffect(gridState) {
         snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
             .collect { (i, o) -> LibraryScrollState.index = i; LibraryScrollState.offset = o }
+    }
+    LaunchedEffect(selectedCategory, sortOption, isGridMode) {
+        LibraryScrollState.category = selectedCategory
+        LibraryScrollState.sort = sortOption
+        LibraryScrollState.gridMode = isGridMode
     }
 
     val secretUnlockLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result: ActivityResult ->
@@ -206,10 +217,12 @@ fun LocalVideoLibraryScreen(
         saveFavoriteVideoPaths(context, updated); Toast.makeText(context, "Removed from Favorites", Toast.LENGTH_SHORT).show()
     }
 
-    // DELETE — routed through FileManagementHelper's MediaStore consent flow
-    // (same one used for subtitle files). Plain File.delete() fails silently
-    // on Android 10+ scoped storage for files indexed by MediaStore, which is
-    // why this used to throw "Could not delete file".
+    // DELETE — direct MediaStore flow, not routed through FileManagementHelper.
+    // That helper's delete path is apparently built for the app's own
+    // subtitle files (plain local storage, no MediaStore involved), which is
+    // why reusing it for scanned videos silently kept failing. Videos here
+    // are indexed by MediaStore and live outside the app's own storage, so
+    // scoped storage requires going through MediaStore's consent flow.
     var pendingDeleteResult by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
     val deleteConsentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         pendingDeleteResult?.invoke(result.resultCode == Activity.RESULT_OK)
@@ -224,25 +237,74 @@ fun LocalVideoLibraryScreen(
         Toast.makeText(context, "File deleted", Toast.LENGTH_SHORT).show()
     }
 
+    // Looks up the MediaStore content Uri for a file path — needed because
+    // deleting through the raw java.io.File path is what scoped storage blocks;
+    // deleting through the matching content:// Uri is what's actually allowed.
+    fun findMediaStoreUri(path: String): Uri? {
+        val projection = arrayOf(MediaStore.Video.Media._ID)
+        return try {
+            context.contentResolver.query(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI, projection,
+                "${MediaStore.Video.Media.DATA} = ?", arrayOf(path), null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID))
+                    ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
+                } else null
+            }
+        } catch (_: Exception) { null }
+    }
+
     fun deleteVideoFile(item: VideoWithMetadata) {
         AlertDialog.Builder(context)
             .setTitle("Delete File")
             .setMessage("Delete \"${item.title}\"?\n\nThis cannot be undone.")
             .setPositiveButton("Delete") { _, _ ->
                 val f = File(item.video.path)
-                FileManagementHelper.deleteFile(
-                    context = context,
-                    file = f,
-                    onNeedsConsent = { intentSender ->
+                val mediaUri = findMediaStoreUri(item.video.path)
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && mediaUri != null) {
+                    // Android 11+: proactively trigger the system's own delete
+                    // confirmation for this MediaStore item. This is the only
+                    // reliable path under scoped storage for files the app
+                    // didn't create itself.
+                    try {
                         pendingDeleteResult = { granted ->
                             if (granted) finishDeleteSuccess(item)
                             else Toast.makeText(context, "Delete cancelled", Toast.LENGTH_SHORT).show()
                         }
-                        deleteConsentLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
-                    },
-                    onDeleted = { finishDeleteSuccess(item) },
-                    onFailed = { e -> Toast.makeText(context, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show() }
-                )
+                        val pi = MediaStore.createDeleteRequest(context.contentResolver, listOf(mediaUri))
+                        deleteConsentLauncher.launch(IntentSenderRequest.Builder(pi.intentSender).build())
+                    } catch (e: Exception) {
+                        pendingDeleteResult = null
+                        Toast.makeText(context, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    try {
+                        val deletedRows = if (mediaUri != null) context.contentResolver.delete(mediaUri, null, null) else 0
+                        when {
+                            deletedRows > 0 -> finishDeleteSuccess(item)
+                            f.exists() && f.delete() -> finishDeleteSuccess(item)
+                            else -> Toast.makeText(context, "Could not delete file", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: SecurityException) {
+                        // Android 10 throws a RecoverableSecurityException with an
+                        // IntentSender the system provides specifically to grant
+                        // one-time delete permission for this file.
+                        val recoverable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) e as? android.app.RecoverableSecurityException else null
+                        if (recoverable != null) {
+                            pendingDeleteResult = { granted ->
+                                if (granted) finishDeleteSuccess(item)
+                                else Toast.makeText(context, "Delete cancelled", Toast.LENGTH_SHORT).show()
+                            }
+                            deleteConsentLauncher.launch(IntentSenderRequest.Builder(recoverable.userAction.actionIntent.intentSender).build())
+                        } else {
+                            Toast.makeText(context, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
             .setNegativeButton("Cancel", null)
             .show()
