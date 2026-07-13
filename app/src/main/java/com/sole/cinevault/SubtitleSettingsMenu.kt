@@ -95,10 +95,10 @@ fun SubtitleSettingsMenu(
                 Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = TextBright, modifier = Modifier.size(if (isLandscape) 11.dp else 12.dp))
             }
         }
-        // Chips stack in a single column at this width — three chips side by
-        // side at ~120-170dp total width left almost no room for text.
+        // "Internal" was removed — Browse does the same job (opens the file/
+        // track picker), and dropping it frees up more breathing room at
+        // this width.
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            SubtitleTopChip(text = "Internal", selected = subtitlesEnabled && hasInternalSubtitles, isLandscape = isLandscape) { onUserInteraction(); onInternalClick() }
             SubtitleTopChip(text = "Download", selected = false, isLandscape = isLandscape) { onUserInteraction(); onDownloadClick() }
             SubtitleTopChip(text = if (subtitlesEnabled) "Turn OFF" else "Turn ON", selected = !subtitlesEnabled, isLandscape = isLandscape) { onUserInteraction(); onToggleSubtitles() }
         }
