@@ -14,6 +14,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -40,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,6 +66,14 @@ fun Context.findCineActivity(): Activity? {
         ctx = ctx.baseContext
     }
     return null
+}
+
+// Persists the Home screen's scroll position across navigation — same pattern
+// as LibraryScrollState in LocalVideoLibraryScreen.kt. A plain object survives
+// composable disposal since it isn't tied to the composition.
+private object HomeScrollState {
+    var index: Int = 0
+    var offset: Int = 0
 }
 
 @Composable
@@ -159,7 +169,19 @@ fun HomeScreen(
             ?: videos.firstOrNull { it.backdropUrl != null }?.backdropUrl
             ?: videos.firstOrNull { it.posterUrl != null }?.posterUrl
 
+    // Restores scroll position from HomeScrollState so returning from Detail
+    // (or switching tabs and back) lands where you left off, not the top.
+    val homeListState = rememberLazyListState(
+        initialFirstVisibleItemIndex = HomeScrollState.index,
+        initialFirstVisibleItemScrollOffset = HomeScrollState.offset
+    )
+    LaunchedEffect(homeListState) {
+        snapshotFlow { homeListState.firstVisibleItemIndex to homeListState.firstVisibleItemScrollOffset }
+            .collect { (i, o) -> HomeScrollState.index = i; HomeScrollState.offset = o }
+    }
+
     androidx.compose.foundation.lazy.LazyColumn(
+        state = homeListState,
         modifier = Modifier
             .fillMaxSize()
             .background(SpaceBlack)
