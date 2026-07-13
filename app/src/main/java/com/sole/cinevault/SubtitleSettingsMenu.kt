@@ -6,8 +6,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -138,15 +139,40 @@ private fun ThinSliderBar(
     fun valueFromFraction(fraction: Float): Float =
         valueRange.start + fraction.coerceIn(0f, 1f) * (valueRange.endInclusive - valueRange.start)
 
+    // Only the thumb (the small dot) responds to touch/drag now — anywhere
+    // else on the bar lets the gesture pass straight through to the popup's
+    // verticalScroll. Previously ANY touch on the bar (including the start of
+    // a vertical scroll swipe) was captured as a horizontal drag, which is
+    // what made scrolling this menu feel broken, especially in landscape
+    // where the popup is short and packed tight with sliders.
+    val currentValue = rememberUpdatedState(value)
+    val currentOnChange = rememberUpdatedState(onValueChange)
+
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(height)
             .pointerInput(valueRange) {
-                detectTapGestures { offset -> onValueChange(valueFromFraction(offset.x / size.width.toFloat())) }
-            }
-            .pointerInput(valueRange) {
-                detectDragGestures { change, _ -> onValueChange(valueFromFraction(change.position.x / size.width.toFloat())) }
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val fraction = ((currentValue.value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+                    val thumbX = size.width * fraction
+                    val hitRadiusPx = 22.dp.toPx()
+                    if (kotlin.math.abs(down.position.x - thumbX) > hitRadiusPx) {
+                        // Missed the thumb — don't consume, let it fall through to scroll.
+                        return@awaitEachGesture
+                    }
+                    down.consume()
+                    currentOnChange.value(valueFromFraction(down.position.x / size.width.toFloat()))
+                    val pointerId = down.id
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == pointerId } ?: break
+                        if (!change.pressed) break
+                        change.consume()
+                        currentOnChange.value(valueFromFraction(change.position.x / size.width.toFloat()))
+                    }
+                }
             }
     ) {
         val fraction = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
