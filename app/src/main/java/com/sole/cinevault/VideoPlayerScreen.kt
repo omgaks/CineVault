@@ -609,7 +609,12 @@ fun VideoPlayerScreen(
         // Landscape: another pass on top of the previous adjustment — seek
         // bar nudged up further, dock brought down a bit more, still leaving
         // a modest (not huge) gap between the two.
-        val bottomDockPadding = when { isCompactLandscape -> 56.dp; isLandscape -> 65.dp; else -> 152.dp }
+        // Landscape dock padding was cut too aggressively last round — once
+        // the dock's actual rendered height (~80-100dp incl. play button +
+        // padding) is accounted for, there was only ~1dp of clearance left
+        // above the seek bar, which is why they were overlapping. Restored
+        // enough headroom for a real ~15-20dp gap between the two.
+        val bottomDockPadding = when { isCompactLandscape -> 76.dp; isLandscape -> 90.dp; else -> 152.dp }
         val seekBottomPadding = when { isCompactLandscape -> 13.dp; isLandscape -> 17.dp; else -> 92.dp }
         val showIntroSkip = isCurrentTvShow && position in 5_000L..95_000L
         val topClusterPaddingTop = if (isLandscape) 10.dp else 18.dp
@@ -657,8 +662,12 @@ fun VideoPlayerScreen(
         // Audio popup: 40% narrower
         val audioPopupWidth = ((((if (isCompactLandscape) 175f else if (isLandscape) 190f else 205f) * uiScale).dp).coerceAtMost(maxWidth * 0.75f)) * 0.6f
         // Speed/Sleep popups: 40% smaller footprint, compact rows below
+        // Speed/Sleep popups: width stays 40% narrower, but landscape height
+        // gets most of that back — the narrow width plus the previous height
+        // cut made 5-6 stacked options feel cramped specifically in landscape.
         val smallMenuWidth = (((165f * uiScale).dp).coerceAtMost(maxWidth * 0.6f)) * 0.6f
-        val smallMenuMaxHeight = ((((if (isCompactLandscape) 150f else if (isLandscape) 190f else 230f) * uiScale).dp).coerceAtMost(maxHeight * 0.45f)) * 0.6f
+        val smallMenuHeightScale = if (isLandscape) 0.95f else 0.6f
+        val smallMenuMaxHeight = ((((if (isCompactLandscape) 150f else if (isLandscape) 190f else 230f) * uiScale).dp).coerceAtMost(maxHeight * 0.55f)) * smallMenuHeightScale
         val topIconSize = (44 * uiScale * scale.coerceAtLeast(0.75f)).dp
 
         val currentMeta = remember(currentVideo.path, episodeList) {
