@@ -93,23 +93,22 @@ fun DetailScreen(
     Box(modifier = Modifier.fillMaxSize().background(SpaceBlack)) {
         val heroImage = item.backdropUrl ?: item.posterUrl
         if (!heroImage.isNullOrBlank()) {
-            AsyncImage(model = heroImage, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().height(520.dp).blur(32.dp))
+            // Enlarged 30% (520 -> 676) and brightened — less darkening in the
+            // background wash so the backdrop reads richer instead of murky.
+            AsyncImage(model = heroImage, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().height(676.dp).blur(32.dp))
         }
-        Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Black.copy(alpha = 0.35f), Color.Black.copy(alpha = 0.72f), SpaceBlack), startY = 0f, endY = 1400f)))
+        Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Black.copy(alpha = 0.20f), Color.Black.copy(alpha = 0.50f), SpaceBlack), startY = 0f, endY = 1400f)))
 
         Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            Box(modifier = Modifier.fillMaxWidth().height(380.dp)) {
+            // Small poster thumbnail removed — the big hero backdrop is the
+            // only poster now, enlarged 30% (380 -> 494) and brightened to
+            // match, since it no longer has to share visual weight.
+            Box(modifier = Modifier.fillMaxWidth().height(494.dp)) {
                 if (!heroImage.isNullOrBlank()) { AsyncImage(model = heroImage, contentDescription = item.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
-                Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f), SpaceBlack))))
-                Row(modifier = Modifier.align(Alignment.BottomStart).padding(start = 22.dp, end = 22.dp, bottom = 18.dp), verticalAlignment = Alignment.Bottom) {
-                    if (!item.posterUrl.isNullOrBlank()) {
-                        AsyncImage(model = item.posterUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.width(100.dp).height(148.dp).clip(RoundedCornerShape(14.dp)))
-                        Spacer(modifier = Modifier.width(16.dp))
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = item.title, color = TextBright, fontSize = 26.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        if (item.subtitle.isNotBlank()) { Spacer(modifier = Modifier.height(4.dp)); Text(text = item.subtitle, color = TextMuted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                    }
+                Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.38f), SpaceBlack))))
+                Column(modifier = Modifier.align(Alignment.BottomStart).padding(start = 22.dp, end = 22.dp, bottom = 18.dp)) {
+                    Text(text = item.title, color = TextBright, fontSize = 26.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (item.subtitle.isNotBlank()) { Spacer(modifier = Modifier.height(4.dp)); Text(text = item.subtitle, color = TextMuted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
             }
 
