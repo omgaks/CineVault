@@ -100,11 +100,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.exoplayer.source.MergingMediaSource
-import androidx.media3.exoplayer.source.SingleSampleMediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
@@ -324,39 +320,14 @@ fun VideoPlayerScreen(
         isVideoEnded = false
     }
 
-    // Attaches a side-loaded subtitle to the ALREADY PLAYING video without
-    // rebuilding the MediaItem. The previous approach called setMediaItem()
-    // with a brand-new item + prepare() + seekTo(), which tears down and
-    // re-initializes the video decoder — that full reset is what caused the
-    // black-frame blip the instant a subtitle finished downloading, no matter
-    // how accurate the resume position was.
-    //
-    // MergingMediaSource lets us keep the existing video source exactly as-is
-    // and merge in a second source for the subtitle track. setMediaSource(...,
-    // resetPosition = false) then swaps sources while ExoPlayer preserves the
-    // current window index + position internally — no manual seekTo() needed,
-    // and no decoder teardown for the video track.
-    fun attachSubtitleSeamlessly(subtitleUri: Uri) {
-        try {
-            val dataSourceFactory = DefaultDataSource.Factory(context)
-            val videoSource = DefaultMediaSourceFactory(context).createMediaSource(MediaItem.fromUri(currentVideo.path))
-            val subtitleConfig = MediaItem.SubtitleConfiguration.Builder(subtitleUri)
-                .setMimeType(MimeTypes.APPLICATION_SUBRIP)
-                .setLanguage("en")
-                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                .build()
-            val subtitleSource = SingleSampleMediaSource.Factory(dataSourceFactory)
-                .createMediaSource(subtitleConfig, C.TIME_UNSET)
-            val mergedSource = MergingMediaSource(videoSource, subtitleSource)
-            exoPlayer.setMediaSource(mergedSource, /* resetPosition = */ false)
-            if (exoPlayer.playbackState == Player.STATE_IDLE) exoPlayer.prepare()
-            exoPlayer.playWhenReady = true
-            isVideoEnded = false
-        } catch (e: Exception) {
-            // Fall back to the old full-reload path only if the merge itself fails
-            playCurrentVideoWithSubtitle(subtitleUri, exoPlayer.currentPosition.coerceAtLeast(0L))
-        }
-    }
+    // NOTE: an attempt was made to attach subtitles via MergingMediaSource to
+    // avoid the reload blip entirely, but it caused a worse regression —
+    // playback would stop dead and the play button stopped responding once
+    // the merge completed. Reverted back to the reload approach below, which
+    // is reliable; it accepts a brief blip in exchange for actually working.
+    // The resume-position bug (playback jumping backwards) IS still fixed —
+    // see the resumeAt capture right before each playCurrentVideoWithSubtitle
+    // call below, which happens after the download finishes, not before.
 
     fun downloadExternalSubtitle() {
         if (!canDownloadExternalSubtitles) {
@@ -370,11 +341,15 @@ fun VideoPlayerScreen(
             try {
                 val subtitleUri = OpenSubtitlesClient.downloadBestEnglishSubtitle(context, currentVideo.path)
                 if (subtitleUri != null) {
+                    // Captured HERE, right before the reload — not before the
+                    // multi-second search — so playback resumes from where it
+                    // actually is instead of jumping backwards.
+                    val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
                     autoSubtitleStatus = "Subtitle loaded"
                     Toast.makeText(context, "Subtitle loaded", Toast.LENGTH_SHORT).show()
                     subtitlesEnabled = true
                     trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-                    attachSubtitleSeamlessly(subtitleUri)
+                    playCurrentVideoWithSubtitle(subtitleUri, resumeAt)
                     delay(1400); autoSubtitleStatus = ""
                 } else { autoSubtitleStatus = "No subtitle found"; Toast.makeText(context, "No subtitle found", Toast.LENGTH_SHORT).show(); delay(1400); autoSubtitleStatus = "" }
             } catch (e: Exception) { autoSubtitleStatus = "Subtitle failed"; Toast.makeText(context, "Subtitle failed", Toast.LENGTH_SHORT).show(); delay(1400); autoSubtitleStatus = "" }
@@ -399,10 +374,11 @@ fun VideoPlayerScreen(
                 try {
                     val uri = OpenSubtitlesClient.downloadBestEnglishSubtitle(context, currentVideo.path)
                     if (uri != null) {
+                        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
                         subtitlesEnabled = true
                         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                         autoSubtitleStatus = "Subtitle loaded"
-                        attachSubtitleSeamlessly(uri)
+                        playCurrentVideoWithSubtitle(uri, resumeAt)
                         delay(1400); autoSubtitleStatus = ""
                     } else { autoSubtitleStatus = "No subtitle found"; delay(1100); autoSubtitleStatus = "" }
                 } catch (e: Exception) { autoSubtitleStatus = "Subtitle failed"; delay(1100); autoSubtitleStatus = "" }
@@ -559,10 +535,11 @@ fun VideoPlayerScreen(
 
     LaunchedEffect(pendingSrtUri) {
         val uri = pendingSrtUri ?: return@LaunchedEffect
+        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
         subtitlesEnabled = true
         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
         autoSubtitleStatus = "SRT loaded"
-        attachSubtitleSeamlessly(uri)
+        playCurrentVideoWithSubtitle(subtitleUri = uri, resumePosition = resumeAt)
         showSubtitleSettings = false; showControls = true
         Toast.makeText(context, "SRT file loaded", Toast.LENGTH_SHORT).show()
         delay(1400); autoSubtitleStatus = ""
@@ -626,8 +603,14 @@ fun VideoPlayerScreen(
         // was, leaving a modest — not huge — gap between the two.
         // Portrait: seek bar brought up a bit from the very edge, but still
         // clearly below (closer to the bottom than) the transport dock.
-        val bottomDockPadding = when { isCompactLandscape -> 66.dp; isLandscape -> 76.dp; else -> 152.dp }
-        val seekBottomPadding = when { isCompactLandscape -> 10.dp; isLandscape -> 13.dp; else -> 24.dp }
+        // Portrait: seek bar brought way up from the bottom edge to sit
+        // directly under the transport dock instead of floating separately
+        // near the bottom with a big empty gap.
+        // Landscape: another pass on top of the previous adjustment — seek
+        // bar nudged up further, dock brought down a bit more, still leaving
+        // a modest (not huge) gap between the two.
+        val bottomDockPadding = when { isCompactLandscape -> 56.dp; isLandscape -> 65.dp; else -> 152.dp }
+        val seekBottomPadding = when { isCompactLandscape -> 13.dp; isLandscape -> 17.dp; else -> 92.dp }
         val showIntroSkip = isCurrentTvShow && position in 5_000L..95_000L
         val topClusterPaddingTop = if (isLandscape) 10.dp else 18.dp
 
@@ -673,8 +656,9 @@ fun VideoPlayerScreen(
         val srtPopupMaxHeight = (((if (isCompactLandscape) 160f else if (isLandscape) 200f else 280f) * uiScale).dp).coerceAtMost(maxHeight * 0.5f)
         // Audio popup: 40% narrower
         val audioPopupWidth = ((((if (isCompactLandscape) 175f else if (isLandscape) 190f else 205f) * uiScale).dp).coerceAtMost(maxWidth * 0.75f)) * 0.6f
-        val smallMenuWidth = ((165f * uiScale).dp).coerceAtMost(maxWidth * 0.6f)
-        val smallMenuMaxHeight = (((if (isCompactLandscape) 150f else if (isLandscape) 190f else 230f) * uiScale).dp).coerceAtMost(maxHeight * 0.45f)
+        // Speed/Sleep popups: 40% smaller footprint, compact rows below
+        val smallMenuWidth = (((165f * uiScale).dp).coerceAtMost(maxWidth * 0.6f)) * 0.6f
+        val smallMenuMaxHeight = ((((if (isCompactLandscape) 150f else if (isLandscape) 190f else 230f) * uiScale).dp).coerceAtMost(maxHeight * 0.45f)) * 0.6f
         val topIconSize = (44 * uiScale * scale.coerceAtLeast(0.75f)).dp
 
         val currentMeta = remember(currentVideo.path, episodeList) {
@@ -912,11 +896,7 @@ fun VideoPlayerScreen(
                             enter = fadeIn(animationSpec = tween(220)), exit = fadeOut(animationSpec = tween(160)),
                             modifier = Modifier.align(Alignment.Center).padding(horizontal = 96.dp)
                         ) {
-                            Text(
-                                text = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path),
-                                color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.Center,
-                                modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 14.dp, vertical = 7.dp)
-                            )
+                            NowPlayingTitlePill(text = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path), fontSize = 13.sp)
                         }
 
                         TopIconCluster(
@@ -944,11 +924,7 @@ fun VideoPlayerScreen(
                             enter = fadeIn(animationSpec = tween(220)), exit = fadeOut(animationSpec = tween(160)),
                             modifier = Modifier.align(Alignment.CenterHorizontally).padding(horizontal = 72.dp)
                         ) {
-                            Text(
-                                text = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path),
-                                color = TextBright, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.Center,
-                                modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 14.dp, vertical = 7.dp)
-                            )
+                            NowPlayingTitlePill(text = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path), fontSize = 15.sp)
                         }
 
                         Spacer(modifier = Modifier.height(10.dp))
@@ -1094,9 +1070,9 @@ private fun TopIconCluster(
     modifier: Modifier = Modifier
 ) {
     val content: @Composable () -> Unit = {
-        IconCircle(icon = Icons.Rounded.Speed, size = iconSize, tint = if (playbackSpeed != 1f || showSpeedMenu) AmberCore else TextBright, onClick = onSpeedClick)
-        IconCircle(icon = Icons.Rounded.Timer, size = iconSize, tint = if (sleepTimerActive || showSleepMenu) AmberCore else TextBright, onClick = onSleepClick)
         IconCircle(icon = Icons.Rounded.Tv, size = iconSize, tint = TextBright, onClick = onPipClick)
+        IconCircle(icon = Icons.Rounded.Timer, size = iconSize, tint = if (sleepTimerActive || showSleepMenu) AmberCore else TextBright, onClick = onSleepClick)
+        IconCircle(icon = Icons.Rounded.Speed, size = iconSize, tint = if (playbackSpeed != 1f || showSpeedMenu) AmberCore else TextBright, onClick = onSpeedClick)
     }
     if (isLandscape) {
         Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) { content() }
@@ -1203,16 +1179,15 @@ private fun SrtBrowserPopup(
 @Composable
 private fun SpeedMenuPopup(currentSpeed: Float, popupWidth: Dp, popupMaxHeight: Dp, onSpeedSelected: (Float) -> Unit, onDismiss: () -> Unit) {
     val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
-    Column(modifier = Modifier.width(popupWidth).heightIn(max = popupMaxHeight).glassPanel(cornerRadius = 16.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(7.dp).verticalScroll(rememberScrollState())) {
-        Text(text = "Speed", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp))
+    Column(modifier = Modifier.width(popupWidth).heightIn(max = popupMaxHeight).glassPanel(cornerRadius = 13.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(5.dp).verticalScroll(rememberScrollState())) {
+        Text(text = "Speed", color = AmberCore, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
         speeds.forEach { speed ->
-            GlassMenuRow(
-                icon = Icons.Rounded.Speed,
+            CompactSelectableRow(
                 label = if (speed == 1.0f) "1x Normal" else "${speed}x",
                 selected = speed == currentSpeed,
                 onClick = { onSpeedSelected(speed) }
             )
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(2.dp))
         }
     }
 }
@@ -1220,17 +1195,36 @@ private fun SpeedMenuPopup(currentSpeed: Float, popupWidth: Dp, popupMaxHeight: 
 @Composable
 private fun SleepMenuPopup(currentMinutes: Int, popupWidth: Dp, popupMaxHeight: Dp, onSelected: (Int) -> Unit, onDismiss: () -> Unit) {
     val options = listOf(0 to "Off", 15 to "15 min", 30 to "30 min", 45 to "45 min", 60 to "60 min")
-    Column(modifier = Modifier.width(popupWidth).heightIn(max = popupMaxHeight).glassPanel(cornerRadius = 16.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(7.dp).verticalScroll(rememberScrollState())) {
-        Text(text = "Sleep Timer", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp))
+    Column(modifier = Modifier.width(popupWidth).heightIn(max = popupMaxHeight).glassPanel(cornerRadius = 13.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(5.dp).verticalScroll(rememberScrollState())) {
+        Text(text = "Sleep Timer", color = AmberCore, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
         options.forEach { (mins, label) ->
-            GlassMenuRow(
-                icon = Icons.Rounded.Timer,
+            CompactSelectableRow(
                 label = label,
                 selected = mins == currentMinutes,
                 onClick = { onSelected(mins) }
             )
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(2.dp))
         }
+    }
+}
+
+// Smaller-footprint selectable row used only by the (now 40% narrower)
+// Speed/Sleep popups — keeps the shared GlassMenuRow (used by the SRT
+// browser, which is already sized well) untouched.
+@Composable
+private fun CompactSelectableRow(label: String, selected: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(9.dp)
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(shape)
+            .background(if (selected) AmberGlow.copy(alpha = 0.16f) else Color.Transparent)
+            .then(
+                if (selected) Modifier.border(width = 1.dp, brush = Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.85f), AmberDeep.copy(alpha = 0.35f))), shape = shape) else Modifier
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, color = if (selected) AmberCore else TextBright, fontSize = 10.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
     }
 }
 
@@ -1453,6 +1447,32 @@ private fun buildPipActions(context: Context, isPlaying: Boolean): List<RemoteAc
         action(0, if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play, if (isPlaying) "Pause" else "Play"),
         action(2, android.R.drawable.ic_media_ff, "Forward")
     )
+}
+
+// Title pill — previously plain text on glass, which read as "dead" next to
+// the amber-glow rating pills and buttons elsewhere in the design. Gives it
+// the same visual language: a subtle amber gradient border and a small
+// breathing dot (a quiet "now playing" cue) instead of static text sitting
+// on its own.
+@Composable
+private fun NowPlayingTitlePill(text: String, fontSize: androidx.compose.ui.unit.TextUnit) {
+    val infinite = rememberInfiniteTransition(label = "titlePulse")
+    val dotAlpha by infinite.animateFloat(
+        initialValue = 0.35f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(1100, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
+        label = "titleDotAlpha"
+    )
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong)
+            .border(1.dp, Brush.horizontalGradient(listOf(AmberGlow.copy(alpha = 0.15f), AmberGlow.copy(alpha = 0.55f), AmberGlow.copy(alpha = 0.15f))), RoundedCornerShape(50))
+            .padding(horizontal = 14.dp, vertical = 7.dp)
+    ) {
+        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(AmberCore.copy(alpha = dotAlpha)))
+        Spacer(modifier = Modifier.width(7.dp))
+        Text(text = text, color = TextBright, fontSize = fontSize, fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.Center)
+    }
 }
 
 @Composable
