@@ -236,7 +236,7 @@ fun VideoPlayerScreen(
                 /* bufferForPlaybackMs = */ 1_500,
                 /* bufferForPlaybackAfterRebufferMs = */ 3_000
             )
-            .setBackBufferDurationMs(30_000, true)
+            .setBackBuffer(30_000, true)
             .build()
     }
 
