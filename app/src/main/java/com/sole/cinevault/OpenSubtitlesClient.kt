@@ -1,6 +1,5 @@
 package com.sole.cinevault
 
-import okhttp3.FormBody
 import android.content.Context
 import android.net.Uri
 import android.util.Log
@@ -15,6 +14,31 @@ import java.io.File
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
+// Diagnostic result type — Ash builds from a tablet with no computer, so
+// Logcat isn't a usable diagnostic surface for him. This carries the real
+// failure reason (HTTP code + the API's own error message) all the way back
+// to the player screen so it can be shown directly on-screen instead.
+sealed class SubtitleDownloadResult {
+    data class Success(val uri: Uri) : SubtitleDownloadResult()
+    data class SearchHttpError(val code: Int, val detail: String) : SubtitleDownloadResult()
+    data class NoResults(val triedTerms: List<String>) : SubtitleDownloadResult()
+    data class DownloadHttpError(val code: Int, val detail: String) : SubtitleDownloadResult()
+    object QuotaExhausted : SubtitleDownloadResult()
+    data class SrtFetchError(val code: Int) : SubtitleDownloadResult()
+    data class UnexpectedError(val detail: String) : SubtitleDownloadResult()
+
+    // Short, on-screen-friendly summary of what went wrong.
+    fun summary(): String = when (this) {
+        is Success -> "Subtitle loaded"
+        is SearchHttpError -> "Search error $code: ${detail.take(70)}"
+        is NoResults -> "No subtitle found"
+        is DownloadHttpError -> "Download blocked ($code): ${detail.take(70)}"
+        is QuotaExhausted -> "Daily subtitle quota used up — try again tomorrow"
+        is SrtFetchError -> "Subtitle file fetch failed ($code)"
+        is UnexpectedError -> "Subtitle error: ${detail.take(70)}"
+    }
+}
+
 object OpenSubtitlesClient {
 
     private val API_KEY: String get() = BuildConfig.OPENSUB_API_KEY
@@ -22,61 +46,62 @@ object OpenSubtitlesClient {
     private const val USER_AGENT = "CineVault v1.0"
     private const val TAG = "OpenSubtitlesClient"
 
-    // USERNAME and PASSWORD removed — OpenSubtitles free tier works without login for search.
-    // NOTE: some API keys/tiers can search fine but get rejected specifically at the
-    // /download step unless authenticated with a login token. If subtitles are never
-    // found, check Logcat for "Search failed" vs "Download-link failed" — that tells you
-    // which step is actually the problem, since both used to look identical from the UI.
-
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    suspend fun downloadBestEnglishSubtitle(
+    // Backward-compatible convenience wrapper — returns just the Uri like
+    // before, for any call site that doesn't care about the diagnostic detail.
+    suspend fun downloadBestEnglishSubtitle(context: Context, videoPath: String): Uri? {
+        val result = downloadBestEnglishSubtitleDetailed(context, videoPath)
+        return (result as? SubtitleDownloadResult.Success)?.uri
+    }
+
+    suspend fun downloadBestEnglishSubtitleDetailed(
         context: Context,
         videoPath: String
-    ): Uri? = withContext(Dispatchers.IO) {
+    ): SubtitleDownloadResult = withContext(Dispatchers.IO) {
         try {
             val cleanName = cleanMovieName(videoPath)
             Log.d(TAG, "Clean search name: $cleanName")
 
             if (cleanName.isBlank()) {
-                Log.w(TAG, "Cleaned name is blank — cannot search. Raw path: $videoPath")
-                return@withContext null
+                return@withContext SubtitleDownloadResult.UnexpectedError("Could not derive a search name from the file name")
             }
 
-            // Progressive fallback chain: full cleaned name -> name without the
-            // year -> first 4 words -> first 2 words. Each is only attempted if
-            // it's actually different from the ones already tried, so a single-
-            // word title (where the old .substringBeforeLast(" ") fallback was a
-            // no-op) still gets a real second attempt.
             val attempts = buildSearchAttempts(cleanName)
             Log.d(TAG, "Search attempts (in order): $attempts")
 
             var fileId: Int? = null
+            var lastHttpError: Pair<Int, String>? = null
             for (attempt in attempts) {
-                fileId = searchFileId(attempt)
-                if (fileId != null) {
-                    Log.d(TAG, "Match found using search term: \"$attempt\"")
-                    break
+                when (val r = searchFileId(attempt)) {
+                    is SearchAttemptResult.Found -> { fileId = r.fileId; break }
+                    is SearchAttemptResult.HttpError -> lastHttpError = r.code to r.bodyPreview
+                    SearchAttemptResult.NoResults -> {}
                 }
             }
+
             if (fileId == null) {
-                Log.w(TAG, "Search failed — no results for any of: $attempts")
-                return@withContext null
+                if (lastHttpError != null) {
+                    return@withContext SubtitleDownloadResult.SearchHttpError(lastHttpError.first, lastHttpError.second)
+                }
+                return@withContext SubtitleDownloadResult.NoResults(attempts)
             }
 
-            val subtitleLink = getDownloadLink(fileId)
-            if (subtitleLink == null) {
-                Log.w(TAG, "Download-link failed for file_id=$fileId — search succeeded but /download rejected the request. This usually means the API key/tier requires login to download, or the daily download quota is used up. Check the response body logged above.")
-                return@withContext null
+            val linkResult = getDownloadLink(fileId)
+            val subtitleLink = when (linkResult) {
+                is DownloadLinkResult.Found -> linkResult.link
+                is DownloadLinkResult.HttpError -> return@withContext SubtitleDownloadResult.DownloadHttpError(linkResult.code, linkResult.bodyPreview)
+                DownloadLinkResult.QuotaExhausted -> return@withContext SubtitleDownloadResult.QuotaExhausted
+                DownloadLinkResult.EmptyLink -> return@withContext SubtitleDownloadResult.DownloadHttpError(0, "API returned no download link")
             }
 
-            val srtText = downloadSrt(subtitleLink)
-            if (srtText == null) {
-                Log.w(TAG, "SRT text download failed from link: $subtitleLink")
-                return@withContext null
+            val srtResult = downloadSrt(subtitleLink)
+            val srtText = when (srtResult) {
+                is SrtResult.Found -> srtResult.text
+                is SrtResult.HttpError -> return@withContext SubtitleDownloadResult.SrtFetchError(srtResult.code)
             }
 
             val subtitleDir = File(context.cacheDir, "subtitles")
@@ -91,17 +116,16 @@ object OpenSubtitlesClient {
             subtitleFile.writeText(srtText, Charsets.UTF_8)
 
             Log.d(TAG, "Subtitle saved: ${subtitleFile.absolutePath}")
-            Uri.fromFile(subtitleFile)
+            SubtitleDownloadResult.Success(Uri.fromFile(subtitleFile))
 
         } catch (e: Exception) {
             Log.e(TAG, "Subtitle error: ${e.message}", e)
-            null
+            SubtitleDownloadResult.UnexpectedError(e.message ?: e.javaClass.simpleName)
         }
     }
 
-    // Builds a de-duplicated, progressively shorter list of search terms so a
-    // failed exact-title search still gets meaningful retries instead of one
-    // redundant repeat (the old fallback was a no-op for single-word titles).
+    // Progressive fallback: full cleaned name -> name without year -> first 4
+    // words -> first 2 words, de-duplicated.
     private fun buildSearchAttempts(cleanName: String): List<String> {
         val attempts = LinkedHashSet<String>()
         attempts.add(cleanName)
@@ -145,8 +169,14 @@ object OpenSubtitlesClient {
         return name.replace(Regex("\\s+"), " ").trim()
     }
 
-    private fun searchFileId(searchName: String): Int? {
-        if (searchName.isBlank()) return null
+    private sealed class SearchAttemptResult {
+        data class Found(val fileId: Int) : SearchAttemptResult()
+        data class HttpError(val code: Int, val bodyPreview: String) : SearchAttemptResult()
+        object NoResults : SearchAttemptResult()
+    }
+
+    private fun searchFileId(searchName: String): SearchAttemptResult {
+        if (searchName.isBlank()) return SearchAttemptResult.NoResults
 
         val query = URLEncoder.encode(searchName, "UTF-8")
         val searchUrl =
@@ -165,15 +195,14 @@ object OpenSubtitlesClient {
             Log.d(TAG, "Search response code: ${response.code} for \"$searchName\"")
 
             if (!response.isSuccessful || body.isBlank()) {
-                // The body here is the actual reason from OpenSubtitles (bad key,
-                // rate limit, etc.) — this used to be swallowed entirely.
                 Log.w(TAG, "Search request failed. code=${response.code} body=${body.take(500)}")
-                return null
+                val detail = extractApiMessage(body) ?: "HTTP ${response.code}"
+                return SearchAttemptResult.HttpError(response.code, detail)
             }
 
             val json = JSONObject(body)
-            val dataArray = json.optJSONArray("data") ?: return null
-            if (dataArray.length() == 0) return null
+            val dataArray = json.optJSONArray("data") ?: return SearchAttemptResult.NoResults
+            if (dataArray.length() == 0) return SearchAttemptResult.NoResults
 
             for (i in 0 until dataArray.length()) {
                 val item = dataArray.optJSONObject(i) ?: continue
@@ -183,15 +212,22 @@ object OpenSubtitlesClient {
                 if (files.length() > 0) {
                     val fileObj = files.optJSONObject(0) ?: continue
                     val fileId = fileObj.optInt("file_id", -1)
-                    if (fileId > 0) return fileId
+                    if (fileId > 0) return SearchAttemptResult.Found(fileId)
                 }
             }
         }
 
-        return null
+        return SearchAttemptResult.NoResults
     }
 
-    private fun getDownloadLink(fileId: Int): String? {
+    private sealed class DownloadLinkResult {
+        data class Found(val link: String) : DownloadLinkResult()
+        data class HttpError(val code: Int, val bodyPreview: String) : DownloadLinkResult()
+        object QuotaExhausted : DownloadLinkResult()
+        object EmptyLink : DownloadLinkResult()
+    }
+
+    private fun getDownloadLink(fileId: Int): DownloadLinkResult {
         val payload = JSONObject()
             .put("file_id", fileId)
             .put("sub_format", "srt")
@@ -211,25 +247,29 @@ object OpenSubtitlesClient {
             Log.d(TAG, "Download response code: ${response.code}")
 
             if (!response.isSuccessful || body.isBlank()) {
-                // This is the response body that tells you WHY — e.g. OpenSubtitles
-                // returns messages like "You must be Vip or login" or quota errors
-                // in this body when the key/tier can't download without auth.
                 Log.w(TAG, "Download-link request failed. code=${response.code} body=${body.take(500)}")
-                return null
+                val detail = extractApiMessage(body) ?: "HTTP ${response.code}"
+                return DownloadLinkResult.HttpError(response.code, detail)
             }
 
             val json = JSONObject(body)
             val remaining = json.optInt("remaining", -1)
             if (remaining == 0) {
-                Log.w(TAG, "OpenSubtitles daily download quota is exhausted (remaining=0). Downloads will keep failing until it resets — this is an account/key limit, not a code bug.")
-            } else if (remaining > 0) {
-                Log.d(TAG, "OpenSubtitles downloads remaining today: $remaining")
+                Log.w(TAG, "OpenSubtitles daily download quota is exhausted (remaining=0).")
+                return DownloadLinkResult.QuotaExhausted
             }
-            return json.optString("link", "").takeIf { it.isNotBlank() }
+
+            val link = json.optString("link", "")
+            return if (link.isNotBlank()) DownloadLinkResult.Found(link) else DownloadLinkResult.EmptyLink
         }
     }
 
-    private fun downloadSrt(link: String): String? {
+    private sealed class SrtResult {
+        data class Found(val text: String) : SrtResult()
+        data class HttpError(val code: Int) : SrtResult()
+    }
+
+    private fun downloadSrt(link: String): SrtResult {
         val request = Request.Builder()
             .url(link)
             .get()
@@ -241,10 +281,24 @@ object OpenSubtitlesClient {
             Log.d(TAG, "SRT response code: ${response.code}")
 
             if (!response.isSuccessful || text.isBlank()) {
-                Log.w(TAG, "SRT download failed. code=${response.code} bodyPreview=${text.take(200)}")
-                return null
+                Log.w(TAG, "SRT download failed. code=${response.code}")
+                return SrtResult.HttpError(response.code)
             }
-            return text
+            return SrtResult.Found(text)
+        }
+    }
+
+    // OpenSubtitles error responses typically look like {"message": "..."} or
+    // {"errors": ["..."]} — pull out whichever is present so the on-screen
+    // summary shows the API's actual words, not just a bare status code.
+    private fun extractApiMessage(body: String): String? {
+        if (body.isBlank()) return null
+        return try {
+            val json = JSONObject(body)
+            json.optString("message", "").takeIf { it.isNotBlank() }
+                ?: json.optJSONArray("errors")?.optString(0)?.takeIf { it.isNotBlank() }
+        } catch (_: Exception) {
+            body.take(80)
         }
     }
 }
