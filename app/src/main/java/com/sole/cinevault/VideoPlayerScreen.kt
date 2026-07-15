@@ -56,6 +56,8 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.Forward10
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -96,10 +98,12 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.CaptionStyleCompat
@@ -196,6 +200,15 @@ fun VideoPlayerScreen(
     var previewFrames by remember { mutableStateOf<List<VideoThumbnailHelper.PreviewFrame>>(emptyList()) }
     var edgeSwipeHint by remember { mutableStateOf("") }
 
+    // ── Robustness state ──────────────────────────────────────────────────
+    // Nothing in the player previously surfaced buffering or errors at all —
+    // a stalled or failed file just sat there frozen with zero feedback.
+    var isBuffering by remember { mutableStateOf(false) }
+    var showBufferingSpinner by remember { mutableStateOf(false) }
+    var stuckBufferingHint by remember { mutableStateOf(false) }
+    var playerErrorMessage by remember { mutableStateOf<String?>(null) }
+    var errorRetryCount by remember { mutableIntStateOf(0) }
+
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
     val trackSelector = remember {
@@ -207,10 +220,31 @@ fun VideoPlayerScreen(
         }
     }
 
+    // Tuned buffering — local storage (especially USB/SD/network shares) can
+    // have far more variable read speed than a normal network stream, so
+    // buffers are set generously: a fairly large min/max buffer window to
+    // absorb slow reads without stalling, a short initial buffer for fast
+    // start, and a longer rebuffer-recovery buffer so a stall doesn't
+    // immediately stall again the moment playback resumes. Back buffer keeps
+    // ~30s of already-played data around so the -10s skip button doesn't have
+    // to re-read from storage as often.
+    val loadControl = remember {
+        DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs = */ 15_000,
+                /* maxBufferMs = */ 50_000,
+                /* bufferForPlaybackMs = */ 1_500,
+                /* bufferForPlaybackAfterRebufferMs = */ 3_000
+            )
+            .setBackBufferDurationMs(30_000, true)
+            .build()
+    }
+
     val exoPlayer: ExoPlayer = remember {
         ExoPlayer.Builder(context)
             .setRenderersFactory(CineRenderersFactory(context))
             .setTrackSelector(trackSelector)
+            .setLoadControl(loadControl)
             .build()
     }
 
@@ -304,20 +338,69 @@ fun VideoPlayerScreen(
     }
 
     fun playCurrentVideoWithSubtitle(subtitleUri: Uri? = null, resumePosition: Long = 0L) {
-        val mediaItemBuilder = MediaItem.Builder().setUri(currentVideo.path)
-        if (subtitleUri != null) {
-            mediaItemBuilder.setSubtitleConfigurations(listOf(
-                MediaItem.SubtitleConfiguration.Builder(subtitleUri)
-                    .setMimeType(MimeTypes.APPLICATION_SUBRIP).setLanguage("en")
-                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
-            ))
+        // File-existence check up front for local files — USB drives get
+        // unplugged, SD cards get removed, files get moved/renamed. Without
+        // this, ExoPlayer just throws a raw IO error with no clear message;
+        // catching it here up front gives a much clearer reason immediately
+        // instead of waiting for a confusing failure a moment later.
+        if (!isStreamMedia && !java.io.File(currentVideo.path).exists()) {
+            playerErrorMessage = "File not found. It may have been moved, renamed, or the drive it's on was disconnected."
+            return
         }
-        exoPlayer.setMediaItem(mediaItemBuilder.build())
-        exoPlayer.prepare()
-        exoPlayer.seekTo(resumePosition.coerceAtLeast(0L))
-        exoPlayer.playWhenReady = true; exoPlayer.play()
-        exoPlayer.playbackParameters = PlaybackParameters(playbackSpeed)
-        isVideoEnded = false
+        try {
+            playerErrorMessage = null
+            val mediaItemBuilder = MediaItem.Builder().setUri(currentVideo.path)
+            if (subtitleUri != null) {
+                mediaItemBuilder.setSubtitleConfigurations(listOf(
+                    MediaItem.SubtitleConfiguration.Builder(subtitleUri)
+                        .setMimeType(MimeTypes.APPLICATION_SUBRIP).setLanguage("en")
+                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
+                ))
+            }
+            exoPlayer.setMediaItem(mediaItemBuilder.build())
+            exoPlayer.prepare()
+            exoPlayer.seekTo(resumePosition.coerceAtLeast(0L))
+            exoPlayer.playWhenReady = true; exoPlayer.play()
+            exoPlayer.playbackParameters = PlaybackParameters(playbackSpeed)
+            isVideoEnded = false
+        } catch (e: Exception) {
+            playerErrorMessage = "Couldn't start playback: ${e.message ?: e.javaClass.simpleName}"
+        }
+    }
+
+    // Translates a raw PlaybackException into something an actual person can
+    // act on, instead of a bare stack trace or silent nothing (the previous
+    // behavior — there was no onPlayerError handling at all before this pass).
+    fun friendlyPlaybackError(error: PlaybackException): String = when (error.errorCode) {
+        PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ->
+            "File not found. It may have been moved, renamed, or the drive it's on was disconnected."
+        PlaybackException.ERROR_CODE_IO_NO_PERMISSION ->
+            "Permission denied reading this file."
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+        PlaybackException.ERROR_CODE_IO_UNSPECIFIED ->
+            "Connection problem reading this file. If it's on a USB drive or network share, check the connection."
+        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ->
+            "This device can't decode this file's video or audio format."
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+        PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ->
+            "This file appears to be corrupted or incomplete."
+        else -> error.message ?: "Playback error (${error.errorCodeName})"
+    }
+
+    // Only retry automatically for errors that are plausibly transient (a
+    // hiccup on a USB/network read) — never retry codec/format/corruption
+    // errors, since those will just fail identically every time.
+    fun isTransientPlaybackError(error: PlaybackException): Boolean = when (error.errorCode) {
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+        PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+        PlaybackException.ERROR_CODE_TIMEOUT -> true
+        else -> false
     }
 
     // NOTE: an attempt was made to attach subtitles via MergingMediaSource to
@@ -339,8 +422,11 @@ fun VideoPlayerScreen(
         autoSubtitleStatus = "Searching subtitles..."; subtitleDownloadInProgress = true
         scope.launch {
             try {
-                val subtitleUri = OpenSubtitlesClient.downloadBestEnglishSubtitle(context, currentVideo.path)
-                if (subtitleUri != null) {
+                // Uses the *Detailed result now — no computer to check Logcat
+                // on, so the real reason (HTTP code + API's own message) needs
+                // to be visible directly on screen, not just "no subtitle found".
+                val result = OpenSubtitlesClient.downloadBestEnglishSubtitleDetailed(context, currentVideo.path)
+                if (result is SubtitleDownloadResult.Success) {
                     // Captured HERE, right before the reload — not before the
                     // multi-second search — so playback resumes from where it
                     // actually is instead of jumping backwards.
@@ -349,10 +435,18 @@ fun VideoPlayerScreen(
                     Toast.makeText(context, "Subtitle loaded", Toast.LENGTH_SHORT).show()
                     subtitlesEnabled = true
                     trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-                    playCurrentVideoWithSubtitle(subtitleUri, resumeAt)
+                    playCurrentVideoWithSubtitle(result.uri, resumeAt)
                     delay(1400); autoSubtitleStatus = ""
-                } else { autoSubtitleStatus = "No subtitle found"; Toast.makeText(context, "No subtitle found", Toast.LENGTH_SHORT).show(); delay(1400); autoSubtitleStatus = "" }
-            } catch (e: Exception) { autoSubtitleStatus = "Subtitle failed"; Toast.makeText(context, "Subtitle failed", Toast.LENGTH_SHORT).show(); delay(1400); autoSubtitleStatus = "" }
+                } else {
+                    val summary = result.summary()
+                    autoSubtitleStatus = summary
+                    Toast.makeText(context, summary, Toast.LENGTH_LONG).show()
+                    delay(3500); autoSubtitleStatus = ""
+                }
+            } catch (e: Exception) {
+                val msg = "Subtitle failed: ${e.message ?: e.javaClass.simpleName}"
+                autoSubtitleStatus = msg; Toast.makeText(context, msg, Toast.LENGTH_LONG).show(); delay(3500); autoSubtitleStatus = ""
+            }
             finally { subtitleDownloadInProgress = false }
         }
     }
@@ -363,6 +457,7 @@ fun VideoPlayerScreen(
         showAudioSelector = false; showSubtitleSettings = false; showSpeedMenu = false; showSleepMenu = false; showSrtBrowser = false
         pendingNextEpisode = null; nextEpisodeCountdown = 0; showNextEpisodeOverlay = false
         previewBitmap = null; previewFrames = emptyList(); isVideoEnded = false
+        playerErrorMessage = null; errorRetryCount = 0; stuckBufferingHint = false
         if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
         playCurrentVideoWithSubtitle(resumePosition = savedPosition)
         if (!isStreamMedia && canDownloadExternalSubtitles && autoSubtitleAttemptedForPath != currentVideo.path) {
@@ -372,16 +467,23 @@ fun VideoPlayerScreen(
                 subtitleDownloadInProgress = true
                 autoSubtitleStatus = "Searching subtitles..."
                 try {
-                    val uri = OpenSubtitlesClient.downloadBestEnglishSubtitle(context, currentVideo.path)
-                    if (uri != null) {
+                    val result = OpenSubtitlesClient.downloadBestEnglishSubtitleDetailed(context, currentVideo.path)
+                    if (result is SubtitleDownloadResult.Success) {
                         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
                         subtitlesEnabled = true
                         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                         autoSubtitleStatus = "Subtitle loaded"
-                        playCurrentVideoWithSubtitle(uri, resumeAt)
+                        playCurrentVideoWithSubtitle(result.uri, resumeAt)
                         delay(1400); autoSubtitleStatus = ""
-                    } else { autoSubtitleStatus = "No subtitle found"; delay(1100); autoSubtitleStatus = "" }
-                } catch (e: Exception) { autoSubtitleStatus = "Subtitle failed"; delay(1100); autoSubtitleStatus = "" }
+                    } else {
+                        // Held on screen much longer than before (3.5s) — this
+                        // is now the ONLY diagnostic surface available, since
+                        // Ash builds from a tablet with no Logcat access.
+                        autoSubtitleStatus = result.summary(); delay(3500); autoSubtitleStatus = ""
+                    }
+                } catch (e: Exception) {
+                    autoSubtitleStatus = "Subtitle failed: ${e.message ?: e.javaClass.simpleName}"; delay(3500); autoSubtitleStatus = ""
+                }
                 finally { subtitleDownloadInProgress = false }
             }
         }
@@ -396,7 +498,13 @@ fun VideoPlayerScreen(
     DisposableEffect(exoPlayer, currentVideo.path, episodeList) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
+                isBuffering = state == Player.STATE_BUFFERING
                 if (state == Player.STATE_READY) {
+                    // A successful READY state means we've recovered — clear
+                    // any earlier error/retry state so a later, unrelated
+                    // error still gets its own fresh retry attempts.
+                    errorRetryCount = 0
+                    playerErrorMessage = null
                     val realDuration = exoPlayer.duration
                     if (realDuration > 0L && !isStreamMedia) {
                         saveDuration(context, currentVideo.path, realDuration)
@@ -420,9 +528,44 @@ fun VideoPlayerScreen(
                 }
             }
             override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+
+            // Previously unhandled entirely — a playback failure (corrupt
+            // file, unsupported codec, disconnected drive, transient IO
+            // hiccup) just left the player sitting frozen with zero feedback.
+            override fun onPlayerError(error: PlaybackException) {
+                val posAtError = exoPlayer.currentPosition.coerceAtLeast(0L)
+                if (isTransientPlaybackError(error) && errorRetryCount < 2) {
+                    errorRetryCount++
+                    scope.launch {
+                        delay(1000L * errorRetryCount)
+                        playCurrentVideoWithSubtitle(resumePosition = posAtError)
+                    }
+                } else {
+                    playerErrorMessage = friendlyPlaybackError(error)
+                    isPlaying = false
+                }
+            }
         }
         exoPlayer.addListener(listener)
         onDispose { exoPlayer.removeListener(listener) }
+    }
+
+    // Debounced buffering spinner — a raw isBuffering flag flickers on every
+    // brief stall (seeking, keyframe gaps), which is more distracting than
+    // helpful. Only show it if buffering lasts more than 400ms.
+    LaunchedEffect(isBuffering) {
+        if (isBuffering) { delay(400); if (isBuffering) showBufferingSpinner = true }
+        else { showBufferingSpinner = false; stuckBufferingHint = false }
+    }
+
+    // If buffering drags on for 15s+, it's probably a slow/disconnected
+    // drive or network share rather than a normal brief stall — surface a
+    // hint instead of leaving the person staring at a silent spinner.
+    LaunchedEffect(isBuffering, currentVideo.path) {
+        if (isBuffering) {
+            delay(15_000)
+            if (isBuffering) stuckBufferingHint = true
+        }
     }
 
     DisposableEffect(Unit) {
@@ -771,6 +914,57 @@ fun VideoPlayerScreen(
             Text(text = edgeSwipeHint, color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 20.dp, vertical = 10.dp))
         }
 
+        // Buffering spinner — previously there was NO feedback at all during
+        // a stall; the video just froze silently. Shown regardless of the
+        // controls' visibility state since a stall can happen with controls
+        // hidden mid-playback.
+        AnimatedVisibility(visible = showBufferingSpinner && playerErrorMessage == null, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(150)), modifier = Modifier.align(Alignment.Center)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(modifier = Modifier.size(56.dp).glassPanel(cornerRadius = 28.dp, fill = GlassSurfaceStrong), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = AmberCore, strokeWidth = 3.dp, modifier = Modifier.size(28.dp))
+                }
+                if (stuckBufferingHint) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Taking longer than usual — slow drive or connection?",
+                        color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center,
+                        modifier = Modifier.widthIn(max = 240.dp).glassPanel(cornerRadius = 14.dp, fill = GlassSurfaceStrong).padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+            }
+        }
+
+        // Playback error card — previously onPlayerError wasn't handled at
+        // all, so a failed file just left the player sitting frozen with no
+        // explanation. Always visible (independent of controls state) since
+        // there's nothing useful to interact with behind it anyway.
+        AnimatedVisibility(visible = playerErrorMessage != null, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(150)), modifier = Modifier.align(Alignment.Center).padding(24.dp)) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.widthIn(max = 320.dp).glassPanel(cornerRadius = 24.dp, fill = GlassSurfaceStrong).padding(horizontal = 22.dp, vertical = 20.dp)
+            ) {
+                Icon(imageVector = Icons.Rounded.ErrorOutline, contentDescription = null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(34.dp))
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(text = "Playback Error", color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(text = playerErrorMessage ?: "", color = TextMuted, fontSize = 13.sp, textAlign = TextAlign.Center, lineHeight = 18.sp)
+                Spacer(modifier = Modifier.height(18.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Back", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable { onBack() }.padding(horizontal = 18.dp, vertical = 9.dp)
+                    )
+                    Text(
+                        text = "Retry", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
+                        modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore).clickable {
+                            errorRetryCount = 0
+                            playCurrentVideoWithSubtitle(resumePosition = position)
+                        }.padding(horizontal = 18.dp, vertical = 9.dp)
+                    )
+                }
+            }
+        }
+
         if (sleepTimerActive && sleepTimerRemainingMs > 0) {
             val sleepMins = (sleepTimerRemainingMs / 60000).toInt()
             val sleepSecs = ((sleepTimerRemainingMs % 60000) / 1000).toInt()
@@ -966,8 +1160,15 @@ fun VideoPlayerScreen(
                     }
                 }
 
-                AnimatedVisibility(visible = autoSubtitleStatus.isNotBlank() && !showSeekPreview, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.TopCenter).padding(top = if (isLandscape) 54.dp else 86.dp)) {
-                    Text(text = autoSubtitleStatus, color = AmberCore, fontSize = if (isLandscape) 11.sp else 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 12.dp, vertical = 6.dp))
+                AnimatedVisibility(visible = autoSubtitleStatus.isNotBlank() && !showSeekPreview, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.TopCenter).padding(top = if (isLandscape) 54.dp else 86.dp).padding(horizontal = 24.dp)) {
+                    // Diagnostic messages (HTTP codes, API error text) run much
+                    // longer than "Subtitle loaded" — capped width + wrap keeps
+                    // them readable instead of stretching edge-to-edge or clipping.
+                    Text(
+                        text = autoSubtitleStatus, color = AmberCore, fontSize = if (isLandscape) 11.sp else 12.sp, fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.glassPanel(cornerRadius = 18.dp, fill = GlassSurfaceStrong).widthIn(max = if (isLandscape) 320.dp else 300.dp).padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
                 }
 
                 AnimatedVisibility(visible = showNextEpisodeOverlay && pendingNextEpisode != null && !showSeekPreview, enter = fadeIn(animationSpec = tween(140)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.Center)) {
