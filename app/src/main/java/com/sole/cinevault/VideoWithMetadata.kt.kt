@@ -15,5 +15,12 @@ data class VideoWithMetadata(
     val imdbRating: String? = null,
     val rottenTomatoesRating: String? = null,
     val tmdbId: Int? = null,
-    val type: String
+    val type: String,
+    // ── Media intelligence additions ───────────────────────────────────────
+    // All default to empty/null so every existing VideoWithMetadata(...)
+    // construction site (scanner, cache, etc.) keeps compiling unchanged.
+    val genres: List<String> = emptyList(),
+    val director: String? = null,
+    val collectionId: Int? = null,
+    val collectionName: String? = null
 )
