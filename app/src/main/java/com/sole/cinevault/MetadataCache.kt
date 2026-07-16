@@ -22,7 +22,20 @@ data class CachedVideoMetadata(
     val imdbRating: String?,
     val rottenTomatoesRating: String?,
     val tmdbId: Int?,
-    val type: String
+    val type: String,
+    // ── Media intelligence additions ───────────────────────────────────────
+    // IMPORTANT: these are nullable, not defaulted-non-null, on purpose.
+    // Gson bypasses the Kotlin constructor when deserializing (it uses
+    // reflection to set fields directly), so it does NOT respect Kotlin
+    // default parameter values for keys missing from old cached JSON —
+    // they'd silently come back as null even with a `= emptyList()`
+    // declared here. Keeping them nullable and normalizing on read (see
+    // applyCachedVideoMetadata below) avoids a crash the first time an
+    // old cached entry (from before this feature existed) gets loaded.
+    val genres: List<String>? = null,
+    val director: String? = null,
+    val collectionId: Int? = null,
+    val collectionName: String? = null
 )
 
 fun loadCachedVideoMetadata(
@@ -59,7 +72,11 @@ fun saveCachedVideoMetadata(
             imdbRating = item.imdbRating,
             rottenTomatoesRating = item.rottenTomatoesRating,
             tmdbId = item.tmdbId,
-            type = item.type
+            type = item.type,
+            genres = item.genres,
+            director = item.director,
+            collectionId = item.collectionId,
+            collectionName = item.collectionName
         )
 
     context
@@ -84,7 +101,12 @@ fun applyCachedVideoMetadata(
         imdbRating = cached.imdbRating,
         rottenTomatoesRating = cached.rottenTomatoesRating,
         tmdbId = cached.tmdbId,
-        type = cached.type
+        type = cached.type,
+        // Normalized here — see the comment on CachedVideoMetadata.genres.
+        genres = cached.genres ?: emptyList(),
+        director = cached.director,
+        collectionId = cached.collectionId,
+        collectionName = cached.collectionName
     )
 }
 
@@ -112,6 +134,19 @@ fun needsRatingsUpgrade(item: VideoWithMetadata): Boolean {
             (item.tmdbId ?: 0) > 0 &&
             item.imdbRating.isNullOrBlank() &&
             item.rottenTomatoesRating.isNullOrBlank()
+}
+
+/**
+ * True when a movie/TV item was matched online (has a tmdbId) but predates
+ * the media-intelligence feature, so it's missing genres/director/collection.
+ * Lets an already-scanned library pick this data up on next load instead of
+ * requiring a full rescan.
+ */
+fun needsGenreUpgrade(item: VideoWithMetadata): Boolean {
+    return (item.type == "movie" || item.type == "tv") &&
+            (item.tmdbId ?: 0) > 0 &&
+            item.genres.isEmpty() &&
+            item.director.isNullOrBlank()
 }
 
 // ── OMDB — the source of IMDb and Rotten Tomatoes ratings ─────────────────────
@@ -151,21 +186,78 @@ private suspend fun fetchOmdbRatings(title: String, year: String?): Pair<String?
         }
     }
 
+// ── TMDB details — genres, collection, director ────────────────────────────
+// Small holder for the extra fields pulled from the /movie/{id} and
+// /tv/{id} "details" endpoints (with credits appended). Kept separate from
+// the DTOs themselves so the enrichment code below doesn't care whether the
+// source was a movie or a TV show.
+private data class TmdbExtraDetails(
+    val genres: List<String>,
+    val director: String?,
+    val collectionId: Int?,
+    val collectionName: String?
+)
+
+private suspend fun fetchTmdbExtraDetails(tmdbId: Int, type: String): TmdbExtraDetails? =
+    withContext(Dispatchers.IO) {
+        try {
+            if (type == "tv") {
+                val details = TmdbClient.api.getTvDetails(BuildConfig.TMDB_TOKEN, tmdbId)
+                TmdbExtraDetails(
+                    genres = details.genres?.mapNotNull { it.name?.takeIf { n -> n.isNotBlank() } } ?: emptyList(),
+                    director = details.created_by?.firstOrNull()?.name,
+                    collectionId = null, // TV shows don't have TMDB "collections"
+                    collectionName = null
+                )
+            } else {
+                val details = TmdbClient.api.getMovieDetails(BuildConfig.TMDB_TOKEN, tmdbId)
+                TmdbExtraDetails(
+                    genres = details.genres?.mapNotNull { it.name?.takeIf { n -> n.isNotBlank() } } ?: emptyList(),
+                    director = details.credits?.crew?.firstOrNull { it.job == "Director" }?.name,
+                    collectionId = details.belongs_to_collection?.id,
+                    collectionName = details.belongs_to_collection?.name
+                )
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
 suspend fun enrichVideoWithOnlineMetadata(
     context: Context,
     item: VideoWithMetadata
 ): VideoWithMetadata {
 
     loadCachedVideoMetadata(context, item.video.path)?.let { cached ->
-        val applied = applyCachedVideoMetadata(item, cached)
-        // RATINGS UPGRADE: cached before the OMDB fix? Fetch just the ratings now.
-        if (!needsRatingsUpgrade(applied)) return applied
-        val year = if (applied.type == "movie") applied.subtitle.take(4) else null
-        val (imdb, rt) = fetchOmdbRatings(applied.title, year)
-        if (imdb == null && rt == null) return applied
-        val upgraded = applied.copy(imdbRating = imdb, rottenTomatoesRating = rt)
-        saveCachedVideoMetadata(context, item.video.path, upgraded)
-        return upgraded
+        var applied = applyCachedVideoMetadata(item, cached)
+        val needsRatings = needsRatingsUpgrade(applied)
+        val needsGenres = needsGenreUpgrade(applied)
+
+        if (!needsRatings && !needsGenres) return applied
+
+        if (needsRatings) {
+            val year = if (applied.type == "movie") applied.subtitle.take(4) else null
+            val (imdb, rt) = fetchOmdbRatings(applied.title, year)
+            if (imdb != null || rt != null) {
+                applied = applied.copy(imdbRating = imdb ?: applied.imdbRating, rottenTomatoesRating = rt ?: applied.rottenTomatoesRating)
+            }
+        }
+        if (needsGenres) {
+            val tmdbId = applied.tmdbId
+            if (tmdbId != null && tmdbId > 0) {
+                fetchTmdbExtraDetails(tmdbId, applied.type)?.let { extra ->
+                    applied = applied.copy(
+                        genres = extra.genres,
+                        director = extra.director,
+                        collectionId = extra.collectionId,
+                        collectionName = extra.collectionName
+                    )
+                }
+            }
+        }
+
+        saveCachedVideoMetadata(context, item.video.path, applied)
+        return applied
     }
 
     val episodeInfo = extractEpisodeInfo(item.video.name)
@@ -204,6 +296,10 @@ suspend fun enrichVideoWithOnlineMetadata(
                 if (tv != null) fetchOmdbRatings(tv.name ?: episodeInfo.showName, null)
                 else null to null
 
+            // Genres/creator for the show — same details call used by the
+            // upgrade path above, just inlined here for a freshly-scanned item.
+            val extra = tv?.id?.let { fetchTmdbExtraDetails(it, "tv") }
+
             item.copy(
                 title = tv?.name ?: episodeInfo.showName,
                 subtitle =
@@ -225,7 +321,11 @@ suspend fun enrichVideoWithOnlineMetadata(
                 imdbRating = imdb ?: item.imdbRating,
                 rottenTomatoesRating = rt ?: item.rottenTomatoesRating,
                 tmdbId = tv?.id ?: item.tmdbId,
-                type = "tv"
+                type = "tv",
+                genres = extra?.genres ?: item.genres,
+                director = extra?.director ?: item.director,
+                collectionId = extra?.collectionId ?: item.collectionId,
+                collectionName = extra?.collectionName ?: item.collectionName
             )
 
         } else {
@@ -265,6 +365,10 @@ suspend fun enrichVideoWithOnlineMetadata(
                     if (movie != null) fetchOmdbRatings(movie.title ?: movieSearchName, movie.release_date?.take(4))
                     else null to null
 
+                // Genres/director/collection — same details call used by the
+                // upgrade path above, just inlined here for a freshly-scanned item.
+                val extra = movie?.id?.let { fetchTmdbExtraDetails(it, "movie") }
+
                 item.copy(
                     title = movie?.title ?: item.title,
                     subtitle = movie?.release_date?.take(4) ?: item.subtitle,
@@ -281,7 +385,11 @@ suspend fun enrichVideoWithOnlineMetadata(
                     imdbRating = imdb ?: item.imdbRating,
                     rottenTomatoesRating = rt ?: item.rottenTomatoesRating,
                     tmdbId = movie?.id ?: item.tmdbId,
-                    type = "movie"
+                    type = "movie",
+                    genres = extra?.genres ?: item.genres,
+                    director = extra?.director ?: item.director,
+                    collectionId = extra?.collectionId ?: item.collectionId,
+                    collectionName = extra?.collectionName ?: item.collectionName
                 )
             }
         }
