@@ -6,7 +6,6 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface TmdbApi {
-
     @GET("search/movie")
     suspend fun searchMovie(
         @Header("Authorization") bearerToken: String,
@@ -50,6 +49,23 @@ interface TmdbApi {
         @Header("Authorization") bearerToken: String,
         @Path("series_id") seriesId: Int
     ): TmdbExternalIds
+
+    // ── Media intelligence additions ───────────────────────────────────────
+    // append_to_response=credits pulls cast+crew into the SAME response as
+    // genres/collection, instead of needing a second network call.
+    @GET("movie/{movie_id}")
+    suspend fun getMovieDetails(
+        @Header("Authorization") bearerToken: String,
+        @Path("movie_id") movieId: Int,
+        @Query("append_to_response") appendToResponse: String = "credits"
+    ): TmdbMovieDetails
+
+    @GET("tv/{series_id}")
+    suspend fun getTvDetails(
+        @Header("Authorization") bearerToken: String,
+        @Path("series_id") seriesId: Int,
+        @Query("append_to_response") appendToResponse: String = "credits"
+    ): TmdbTvDetails
 }
 
 data class TmdbExternalIds(
