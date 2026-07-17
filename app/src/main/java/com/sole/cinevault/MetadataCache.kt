@@ -36,7 +36,8 @@ data class CachedVideoMetadata(
     val director: String? = null,
     val collectionId: Int? = null,
     val collectionName: String? = null,
-    val curatedCollections: List<String>? = null
+    val curatedCollections: List<String>? = null,
+    val cast: List<CastEntry>? = null
 )
 
 fun loadCachedVideoMetadata(
@@ -78,7 +79,8 @@ fun saveCachedVideoMetadata(
             director = item.director,
             collectionId = item.collectionId,
             collectionName = item.collectionName,
-            curatedCollections = item.curatedCollections
+            curatedCollections = item.curatedCollections,
+            cast = item.cast
         )
 
     context
@@ -118,7 +120,8 @@ fun applyCachedVideoMetadata(
         director = cached.director,
         collectionId = cached.collectionId,
         collectionName = cached.collectionName,
-        curatedCollections = cached.curatedCollections ?: emptyList()
+        curatedCollections = cached.curatedCollections ?: emptyList(),
+        cast = cached.cast ?: emptyList()
     )
 }
 
@@ -155,10 +158,13 @@ fun needsRatingsUpgrade(item: VideoWithMetadata): Boolean {
  * requiring a full rescan.
  */
 fun needsGenreUpgrade(item: VideoWithMetadata): Boolean {
+    // OR, not AND: an item that already has genres+director from a PRIOR
+    // upgrade pass (before the cast field existed) still needs to be
+    // revisited to backfill cast — if this were AND, such items would never
+    // trigger again since genres/director are no longer empty.
     return (item.type == "movie" || item.type == "tv") &&
             (item.tmdbId ?: 0) > 0 &&
-            item.genres.isEmpty() &&
-            item.director.isNullOrBlank()
+            (item.genres.isEmpty() || item.director.isNullOrBlank() || item.cast.isEmpty())
 }
 
 // ── OMDB — the source of IMDb and Rotten Tomatoes ratings ─────────────────────
@@ -230,8 +236,20 @@ private data class TmdbExtraDetails(
     val director: String?,
     val collectionId: Int?,
     val collectionName: String?,
-    val curatedCollections: List<String>
+    val curatedCollections: List<String>,
+    val cast: List<CastEntry>
 )
+
+private fun extractTopCast(credits: TmdbCreditsBlock?): List<CastEntry> {
+    return credits?.cast
+        ?.mapNotNull { c ->
+            val id = c.id
+            val name = c.name
+            if (id != null && !name.isNullOrBlank()) CastEntry(id, name, c.profile_path) else null
+        }
+        ?.take(10)
+        ?: emptyList()
+}
 
 private suspend fun fetchTmdbExtraDetails(tmdbId: Int, type: String): TmdbExtraDetails? =
     withContext(Dispatchers.IO) {
@@ -244,7 +262,8 @@ private suspend fun fetchTmdbExtraDetails(tmdbId: Int, type: String): TmdbExtraD
                     director = details.created_by?.firstOrNull()?.name,
                     collectionId = null, // TV shows don't have TMDB "collections"
                     collectionName = null,
-                    curatedCollections = matchCuratedCollections(keywordNames)
+                    curatedCollections = matchCuratedCollections(keywordNames),
+                    cast = extractTopCast(details.credits)
                 )
             } else {
                 val details = TmdbClient.api.getMovieDetails(BuildConfig.TMDB_TOKEN, tmdbId)
@@ -254,7 +273,8 @@ private suspend fun fetchTmdbExtraDetails(tmdbId: Int, type: String): TmdbExtraD
                     director = details.credits?.crew?.firstOrNull { it.job == "Director" }?.name,
                     collectionId = details.belongs_to_collection?.id,
                     collectionName = details.belongs_to_collection?.name,
-                    curatedCollections = matchCuratedCollections(keywordNames)
+                    curatedCollections = matchCuratedCollections(keywordNames),
+                    cast = extractTopCast(details.credits)
                 )
             }
         } catch (e: Exception) {
@@ -290,7 +310,8 @@ suspend fun enrichVideoWithOnlineMetadata(
                         director = extra.director,
                         collectionId = extra.collectionId,
                         collectionName = extra.collectionName,
-                        curatedCollections = extra.curatedCollections
+                        curatedCollections = extra.curatedCollections,
+                        cast = extra.cast
                     )
                 }
             }
@@ -371,7 +392,8 @@ suspend fun enrichVideoWithOnlineMetadata(
                 director = extra?.director ?: item.director,
                 collectionId = extra?.collectionId ?: item.collectionId,
                 collectionName = extra?.collectionName ?: item.collectionName,
-                curatedCollections = extra?.curatedCollections ?: item.curatedCollections
+                curatedCollections = extra?.curatedCollections ?: item.curatedCollections,
+                cast = extra?.cast ?: item.cast
             )
 
         } else {
@@ -436,7 +458,8 @@ suspend fun enrichVideoWithOnlineMetadata(
                     director = extra?.director ?: item.director,
                     collectionId = extra?.collectionId ?: item.collectionId,
                     collectionName = extra?.collectionName ?: item.collectionName,
-                    curatedCollections = extra?.curatedCollections ?: item.curatedCollections
+                    curatedCollections = extra?.curatedCollections ?: item.curatedCollections,
+                    cast = extra?.cast ?: item.cast
                 )
             }
         }
