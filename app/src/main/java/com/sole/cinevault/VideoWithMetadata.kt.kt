@@ -22,5 +22,9 @@ data class VideoWithMetadata(
     val genres: List<String> = emptyList(),
     val director: String? = null,
     val collectionId: Int? = null,
-    val collectionName: String? = null
+    val collectionName: String? = null,
+    // Curated groupings (e.g. "Marvel Cinematic Universe") that aren't a
+    // single native TMDB collection — matched by keyword, see MetadataCache.kt.
+    // A movie could in principle match more than one, hence a list.
+    val curatedCollections: List<String> = emptyList()
 )
