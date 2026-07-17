@@ -35,7 +35,8 @@ data class CachedVideoMetadata(
     val genres: List<String>? = null,
     val director: String? = null,
     val collectionId: Int? = null,
-    val collectionName: String? = null
+    val collectionName: String? = null,
+    val curatedCollections: List<String>? = null
 )
 
 fun loadCachedVideoMetadata(
@@ -76,7 +77,8 @@ fun saveCachedVideoMetadata(
             genres = item.genres,
             director = item.director,
             collectionId = item.collectionId,
-            collectionName = item.collectionName
+            collectionName = item.collectionName,
+            curatedCollections = item.curatedCollections
         )
 
     context
@@ -106,7 +108,8 @@ fun applyCachedVideoMetadata(
         genres = cached.genres ?: emptyList(),
         director = cached.director,
         collectionId = cached.collectionId,
-        collectionName = cached.collectionName
+        collectionName = cached.collectionName,
+        curatedCollections = cached.curatedCollections ?: emptyList()
     )
 }
 
@@ -186,7 +189,29 @@ private suspend fun fetchOmdbRatings(title: String, year: String?): Pair<String?
         }
     }
 
-// ── TMDB details — genres, collection, director ────────────────────────────
+// ── Curated collections ─────────────────────────────────────────────────────
+// Some franchises aren't a single native TMDB "collection" (Harry Potter and
+// Mission Impossible are; the Marvel Cinematic Universe is fragmented across
+// ~15+ separate sub-collections and many standalone films that belong to no
+// collection at all). Matching by TMDB KEYWORD NAME instead of a hardcoded
+// movie-ID list means this stays accurate as new films release — no manual
+// list to maintain, no risk of a stale/wrong hardcoded ID. To add another
+// curated grouping later (e.g. a DC one), just add another line here.
+private data class CuratedCollectionDefinition(val displayName: String, val matchKeyword: String)
+
+private val curatedCollectionDefinitions = listOf(
+    CuratedCollectionDefinition("Marvel Cinematic Universe", "marvel cinematic universe")
+)
+
+private fun matchCuratedCollections(keywordNames: List<String>): List<String> {
+    if (keywordNames.isEmpty()) return emptyList()
+    val lowerKeywords = keywordNames.map { it.lowercase() }
+    return curatedCollectionDefinitions
+        .filter { def -> lowerKeywords.any { it == def.matchKeyword } }
+        .map { it.displayName }
+}
+
+
 // Small holder for the extra fields pulled from the /movie/{id} and
 // /tv/{id} "details" endpoints (with credits appended). Kept separate from
 // the DTOs themselves so the enrichment code below doesn't care whether the
@@ -195,7 +220,8 @@ private data class TmdbExtraDetails(
     val genres: List<String>,
     val director: String?,
     val collectionId: Int?,
-    val collectionName: String?
+    val collectionName: String?,
+    val curatedCollections: List<String>
 )
 
 private suspend fun fetchTmdbExtraDetails(tmdbId: Int, type: String): TmdbExtraDetails? =
@@ -203,19 +229,23 @@ private suspend fun fetchTmdbExtraDetails(tmdbId: Int, type: String): TmdbExtraD
         try {
             if (type == "tv") {
                 val details = TmdbClient.api.getTvDetails(BuildConfig.TMDB_TOKEN, tmdbId)
+                val keywordNames = details.keywords?.results?.mapNotNull { it.name } ?: emptyList()
                 TmdbExtraDetails(
                     genres = details.genres?.mapNotNull { it.name?.takeIf { n -> n.isNotBlank() } } ?: emptyList(),
                     director = details.created_by?.firstOrNull()?.name,
                     collectionId = null, // TV shows don't have TMDB "collections"
-                    collectionName = null
+                    collectionName = null,
+                    curatedCollections = matchCuratedCollections(keywordNames)
                 )
             } else {
                 val details = TmdbClient.api.getMovieDetails(BuildConfig.TMDB_TOKEN, tmdbId)
+                val keywordNames = details.keywords?.keywords?.mapNotNull { it.name } ?: emptyList()
                 TmdbExtraDetails(
                     genres = details.genres?.mapNotNull { it.name?.takeIf { n -> n.isNotBlank() } } ?: emptyList(),
                     director = details.credits?.crew?.firstOrNull { it.job == "Director" }?.name,
                     collectionId = details.belongs_to_collection?.id,
-                    collectionName = details.belongs_to_collection?.name
+                    collectionName = details.belongs_to_collection?.name,
+                    curatedCollections = matchCuratedCollections(keywordNames)
                 )
             }
         } catch (e: Exception) {
@@ -250,7 +280,8 @@ suspend fun enrichVideoWithOnlineMetadata(
                         genres = extra.genres,
                         director = extra.director,
                         collectionId = extra.collectionId,
-                        collectionName = extra.collectionName
+                        collectionName = extra.collectionName,
+                        curatedCollections = extra.curatedCollections
                     )
                 }
             }
@@ -325,7 +356,8 @@ suspend fun enrichVideoWithOnlineMetadata(
                 genres = extra?.genres ?: item.genres,
                 director = extra?.director ?: item.director,
                 collectionId = extra?.collectionId ?: item.collectionId,
-                collectionName = extra?.collectionName ?: item.collectionName
+                collectionName = extra?.collectionName ?: item.collectionName,
+                curatedCollections = extra?.curatedCollections ?: item.curatedCollections
             )
 
         } else {
@@ -389,7 +421,8 @@ suspend fun enrichVideoWithOnlineMetadata(
                     genres = extra?.genres ?: item.genres,
                     director = extra?.director ?: item.director,
                     collectionId = extra?.collectionId ?: item.collectionId,
-                    collectionName = extra?.collectionName ?: item.collectionName
+                    collectionName = extra?.collectionName ?: item.collectionName,
+                    curatedCollections = extra?.curatedCollections ?: item.curatedCollections
                 )
             }
         }
