@@ -79,6 +79,25 @@ data class TmdbCreatedBy(
     val name: String?
 )
 
+// Keywords back curated collections (e.g. "Marvel Cinematic Universe") without
+// hardcoding a movie-ID list — TMDB tags official MCU films with a keyword,
+// so matching by keyword NAME self-updates as new films are tagged, instead
+// of going stale the moment a new movie releases.
+// NOTE: movie and TV keyword responses have different shapes from TMDB
+// ("keywords" array vs "results" array) — hence two block types.
+data class TmdbKeyword(
+    val id: Int?,
+    val name: String?
+)
+
+data class TmdbMovieKeywordsBlock(
+    val keywords: List<TmdbKeyword> = emptyList()
+)
+
+data class TmdbTvKeywordsBlock(
+    val results: List<TmdbKeyword> = emptyList()
+)
+
 // Embedded via append_to_response=credits on the details endpoints — avoids
 // a second network round-trip just to get cast/crew.
 data class TmdbCreditsBlock(
@@ -91,7 +110,8 @@ data class TmdbMovieDetails(
     val title: String?,
     val genres: List<TmdbGenre>? = null,
     val belongs_to_collection: TmdbCollection? = null,
-    val credits: TmdbCreditsBlock? = null
+    val credits: TmdbCreditsBlock? = null,
+    val keywords: TmdbMovieKeywordsBlock? = null
 )
 
 data class TmdbTvDetails(
@@ -102,5 +122,6 @@ data class TmdbTvDetails(
     // (different episodes can have different directors) — created_by (the
     // showrunner/creator) is TMDB's standard equivalent for this purpose.
     val created_by: List<TmdbCreatedBy>? = null,
-    val credits: TmdbCreditsBlock? = null
+    val credits: TmdbCreditsBlock? = null,
+    val keywords: TmdbTvKeywordsBlock? = null
 )
