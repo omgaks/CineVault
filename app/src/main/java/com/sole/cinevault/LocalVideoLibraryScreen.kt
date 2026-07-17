@@ -62,6 +62,11 @@ import coil.compose.AsyncImage
 import com.sole.cinevault.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.io.File
 
 enum class LibrarySortOption(val label: String) {
@@ -320,24 +325,41 @@ fun LocalVideoLibraryScreen(
             scanStatus = "Found ${scannedVideos.size} videos. Loading cached posters..."
             val instantList = scannedVideos.map { applyCachedMetadataIfAvailable(context, it) }
             onVideosLoaded(instantList); saveLibraryCache(context, instantList)
-            scanStatus = "Loaded ${instantList.size} videos. Updating missing posters & ratings..."
-            val workingList = instantList.toMutableList(); var updatedCount = 0
-            instantList.forEachIndexed { index, item ->
-                // Enrich when metadata is missing OR when IMDb/RT ratings were
-                // never fetched (files cached before the OMDB fix)
-                val needsUpgrade = (item.type == "movie" || item.type == "tv") &&
-                        (item.tmdbId ?: 0) > 0 &&
-                        item.imdbRating.isNullOrBlank() &&
-                        item.rottenTomatoesRating.isNullOrBlank()
-                if (!hasUsefulOnlineMetadata(item) || needsUpgrade) {
-                    scanStatus = "Metadata ${index + 1}/${instantList.size}: ${item.video.name.take(28)}"
-                    val enriched = enrichVideoWithOnlineMetadata(context, item)
-                    if (enriched != item) {
-                        workingList[index] = enriched; updatedCount++
-                        if (updatedCount % 5 == 0) { val p = workingList.toList(); onVideosLoaded(p); saveLibraryCache(context, p) }
-                    }
-                }
+
+            // Which items actually need a network fetch (missing metadata, or
+            // cached but predates the ratings/genre-upgrade passes).
+            val toEnrich = instantList.withIndex().filter { (_, item) ->
+                !hasUsefulOnlineMetadata(item) || needsRatingsUpgrade(item) || needsGenreUpgrade(item)
             }
+            scanStatus = "Loaded ${instantList.size} videos. Updating missing posters & ratings..."
+
+            // SPEED FIX: this used to enrich items one at a time, fully
+            // sequentially — each item involves ~2-3 chained network calls
+            // (TMDB search, TMDB details+credits+keywords, OMDB ratings), so
+            // a large library could take several minutes just waiting on
+            // network round-trips one by one. Bounded parallelism (6 at a
+            // time) processes the whole batch far faster while still being
+            // polite to TMDB/OMDB's rate limits rather than firing everything
+            // at once.
+            val workingList = instantList.toMutableList()
+            var completedCount = 0
+            val semaphore = Semaphore(6)
+            coroutineScope {
+                toEnrich.map { (index, item) ->
+                    async {
+                        semaphore.withPermit {
+                            val enriched = try { enrichVideoWithOnlineMetadata(context, item) } catch (e: Exception) { item }
+                            completedCount++
+                            scanStatus = "Metadata $completedCount/${toEnrich.size}: ${item.video.name.take(28)}"
+                            if (enriched != item) {
+                                workingList[index] = enriched
+                                if (completedCount % 8 == 0) { val p = workingList.toList(); onVideosLoaded(p); saveLibraryCache(context, p) }
+                            }
+                        }
+                    }
+                }.awaitAll()
+            }
+
             val finalList = workingList.toList(); onVideosLoaded(finalList); saveLibraryCache(context, finalList)
             scanStatus = "Library updated: ${finalList.size} videos"; delay(500); scanStatus = ""; isLoading = false
         }
