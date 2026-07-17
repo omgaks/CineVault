@@ -51,20 +51,20 @@ interface TmdbApi {
     ): TmdbExternalIds
 
     // ── Media intelligence additions ───────────────────────────────────────
-    // append_to_response=credits pulls cast+crew into the SAME response as
-    // genres/collection, instead of needing a second network call.
+    // append_to_response bundles credits AND keywords into the SAME
+    // response as genres/collection — zero extra network round-trips.
     @GET("movie/{movie_id}")
     suspend fun getMovieDetails(
         @Header("Authorization") bearerToken: String,
         @Path("movie_id") movieId: Int,
-        @Query("append_to_response") appendToResponse: String = "credits"
+        @Query("append_to_response") appendToResponse: String = "credits,keywords"
     ): TmdbMovieDetails
 
     @GET("tv/{series_id}")
     suspend fun getTvDetails(
         @Header("Authorization") bearerToken: String,
         @Path("series_id") seriesId: Int,
-        @Query("append_to_response") appendToResponse: String = "credits"
+        @Query("append_to_response") appendToResponse: String = "credits,keywords"
     ): TmdbTvDetails
 }
 
