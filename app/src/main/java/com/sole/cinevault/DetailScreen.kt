@@ -63,7 +63,12 @@ import com.sole.cinevault.ui.theme.*
 fun DetailScreen(
     item: VideoWithMetadata,
     onBack: () -> Unit,
-    onPlay: () -> Unit
+    onPlay: () -> Unit,
+    onGenreClick: (String) -> Unit = {},
+    onDirectorClick: (String) -> Unit = {},
+    onActorClick: (Int, String, String?) -> Unit = {},
+    onNativeCollectionClick: (Int, String) -> Unit = {},
+    onCuratedCollectionClick: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val fullPath = item.video.path.replace("%20", " ")
@@ -132,6 +137,47 @@ fun DetailScreen(
                     TechBadge(text = item.video.name.substringAfterLast(".").uppercase(), icon = Icons.Rounded.InsertDriveFile)
                 }
 
+                // Genre chips — tappable into a filtered library view of everything
+                // else you own in that genre.
+                if (item.genres.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                        item.genres.forEach { genre ->
+                            GenreChip(text = genre, onClick = { onGenreClick(genre) })
+                        }
+                    }
+                }
+
+                // Director + collection — tappable into their own filtered pages.
+                // A movie can belong to both a native TMDB collection and a
+                // curated one (e.g. MCU) at once, so both render if present.
+                if (!item.director.isNullOrBlank() || item.collectionName != null || item.curatedCollections.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (!item.director.isNullOrBlank()) {
+                            Text(
+                                text = "Directed by ${item.director}",
+                                color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.clickable { onDirectorClick(item.director!!) }
+                            )
+                        }
+                        if (item.collectionName != null && item.collectionId != null) {
+                            Text(
+                                text = "Part of the ${item.collectionName}",
+                                color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.clickable { onNativeCollectionClick(item.collectionId!!, item.collectionName!!) }
+                            )
+                        }
+                        item.curatedCollections.forEach { curated ->
+                            Text(
+                                text = "Part of the $curated",
+                                color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.clickable { onCuratedCollectionClick(curated) }
+                            )
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(18.dp))
 
                 // Action buttons — Resume shrunk down so it no longer competes visually with Play
@@ -180,7 +226,7 @@ fun DetailScreen(
                 when {
                     castLoading && castList.isEmpty() -> Text(text = "Loading cast...", color = TextFaint, fontSize = 14.sp)
                     castList.isEmpty() -> Text(text = "Cast info not available.", color = TextFaint, fontSize = 14.sp)
-                    else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) { items(castList) { cast -> CastCard(cast = cast, movieName = item.title) } }
+                    else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) { items(castList) { cast -> CastCard(cast = cast, movieName = item.title, onActorClick = onActorClick) } }
                 }
 
                 Spacer(modifier = Modifier.height(28.dp))
@@ -322,6 +368,26 @@ private fun TechBadge(text: String, icon: ImageVector) {
     }
 }
 
+// GENRE CHIP — tappable pill, same glow language as the other badges, but a
+// distinct pill shape (RoundedCornerShape(50)) so genres read as browsable
+// categories rather than static file-format tags.
+@Composable
+private fun GenreChip(text: String, onClick: () -> Unit) {
+    val glow = rememberPillGlowAlpha()
+    Row(
+        modifier = Modifier
+            .strongPillGlow(glow = glow, cornerRadius = 50.dp, glowRadius = 24.dp)
+            .height(28.dp)
+            .clip(RoundedCornerShape(50))
+            .background(GlassSurface)
+            .clickable { onClick() }
+            .padding(horizontal = 13.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = text, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 private fun detectResolution(fileName: String): String {
     val lower = fileName.lowercase()
@@ -340,11 +406,22 @@ private fun detectAudioFormat(fileName: String): String {
 private fun formatResumeTime(positionMs: Long): String { val s = positionMs / 1000; val h = s / 3600; val m = (s % 3600) / 60; val sec = s % 60; return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%02d:%02d".format(m, sec) }
 
 @Composable
-private fun CastCard(cast: TmdbCastMember, movieName: String) {
+private fun CastCard(cast: TmdbCastMember, movieName: String, onActorClick: (Int, String, String?) -> Unit) {
     val context = LocalContext.current
     val imageUrl = cast.profile_path?.let { "https://image.tmdb.org/t/p/w300$it" }
     val safeName = cast.name ?: "Unknown"
-    Column(modifier = Modifier.width(82.dp).clickable { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=${Uri.encode("$safeName $movieName")}"))) }, horizontalAlignment = Alignment.CenterHorizontally) {
+    val actorId = cast.id
+    val onCardClick = {
+        if (actorId != null && !cast.name.isNullOrBlank()) {
+            // Routes into the Actor page, filtered against your own library.
+            onActorClick(actorId, cast.name, cast.profile_path)
+        } else {
+            // No TMDB person id (older cached credits, or a rare API gap) —
+            // fall back to the original web-search behavior instead of a dead tap.
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=${Uri.encode("$safeName $movieName")}")))
+        }
+    }
+    Column(modifier = Modifier.width(82.dp).clickable { onCardClick() }, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(modifier = Modifier.size(76.dp).clip(CircleShape).background(SpaceMid), contentAlignment = Alignment.Center) {
             if (!imageUrl.isNullOrBlank()) { AsyncImage(model = imageUrl, contentDescription = safeName, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
             else { Text(text = safeName.take(1).uppercase(), color = TextBright, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
