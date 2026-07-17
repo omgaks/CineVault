@@ -2,6 +2,15 @@ package com.sole.cinevault
 
 import androidx.compose.runtime.Immutable
 
+// Lightweight cast entry stored per video so Actor pages can filter the
+// whole library locally instead of re-fetching credits for every item.
+@Immutable
+data class CastEntry(
+    val id: Int,
+    val name: String,
+    val profilePath: String?
+)
+
 @Immutable
 data class VideoWithMetadata(
     val video: VideoFile,
@@ -26,5 +35,8 @@ data class VideoWithMetadata(
     // Curated groupings (e.g. "Marvel Cinematic Universe") that aren't a
     // single native TMDB collection — matched by keyword, see MetadataCache.kt.
     // A movie could in principle match more than one, hence a list.
-    val curatedCollections: List<String> = emptyList()
+    val curatedCollections: List<String> = emptyList(),
+    // Top ~10 cast members, captured alongside genres/director during
+    // enrichment (same details call, no extra network cost) — backs Actor pages.
+    val cast: List<CastEntry> = emptyList()
 )
