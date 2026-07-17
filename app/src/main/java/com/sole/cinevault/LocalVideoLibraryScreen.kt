@@ -123,7 +123,7 @@ fun LocalVideoLibraryScreen(
     onTvGroupClick: (TvGroup) -> Unit,
     onSecretChanged: () -> Unit = {},
     onGenreClick: (String) -> Unit = {},
-    onNativeCollectionClick: (Int, String) -> Unit = {},
+    onNativeCollectionClick: (Int, String) -> Unit = { _, _ -> },
     onCuratedCollectionClick: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
