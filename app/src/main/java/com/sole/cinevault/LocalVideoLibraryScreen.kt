@@ -121,7 +121,10 @@ fun LocalVideoLibraryScreen(
     onItemClick: (VideoWithMetadata) -> Unit,
     onPlayClick: (VideoWithMetadata) -> Unit = {},
     onTvGroupClick: (TvGroup) -> Unit,
-    onSecretChanged: () -> Unit = {}
+    onSecretChanged: () -> Unit = {},
+    onGenreClick: (String) -> Unit = {},
+    onNativeCollectionClick: (Int, String) -> Unit = {},
+    onCuratedCollectionClick: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -477,6 +480,72 @@ fun LocalVideoLibraryScreen(
                 }
             }
 
+            // ── Collections shelf — native TMDB collections + curated ones
+            // (e.g. Marvel Cinematic Universe), only shown if the library
+            // actually has any. Respects hidden/secret items same as the
+            // rest of this screen (built from visibleSortedVideos).
+            run {
+                data class CollectionShelfEntry(val key: String, val displayName: String, val backdropUrl: String?, val isCurated: Boolean, val collectionId: Int?)
+                val nativeEntries = visibleSortedVideos
+                    .filter { it.collectionId != null && it.collectionName != null }
+                    .distinctBy { it.collectionId }
+                    .map { CollectionShelfEntry("native:${it.collectionId}", it.collectionName!!, it.backdropUrl, false, it.collectionId) }
+                val curatedNames = visibleSortedVideos.flatMap { it.curatedCollections }.distinct()
+                val curatedEntries = curatedNames.map { name ->
+                    val backdrop = visibleSortedVideos.firstOrNull { it.curatedCollections.contains(name) && !it.backdropUrl.isNullOrBlank() }?.backdropUrl
+                    CollectionShelfEntry("curated:$name", name, backdrop, true, null)
+                }
+                val collectionShelf = (nativeEntries + curatedEntries).sortedBy { it.displayName.lowercase() }
+
+                if (collectionShelf.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Column {
+                            Text(text = "Collections", color = TextBright, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(10.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                items(items = collectionShelf, key = { it.key }) { entry ->
+                                    CollectionShelfCard(
+                                        title = entry.displayName,
+                                        backdropUrl = entry.backdropUrl,
+                                        onClick = {
+                                            if (entry.isCurated) onCuratedCollectionClick(entry.displayName)
+                                            else entry.collectionId?.let { onNativeCollectionClick(it, entry.displayName) }
+                                        }
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(20.dp))
+                        }
+                    }
+                }
+            }
+
+            // ── Genres shelf — every distinct genre present in the library ──
+            run {
+                val genreNames = visibleSortedVideos.flatMap { it.genres }.distinct().sortedBy { it.lowercase() }
+                if (genreNames.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Column {
+                            Text(text = "Genres", color = TextBright, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(10.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(items = genreNames, key = { it }) { genre ->
+                                    Box(
+                                        modifier = Modifier.clip(RoundedCornerShape(50)).background(GlassSurface)
+                                            .border(1.dp, Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)), RoundedCornerShape(50))
+                                            .clickable { onGenreClick(genre) }
+                                            .padding(horizontal = 16.dp, vertical = 9.dp)
+                                    ) {
+                                        Text(text = genre, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(20.dp))
+                        }
+                    }
+                }
+            }
+
             // Secret locked
             if (selectedCategory == "Secret" && !secretUnlocked) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -723,6 +792,36 @@ private fun SheetActionRow(icon: ImageVector, label: String, tint: Color, onClic
         Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
         Spacer(modifier = Modifier.width(12.dp))
         Text(text = label, color = if (tint == Color(0xFFFF5252)) tint else TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun CollectionShelfCard(title: String, backdropUrl: String?, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .width(220.dp)
+            .height(110.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(SpaceMid)
+            .clickable { onClick() }
+    ) {
+        if (!backdropUrl.isNullOrBlank()) {
+            AsyncImage(model = backdropUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        }
+        Box(
+            modifier = Modifier.fillMaxSize().background(
+                Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f)))
+            )
+        )
+        Text(
+            text = title,
+            color = TextBright,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.align(Alignment.BottomStart).padding(12.dp)
+        )
     }
 }
 
