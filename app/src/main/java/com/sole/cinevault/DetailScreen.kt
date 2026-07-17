@@ -66,8 +66,8 @@ fun DetailScreen(
     onPlay: () -> Unit,
     onGenreClick: (String) -> Unit = {},
     onDirectorClick: (String) -> Unit = {},
-    onActorClick: (Int, String, String?) -> Unit = {},
-    onNativeCollectionClick: (Int, String) -> Unit = {},
+    onActorClick: (Int, String, String?) -> Unit = { _, _, _ -> },
+    onNativeCollectionClick: (Int, String) -> Unit = { _, _ -> },
     onCuratedCollectionClick: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
