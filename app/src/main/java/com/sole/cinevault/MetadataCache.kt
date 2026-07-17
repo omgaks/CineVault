@@ -88,6 +88,15 @@ fun saveCachedVideoMetadata(
         .apply()
 }
 
+// Upgrades any backdrop URL that still points at TMDB's oversized "original"
+// size — this handles items that were cached BEFORE the w1280 fix below,
+// with zero network cost (just a string swap on an already-known URL, not a
+// re-fetch), so existing libraries benefit immediately without a rescan.
+private fun preferredBackdropUrl(url: String?): String? {
+    if (url == null) return null
+    return url.replace("/t/p/original/", "/t/p/w1280/")
+}
+
 fun applyCachedVideoMetadata(
     item: VideoWithMetadata,
     cached: CachedVideoMetadata
@@ -96,7 +105,7 @@ fun applyCachedVideoMetadata(
         title = cached.title,
         subtitle = cached.subtitle,
         posterUrl = cached.posterUrl,
-        backdropUrl = cached.backdropUrl,
+        backdropUrl = preferredBackdropUrl(cached.backdropUrl),
         episodeStill = cached.episodeStill,
         overview = cached.overview,
         rating = cached.rating,
@@ -341,7 +350,12 @@ suspend fun enrichVideoWithOnlineMetadata(
                     },
                 backdropUrl =
                     tv?.backdrop_path?.let {
-                        "https://image.tmdb.org/t/p/original$it"
+                        // w1280 instead of "original" — TMDB's original-size
+                        // backdrops are often several MB; w1280 looks
+                        // identical on any phone/tablet screen and downloads
+                        // far faster, which is what was causing the ~5s
+                        // first-load delay on the Detail screen's hero image.
+                        "https://image.tmdb.org/t/p/w1280$it"
                     },
                 episodeStill =
                     episodeDetails?.still_path?.let {
@@ -410,7 +424,7 @@ suspend fun enrichVideoWithOnlineMetadata(
                         },
                     backdropUrl =
                         movie?.backdrop_path?.let {
-                            "https://image.tmdb.org/t/p/original$it"
+                            "https://image.tmdb.org/t/p/w1280$it"
                         },
                     overview = movie?.overview ?: item.overview,
                     rating = movie?.vote_average ?: item.rating,
