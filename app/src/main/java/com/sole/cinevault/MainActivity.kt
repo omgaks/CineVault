@@ -240,18 +240,48 @@ fun CineVaultSplashScreen() {
     }
 }
 
+// ── Navigation ───────────────────────────────────────────────────────────────
+// Real back-stack, replacing the previous flat set of nullable state flags
+// (selectedVideo / selectedDetail / selectedTvGroup with a hardcoded priority
+// order in BackHandler). That approach happened to work for simple two-deep
+// paths but wasn't actually tracking navigation history — it couldn't
+// correctly express "TV show -> episode player -> back -> back" or any
+// deeper chain, which is needed once Actor/Director/Genre/Collection pages
+// (coming next) can push several layers deep from a Detail screen.
+//
+// Tab is always the BOTTOM of the stack for whichever tab is active; pushing
+// a new destination (Detail, TvShow, Player, and — next round — Actor/
+// Director/Genre/Collection) adds on top of it. Switching tabs via the
+// bottom bar resets the stack to just that tab's root, matching standard
+// bottom-nav behavior (each tab keeps its own root, not a deep independent
+// history when you jump tabs).
+sealed class Destination {
+    data class Tab(val index: Int) : Destination()
+    data class Detail(val item: VideoWithMetadata) : Destination()
+    data class TvShow(val group: TvGroup) : Destination()
+    data class Player(val video: VideoFile, val mediaType: String, val episodeList: List<VideoWithMetadata>) : Destination()
+}
+
 @Composable
 fun CineVaultApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    var selectedTab by remember { mutableStateOf(0) }
-    var selectedVideo by remember { mutableStateOf<VideoFile?>(null) }
-    var selectedMediaType by remember { mutableStateOf("local") }
-    var selectedDetail by remember { mutableStateOf<VideoWithMetadata?>(null) }
-    var selectedTvGroup by remember { mutableStateOf<TvGroup?>(null) }
-    var currentEpisodeList by remember { mutableStateOf<List<VideoWithMetadata>>(emptyList()) }
+    var backStack by remember { mutableStateOf<List<Destination>>(listOf(Destination.Tab(0))) }
     var libraryVideos by remember { mutableStateOf<List<VideoWithMetadata>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
+
+    val current = backStack.last()
+    val activeTabIndex = (backStack.firstOrNull() as? Destination.Tab)?.index ?: 0
+
+    fun push(dest: Destination) { backStack = backStack + dest }
+    fun pop() { if (backStack.size > 1) backStack = backStack.dropLast(1) }
+    fun switchTab(index: Int) { backStack = listOf(Destination.Tab(index)) }
+    fun replaceTop(dest: Destination) { backStack = backStack.dropLast(1) + dest }
+
+    fun reloadAfterSecretChange() {
+        val cached = loadLibraryCache(context)
+        if (cached != null) libraryVideos = cached.videos
+    }
 
     LaunchedEffect(Unit) {
         val cached = loadLibraryCache(context)
@@ -260,21 +290,15 @@ fun CineVaultApp() {
         }
     }
 
-    BackHandler {
-        when {
-            selectedVideo != null -> selectedVideo = null
-            selectedDetail != null -> selectedDetail = null
-            selectedTvGroup != null -> selectedTvGroup = null
-            selectedTab != 0 -> selectedTab = 0
-        }
-    }
+    BackHandler(enabled = backStack.size > 1) { pop() }
 
     // FIX: Only the player screen should be immersive (nav bar hidden).
     // Every other screen (Home/Library/Search/Settings) must show normal system bars.
     val activity = context.findCineActivity()
+    val isPlayerActive = current is Destination.Player
 
-    LaunchedEffect(selectedVideo) {
-        if (selectedVideo != null) {
+    LaunchedEffect(isPlayerActive) {
+        if (isPlayerActive) {
             activity?.enterImmersiveModeForPlayer()
         } else {
             activity?.exitImmersiveModeForPlayer()
@@ -284,12 +308,8 @@ fun CineVaultApp() {
     Scaffold(
         containerColor = Color(0xFF080808),
         bottomBar = {
-            if (selectedVideo == null) {
-                CineBottomBar(selectedTab) { tab ->
-                    selectedTab = tab
-                    selectedDetail = null
-                    selectedTvGroup = null
-                }
+            if (!isPlayerActive) {
+                CineBottomBar(activeTabIndex) { tab -> switchTab(tab) }
             }
         }
     ) { padding ->
@@ -299,102 +319,79 @@ fun CineVaultApp() {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            when {
-                selectedVideo != null -> {
+            when (val dest = current) {
+                is Destination.Player -> {
                     VideoPlayerScreen(
-                        video = selectedVideo!!,
-                        episodeList = currentEpisodeList,
-                        mediaType = selectedMediaType,
-                        onBack = { selectedVideo = null },
+                        video = dest.video,
+                        episodeList = dest.episodeList,
+                        mediaType = dest.mediaType,
+                        onBack = { pop() },
                         onPlayNext = { nextVideo ->
-                            selectedMediaType = nextVideo.type
-                            selectedVideo = nextVideo.video
+                            // Advancing to the next episode/video REPLACES the
+                            // current Player entry rather than pushing a new
+                            // one — otherwise Back during a long autoplay
+                            // binge would have to step through every
+                            // previously auto-played episode one at a time.
+                            replaceTop(Destination.Player(nextVideo.video, nextVideo.type, dest.episodeList))
                         }
                     )
                 }
 
-                selectedTvGroup != null -> {
+                is Destination.TvShow -> {
                     TvShowDetailScreen(
-                        group = selectedTvGroup!!,
-                        onBack = { selectedTvGroup = null },
+                        group = dest.group,
+                        onBack = { pop() },
                         onEpisodeClick = { episode ->
-                            currentEpisodeList = selectedTvGroup?.episodes ?: emptyList()
-                            selectedMediaType = episode.type
-                            selectedVideo = episode.video
-                        }
+                            push(Destination.Player(episode.video, episode.type, dest.group.episodes))
+                        },
+                        onSecretChanged = { reloadAfterSecretChange() }
                     )
                 }
 
-                selectedDetail != null -> {
+                is Destination.Detail -> {
                     DetailScreen(
-                        item = selectedDetail!!,
-                        onBack = { selectedDetail = null },
+                        item = dest.item,
+                        onBack = { pop() },
                         onPlay = {
                             // Pass full library so autoplay can find next video
-                            currentEpisodeList = libraryVideos
-                            selectedMediaType = selectedDetail!!.type
-                            selectedVideo = selectedDetail!!.video
+                            push(Destination.Player(dest.item.video, dest.item.type, libraryVideos))
                         }
                     )
                 }
 
-                selectedTab == 3 -> SettingsScreen(
-                    onOpenScanSources = { selectedTab = 1 },
-                    onOpenStreamUrl = { selectedTab = 1 }
-                )
+                is Destination.Tab -> {
+                    when (dest.index) {
+                        3 -> SettingsScreen(
+                            onOpenScanSources = { switchTab(1) },
+                            onOpenStreamUrl = { switchTab(1) }
+                        )
 
-                selectedTab == 2 -> {
-                    SearchScreen(
-                        videos = libraryVideos,
-                        query = searchQuery,
-                        onQueryChange = { newQuery -> searchQuery = newQuery },
-                        onVideoClick = { item ->
-                            currentEpisodeList = libraryVideos
-                            selectedDetail = item
-                        }
-                    )
-                }
+                        2 -> SearchScreen(
+                            videos = libraryVideos,
+                            query = searchQuery,
+                            onQueryChange = { newQuery -> searchQuery = newQuery },
+                            onVideoClick = { item -> push(Destination.Detail(item)) }
+                        )
 
-                selectedTab == 1 -> {
-                    LocalVideoLibraryScreen(
-                        videos = libraryVideos,
-                        onVideosLoaded = { loadedVideos ->
-                            libraryVideos = loadedVideos
-                            saveLibraryCache(context = context, videos = loadedVideos)
-                        },
-                        onItemClick = { item ->
-                            currentEpisodeList = libraryVideos
-                            selectedDetail = item
-                        },
-                        onPlayClick = { item ->
-                            currentEpisodeList = libraryVideos
-                            selectedMediaType = item.type
-                            selectedVideo = item.video
-                        },
-                        onTvGroupClick = { group ->
-                            selectedTvGroup = group
-                        },
-                        onSecretChanged = {
-                            val cached = loadLibraryCache(context)
-                            if (cached != null) libraryVideos = cached.videos
-                        }
-                    )
-                }
+                        1 -> LocalVideoLibraryScreen(
+                            videos = libraryVideos,
+                            onVideosLoaded = { loadedVideos ->
+                                libraryVideos = loadedVideos
+                                saveLibraryCache(context = context, videos = loadedVideos)
+                            },
+                            onItemClick = { item -> push(Destination.Detail(item)) },
+                            onPlayClick = { item -> push(Destination.Player(item.video, item.type, libraryVideos)) },
+                            onTvGroupClick = { group -> push(Destination.TvShow(group)) },
+                            onSecretChanged = { reloadAfterSecretChange() }
+                        )
 
-                else -> {
-                    HomeScreen(
-                        videos = libraryVideos,
-                        onScanRequest = { selectedTab = 1 },
-                        onItemClick = { item ->
-                            currentEpisodeList = libraryVideos
-                            selectedDetail = item
-                        },
-                        onPlayClick = { item ->
-                            currentEpisodeList = libraryVideos
-                            selectedMediaType = item.type
-                            selectedVideo = item.video
-                        }
-                    )
+                        else -> HomeScreen(
+                            videos = libraryVideos,
+                            onScanRequest = { switchTab(1) },
+                            onItemClick = { item -> push(Destination.Detail(item)) },
+                            onPlayClick = { item -> push(Destination.Player(item.video, item.type, libraryVideos)) }
+                        )
+                    }
                 }
             }
         }
