@@ -260,6 +260,11 @@ sealed class Destination {
     data class Detail(val item: VideoWithMetadata) : Destination()
     data class TvShow(val group: TvGroup) : Destination()
     data class Player(val video: VideoFile, val mediaType: String, val episodeList: List<VideoWithMetadata>) : Destination()
+    data class GenrePage(val genreName: String) : Destination()
+    data class DirectorPage(val directorName: String) : Destination()
+    data class ActorPage(val actorId: Int, val actorName: String, val profilePath: String?) : Destination()
+    data class NativeCollectionPage(val collectionId: Int, val collectionName: String) : Destination()
+    data class CuratedCollectionPage(val collectionName: String) : Destination()
 }
 
 @Composable
@@ -355,7 +360,59 @@ fun CineVaultApp() {
                         onPlay = {
                             // Pass full library so autoplay can find next video
                             push(Destination.Player(dest.item.video, dest.item.type, libraryVideos))
-                        }
+                        },
+                        onGenreClick = { genreName -> push(Destination.GenrePage(genreName)) },
+                        onDirectorClick = { directorName -> push(Destination.DirectorPage(directorName)) },
+                        onActorClick = { actorId, actorName, profilePath -> push(Destination.ActorPage(actorId, actorName, profilePath)) },
+                        onNativeCollectionClick = { id, name -> push(Destination.NativeCollectionPage(id, name)) },
+                        onCuratedCollectionClick = { name -> push(Destination.CuratedCollectionPage(name)) }
+                    )
+                }
+
+                is Destination.GenrePage -> {
+                    GenreScreen(
+                        genreName = dest.genreName,
+                        videos = libraryVideos,
+                        onBack = { pop() },
+                        onItemClick = { item -> push(Destination.Detail(item)) }
+                    )
+                }
+
+                is Destination.DirectorPage -> {
+                    DirectorScreen(
+                        directorName = dest.directorName,
+                        videos = libraryVideos,
+                        onBack = { pop() },
+                        onItemClick = { item -> push(Destination.Detail(item)) }
+                    )
+                }
+
+                is Destination.ActorPage -> {
+                    ActorScreen(
+                        actorId = dest.actorId,
+                        actorName = dest.actorName,
+                        profilePath = dest.profilePath,
+                        videos = libraryVideos,
+                        onBack = { pop() },
+                        onItemClick = { item -> push(Destination.Detail(item)) }
+                    )
+                }
+
+                is Destination.NativeCollectionPage -> {
+                    CollectionScreen(
+                        title = dest.collectionName,
+                        items = libraryVideos.filter { it.collectionId == dest.collectionId },
+                        onBack = { pop() },
+                        onItemClick = { item -> push(Destination.Detail(item)) }
+                    )
+                }
+
+                is Destination.CuratedCollectionPage -> {
+                    CollectionScreen(
+                        title = dest.collectionName,
+                        items = libraryVideos.filter { it.curatedCollections.contains(dest.collectionName) },
+                        onBack = { pop() },
+                        onItemClick = { item -> push(Destination.Detail(item)) }
                     )
                 }
 
@@ -382,7 +439,10 @@ fun CineVaultApp() {
                             onItemClick = { item -> push(Destination.Detail(item)) },
                             onPlayClick = { item -> push(Destination.Player(item.video, item.type, libraryVideos)) },
                             onTvGroupClick = { group -> push(Destination.TvShow(group)) },
-                            onSecretChanged = { reloadAfterSecretChange() }
+                            onSecretChanged = { reloadAfterSecretChange() },
+                            onGenreClick = { genreName -> push(Destination.GenrePage(genreName)) },
+                            onNativeCollectionClick = { id, name -> push(Destination.NativeCollectionPage(id, name)) },
+                            onCuratedCollectionClick = { name -> push(Destination.CuratedCollectionPage(name)) }
                         )
 
                         else -> HomeScreen(
