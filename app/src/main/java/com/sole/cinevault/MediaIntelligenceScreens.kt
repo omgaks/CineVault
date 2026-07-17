@@ -139,7 +139,7 @@ private fun MediaIntelligenceGridScreen(
             modifier = Modifier.fillMaxSize(),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
-            contentPadding = PaddingValues(horizontal = 16.dp, top = 16.dp, bottom = 28.dp)
+            contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 28.dp)
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
