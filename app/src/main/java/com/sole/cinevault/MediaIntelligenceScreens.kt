@@ -184,23 +184,6 @@ private fun MediaIntelligenceGridScreen(
                         }
                     }
 
-                    if (onSearchWebClick != null) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(GlassSurface)
-                                .border(1.dp, Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)), RoundedCornerShape(50))
-                                .clickable { onSearchWebClick() }
-                                .padding(horizontal = 14.dp, vertical = 8.dp)
-                        ) {
-                            Icon(imageVector = Icons.Rounded.Public, contentDescription = null, tint = AmberCore, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = "Search the web", color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-
                     Spacer(modifier = Modifier.height(8.dp))
                     Box(modifier = Modifier.width(46.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(AmberGlow))
                     Spacer(modifier = Modifier.height(18.dp))
@@ -216,6 +199,35 @@ private fun MediaIntelligenceGridScreen(
             } else {
                 items(items = items, key = { it.video.path }) { item ->
                     LibraryGridCard(item = item, onClick = { onItemClick(item) }, onPlayClick = { onItemClick(item) })
+                }
+            }
+
+            // Tap the face again, below everything you already own, to look
+            // the person up on the web instead — the local library grid is
+            // the primary answer to "what do I have with this person", this
+            // is the secondary path once that's been seen.
+            if (onSearchWebClick != null) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            modifier = Modifier.size(72.dp).clip(CircleShape).background(SpaceMid)
+                                .border(1.5.dp, Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)), CircleShape)
+                                .clickable { onSearchWebClick() }
+                        ) {
+                            if (circularProfileUrl != null) {
+                                AsyncImage(model = circularProfileUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            } else {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Icon(imageVector = Icons.Rounded.Public, contentDescription = null, tint = AmberCore, modifier = Modifier.size(28.dp))
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(text = "Tap to search the web", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }
