@@ -58,11 +58,52 @@ object OpenSubtitlesClient {
         return (result as? SubtitleDownloadResult.Success)?.uri
     }
 
+    // Fast, network-free check for a subtitle already downloaded for this
+    // exact video in a previous session. Lets the player attach it
+    // immediately on load instead of always kicking off a search first.
+    fun findCachedSubtitle(context: Context, videoPath: String): Uri? {
+        val file = subtitleCacheFile(context, videoPath)
+        return if (file.exists() && file.length() > 0) Uri.fromFile(file) else null
+    }
+
+    // Persistent (not OS-clearable) storage, keyed by a hash of the exact
+    // video path rather than the cleaned search name — decouples caching
+    // from the title-cleaning logic (which can change over time) and ties
+    // the cached file unambiguously to one specific video on disk.
+    private fun subtitleCacheDir(context: Context): File {
+        val dir = File(context.filesDir, "subtitles")
+        if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+
+    private fun subtitleCacheKey(videoPath: String): String {
+        return try {
+            val digest = java.security.MessageDigest.getInstance("MD5").digest(videoPath.toByteArray(Charsets.UTF_8))
+            digest.joinToString("") { "%02x".format(it) }
+        } catch (e: Exception) {
+            // MD5 is always available on Android in practice, but fall back
+            // to a sanitized path rather than crash if it somehow isn't.
+            videoPath.replace(Regex("[^A-Za-z0-9]"), "_").takeLast(80)
+        }
+    }
+
+    private fun subtitleCacheFile(context: Context, videoPath: String): File =
+        File(subtitleCacheDir(context), "${subtitleCacheKey(videoPath)}.en.srt")
+
     suspend fun downloadBestEnglishSubtitleDetailed(
         context: Context,
         videoPath: String
     ): SubtitleDownloadResult = withContext(Dispatchers.IO) {
         try {
+            // Cache check FIRST — if this exact video already has a
+            // downloaded subtitle sitting on disk (even from a previous app
+            // session), reuse it instantly instead of re-searching/
+            // re-downloading every time the same movie is opened.
+            findCachedSubtitle(context, videoPath)?.let { cachedUri ->
+                Log.d(TAG, "Subtitle cache hit for $videoPath")
+                return@withContext SubtitleDownloadResult.Success(cachedUri)
+            }
+
             val cleanName = cleanMovieName(videoPath)
             Log.d(TAG, "Clean search name: $cleanName")
 
@@ -104,15 +145,7 @@ object OpenSubtitlesClient {
                 is SrtResult.HttpError -> return@withContext SubtitleDownloadResult.SrtFetchError(srtResult.code)
             }
 
-            val subtitleDir = File(context.cacheDir, "subtitles")
-            if (!subtitleDir.exists()) subtitleDir.mkdirs()
-
-            val safeFileName = cleanName
-                .replace(Regex("[^A-Za-z0-9._ -]"), "")
-                .take(80)
-                .ifBlank { "subtitle" }
-
-            val subtitleFile = File(subtitleDir, "$safeFileName.en.srt")
+            val subtitleFile = subtitleCacheFile(context, videoPath)
             subtitleFile.writeText(srtText, Charsets.UTF_8)
 
             Log.d(TAG, "Subtitle saved: ${subtitleFile.absolutePath}")
