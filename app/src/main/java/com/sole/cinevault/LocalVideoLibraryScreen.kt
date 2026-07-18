@@ -324,7 +324,24 @@ fun LocalVideoLibraryScreen(
         if (!isGranted) { scanStatus = "Storage permission denied"; return@rememberLauncherForActivityResult }
         scope.launch {
             isLoading = true; scanStatus = "Scanning device videos..."
-            val scannedVideos = try { scanDeviceVideos(context) } catch (e: Exception) { e.printStackTrace(); scanStatus = "Scan failed: ${e.message ?: "Unknown error"}"; isLoading = false; return@launch }
+            val deviceVideos = try { scanDeviceVideos(context) } catch (e: Exception) { e.printStackTrace(); scanStatus = "Scan failed: ${e.message ?: "Unknown error"}"; isLoading = false; return@launch }
+
+            // SMB network shares — merged into the same list so they flow
+            // through the exact same enrichment/poster/library pipeline as
+            // device videos. One failed share (wrong password, device
+            // offline) shows a toast and is skipped, rather than aborting
+            // the whole scan.
+            val smbShares = loadSmbShares(context)
+            val smbVideos = mutableListOf<VideoWithMetadata>()
+            for (share in smbShares) {
+                scanStatus = "Scanning network share: ${share.displayName}..."
+                when (val result = scanSmbShare(share)) {
+                    is SmbScanResult.Success -> smbVideos.addAll(result.videos)
+                    is SmbScanResult.Failure -> Toast.makeText(context, result.reason, Toast.LENGTH_LONG).show()
+                }
+            }
+
+            val scannedVideos = deviceVideos + smbVideos
             scanStatus = "Found ${scannedVideos.size} videos. Loading cached posters..."
             val instantList = scannedVideos.map { applyCachedMetadataIfAvailable(context, it) }
             onVideosLoaded(instantList); saveLibraryCache(context, instantList)
