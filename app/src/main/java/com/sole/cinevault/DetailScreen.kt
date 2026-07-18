@@ -118,7 +118,26 @@ fun DetailScreen(
         }
         Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Black.copy(alpha = 0.20f), Color.Black.copy(alpha = 0.50f), SpaceBlack), startY = 0f, endY = 1400f)))
 
-        val detailScrollState = rememberScrollState(initial = DetailScrollState.get(item.video.path))
+        // FIX: rememberScrollState(initial = X) alone wasn't enough — it
+        // seeds the position before the page has actually laid out, and
+        // this page's height depends on the cast row, which loads
+        // asynchronously. If the restored offset is taller than the page
+        // is AT THAT INSTANT (before cast data arrives), Compose clamps it
+        // straight back down near zero — looks identical to "the fix isn't
+        // working" even though it's running. Explicitly re-scrolling once
+        // cast data has settled (its size actually changes the page's
+        // final height) fixes it for real. Only done once per visit via
+        // the flag, so it doesn't yank the user's position if they're
+        // already scrolling while cast data streams in.
+        val detailScrollState = rememberScrollState()
+        var hasRestoredDetailScroll by remember(item.video.path) { mutableStateOf(false) }
+        LaunchedEffect(item.video.path, castList) {
+            if (!hasRestoredDetailScroll) {
+                val target = DetailScrollState.get(item.video.path)
+                if (target > 0) detailScrollState.scrollTo(target)
+                hasRestoredDetailScroll = true
+            }
+        }
         LaunchedEffect(detailScrollState) {
             snapshotFlow { detailScrollState.value }.collect { DetailScrollState.set(item.video.path, it) }
         }
