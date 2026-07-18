@@ -371,6 +371,24 @@ fun VideoPlayerScreen(
     // Translates a raw PlaybackException into something an actual person can
     // act on, instead of a bare stack trace or silent nothing (the previous
     // behavior — there was no onPlayerError handling at all before this pass).
+    // Media3 wraps the real HTTP failure a few layers deep inside the
+    // PlaybackException — walking the cause chain for it turns a vague
+    // "bad HTTP status" into an actual "HTTP 403" or "HTTP 404", which is
+    // the difference between "access denied" and "file moved/doesn't exist".
+    fun findHttpStatusDetail(error: Throwable): String? {
+        var cause: Throwable? = error
+        var depth = 0
+        while (cause != null && depth < 10) {
+            if (cause is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) {
+                val msg = cause.responseMessage
+                return if (!msg.isNullOrBlank()) "${cause.responseCode} $msg" else "${cause.responseCode}"
+            }
+            cause = cause.cause
+            depth++
+        }
+        return null
+    }
+
     fun friendlyPlaybackError(error: PlaybackException): String {
         val detail = when (error.errorCode) {
             PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ->
@@ -381,7 +399,7 @@ fun VideoPlayerScreen(
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
                 "Connection problem reading this file. If it's on a USB drive or network share, check the connection."
             PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
-                "The server rejected the request for this stream (bad HTTP status)."
+                "The server rejected the request for this stream." + (findHttpStatusDetail(error)?.let { " (HTTP $it)" } ?: "")
             PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE ->
                 "The server returned this link as something other than a playable video (wrong content type)."
             PlaybackException.ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED ->
