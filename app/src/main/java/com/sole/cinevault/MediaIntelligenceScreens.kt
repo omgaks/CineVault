@@ -2,6 +2,7 @@ package com.sole.cinevault
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -10,8 +11,11 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -88,6 +93,7 @@ fun ActorScreen(
     onBack: () -> Unit,
     onItemClick: (VideoWithMetadata) -> Unit
 ) {
+    val context = LocalContext.current
     val items = remember(videos, actorId) {
         videos.filter { v -> v.cast.any { it.id == actorId } }
     }
@@ -97,7 +103,13 @@ fun ActorScreen(
         items = items,
         onBack = onBack,
         onItemClick = onItemClick,
-        circularProfileUrl = profilePath?.let { "https://image.tmdb.org/t/p/w500$it" }
+        circularProfileUrl = profilePath?.let { "https://image.tmdb.org/t/p/w500$it" },
+        // Browsing your own library and "who is this person" are two
+        // different intents — this keeps both available instead of forcing
+        // a choice between them.
+        onSearchWebClick = {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=${Uri.encode(actorName)}")))
+        }
     )
 }
 
@@ -131,7 +143,8 @@ private fun MediaIntelligenceGridScreen(
     onBack: () -> Unit,
     onItemClick: (VideoWithMetadata) -> Unit,
     heroBackdropUrl: String? = null,
-    circularProfileUrl: String? = null
+    circularProfileUrl: String? = null,
+    onSearchWebClick: (() -> Unit)? = null
 ) {
     Box(modifier = Modifier.fillMaxSize().background(SpaceBlack)) {
         LazyVerticalGrid(
@@ -168,6 +181,23 @@ private fun MediaIntelligenceGridScreen(
                             Text(text = title, color = TextBright, fontSize = 24.sp, fontWeight = FontWeight.Black, maxLines = 2)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(text = subtitle, color = TextMuted, fontSize = 13.sp)
+                        }
+                    }
+
+                    if (onSearchWebClick != null) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(GlassSurface)
+                                .border(1.dp, Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)), RoundedCornerShape(50))
+                                .clickable { onSearchWebClick() }
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Icon(imageVector = Icons.Rounded.Public, contentDescription = null, tint = AmberCore, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = "Search the web", color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
 
