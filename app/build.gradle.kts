@@ -105,6 +105,10 @@ dependencies {
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
 
+    // SMB network share scanning (NAS/PC shares) — pure Java, no NDK/native
+    // build step needed, unlike the FFmpeg audio codec work planned later.
+    implementation("eu.agno3.jcifs:jcifs-ng:2.1.10")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
