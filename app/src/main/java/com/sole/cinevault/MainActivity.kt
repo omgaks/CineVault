@@ -420,7 +420,13 @@ fun CineVaultApp() {
                     when (dest.index) {
                         3 -> SettingsScreen(
                             onOpenScanSources = { switchTab(1) },
-                            onOpenStreamUrl = { switchTab(1) }
+                            // FIX: previously just switched to the Library tab and
+                            // discarded the typed URL entirely — Play did nothing.
+                            // Now it actually pushes a Player destination for it.
+                            onOpenStreamUrl = { url ->
+                                val streamName = url.substringAfterLast("/").substringBefore("?").ifBlank { "Stream" }
+                                push(Destination.Player(VideoFile(path = url, name = streamName), "stream", emptyList()))
+                            }
                         )
 
                         2 -> SearchScreen(
