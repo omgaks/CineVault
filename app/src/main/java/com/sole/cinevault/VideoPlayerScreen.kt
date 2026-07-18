@@ -371,25 +371,44 @@ fun VideoPlayerScreen(
     // Translates a raw PlaybackException into something an actual person can
     // act on, instead of a bare stack trace or silent nothing (the previous
     // behavior — there was no onPlayerError handling at all before this pass).
-    fun friendlyPlaybackError(error: PlaybackException): String = when (error.errorCode) {
-        PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ->
-            "File not found. It may have been moved, renamed, or the drive it's on was disconnected."
-        PlaybackException.ERROR_CODE_IO_NO_PERMISSION ->
-            "Permission denied reading this file."
-        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
-        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
-        PlaybackException.ERROR_CODE_IO_UNSPECIFIED ->
-            "Connection problem reading this file. If it's on a USB drive or network share, check the connection."
-        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
-        PlaybackException.ERROR_CODE_DECODING_FAILED,
-        PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ->
-            "This device can't decode this file's video or audio format."
-        PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
-        PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
-        PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ->
-            "This file appears to be corrupted or incomplete."
-        else -> error.message ?: "Playback error (${error.errorCodeName})"
+    fun friendlyPlaybackError(error: PlaybackException): String {
+        val detail = when (error.errorCode) {
+            PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ->
+                "File not found. It may have been moved, renamed, or the drive it's on was disconnected."
+            PlaybackException.ERROR_CODE_IO_NO_PERMISSION ->
+                "Permission denied reading this file."
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
+                "Connection problem reading this file. If it's on a USB drive or network share, check the connection."
+            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
+                "The server rejected the request for this stream (bad HTTP status)."
+            PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE ->
+                "The server returned this link as something other than a playable video (wrong content type)."
+            PlaybackException.ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED ->
+                "This is an unencrypted (http://) link — Android blocks plain http streams by default. Try an https:// link instead."
+            PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE ->
+                "Couldn't read this stream at the expected position — the file may be shorter than reported or still uploading."
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED ->
+                "This link's format isn't a container CineVault recognizes."
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ->
+                "This device can't decode this file's video or audio format."
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+            PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED ->
+                "This file appears to be corrupted or incomplete."
+            PlaybackException.ERROR_CODE_TIMEOUT ->
+                "Timed out trying to start playback."
+            PlaybackException.ERROR_CODE_IO_UNSPECIFIED ->
+                "Couldn't read this source (unspecified I/O error)."
+            else -> error.message ?: "Playback error"
+        }
+        // Always shown, even for the mapped cases — this is what was missing
+        // before: a generic-looking message with no way to tell which
+        // specific error actually fired without another screenshot round-trip.
+        return "$detail (${error.errorCodeName})"
     }
 
     // Only retry automatically for errors that are plausibly transient (a
