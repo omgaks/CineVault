@@ -295,7 +295,13 @@ fun CineVaultApp() {
         }
     }
 
-    BackHandler(enabled = backStack.size > 1) { pop() }
+    // FIX: previously, swiping back at the root of ANY tab (Library, Search,
+    // Settings) exited the app immediately. Now: pop any pushed screen first
+    // (unchanged), then if sitting at a tab's root and it's not Home, fall
+    // back to Home instead of exiting — only Home's own root actually exits.
+    BackHandler(enabled = backStack.size > 1 || activeTabIndex != 0) {
+        if (backStack.size > 1) pop() else switchTab(0)
+    }
 
     // FIX: Only the player screen should be immersive (nav bar hidden).
     // Every other screen (Home/Library/Search/Settings) must show normal system bars.
