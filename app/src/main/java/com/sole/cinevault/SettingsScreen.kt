@@ -3,6 +3,7 @@ package com.sole.cinevault
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -64,6 +65,14 @@ fun SettingsScreen(
     var smbShares by remember { mutableStateOf(loadSmbShares(context)) }
     var showSmbDialog by remember { mutableStateOf(false) }
     var editingShare by remember { mutableStateOf<SmbShare?>(null) }
+
+    // FIX: these dialogs are plain full-screen overlays with no connection to
+    // the system back gesture — Settings is the bottom of the nav stack, so
+    // without this, swiping back while a dialog is open fell through to
+    // Android's default behavior (closing the app) instead of dismissing
+    // the dialog and returning to Settings.
+    BackHandler(enabled = showStreamDialog) { showStreamDialog = false }
+    BackHandler(enabled = showSmbDialog) { showSmbDialog = false; editingShare = null }
 
     val folderPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
