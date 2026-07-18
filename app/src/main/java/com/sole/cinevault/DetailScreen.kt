@@ -59,6 +59,20 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.sole.cinevault.ui.theme.*
 
+// Persists Detail screen scroll position per movie across navigation —
+// FIX: tapping into an Actor/Genre/Director/Collection page and then Back
+// used to always land back at the very top of Detail, because that push
+// removes DetailScreen from composition entirely (only the top of the nav
+// stack renders); a fresh instance means rememberScrollState() has no
+// memory of where you were. Keyed by video path so different movies don't
+// share a scroll position, but returning to the SAME movie lands you right
+// back where you tapped away from (e.g. the Cast & Crew row).
+private object DetailScrollState {
+    private val positions = mutableMapOf<String, Int>()
+    fun get(key: String): Int = positions[key] ?: 0
+    fun set(key: String, value: Int) { positions[key] = value }
+}
+
 @Composable
 fun DetailScreen(
     item: VideoWithMetadata,
@@ -104,7 +118,12 @@ fun DetailScreen(
         }
         Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Black.copy(alpha = 0.20f), Color.Black.copy(alpha = 0.50f), SpaceBlack), startY = 0f, endY = 1400f)))
 
-        Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        val detailScrollState = rememberScrollState(initial = DetailScrollState.get(item.video.path))
+        LaunchedEffect(detailScrollState) {
+            snapshotFlow { detailScrollState.value }.collect { DetailScrollState.set(item.video.path, it) }
+        }
+
+        Column(modifier = Modifier.fillMaxSize().verticalScroll(detailScrollState)) {
             // Small poster thumbnail removed — the big hero backdrop is the
             // only poster now, enlarged 30% (380 -> 494) and brightened to
             // match, since it no longer has to share visual weight.
