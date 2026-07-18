@@ -71,7 +71,10 @@ suspend fun scanDeviceVideos(context: Context): List<VideoWithMetadata> =
         results
     }
 
-private fun isPersonalVideo(fileName: String): Boolean {
+// Made internal (was private) so SmbVideoScanner.kt can reuse the exact same
+// filename-cleaning/classification logic instead of duplicating (and
+// potentially diverging from) it for network-scanned files.
+internal fun isPersonalVideo(fileName: String): Boolean {
     val lower = fileName.lowercase()
     return when {
         lower.matches(Regex("^(vid|img|dsc|dcim|cam)_\\d{8}_\\d{6}.*")) -> true
@@ -87,7 +90,7 @@ private fun isPersonalVideo(fileName: String): Boolean {
     }
 }
 
-private fun cleanScannedTitle(fileName: String): String {
+internal fun cleanScannedTitle(fileName: String): String {
     var title = fileName.substringBeforeLast(".")
         .replace(Regex("\\[.*?]"), " ")
         .replace(Regex("\\(\\d{4}\\)"), " ")
@@ -108,7 +111,7 @@ private fun cleanScannedTitle(fileName: String): String {
     return title.replace(Regex("\\s+"), " ").trim().ifBlank { fileName.substringBeforeLast(".") }
 }
 
-private fun guessMediaType(fileName: String): String {
+internal fun guessMediaType(fileName: String): String {
     val lower = fileName.lowercase()
     return when {
         Regex("s\\d{1,2}e\\d{1,2}", RegexOption.IGNORE_CASE).containsMatchIn(lower) -> "tv"
