@@ -18,11 +18,15 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -48,11 +52,18 @@ private val AshSignatureFont = FontFamily(
 @Composable
 fun SettingsScreen(
     onOpenScanSources: () -> Unit,
-    onOpenStreamUrl: () -> Unit
+    // FIX: previously took no argument, so the URL typed into the Stream
+    // dialog was captured then silently discarded — Play did nothing.
+    // Now the URL is actually passed through to whoever handles playback.
+    onOpenStreamUrl: (String) -> Unit
 ) {
     val context = LocalContext.current
     var selectedFolders by remember { mutableStateOf(loadMediaFolders(context)) }
     var showStreamDialog by remember { mutableStateOf(false) }
+
+    var smbShares by remember { mutableStateOf(loadSmbShares(context)) }
+    var showSmbDialog by remember { mutableStateOf(false) }
+    var editingShare by remember { mutableStateOf<SmbShare?>(null) }
 
     val folderPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -104,6 +115,38 @@ fun SettingsScreen(
                 GlassActionRow(icon = Icons.Filled.Settings, title = "Scan Sources", subtitle = "Movies, TV Shows, Downloads, Anime, Camera", action = "OPEN") { onOpenScanSources() }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(text = "After changing scan sources, go to Library and rescan.", color = TextFaint, fontSize = 12.sp, lineHeight = 17.sp)
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Network Shares (SMB) — scans a NAS/PC share into the same library
+            GlassSectionCard(title = "Network Shares", subtitle = "Scan videos from a NAS or PC share (SMB) into your library.") {
+                Button(
+                    onClick = { editingShare = null; showSmbDialog = true },
+                    shape = RoundedCornerShape(18.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = GlassSurface, contentColor = TextBright)
+                ) {
+                    Icon(imageVector = Icons.Rounded.Dns, contentDescription = null, tint = AmberCore, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Add Network Share", fontWeight = FontWeight.Bold)
+                }
+                Spacer(modifier = Modifier.height(14.dp))
+                if (smbShares.isEmpty()) {
+                    Text(text = "No network shares added yet.", color = TextMuted, fontSize = 14.sp)
+                } else {
+                    smbShares.forEach { share ->
+                        SmbShareRow(
+                            share = share,
+                            onEdit = { editingShare = share; showSmbDialog = true },
+                            onDelete = {
+                                removeSmbShare(context, share.id)
+                                smbShares = loadSmbShares(context)
+                            }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = "After adding a share, go to Library and rescan to pull its videos in.", color = TextFaint, fontSize = 12.sp, lineHeight = 17.sp)
+                }
             }
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -179,7 +222,21 @@ fun SettingsScreen(
                 onDismiss = { showStreamDialog = false },
                 onPlayUrl = { url ->
                     showStreamDialog = false
-                    onOpenStreamUrl()
+                    onOpenStreamUrl(url)
+                }
+            )
+        }
+
+        // SMB share add/edit dialog
+        if (showSmbDialog) {
+            SmbShareDialog(
+                existing = editingShare,
+                onDismiss = { showSmbDialog = false; editingShare = null },
+                onSave = { share ->
+                    addOrUpdateSmbShare(context, share)
+                    smbShares = loadSmbShares(context)
+                    showSmbDialog = false
+                    editingShare = null
                 }
             )
         }
@@ -234,6 +291,29 @@ private fun FolderRow(folder: String) {
         Icon(imageVector = Icons.Rounded.Folder, contentDescription = null, tint = AmberCore, modifier = Modifier.size(17.dp))
         Spacer(modifier = Modifier.width(9.dp))
         Text(text = folder, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun SmbShareRow(share: SmbShare, onEdit: () -> Unit, onDelete: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp)
+            .clip(RoundedCornerShape(16.dp)).background(SpaceDeep.copy(alpha = 0.60f))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(imageVector = Icons.Rounded.Dns, contentDescription = null, tint = AmberCore, modifier = Modifier.size(17.dp))
+        Spacer(modifier = Modifier.width(9.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = share.displayName, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = "${share.host}/${share.shareName}", color = TextMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+            Icon(imageVector = Icons.Rounded.Edit, contentDescription = "Edit", tint = TextMuted, modifier = Modifier.size(16.dp))
+        }
+        IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+            Icon(imageVector = Icons.Rounded.Delete, contentDescription = "Remove", tint = Color(0xFFFF5252), modifier = Modifier.size(16.dp))
+        }
     }
 }
 
