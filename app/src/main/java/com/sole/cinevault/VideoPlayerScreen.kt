@@ -110,8 +110,10 @@ import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import com.sole.cinevault.ui.theme.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // Duration cache — saves real video duration so progress % is accurate
 private fun saveDuration(context: Context, videoPath: String, durationMs: Long) {
@@ -496,7 +498,28 @@ fun VideoPlayerScreen(
         previewBitmap = null; previewFrames = emptyList(); isVideoEnded = false
         playerErrorMessage = null; errorRetryCount = 0; stuckBufferingHint = false
         if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
-        playCurrentVideoWithSubtitle(resumePosition = savedPosition)
+
+        // Check for an already-downloaded subtitle FIRST — pure local disk
+        // check, no network involved — so a movie watched before (even in
+        // an earlier app session) gets its subtitle attached on the very
+        // first load, instead of starting silent and only picking it up a
+        // moment later once a redundant search finishes.
+        val cachedSubtitleUri = if (!isStreamMedia && canDownloadExternalSubtitles) {
+            withContext(Dispatchers.IO) { OpenSubtitlesClient.findCachedSubtitle(context, currentVideo.path) }
+        } else null
+
+        if (cachedSubtitleUri != null) {
+            subtitlesEnabled = true
+            trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
+            playCurrentVideoWithSubtitle(cachedSubtitleUri, savedPosition)
+            // Already have a subtitle for this exact video — mark it as
+            // attempted so the block below doesn't also kick off a
+            // redundant network search.
+            autoSubtitleAttemptedForPath = currentVideo.path
+        } else {
+            playCurrentVideoWithSubtitle(resumePosition = savedPosition)
+        }
+
         if (!isStreamMedia && canDownloadExternalSubtitles && autoSubtitleAttemptedForPath != currentVideo.path) {
             autoSubtitleAttemptedForPath = currentVideo.path
             scope.launch {
