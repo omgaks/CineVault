@@ -92,46 +92,99 @@ fun DetailScreen(
     val hasResumePosition = savedPosition > 15_000L
     val trailerSearchUrl = remember(item.title) { "https://www.youtube.com/results?search_query=${Uri.encode("${item.title} official trailer")}" }
 
-    // Cast list — previously initialized via loadCastCache() directly inside
-    // the remember{} initializer, which is a SharedPreferences read + Gson
-    // JSON parse running synchronously on the MAIN thread during
-    // composition (a real jank risk on lower-end devices), AND the
-    // LaunchedEffect below re-ran that exact same cache lookup a frame
-    // later regardless, discarding the first read. remember was also keyed
-    // on item.video.path while the effect was keyed on item.tmdbId/type —
-    // fine today, but a latent bug if a path ever gets re-matched to a
-    // different TMDB entry. Now: state starts empty, everything (cache
-    // lookup AND network fetch) happens inside ONE effect on Dispatchers.IO,
-    // keyed consistently on tmdbId/type. Trade-off: a cache hit now shows
-    // "Loading cast..." for a frame or two instead of appearing instantly,
-    // in exchange for never blocking the main thread.
-    var castList by remember(item.tmdbId, item.type) { mutableStateOf<List<TmdbCastMember>>(emptyList()) }
-    var castLoading by remember(item.tmdbId, item.type) { mutableStateOf(true) }
+    // Cast list — keyed consistently on item.tmdbId/item.type now (the
+    // original had remember() keyed on item.video.path but the effect keyed
+    // on tmdbId/type — harmless today, but a latent bug if a path is ever
+    // re-matched to a different TMDB entry). The synchronous cache read in
+    // remember{} is kept deliberately: the cast payload here is at most 16
+    // actors, a small enough SharedPreferences read + parse that it's
+    // imperceptible on the main thread, and it means a revisit to an
+    // already-cached title renders the cast row instantly instead of
+    // flashing "Loading cast..." for a frame — which, for a screen you
+    // revisit constantly, matters more than the near-zero real cost of the
+    // synchronous read. The one actual bug fixed here: the effect no longer
+    // re-reads the cache a second time and reassigns state with what's
+    // already there — it just checks what remember{} already loaded.
+    var castList by remember(item.tmdbId, item.type) { mutableStateOf(loadCastCache(context, item.tmdbId, item.type)) }
+    var castLoading by remember(item.tmdbId, item.type) { mutableStateOf(castList.isEmpty()) }
 
     LaunchedEffect(item.tmdbId, item.type) {
         val id = item.tmdbId
         if (id == null) { castLoading = false; return@LaunchedEffect }
 
-        val cached = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            loadCastCache(context, id, item.type)
-        }
-        if (cached.isNotEmpty()) {
-            castList = cached
-            castLoading = false
-            return@LaunchedEffect
-        }
+        // Cache already checked synchronously above — only hit the network
+        // if that came up empty. No redundant second cache read.
+        if (castList.isNotEmpty()) { castLoading = false; return@LaunchedEffect }
 
+        castLoading = true
         val freshCast = try {
             val credits = if (item.type == "tv") TmdbClient.api.getTvCredits(BuildConfig.TMDB_TOKEN, id) else TmdbClient.api.getMovieCredits(BuildConfig.TMDB_TOKEN, id)
             credits.cast.take(16)
         } catch (e: Exception) { emptyList() }
 
         castList = freshCast
+        // Saving (unlike the read) happens after the network call already
+        // completed, so dispatching it to IO here adds zero visible delay —
+        // no flash risk, same reasoning that made the read revert worth it.
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             saveCastCache(context, id, item.type, freshCast)
         }
         castLoading = false
     }
+
+    // Dynamic theming — extracts the hero image's dominant dark-muted color
+    // and tints the gradient overlay below with it, so each title gets a
+    // subtle ambient color mood instead of an identical flat-black wash for
+    // every movie. Runs on Dispatchers.IO since Palette.generate() does real
+    // CPU work walking every pixel of the sampled bitmap — cheap at the tiny
+    // size requested here, but still not something to run on the main/UI
+    // thread. allowHardware(false) on this ONE dedicated image load is
+    // required: Coil can hand back a "hardware bitmap" (GPU-only memory) for
+    // normal display, which Palette can't read pixels from at all — the
+    // AsyncImage composables elsewhere on this screen are untouched and keep
+    // using Coil's normal (faster) hardware-bitmap path.
+    var paletteAccentColor by remember(item.video.path) { mutableStateOf<Color?>(null) }
+    val heroImageForPalette = item.backdropUrl ?: item.posterUrl
+    LaunchedEffect(heroImageForPalette) {
+        val url = heroImageForPalette
+        if (url.isNullOrBlank()) { paletteAccentColor = null; return@LaunchedEffect }
+        paletteAccentColor = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val request = coil.request.ImageRequest.Builder(context)
+                    .data(url)
+                    .allowHardware(false)
+                    .size(120, 120) // Palette doesn't need full resolution — small and fast
+                    .build()
+                val result = coil.Coil.imageLoader(context).execute(request)
+                val bitmap = (result as? coil.request.SuccessResult)?.drawable?.let { drawable ->
+                    (drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap ?: run {
+                        // Fallback for the rare non-bitmap drawable — draws it
+                        // into a plain bitmap so Palette still has pixels to read.
+                        val w = drawable.intrinsicWidth.coerceAtLeast(1)
+                        val h = drawable.intrinsicHeight.coerceAtLeast(1)
+                        val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+                        val canvas = android.graphics.Canvas(bmp)
+                        drawable.setBounds(0, 0, w, h)
+                        drawable.draw(canvas)
+                        bmp
+                    }
+                } ?: return@withContext null
+                // Prefers a dark-muted swatch so the tint stays moody and
+                // cinematic rather than garish, falling back progressively if
+                // this particular poster doesn't have one.
+                val palette = androidx.palette.graphics.Palette.from(bitmap).generate()
+                val swatch = palette.darkMutedSwatch ?: palette.mutedSwatch ?: palette.dominantSwatch
+                swatch?.rgb?.let { Color(it) }
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+    val animatedPaletteAccent by androidx.compose.animation.animateColorAsState(
+        targetValue = paletteAccentColor ?: SpaceBlack,
+        animationSpec = tween(700),
+        label = "detailPaletteAccent"
+    )
 
     Box(modifier = Modifier.fillMaxSize().background(SpaceBlack)) {
         val heroImage = item.backdropUrl ?: item.posterUrl
@@ -140,7 +193,10 @@ fun DetailScreen(
             // background wash so the backdrop reads richer instead of murky.
             AsyncImage(model = heroImage, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().height(676.dp).blur(32.dp))
         }
-        Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Black.copy(alpha = 0.20f), Color.Black.copy(alpha = 0.50f), SpaceBlack), startY = 0f, endY = 1400f)))
+        // Tinted with the extracted palette color instead of flat black —
+        // falls back to SpaceBlack (a no-op tint) until extraction finishes
+        // or if it fails, so this never blocks or breaks the existing look.
+        Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(animatedPaletteAccent.copy(alpha = 0.30f), animatedPaletteAccent.copy(alpha = 0.55f), SpaceBlack), startY = 0f, endY = 1400f)))
 
         // FIX: rememberScrollState(initial = X) alone wasn't enough — it
         // seeds the position before the page has actually laid out, and
