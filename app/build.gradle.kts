@@ -114,6 +114,13 @@ dependencies {
     // stable, official AndroidX artifact (not a third-party dependency).
     implementation("androidx.palette:palette-ktx:1.0.0")
 
+    // Encrypted storage for SMB credentials (Android Keystore-backed).
+    // NOTE: 1.1.0-alpha06 is deliberate, not a mistake — AndroidX Security
+    // Crypto has never shipped a stable 1.1 release, and this alpha is the
+    // de facto production-standard version (1.0.0 has known Keystore bugs
+    // on some devices that this release fixed).
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
