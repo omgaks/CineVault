@@ -29,7 +29,11 @@ sealed class SmbScanResult {
     data class Failure(val share: SmbShare, val reason: String) : SmbScanResult()
 }
 
-private fun buildCifsContext(share: SmbShare): CIFSContext {
+// No longer private — reused by SmbDataSource.kt during playback so the
+// exact same dialect range / credential-building logic used to SCAN a share
+// is also used to PLAY a file from it, instead of duplicating (and risking
+// drifting out of sync with) this logic in two places.
+fun buildCifsContext(share: SmbShare): CIFSContext {
     val props = Properties().apply {
         // jcifs-ng negotiates the best dialect within this range
         // automatically — this just rules out ancient SMB1 rather than
