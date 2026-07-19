@@ -1306,7 +1306,11 @@ fun VideoPlayerScreen(
                     )
                 }
 
-                AnimatedVisibility(visible = showIntroSkip && !showSeekPreview && !isDraggingSeekbar, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
+                // Previously only checked showSeekPreview/isDraggingSeekbar —
+                // it stayed visible (and floated on top of) any open popup
+                // menu, most visibly the Subtitle Settings sheet.
+                val anyMenuOpenForIntroSkip = showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu || showSrtBrowser
+                AnimatedVisibility(visible = showIntroSkip && !showSeekPreview && !isDraggingSeekbar && !anyMenuOpenForIntroSkip, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
                     SkipIntroButton(isLandscape = isLandscape) { val t = 95_000L.coerceAtMost(duration.coerceAtLeast(1L)); exoPlayer.seekTo(t); position = t; showControls = true }
                 }
 
