@@ -276,7 +276,14 @@ fun VideoPlayerScreen(
 
     val exoPlayer: ExoPlayer = remember {
         ExoPlayer.Builder(context)
-            .setRenderersFactory(CineRenderersFactory(context))
+            // EXTENSION_RENDERER_MODE_ON — the default is OFF, which would
+            // mean the FFmpeg fallback audio renderer added in
+            // CineRenderersFactory.kt never actually gets used no matter
+            // what it registers. ON keeps the platform/hardware decoder as
+            // first choice (see that file's ordering) and only falls
+            // through to FFmpeg for codecs the device genuinely can't
+            // decode natively (DTS, TrueHD, some E-AC3 variants).
+            .setRenderersFactory(CineRenderersFactory(context).setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON))
             .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
