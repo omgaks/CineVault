@@ -109,6 +109,11 @@ dependencies {
     // build step needed, unlike the FFmpeg audio codec work planned later.
     implementation("eu.agno3.jcifs:jcifs-ng:2.1.10")
 
+    // Palette-based dynamic theming on the Detail screen — extracts a
+    // dominant color from each title's poster/backdrop artwork. Small,
+    // stable, official AndroidX artifact (not a third-party dependency).
+    implementation("androidx.palette:palette-ktx:1.0.0")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
