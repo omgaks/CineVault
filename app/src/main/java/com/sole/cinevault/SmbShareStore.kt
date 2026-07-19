@@ -1,16 +1,23 @@
 package com.sole.cinevault
 
 import android.content.Context
+import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
-// NOTE ON SECURITY: passwords are stored in plain SharedPreferences here,
-// matching how the rest of this app already stores things (API keys via
-// BuildConfig, secret-folder state, etc. — none of it uses
-// EncryptedSharedPreferences). Flagging it rather than silently doing
-// something different from the rest of the codebase; upgrading everything
-// to encrypted storage would be a separate, broader pass if it's ever wanted.
+// ── Credential storage — now Keystore-encrypted ────────────────────────────
+// Previously plain SharedPreferences: NAS/PC share usernames and passwords
+// sat in cleartext on disk, readable by anything with root access or a plain
+// (non-encrypted) adb backup of the app. EncryptedSharedPreferences
+// transparently encrypts both keys and values using a key that only exists
+// inside the device's hardware-backed Android Keystore — from every other
+// function in this file's point of view it behaves exactly like a normal
+// SharedPreferences, so nothing calling loadSmbShares()/saveSmbShares()
+// anywhere else in the app needs to change at all.
+
 data class SmbShare(
     val id: String = UUID.randomUUID().toString(),
     val displayName: String,
@@ -24,12 +31,58 @@ data class SmbShare(
     val domain: String = ""
 )
 
-private const val SMB_SHARES_PREF = "cinevault_smb_shares"
+private const val SMB_SHARES_PREF = "cinevault_smb_shares_secure"
+private const val SMB_SHARES_PREF_LEGACY = "cinevault_smb_shares"
 private const val SMB_SHARES_KEY = "shares"
 
+private fun securePrefs(context: Context): SharedPreferences {
+    val masterKey = MasterKey.Builder(context)
+        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+        .build()
+    return EncryptedSharedPreferences.create(
+        context,
+        SMB_SHARES_PREF,
+        masterKey,
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    )
+}
+
+// One-time migration for anyone upgrading from before encrypted storage
+// existed. Reads whatever's sitting in the old plain-text prefs file, copies
+// it into the new encrypted store, then wipes the old file — leaving it
+// alone would mean the plaintext passwords just sit there unused on disk
+// forever, defeating the point of encrypting anything going forward.
+private fun migrateLegacySharesIfNeeded(context: Context) {
+    val legacyPrefs = context.getSharedPreferences(SMB_SHARES_PREF_LEGACY, Context.MODE_PRIVATE)
+    val legacyRaw = legacyPrefs.getString(SMB_SHARES_KEY, null)
+    if (legacyRaw.isNullOrBlank() || legacyRaw == "[]") {
+        if (legacyRaw != null) legacyPrefs.edit().clear().apply()
+        return
+    }
+    try {
+        val secure = securePrefs(context)
+        // Only migrate if the encrypted store is empty — never overwrite
+        // anything already saved there.
+        if (secure.getString(SMB_SHARES_KEY, null).isNullOrBlank()) {
+            secure.edit().putString(SMB_SHARES_KEY, legacyRaw).apply()
+        }
+        legacyPrefs.edit().clear().apply()
+    } catch (_: Exception) {
+        // If migration fails for any reason, leave the legacy file in place
+        // rather than risk losing saved shares outright — loadSmbShares()
+        // below still works against the encrypted store either way, so a
+        // failed migration just means old shares need re-adding manually.
+    }
+}
+
 fun loadSmbShares(context: Context): List<SmbShare> {
-    val raw = context.getSharedPreferences(SMB_SHARES_PREF, Context.MODE_PRIVATE)
-        .getString(SMB_SHARES_KEY, "[]") ?: "[]"
+    migrateLegacySharesIfNeeded(context)
+    val raw = try {
+        securePrefs(context).getString(SMB_SHARES_KEY, "[]") ?: "[]"
+    } catch (_: Exception) {
+        "[]"
+    }
     return try {
         val array = JSONArray(raw)
         buildList {
@@ -73,10 +126,14 @@ fun saveSmbShares(context: Context, shares: List<SmbShare>) {
             }
         )
     }
-    context.getSharedPreferences(SMB_SHARES_PREF, Context.MODE_PRIVATE)
-        .edit()
-        .putString(SMB_SHARES_KEY, array.toString())
-        .apply()
+    try {
+        securePrefs(context).edit().putString(SMB_SHARES_KEY, array.toString()).apply()
+    } catch (_: Exception) {
+        // Deliberately no plaintext fallback write here — if the encrypted
+        // store can't be created for some reason, silently failing to save
+        // is the safer failure mode compared to writing credentials back
+        // out in the clear.
+    }
 }
 
 fun addOrUpdateSmbShare(context: Context, share: SmbShare) {
