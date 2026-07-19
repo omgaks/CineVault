@@ -105,6 +105,7 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
@@ -185,6 +186,17 @@ fun VideoPlayerScreen(
     var menuTouchKey by remember { mutableIntStateOf(0) }
     var playerViewForSubtitleStyle by remember { mutableStateOf<PlayerView?>(null) }
 
+    // ── Subtitle sync state ──────────────────────────────────────────────
+    // originalSubtitleUri is the unshifted source of truth for whatever
+    // subtitle is currently attached (cached / downloaded / picked). The
+    // sync-offset feature always re-derives a shifted copy FROM this file
+    // rather than shifting an already-shifted file, so repeated slider moves
+    // don't compound. appliedSubtitleOffsetMs tracks what offset is actually
+    // reflected in the loaded media item right now, so the effect below can
+    // skip redundant reloads when nothing has really changed.
+    var originalSubtitleUri by remember { mutableStateOf<Uri?>(null) }
+    var appliedSubtitleOffsetMs by remember { mutableLongStateOf(0L) }
+
     var position by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(1L) }
     var isPlaying by remember { mutableStateOf(true) }
@@ -210,6 +222,18 @@ fun VideoPlayerScreen(
     var stuckBufferingHint by remember { mutableStateOf(false) }
     var playerErrorMessage by remember { mutableStateOf<String?>(null) }
     var errorRetryCount by remember { mutableIntStateOf(0) }
+
+    // ── A/V drift watchdog state ─────────────────────────────────────────
+    // ExoPlayer syncs video frames to the audio clock internally, so true
+    // drift mostly doesn't accumulate the way it would in a naive player.
+    // What actually happens on long sessions is the decoder falling behind
+    // (a burst of dropped frames) after a slow-storage or CPU hiccup, and
+    // not always recovering cleanly on its own. droppedFrameNudgeCount /
+    // lastNudgeAtMs cap how often a corrective same-position seek can fire,
+    // so a device that's genuinely too slow to decode this file doesn't get
+    // seeked on a loop.
+    var droppedFrameNudgeCount by remember { mutableIntStateOf(0) }
+    var lastNudgeAtMs by remember { mutableLongStateOf(0L) }
 
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
@@ -339,7 +363,12 @@ fun VideoPlayerScreen(
         scope.launch { delay(1200); edgeSwipeHint = "" }
     }
 
-    fun playCurrentVideoWithSubtitle(subtitleUri: Uri? = null, resumePosition: Long = 0L) {
+    // subtitleUri, when non-null AND isOriginalSubtitle, becomes the new
+    // "source of truth" for the sync-offset feature (originalSubtitleUri) and
+    // the offset is reset to 0 so the on-screen slider always reflects what's
+    // actually loaded. Internal offset-driven reloads pass
+    // isOriginalSubtitle = false so they don't stomp on that source of truth.
+    fun playCurrentVideoWithSubtitle(subtitleUri: Uri? = null, resumePosition: Long = 0L, isOriginalSubtitle: Boolean = true) {
         // File-existence check up front for local files — USB drives get
         // unplugged, SD cards get removed, files get moved/renamed. Without
         // this, ExoPlayer just throws a raw IO error with no clear message;
@@ -351,6 +380,11 @@ fun VideoPlayerScreen(
         }
         try {
             playerErrorMessage = null
+            if (subtitleUri != null && isOriginalSubtitle) {
+                originalSubtitleUri = subtitleUri
+                appliedSubtitleOffsetMs = 0L
+                subtitleSyncOffset = 0f
+            }
             val mediaItemBuilder = MediaItem.Builder().setUri(currentVideo.path)
             if (subtitleUri != null) {
                 mediaItemBuilder.setSubtitleConfigurations(listOf(
@@ -497,6 +531,8 @@ fun VideoPlayerScreen(
         pendingNextEpisode = null; nextEpisodeCountdown = 0; showNextEpisodeOverlay = false
         previewBitmap = null; previewFrames = emptyList(); isVideoEnded = false
         playerErrorMessage = null; errorRetryCount = 0; stuckBufferingHint = false
+        originalSubtitleUri = null; appliedSubtitleOffsetMs = 0L; subtitleSyncOffset = 0.0f
+        droppedFrameNudgeCount = 0; lastNudgeAtMs = 0L
         if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
 
         // Check for an already-downloaded subtitle FIRST — pure local disk
@@ -598,7 +634,10 @@ fun VideoPlayerScreen(
                     errorRetryCount++
                     scope.launch {
                         delay(1000L * errorRetryCount)
-                        playCurrentVideoWithSubtitle(resumePosition = posAtError)
+                        // Reattach whatever subtitle was active before the
+                        // error — previously this dropped subtitles silently
+                        // on every auto-retry since no subtitleUri was passed.
+                        playCurrentVideoWithSubtitle(subtitleUri = originalSubtitleUri, resumePosition = posAtError, isOriginalSubtitle = false)
                     }
                 } else {
                     playerErrorMessage = friendlyPlaybackError(error)
@@ -608,6 +647,28 @@ fun VideoPlayerScreen(
         }
         exoPlayer.addListener(listener)
         onDispose { exoPlayer.removeListener(listener) }
+    }
+
+    // A/V drift watchdog — see the state comment above for why this exists.
+    // AnalyticsListener.onDroppedVideoFrames fires with a count for a
+    // recent window; a real burst (not the occasional single dropped frame)
+    // is the practical signal that the video renderer has fallen behind the
+    // audio clock. A same-position seek is a cheap, usually-imperceptible
+    // way to force it to re-anchor.
+    DisposableEffect(exoPlayer, currentVideo.path) {
+        val analyticsListener = object : AnalyticsListener {
+            override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
+                if (droppedFrames < 8) return
+                if (droppedFrameNudgeCount >= 3) return
+                val now = System.currentTimeMillis()
+                if (now - lastNudgeAtMs < 90_000L) return
+                lastNudgeAtMs = now
+                droppedFrameNudgeCount++
+                exoPlayer.seekTo(exoPlayer.currentPosition)
+            }
+        }
+        exoPlayer.addAnalyticsListener(analyticsListener)
+        onDispose { exoPlayer.removeAnalyticsListener(analyticsListener) }
     }
 
     // Debounced buffering spinner — a raw isBuffering flag flickers on every
@@ -757,24 +818,28 @@ fun VideoPlayerScreen(
         sv?.setStyle(CaptionStyleCompat(AndroidColor.WHITE, AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_OUTLINE, AndroidColor.BLACK, null))
     }
 
-    LaunchedEffect(subtitleSyncOffset) {
-        val offsetUs = (subtitleSyncOffset * 1_000_000L).toLong()
-        val currentGroups = exoPlayer.currentTracks.groups
-        val textGroup = currentGroups.firstOrNull { it.type == C.TRACK_TYPE_TEXT }
-        if (textGroup != null) {
-            try {
-                val params = exoPlayer.trackSelectionParameters
-                exoPlayer.trackSelectionParameters = params.buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subtitlesEnabled)
-                    .build()
-                val currentItem = exoPlayer.currentMediaItem ?: return@LaunchedEffect
-                val newItem = currentItem.buildUpon()
-                    .setClippingConfiguration(
-                        MediaItem.ClippingConfiguration.Builder()
-                            .setStartPositionMs(0)
-                            .build()
-                    ).build()
-            } catch (_: Exception) {}
+    // Subtitle sync offset — previously computed an offsetUs value and even
+    // built a replacement MediaItem, but never actually applied either one
+    // (the MediaItem was discarded immediately) — the slider visually moved
+    // but had zero effect on playback. Media3 has no live "shift the timing
+    // of an already-attached text track" API, so this takes the same
+    // approach already used elsewhere on this screen for attaching
+    // subtitles: rewrite the ORIGINAL srt file's timestamps by the chosen
+    // offset (never a previously-shifted copy, so repeated adjustments don't
+    // compound) and reload it. Debounced so dragging the slider doesn't
+    // trigger a reload on every intermediate value, and skipped entirely if
+    // the resulting offset matches what's already loaded.
+    LaunchedEffect(subtitleSyncOffset, originalSubtitleUri) {
+        val baseUri = originalSubtitleUri ?: return@LaunchedEffect
+        if (!subtitlesEnabled) return@LaunchedEffect
+        val offsetMs = (subtitleSyncOffset * 1000f).toLong()
+        if (offsetMs == appliedSubtitleOffsetMs) return@LaunchedEffect
+        delay(350)
+        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+        val shiftedUri = withContext(Dispatchers.IO) { buildShiftedSubtitleFile(context, baseUri, offsetMs) }
+        if (shiftedUri != null) {
+            appliedSubtitleOffsetMs = offsetMs
+            playCurrentVideoWithSubtitle(subtitleUri = shiftedUri, resumePosition = resumeAt, isOriginalSubtitle = false)
         }
     }
 
@@ -1018,7 +1083,10 @@ fun VideoPlayerScreen(
                         text = "Retry", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
                         modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore).clickable {
                             errorRetryCount = 0
-                            playCurrentVideoWithSubtitle(resumePosition = position)
+                            // Reattach the previously active subtitle (if any)
+                            // on manual retry too — same fix as the automatic
+                            // transient-error retry above.
+                            playCurrentVideoWithSubtitle(subtitleUri = originalSubtitleUri, resumePosition = position, isOriginalSubtitle = false)
                         }.padding(horizontal = 18.dp, vertical = 9.dp)
                     )
                 }
@@ -1404,6 +1472,49 @@ private fun findNearbySrtFiles(videoPath: String): List<java.io.File> {
         }
     } catch (_: Exception) {}
     return results.toList()
+}
+
+// ── Subtitle sync offset support ─────────────────────────────────────────
+// Media3 has no public API to shift the timing of an already-attached text
+// track live, so the working approach is: read the ORIGINAL srt file's raw
+// text, shift every "HH:MM:SS,mmm" timestamp by offsetMs, write the result
+// to a single reused temp file, and reload it as the subtitle configuration.
+// Always reshifted from the untouched original (never a previously-shifted
+// copy) so repeated adjustments never compound.
+private val SRT_TIME_REGEX = Regex("(\\d{2}):(\\d{2}):(\\d{2}),(\\d{3})")
+
+private fun readTextFromUri(context: Context, uri: Uri): String? {
+    return try {
+        context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+    } catch (e: Exception) { null }
+}
+
+private fun shiftSrtTimestampMatch(match: MatchResult, offsetMs: Long): String {
+    val h = match.groupValues[1].toLong()
+    val m = match.groupValues[2].toLong()
+    val s = match.groupValues[3].toLong()
+    val ms = match.groupValues[4].toLong()
+    var totalMs = (h * 3_600_000L) + (m * 60_000L) + (s * 1_000L) + ms + offsetMs
+    if (totalMs < 0L) totalMs = 0L
+    val newH = totalMs / 3_600_000L
+    val newM = (totalMs % 3_600_000L) / 60_000L
+    val newS = (totalMs % 60_000L) / 1_000L
+    val newMs = totalMs % 1_000L
+    return "%02d:%02d:%02d,%03d".format(newH, newM, newS, newMs)
+}
+
+// Runs on Dispatchers.IO (called from a coroutine via withContext). Returns
+// the source Uri unchanged for a zero offset — no need to read/write a file
+// just to produce an identical copy.
+private fun buildShiftedSubtitleFile(context: Context, sourceUri: Uri, offsetMs: Long): Uri? {
+    if (offsetMs == 0L) return sourceUri
+    val original = readTextFromUri(context, sourceUri) ?: return null
+    val shifted = SRT_TIME_REGEX.replace(original) { shiftSrtTimestampMatch(it, offsetMs) }
+    return try {
+        val outFile = java.io.File(context.cacheDir, "cinevault_synced_subtitle.srt")
+        outFile.writeText(shifted)
+        Uri.fromFile(outFile)
+    } catch (e: Exception) { null }
 }
 
 @Composable
