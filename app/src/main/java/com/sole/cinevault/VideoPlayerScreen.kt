@@ -1052,10 +1052,17 @@ fun VideoPlayerScreen(
                 }
         )
 
-        AnimatedVisibility(visible = showBrightnessCircle, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopStart).padding(top = 86.dp, start = 28.dp)) {
+        // Positioned on the OPPOSITE side from the drag gesture that
+        // controls each one — previously both showed on the SAME side as
+        // their gesture (brightness at top-left, matching the left-half
+        // drag zone), meaning the thumb doing the dragging sat right on top
+        // of the indicator it was controlling. Standard pattern elsewhere
+        // (VLC, MX Player, iOS) is to show the indicator in the empty half
+        // of the screen instead.
+        AnimatedVisibility(visible = showBrightnessCircle, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopEnd).padding(top = 86.dp, end = 28.dp)) {
             VerticalBrightnessHud(value = brightnessPercent, size = hudSize)
         }
-        AnimatedVisibility(visible = showVolumeCircle, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopEnd).padding(top = 86.dp, end = 28.dp)) {
+        AnimatedVisibility(visible = showVolumeCircle, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopStart).padding(top = 86.dp, start = 28.dp)) {
             val volumeColor = when { volumePercent > 120 -> Color.Red; volumePercent > 90 -> Color(0xFFFF9800); else -> Color.White }
             FilledCircleHud(value = volumePercent, maxValue = 150, color = volumeColor, size = hudSize)
         }
