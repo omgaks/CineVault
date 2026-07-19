@@ -121,6 +121,19 @@ dependencies {
     // on some devices that this release fixed).
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
+    // FFmpeg audio decoder for Media3 — broad audio codec coverage
+    // (DTS/DTS-HD, TrueHD, AC3/E-AC3, FLAC multichannel, etc.) that the
+    // device's own built-in hardware/OS decoders often don't support,
+    // which is why some files play with no audio in CineVault but work
+    // fine in players like MX Player that bundle their own decoders.
+    // Prebuilt by the Jellyfin project — no native/NDK build step needed
+    // here, unlike building FFmpeg from source ourselves would require.
+    // LICENSE NOTE: this artifact is GPL-3.0. A deliberate call — flagged
+    // and accepted for this personal build; NOT license-compatible with
+    // distributing the app under the existing MIT LICENSE without
+    // addressing that conflict first.
+    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.9.0+1")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
