@@ -92,20 +92,44 @@ fun DetailScreen(
     val hasResumePosition = savedPosition > 15_000L
     val trailerSearchUrl = remember(item.title) { "https://www.youtube.com/results?search_query=${Uri.encode("${item.title} official trailer")}" }
 
-    var castList by remember(item.video.path) { mutableStateOf(loadCastCache(context, item.tmdbId, item.type)) }
-    var castLoading by remember(item.video.path) { mutableStateOf(castList.isEmpty()) }
+    // Cast list — previously initialized via loadCastCache() directly inside
+    // the remember{} initializer, which is a SharedPreferences read + Gson
+    // JSON parse running synchronously on the MAIN thread during
+    // composition (a real jank risk on lower-end devices), AND the
+    // LaunchedEffect below re-ran that exact same cache lookup a frame
+    // later regardless, discarding the first read. remember was also keyed
+    // on item.video.path while the effect was keyed on item.tmdbId/type —
+    // fine today, but a latent bug if a path ever gets re-matched to a
+    // different TMDB entry. Now: state starts empty, everything (cache
+    // lookup AND network fetch) happens inside ONE effect on Dispatchers.IO,
+    // keyed consistently on tmdbId/type. Trade-off: a cache hit now shows
+    // "Loading cast..." for a frame or two instead of appearing instantly,
+    // in exchange for never blocking the main thread.
+    var castList by remember(item.tmdbId, item.type) { mutableStateOf<List<TmdbCastMember>>(emptyList()) }
+    var castLoading by remember(item.tmdbId, item.type) { mutableStateOf(true) }
 
     LaunchedEffect(item.tmdbId, item.type) {
-        val id = item.tmdbId ?: return@LaunchedEffect
-        val cached = loadCastCache(context, id, item.type)
-        if (cached.isNotEmpty()) { castList = cached; castLoading = false; return@LaunchedEffect }
-        castLoading = true
+        val id = item.tmdbId
+        if (id == null) { castLoading = false; return@LaunchedEffect }
+
+        val cached = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            loadCastCache(context, id, item.type)
+        }
+        if (cached.isNotEmpty()) {
+            castList = cached
+            castLoading = false
+            return@LaunchedEffect
+        }
+
         val freshCast = try {
             val credits = if (item.type == "tv") TmdbClient.api.getTvCredits(BuildConfig.TMDB_TOKEN, id) else TmdbClient.api.getMovieCredits(BuildConfig.TMDB_TOKEN, id)
             credits.cast.take(16)
         } catch (e: Exception) { emptyList() }
+
         castList = freshCast
-        saveCastCache(context, id, item.type, freshCast)
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            saveCastCache(context, id, item.type, freshCast)
+        }
         castLoading = false
     }
 
