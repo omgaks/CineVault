@@ -1066,10 +1066,19 @@ fun VideoPlayerScreen(
         // of the indicator it was controlling. Standard pattern elsewhere
         // (VLC, MX Player, iOS) is to show the indicator in the empty half
         // of the screen instead.
-        AnimatedVisibility(visible = showBrightnessCircle, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopEnd).padding(top = 86.dp, end = 28.dp)) {
+        // Portrait: the video is letterboxed (black bars above/below, since
+        // a typical 16:9 video is much wider than a phone's portrait
+        // screen), but this HUD's position was calculated relative to the
+        // WHOLE screen — top-alignment landed it in that empty black bar
+        // instead of over the actual video frame. Center-aligning in
+        // portrait puts it back on the video regardless of how much
+        // letterboxing a given video's aspect ratio produces. Landscape is
+        // untouched — the video already fills close to edge-to-edge there,
+        // so top-alignment was already landing correctly on it.
+        AnimatedVisibility(visible = showBrightnessCircle, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(if (isLandscape) Alignment.TopEnd else Alignment.CenterEnd).padding(top = if (isLandscape) 86.dp else 0.dp, end = 28.dp)) {
             VerticalBrightnessHud(value = brightnessPercent, size = hudSize)
         }
-        AnimatedVisibility(visible = showVolumeCircle, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopStart).padding(top = 86.dp, start = 28.dp)) {
+        AnimatedVisibility(visible = showVolumeCircle, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(if (isLandscape) Alignment.TopStart else Alignment.CenterStart).padding(top = if (isLandscape) 86.dp else 0.dp, start = 28.dp)) {
             val volumeColor = when { volumePercent > 120 -> Color.Red; volumePercent > 90 -> Color(0xFFFF9800); else -> Color.White }
             FilledCircleHud(value = volumePercent, maxValue = 150, color = volumeColor, size = hudSize)
         }
@@ -2143,3 +2152,4 @@ private fun SyncStepChip(text: String, onClick: () -> Unit) {
         Text(text = text, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
+
