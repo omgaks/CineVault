@@ -28,29 +28,43 @@ object AudioSyncHolder {
  * audio, which is exactly an A/V sync adjustment.
  *
  * Also registers an FFmpeg-backed audio renderer (media3-ffmpeg-decoder,
- * see build.gradle.kts) as a FALLBACK — the device's own hardware decoder
- * often can't handle DTS/DTS-HD, TrueHD, or some E-AC3 variants, which
- * previously meant those files played with picture but total silence,
- * since this factory only ever registered the platform decoder with
- * nothing to fall through to.
+ * see build.gradle.kts) as a FALLBACK for codecs the device's own hardware
+ * decoder genuinely can't handle at all (DTS/DTS-HD, TrueHD). See the
+ * ordering note on buildAudioRenderers below for why this doesn't affect
+ * formats the device already decodes natively.
  *
- * Ordering matters here: with extensionRendererMode == ON (what
- * VideoPlayerScreen.kt actually sets), the platform/hardware renderer is
- * added FIRST and FFmpeg second — ExoPlayer tries renderers in list order
- * per track and only moves to the next one if the current one can't
- * handle the format, so anything the device already decodes natively
- * (AAC, standard AC3, etc.) keeps using that faster, more power-efficient
- * hardware path untouched. FFmpeg only actually gets used for the codecs
- * the platform genuinely has no decoder for.
- *
- * Known limitation: the sync-offset override below only wraps the
- * platform MediaCodecAudioRenderer. If a file falls through to the
- * FFmpeg renderer, the audio delay slider in the player UI currently has
- * no effect on it — that renderer doesn't get the same getPositionUs()
- * override, since it's a separate class from a different library.
+ * Also forces PCM decode instead of audio PASSTHROUGH (see buildAudioSink
+ * below) — a separate, well-known ExoPlayer issue from the codec-support
+ * one above: some devices report that they can play compressed AC3/DD5.1
+ * as a raw "passthrough" bitstream (meant for a connected AV receiver that
+ * decodes it itself) even when the output is the phone's own built-in
+ * speaker, which obviously can't decode a compressed bitstream directly.
+ * ExoPlayer trusts that claim and sends raw undecoded audio to the
+ * speaker — video and subtitles keep working fine (they're unrelated
+ * pipelines), and no error is thrown anywhere, since nothing actually
+ * failed from the app's point of view. It just produces silence. Forcing
+ * PCM-only capabilities means the platform decoder always decodes AC3
+ * itself before handing audio to the speaker, which is the correct
+ * behavior for a phone with no AV receiver attached anyway.
  */
 @UnstableApi
 class CineRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
+
+    override fun buildAudioSink(
+        context: Context,
+        enableFloatOutput: Boolean,
+        enableAudioTrackPlaybackParams: Boolean
+    ): AudioSink {
+        return androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+            // Forces every compressed format (AC3/DD5.1 included) through
+            // real decoding to PCM rather than being handed to the audio
+            // output as a raw passthrough bitstream.
+            .setAudioCapabilities(androidx.media3.exoplayer.audio.AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES)
+            .setEnableFloatOutput(enableFloatOutput)
+            .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+            .build()
+    }
+
     override fun buildAudioRenderers(
         context: Context,
         extensionRendererMode: Int,
