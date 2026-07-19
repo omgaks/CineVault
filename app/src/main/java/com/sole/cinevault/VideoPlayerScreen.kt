@@ -266,11 +266,20 @@ fun VideoPlayerScreen(
             .build()
     }
 
+    // Real SMB playback — previously smb:// paths had no working DataSource
+    // at all; scanning worked (SmbVideoScanner.kt) but ExoPlayer had nothing
+    // that knew how to read an smb:// URI, so playback silently failed.
+    // cineVaultMediaSourceFactory routes smb:// files to SmbDataSource
+    // (SmbDataSource.kt) and leaves local/stream files on Media3's own
+    // default handling, unchanged.
+    val mediaSourceFactory = remember { cineVaultMediaSourceFactory(context) }
+
     val exoPlayer: ExoPlayer = remember {
         ExoPlayer.Builder(context)
             .setRenderersFactory(CineRenderersFactory(context))
             .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
+            .setMediaSourceFactory(mediaSourceFactory)
             .build()
     }
 
@@ -374,7 +383,13 @@ fun VideoPlayerScreen(
         // this, ExoPlayer just throws a raw IO error with no clear message;
         // catching it here up front gives a much clearer reason immediately
         // instead of waiting for a confusing failure a moment later.
-        if (!isStreamMedia && !java.io.File(currentVideo.path).exists()) {
+        // Deliberately skipped for smb:// paths — java.io.File has no concept
+        // of a network share, so this check always failed on SMB videos
+        // (or, without the isSmbMedia guard, would misreport a perfectly
+        // reachable network file as "not found"). SmbDataSource does its own
+        // existence handling once ExoPlayer actually opens the stream.
+        val isSmbMedia = currentVideo.path.startsWith("smb://", ignoreCase = true)
+        if (!isStreamMedia && !isSmbMedia && !java.io.File(currentVideo.path).exists()) {
             playerErrorMessage = "File not found. It may have been moved, renamed, or the drive it's on was disconnected."
             return
         }
@@ -587,7 +602,17 @@ fun VideoPlayerScreen(
 
     LaunchedEffect(Unit) {
         CineVaultPlayerHolder.currentPlayer = exoPlayer
-        activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = 1.0f }
+        // Previously forced screenBrightness = 1.0f unconditionally on
+        // entry — silently maxing the screen out regardless of what the
+        // person had actually set, burning battery and making night
+        // viewing unpleasant. Only the brightness swipe gesture should ever
+        // change the window's brightness; this just reads the current
+        // system brightness so the swipe HUD starts from the real value
+        // instead of a hardcoded 90%.
+        brightnessPercent = try {
+            val raw = android.provider.Settings.System.getInt(context.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS)
+            ((raw / 255f) * 100f).toInt().coerceIn(5, 100)
+        } catch (_: Exception) { 70 }
         activity?.enterImmersiveModeForPlayer()
     }
 
