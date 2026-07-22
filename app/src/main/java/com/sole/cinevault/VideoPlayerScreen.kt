@@ -290,9 +290,14 @@ fun VideoPlayerScreen(
             .build()
     }
 
-    val canDownloadExternalSubtitles = currentMediaType.equals("movie", ignoreCase = true) || currentMediaType.equals("tv", ignoreCase = true)
+    // Restricted-folder items ("restricted" type — see RestrictedFolderStore.kt)
+    // are included here too, so the manual Download button/menu option still
+    // works for them. Only the AUTOMATIC background search is suppressed for
+    // them specifically — see isRestrictedFolderMedia below.
+    val canDownloadExternalSubtitles = currentMediaType.equals("movie", ignoreCase = true) || currentMediaType.equals("tv", ignoreCase = true) || currentMediaType.equals("restricted", ignoreCase = true)
     val isCurrentTvShow = currentMediaType.equals("tv", ignoreCase = true)
     val isStreamMedia = currentMediaType.equals("stream", ignoreCase = true)
+    val isRestrictedFolderMedia = folderIdFromRestrictedMarker(currentVideo.folderPath) != null
 
     fun closeAllMenus() {
         showAudioSelector = false
@@ -395,8 +400,14 @@ fun VideoPlayerScreen(
         // (or, without the isSmbMedia guard, would misreport a perfectly
         // reachable network file as "not found"). SmbDataSource does its own
         // existence handling once ExoPlayer actually opens the stream.
+        // Same reasoning for content:// paths — restricted-folder items are
+        // scanned via SAF (RestrictedFolderScanner.kt) and use content://
+        // URIs, which also aren't real filesystem paths java.io.File can
+        // check. Unlike SMB, no custom DataSource was needed here — Media3's
+        // built-in DefaultDataSource already handles content:// natively.
         val isSmbMedia = currentVideo.path.startsWith("smb://", ignoreCase = true)
-        if (!isStreamMedia && !isSmbMedia && !java.io.File(currentVideo.path).exists()) {
+        val isContentUriMedia = currentVideo.path.startsWith("content://", ignoreCase = true)
+        if (!isStreamMedia && !isSmbMedia && !isContentUriMedia && !java.io.File(currentVideo.path).exists()) {
             playerErrorMessage = "File not found. It may have been moved, renamed, or the drive it's on was disconnected."
             return
         }
@@ -556,6 +567,7 @@ fun VideoPlayerScreen(
         originalSubtitleUri = null; appliedSubtitleOffsetMs = 0L; subtitleSyncOffset = 0.0f
         droppedFrameNudgeCount = 0; lastNudgeAtMs = 0L
         if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
+        if (isRestrictedFolderMedia) updateRestrictedFolderLastPlayed(context, currentVideo.path, currentVideo.folderPath)
 
         // Check for an already-downloaded subtitle FIRST — pure local disk
         // check, no network involved — so a movie watched before (even in
@@ -578,7 +590,7 @@ fun VideoPlayerScreen(
             playCurrentVideoWithSubtitle(resumePosition = savedPosition)
         }
 
-        if (!isStreamMedia && canDownloadExternalSubtitles && autoSubtitleAttemptedForPath != currentVideo.path) {
+        if (!isStreamMedia && canDownloadExternalSubtitles && !isRestrictedFolderMedia && autoSubtitleAttemptedForPath != currentVideo.path) {
             autoSubtitleAttemptedForPath = currentVideo.path
             scope.launch {
                 delay(1200); if (subtitleDownloadInProgress) return@launch
