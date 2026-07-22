@@ -89,7 +89,10 @@ private object HomeScrollState {
 // playback sessions. Short screens (browsing) vs. long screens (watching)
 // genuinely warrant different defaults.
 @Composable
-private fun ForceCineVaultBrightness() {
+// Not private — called from LocalVideoLibraryScreen.kt too, and Kotlin's
+// `private` on a top-level function means file-private, not just
+// package-private, so it had to be opened up to be callable across files.
+fun ForceCineVaultBrightness() {
     val context = LocalContext.current
     val activity = context.findCineActivity()
 
