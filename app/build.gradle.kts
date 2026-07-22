@@ -121,6 +121,10 @@ dependencies {
     // on some devices that this release fixed).
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
+    // Restricted-folder scanning walks a SAF-picked folder tree via
+    // DocumentFile — not transitively included by anything else here.
+    implementation("androidx.documentfile:documentfile:1.0.1")
+
     // FFmpeg audio decoder for Media3 — broad audio codec coverage
     // (DTS/DTS-HD, TrueHD, AC3/E-AC3, FLAC multichannel, etc.) that the
     // device's own built-in hardware/OS decoders often don't support,
