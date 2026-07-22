@@ -124,7 +124,8 @@ fun LocalVideoLibraryScreen(
     onSecretChanged: () -> Unit = {},
     onGenreClick: (String) -> Unit = {},
     onNativeCollectionClick: (Int, String) -> Unit = { _, _ -> },
-    onCuratedCollectionClick: (String) -> Unit = {}
+    onCuratedCollectionClick: (String) -> Unit = {},
+    onRestrictedFolderClick: (RestrictedFolder) -> Unit = {}
 ) {
     val context = LocalContext.current
     // Bright by design, same as every other browsing screen (Home, Search,
@@ -348,15 +349,27 @@ fun LocalVideoLibraryScreen(
                 }
             }
 
-            val scannedVideos = deviceVideos + smbVideos
+            // Restricted folders — scanned separately via SAF (they don't
+            // live in MediaStore), bypassing the duration/size floor and
+            // personal-video filename filter scanDeviceVideos() applies,
+            // since these were picked on purpose. See RestrictedFolderStore.kt
+            // for why they're tagged type="restricted" and excluded from Home.
+            scanStatus = "Scanning restricted folders..."
+            val restrictedVideos = try { scanAllRestrictedFolders(context) } catch (e: Exception) { emptyList() }
+
+            val scannedVideos = deviceVideos + smbVideos + restrictedVideos
             scanStatus = "Found ${scannedVideos.size} videos. Loading cached posters..."
             val instantList = scannedVideos.map { applyCachedMetadataIfAvailable(context, it) }
             onVideosLoaded(instantList); saveLibraryCache(context, instantList)
 
             // Which items actually need a network fetch (missing metadata, or
             // cached but predates the ratings/genre-upgrade passes).
+            // Restricted-folder items are excluded outright — they'd never
+            // have "useful online metadata" (no poster/tmdbId), so without
+            // this they'd get swept in here and waste a TMDB search on a
+            // TikTok clip's filename.
             val toEnrich = instantList.withIndex().filter { (_, item) ->
-                !hasUsefulOnlineMetadata(item) || needsRatingsUpgrade(item) || needsGenreUpgrade(item)
+                !isRestrictedFolderItem(item) && (!hasUsefulOnlineMetadata(item) || needsRatingsUpgrade(item) || needsGenreUpgrade(item))
             }
             scanStatus = "Loaded ${instantList.size} videos. Updating missing posters & ratings..."
 
@@ -410,17 +423,21 @@ fun LocalVideoLibraryScreen(
     val secretVideos = sortedVideos.filter { hiddenPaths.contains(it.video.path) || videoIsInsideSecretFolder(it, hiddenFolders) }
     val favoriteVideos = visibleSortedVideos.filter { favoritePaths.contains(it.video.path) }
 
-    // FOLDER grouping
-    val videoFolders = remember(visibleSortedVideos) { groupVideosByFolder(visibleSortedVideos) }
+    // Restricted-folder items get their own dedicated shelf below instead
+    // of appearing in Movies/Downloads/All or the physical Folders view —
+    // their "folder" is a virtual SAF marker (content:// URIs), not a real
+    // filesystem path, so grouping them into the physical Folders view
+    // wouldn't make sense anyway.
+    val videoFolders = remember(visibleSortedVideos) { groupVideosByFolder(visibleSortedVideos.filterNot { it.type.equals("restricted", ignoreCase = true) }) }
 
     val filteredVideos = when (selectedCategory) {
         "Secret" -> if (secretUnlocked) secretVideos else emptyList()
         "Favorites" -> favoriteVideos
         "TV Shows" -> emptyList()
         "Folders" -> emptyList() // handled separately below
-        "Downloads" -> visibleSortedVideos.filter { !it.type.equals("movie", ignoreCase = true) && !it.type.equals("tv", ignoreCase = true) }
+        "Downloads" -> visibleSortedVideos.filter { !it.type.equals("movie", ignoreCase = true) && !it.type.equals("tv", ignoreCase = true) && !it.type.equals("restricted", ignoreCase = true) }
         "Movies" -> visibleSortedVideos.filter { it.type.equals("movie", ignoreCase = true) }
-        else -> visibleSortedVideos.filter { !it.type.equals("tv", ignoreCase = true) }
+        else -> visibleSortedVideos.filter { !it.type.equals("tv", ignoreCase = true) && !it.type.equals("restricted", ignoreCase = true) }
     }
 
     val tvGroups = groupTvShows(sortedVideos.filter { it.type.equals("tv", ignoreCase = true) && !hiddenPaths.contains(it.video.path) && !videoIsInsideSecretFolder(it, hiddenFolders) })
@@ -535,6 +552,44 @@ fun LocalVideoLibraryScreen(
                                             if (entry.isCurated) onCuratedCollectionClick(entry.displayName)
                                             else entry.collectionId?.let { onNativeCollectionClick(it, entry.displayName) }
                                         }
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(20.dp))
+                        }
+                    }
+                }
+            }
+
+            // ── Restricted folders shelf — each folder shown as one card,
+            // thumbnail sourced from the last file played in it (falls back
+            // to the first file if nothing's been played yet). Deliberately
+            // NOT rendered on Home — see homeVisibleVideos in MainActivity.kt.
+            run {
+                data class RestrictedShelfEntry(val folder: RestrictedFolder, val items: List<VideoWithMetadata>)
+                val restrictedItems = visibleSortedVideos.filter { it.type.equals("restricted", ignoreCase = true) }
+                val restrictedShelf = if (restrictedItems.isEmpty()) emptyList() else {
+                    loadRestrictedFolders(context).mapNotNull { folder ->
+                        val items = restrictedItems.filter { folderIdFromRestrictedMarker(it.video.folderPath) == folder.id }
+                        if (items.isEmpty()) null else RestrictedShelfEntry(folder, items)
+                    }
+                }
+
+                if (restrictedShelf.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Column {
+                            Text(text = "Folders", color = TextBright, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(10.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                items(items = restrictedShelf, key = { it.folder.id }) { entry ->
+                                    val thumbnailSourcePath = entry.folder.lastPlayedVideoPath
+                                        ?.takeIf { path -> entry.items.any { it.video.path == path } }
+                                        ?: entry.items.firstOrNull()?.video?.path
+                                    RestrictedFolderShelfCard(
+                                        title = entry.folder.displayName,
+                                        count = entry.items.size,
+                                        thumbnailVideoPath = thumbnailSourcePath,
+                                        onClick = { onRestrictedFolderClick(entry.folder) }
                                     )
                                 }
                             }
@@ -854,6 +909,35 @@ private fun CollectionShelfCard(title: String, backdropUrl: String?, onClick: ()
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.align(Alignment.BottomStart).padding(12.dp)
         )
+    }
+}
+
+@Composable
+private fun RestrictedFolderShelfCard(title: String, count: Int, thumbnailVideoPath: String?, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .width(220.dp)
+            .height(110.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(SpaceMid)
+            .clickable { onClick() }
+    ) {
+        // No posterUrl on purpose — restricted-folder items never go through
+        // TMDB enrichment, so there's no online artwork. PosterBox already
+        // knows how to fall back to generating a thumbnail directly from a
+        // frame of the video file itself when posterUrl is null, which is
+        // exactly what's wanted here (and picks up content:// SAF paths the
+        // same way it already handles any other local video path).
+        PosterBox(posterUrl = null, videoPath = thumbnailVideoPath, modifier = Modifier.fillMaxSize())
+        Box(
+            modifier = Modifier.fillMaxSize().background(
+                Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.62f)))
+            )
+        )
+        Column(modifier = Modifier.align(Alignment.BottomStart).padding(12.dp)) {
+            Text(text = title, color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = "$count file${if (count != 1) "s" else ""}", color = TextMuted, fontSize = 11.sp)
+        }
     }
 }
 
