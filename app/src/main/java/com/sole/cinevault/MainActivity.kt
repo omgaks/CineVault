@@ -57,9 +57,18 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        window.attributes = window.attributes.apply {
-            screenBrightness = 1.0f
-        }
+        // Previously forced screenBrightness = 1.0f here at app launch,
+        // app-wide — same anti-pattern already removed from the video
+        // player and from ForceCineVaultBrightness() in Screens.kt (see
+        // that file for the full explanation). This was actually the root
+        // cause of "Library looks dim compared to Home": Home/Search were
+        // artificially forcing max brightness the whole time they were on
+        // screen and only reverting it on exit, so leaving them just
+        // revealed the real (non-inflated) brightness for the first time.
+        // Removing all three forcing points means the app now consistently
+        // respects whatever the person's actual device brightness is,
+        // everywhere, all the time — and stops silently burning battery on
+        // Home/Search too.
 
         // Required: allows player to draw behind system bars for true immersive mode
         WindowCompat.setDecorFitsSystemWindows(window, false)
