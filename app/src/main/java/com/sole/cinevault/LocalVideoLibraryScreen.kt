@@ -127,6 +127,13 @@ fun LocalVideoLibraryScreen(
     onCuratedCollectionClick: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
+    // Bright by design, same as every other browsing screen (Home, Search,
+    // Settings, Detail) — see ForceCineVaultBrightness's own comment in
+    // Screens.kt. This was the actual missing piece before: Library never
+    // had this call at all, so leaving a forced-bright Home/Search screen
+    // landed on Library's un-forced (dimmer) real brightness, looking like
+    // "Library dims." Only the player is the deliberate exception.
+    ForceCineVaultBrightness()
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
 
@@ -825,9 +832,17 @@ private fun CollectionShelfCard(title: String, backdropUrl: String?, onClick: ()
         if (!backdropUrl.isNullOrBlank()) {
             AsyncImage(model = backdropUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
+        // Previously a single gradient stretched transparent-to-75%-black
+        // across the ENTIRE card height — on an already-small 110dp-tall
+        // card, that meant a large chunk of the artwork was visibly dimmed
+        // even well above where the title text sits. Adding a mid
+        // transparent stop keeps the top half of the artwork completely
+        // clear and only starts darkening in the bottom half, right where
+        // it's actually needed for the text to stay legible. Peak alpha
+        // also brought down slightly (0.75 -> 0.62).
         Box(
             modifier = Modifier.fillMaxSize().background(
-                Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f)))
+                Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.62f)))
             )
         )
         Text(
