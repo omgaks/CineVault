@@ -97,7 +97,7 @@ fun SubtitleSettingsMenu(
         (screenHeightDp * 0.60f).dp.coerceAtMost(440.dp)
     }
 
-    val rowGap = if (isLandscape) 10.dp else 12.dp
+    val rowGap = if (isLandscape) 7.dp else 8.dp
     val titleSize = if (isLandscape) 11.sp else 12.sp
     val labelSize = if (isLandscape) 9.sp else 9.5.sp
     val valueSize = if (isLandscape) 8.5.sp else 9.sp
@@ -108,7 +108,7 @@ fun SubtitleSettingsMenu(
             .heightIn(max = panelMaxHeight)
             .glassPanel(cornerRadius = if (isLandscape) 18.dp else 20.dp, fill = SpaceMid.copy(alpha = 0.97f))
             .clickable { onUserInteraction() }
-            .padding(horizontal = if (isLandscape) 9.dp else 11.dp, vertical = if (isLandscape) 9.dp else 10.dp)
+            .padding(start = if (isLandscape) 9.dp else 11.dp, end = if (isLandscape) 9.dp else 11.dp, top = if (isLandscape) 9.dp else 10.dp, bottom = if (isLandscape) 12.dp else 14.dp)
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(rowGap)
     ) {
@@ -283,14 +283,14 @@ private fun SteppedControlRow(
                 .clip(RoundedCornerShape(18.dp))
                 .background(SpaceDeep.copy(alpha = 0.7f))
                 .border(1.2.dp, AmberCore.copy(alpha = 0.3f), RoundedCornerShape(18.dp))
-                .padding(horizontal = 11.dp, vertical = 4.dp),
+                .padding(horizontal = 11.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(text = label, color = Color(0xFFC9A765), fontSize = labelSize, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.width(6.dp))
             Text(text = valueText, color = AmberCore, fontSize = valueSize, fontWeight = FontWeight.Black)
         }
-        Spacer(modifier = Modifier.height(7.dp))
+        Spacer(modifier = Modifier.height(5.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             AccelStepPill(isPlus = false) {
                 val next = (value - stepAmount).coerceIn(valueRange.start, valueRange.endInclusive)
@@ -347,6 +347,16 @@ private fun ValueBubble(text: String, fraction: Float) {
 @Composable
 private fun AccelStepPill(isPlus: Boolean, onStep: () -> Unit) {
     val scope = rememberCoroutineScope()
+    // pointerInput(Unit) only ever installs its gesture-detection block ONCE,
+    // on first composition — it does NOT get a fresh copy of onStep on every
+    // recomposition. Without this wrapper, every press (and every tick of a
+    // held repeat) was silently using the very first onStep lambda from when
+    // this pill was first drawn, computing from a permanently stale value —
+    // which is exactly why Sync would jump straight to +10.0s and stick, and
+    // why holding appeared to do nothing (it kept recomputing the same
+    // frozen result). rememberUpdatedState always points at the latest
+    // lambda, so each tap/tick now reads the real current value.
+    val currentOnStep = rememberUpdatedState(onStep)
     Box(
         modifier = Modifier
             .size(width = 32.dp, height = 28.dp)
@@ -355,12 +365,12 @@ private fun AccelStepPill(isPlus: Boolean, onStep: () -> Unit) {
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = {
-                        onStep()
+                        currentOnStep.value()
                         val job = scope.launch {
                             delay(350)
                             var interval = 220L
                             while (isActive) {
-                                onStep()
+                                currentOnStep.value()
                                 delay(interval)
                                 interval = (interval * 0.86f).toLong().coerceAtLeast(40L)
                             }
