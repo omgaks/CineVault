@@ -76,14 +76,39 @@ object OpenSubtitlesClient {
         return dir
     }
 
+    // FIX: the cache key is hashed from this normalized form of the path
+    // now, not the raw string. Previously, if the SAME physical file was
+    // ever represented by two cosmetically-different path strings across
+    // sessions/rescans — most commonly a URL-encoded space ("%20") in one
+    // scan vs a literal space in another, or a backslash vs forward slash
+    // separator — the MD5 hash came out completely different each time,
+    // so findCachedSubtitle() reported a cache miss for a subtitle that was
+    // actually sitting right there on disk under a different-looking key.
+    // Every path now goes through the same normalization (URL-decoded,
+    // separators unified, trimmed) before hashing, so cosmetic differences
+    // in how a path happens to be written can no longer produce two
+    // different cache entries for what's really the same file.
+    private fun normalizedPathForCacheKey(videoPath: String): String {
+        val decoded = try {
+            java.net.URLDecoder.decode(videoPath, "UTF-8")
+        } catch (_: Exception) {
+            // Not actually URL-encoded, or contains a stray '%' that isn't a
+            // valid escape — fall back to the original string rather than
+            // let decoding failure break caching entirely.
+            videoPath
+        }
+        return decoded.replace('\\', '/').trim()
+    }
+
     private fun subtitleCacheKey(videoPath: String): String {
+        val normalized = normalizedPathForCacheKey(videoPath)
         return try {
-            val digest = java.security.MessageDigest.getInstance("MD5").digest(videoPath.toByteArray(Charsets.UTF_8))
+            val digest = java.security.MessageDigest.getInstance("MD5").digest(normalized.toByteArray(Charsets.UTF_8))
             digest.joinToString("") { "%02x".format(it) }
         } catch (e: Exception) {
             // MD5 is always available on Android in practice, but fall back
             // to a sanitized path rather than crash if it somehow isn't.
-            videoPath.replace(Regex("[^A-Za-z0-9]"), "_").takeLast(80)
+            normalized.replace(Regex("[^A-Za-z0-9]"), "_").takeLast(80)
         }
     }
 
