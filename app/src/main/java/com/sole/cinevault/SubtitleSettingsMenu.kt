@@ -8,7 +8,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -43,14 +42,11 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 
 // Dark, warm color for text sitting ON TOP of the solid amber fills (step
 // pills, reset pill's pulse core) — plain black/white reads flat against
 // amber; this matches the deep-brown-on-gold treatment used everywhere else
 // a solid amber fill needs a legible label.
-private val AmberFillText = Color(0xFF241A08)
 private val DangerRed = Color(0xFFFF5252)
 
 // Single source of truth for this menu's width, used both internally below
@@ -92,9 +88,9 @@ fun SubtitleSettingsMenu(
     val screenHeightDp = configuration.screenHeightDp
     val popupWidth: Dp = subtitleMenuWidth(screenWidthDp.toFloat(), isLandscape)
     val panelMaxHeight: Dp = if (isLandscape) {
-        (screenHeightDp * 0.82f).dp.coerceAtMost(260.dp)
+        (screenHeightDp * 0.62f).dp.coerceAtMost(200.dp)
     } else {
-        (screenHeightDp * 0.60f).dp.coerceAtMost(440.dp)
+        (screenHeightDp * 0.46f).dp.coerceAtMost(320.dp)
     }
 
     val rowGap = if (isLandscape) 7.dp else 8.dp
@@ -155,7 +151,6 @@ fun SubtitleSettingsMenu(
             valueText = "${currentFontSize.toInt()}sp",
             value = currentFontSize,
             valueRange = 12f..32f,
-            stepAmount = 1f,
             labelSize = labelSize,
             valueSize = valueSize,
             onChange = { onUserInteraction(); onFontSizeChange(it) },
@@ -166,7 +161,6 @@ fun SubtitleSettingsMenu(
             valueText = positionBandLabel(currentVerticalPosition),
             value = currentVerticalPosition,
             valueRange = 0.02f..0.30f,
-            stepAmount = 0.01f,
             labelSize = labelSize,
             valueSize = valueSize,
             onChange = { onUserInteraction(); onVerticalPositionChange(it) },
@@ -177,12 +171,10 @@ fun SubtitleSettingsMenu(
             valueText = formatSyncSeconds(currentSyncOffset),
             value = currentSyncOffset.coerceIn(-10f, 10f),
             valueRange = -10f..10f,
-            stepAmount = 0.1f,
             labelSize = labelSize,
             valueSize = valueSize,
             onChange = { onUserInteraction(); onSyncOffsetChange(it) },
-            formatBubble = { formatSyncSeconds(it) },
-            accelHint = "hold either side to speed up"
+            formatBubble = { formatSyncSeconds(it) }
         )
 
         HorizontalDivider(color = GlassBorderBottom)
@@ -244,22 +236,22 @@ private fun ActionPill(
 
 // Text Size / Position / Sync all share this exact structure now: an
 // outlined (not flat, not glowing) label pill showing name + current value,
-// then a [-] [seek bar] [+] row. The floating value bubble appears above the
-// thumb whenever the value changes from EITHER the drag gesture or the step
-// pills, and fades out ~900ms after the last change — the same debounce
-// pattern already used for the buffering spinner in VideoPlayerScreen.kt.
+// then just the seek bar — no more +/- step pills (dropped after the hold-
+// to-accelerate mechanism kept misbehaving; the drag gesture was already
+// working perfectly, so simplifying down to just that). The floating value
+// bubble still appears above the thumb while dragging, fading out ~900ms
+// after the last change — same debounce pattern already used for the
+// buffering spinner in VideoPlayerScreen.kt.
 @Composable
 private fun SteppedControlRow(
     label: String,
     valueText: String,
     value: Float,
     valueRange: ClosedFloatingPointRange<Float>,
-    stepAmount: Float,
     labelSize: TextUnit,
     valueSize: TextUnit,
     onChange: (Float) -> Unit,
-    formatBubble: (Float) -> String,
-    accelHint: String? = null
+    formatBubble: (Float) -> String
 ) {
     var interactionTick by remember { mutableIntStateOf(0) }
     var showBubble by remember { mutableStateOf(false) }
@@ -291,30 +283,16 @@ private fun SteppedControlRow(
             Text(text = valueText, color = AmberCore, fontSize = valueSize, fontWeight = FontWeight.Black)
         }
         Spacer(modifier = Modifier.height(5.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            AccelStepPill(isPlus = false) {
-                val next = (value - stepAmount).coerceIn(valueRange.start, valueRange.endInclusive)
-                notifyInteraction(next); onChange(next)
+        Box(modifier = Modifier.fillMaxWidth()) {
+            if (showBubble) {
+                val fraction = ((bubbleValue - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+                ValueBubble(text = formatBubble(bubbleValue), fraction = fraction)
             }
-            Box(modifier = Modifier.weight(1f)) {
-                if (showBubble) {
-                    val fraction = ((bubbleValue - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
-                    ValueBubble(text = formatBubble(bubbleValue), fraction = fraction)
-                }
-                ThinSliderBar(
-                    value = value,
-                    onValueChange = { notifyInteraction(it); onChange(it) },
-                    valueRange = valueRange
-                )
-            }
-            AccelStepPill(isPlus = true) {
-                val next = (value + stepAmount).coerceIn(valueRange.start, valueRange.endInclusive)
-                notifyInteraction(next); onChange(next)
-            }
-        }
-        if (accelHint != null) {
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(text = accelHint, color = TextFaint.copy(alpha = 0.7f), fontSize = 7.5.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+            ThinSliderBar(
+                value = value,
+                onValueChange = { notifyInteraction(it); onChange(it) },
+                valueRange = valueRange
+            )
         }
     }
 }
@@ -336,53 +314,6 @@ private fun ValueBubble(text: String, fraction: Float) {
         ) {
             Text(text = text, color = AmberCore, fontSize = 9.sp, fontWeight = FontWeight.Black, maxLines = 1)
         }
-    }
-}
-
-// Filled amber capsule — replaces the old outline circles. Tap = one
-// immediate step. Holding past ~350ms starts auto-repeating, with the
-// interval between repeats shrinking (220ms -> 40ms) the longer it's held,
-// which is what actually produces the "hold to accelerate" feel rather than
-// a fixed repeat rate.
-@Composable
-private fun AccelStepPill(isPlus: Boolean, onStep: () -> Unit) {
-    val scope = rememberCoroutineScope()
-    // pointerInput(Unit) only ever installs its gesture-detection block ONCE,
-    // on first composition — it does NOT get a fresh copy of onStep on every
-    // recomposition. Without this wrapper, every press (and every tick of a
-    // held repeat) was silently using the very first onStep lambda from when
-    // this pill was first drawn, computing from a permanently stale value —
-    // which is exactly why Sync would jump straight to +10.0s and stick, and
-    // why holding appeared to do nothing (it kept recomputing the same
-    // frozen result). rememberUpdatedState always points at the latest
-    // lambda, so each tap/tick now reads the real current value.
-    val currentOnStep = rememberUpdatedState(onStep)
-    Box(
-        modifier = Modifier
-            .size(width = 32.dp, height = 28.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(Brush.linearGradient(listOf(AmberGlow, AmberCore)))
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = {
-                        currentOnStep.value()
-                        val job = scope.launch {
-                            delay(350)
-                            var interval = 220L
-                            while (isActive) {
-                                currentOnStep.value()
-                                delay(interval)
-                                interval = (interval * 0.86f).toLong().coerceAtLeast(40L)
-                            }
-                        }
-                        tryAwaitRelease()
-                        job.cancel()
-                    }
-                )
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Text(text = if (isPlus) "+" else "\u2212", color = AmberFillText, fontSize = 16.sp, fontWeight = FontWeight.Black)
     }
 }
 
