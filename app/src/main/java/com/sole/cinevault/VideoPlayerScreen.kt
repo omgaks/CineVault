@@ -954,7 +954,13 @@ fun VideoPlayerScreen(
         // positioning lines up with what actually renders, rather than
         // guessing a width from outside and fighting the component's own size.
         val subtitlePopupWidthBase = if (isLandscape) (maxWidth.value * 0.30f).dp.coerceIn(210.dp, 270.dp) else (maxWidth.value * 0.62f).dp.coerceIn(220.dp, 300.dp)
-        val subtitlePopupWidth = if (isLandscape) (maxWidth.value * 0.17f).dp.coerceIn(115.dp, 150.dp) else (maxWidth.value * 0.35f).dp.coerceIn(120.dp, 170.dp)
+        // Calls the SAME function SubtitleSettingsMenu.kt uses internally to
+        // size itself — previously this was a second, separately hand-
+        // written copy of the width formula, which is exactly what went
+        // stale when that file's redesign changed the width percentages.
+        // Now there's one source of truth, so the anchor position and the
+        // popup's actual rendered width can't drift apart again.
+        val subtitlePopupWidth = subtitleMenuWidth(maxWidth.value, isLandscape)
         val subtitlePopupHeightEstimate = (((if (isCompactLandscape || isLandscape) 220f else 360f) * uiScale).dp).coerceAtMost(maxHeight * 0.45f)
         // SRT file browser keeps the pre-reduction width — it's a plain file list, not the dense settings menu
         val srtPopupWidth = (subtitlePopupWidthBase.value * uiScale).dp.coerceAtMost(maxWidth * 0.86f)
@@ -2152,4 +2158,3 @@ private fun SyncStepChip(text: String, onClick: () -> Unit) {
         Text(text = text, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
-
