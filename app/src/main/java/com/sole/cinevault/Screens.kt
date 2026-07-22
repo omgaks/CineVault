@@ -76,6 +76,18 @@ private object HomeScrollState {
     var offset: Int = 0
 }
 
+// Forces max screen brightness while any non-player screen is on-screen —
+// a deliberate design choice (poster art and glass UI read better bright,
+// especially on a small phone screen), NOT the same thing as the bug fixed
+// in VideoPlayerScreen.kt/MainActivity.kt. The actual bug there was forcing
+// brightness INCONSISTENTLY (only Home/Search had it, so leaving them for
+// Library or Settings looked like "dimming"); the fix is applying it
+// uniformly across every browsing screen, not removing it. The player is
+// the one deliberate exception — video content should respect the real
+// screen brightness (plus the manual swipe gesture), since forcing 100%
+// there was actively harmful for night viewing and battery during long
+// playback sessions. Short screens (browsing) vs. long screens (watching)
+// genuinely warrant different defaults.
 @Composable
 private fun ForceCineVaultBrightness() {
     val context = LocalContext.current
