@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.rounded.Delete
@@ -104,6 +105,24 @@ fun SettingsScreen(
         }
     }
 
+    // Restricted folder — a separate picker from the general "Add Media
+    // Folder" one above on purpose: this one scans with different rules
+    // entirely (no duration/size floor, no personal-video filename filter,
+    // excluded from Home) — see RestrictedFolderStore.kt for the full
+    // reasoning. Two distinct pickers keeps that intent obvious in the UI
+    // rather than trying to fold two different behaviors into one button.
+    var restrictedFolders by remember { mutableStateOf(loadRestrictedFolders(context)) }
+    val restrictedFolderPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val name = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, uri)?.name?.takeIf { it.isNotBlank() } ?: "Folder"
+            addRestrictedFolder(context, name, uri.toString())
+            restrictedFolders = loadRestrictedFolders(context)
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(SpaceBlack)) {
         Column(
             modifier = Modifier
@@ -176,6 +195,38 @@ fun SettingsScreen(
                     Text(text = "No folder selected yet.", color = TextMuted, fontSize = 14.sp)
                 } else {
                     selectedFolders.forEach { folder -> FolderRow(folder = folder) }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Restricted folders — deliberately a separate section from
+            // Media Library above. Scans with different rules (no duration/
+            // size floor, no personal-video filename filter), grouped as one
+            // poster card in Library, excluded from Home/Continue Watching,
+            // and only downloads subtitles when you manually tap Download
+            // inside the player — never automatically.
+            GlassSectionCard(title = "Restricted Folders", subtitle = "Kept out of Home & Continue Watching. Visible in Library and Search only.", icon = Icons.Filled.VisibilityOff, accent = AccentSupport) {
+                GlowButton(text = "Add Restricted Folder", icon = Icons.Rounded.Folder, accent = AccentSupport) {
+                    restrictedFolderPicker.launch(null)
+                }
+                Spacer(modifier = Modifier.height(18.dp))
+                Text(text = "Restricted Folders", color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(10.dp))
+                if (restrictedFolders.isEmpty()) {
+                    Text(text = "No restricted folder added yet.", color = TextMuted, fontSize = 14.sp)
+                } else {
+                    restrictedFolders.forEach { folder ->
+                        RestrictedFolderRow(
+                            name = folder.displayName,
+                            onRemove = {
+                                removeRestrictedFolder(context, folder.id)
+                                restrictedFolders = loadRestrictedFolders(context)
+                            }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = "After adding a folder, go to Library and rescan to pull its files in.", color = TextFaint, fontSize = 12.sp, lineHeight = 17.sp)
                 }
             }
 
@@ -371,6 +422,23 @@ private fun FolderRow(folder: String) {
         Icon(imageVector = Icons.Rounded.Folder, contentDescription = null, tint = AccentLibrary, modifier = Modifier.size(17.dp))
         Spacer(modifier = Modifier.width(9.dp))
         Text(text = folder, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun RestrictedFolderRow(name: String, onRemove: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp)
+            .clip(RoundedCornerShape(16.dp)).background(SpaceDeep.copy(alpha = 0.60f))
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(imageVector = Icons.Filled.VisibilityOff, contentDescription = null, tint = AccentSupport, modifier = Modifier.size(17.dp))
+        Spacer(modifier = Modifier.width(9.dp))
+        Text(text = name, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
+            Icon(imageVector = Icons.Rounded.Delete, contentDescription = "Remove", tint = Color(0xFFFF5252), modifier = Modifier.size(16.dp))
+        }
     }
 }
 
