@@ -274,6 +274,7 @@ sealed class Destination {
     data class ActorPage(val actorId: Int, val actorName: String, val profilePath: String?) : Destination()
     data class NativeCollectionPage(val collectionId: Int, val collectionName: String) : Destination()
     data class CuratedCollectionPage(val collectionName: String) : Destination()
+    data class RestrictedFolderPage(val folderId: String, val folderName: String) : Destination()
 }
 
 @Composable
@@ -302,6 +303,25 @@ fun CineVaultApp() {
         if (cached != null && cached.videos.isNotEmpty()) {
             libraryVideos = cached.videos
         }
+    }
+
+    // Home-visible subset — excludes BOTH Secret-folder content and
+    // restricted-folder content. This is also the actual fix for a
+    // pre-existing leak: HomeScreen previously received the raw, unfiltered
+    // libraryVideos directly. The hidden/secret filtering only ever existed
+    // INSIDE LocalVideoLibraryScreen for its own local display and was never
+    // propagated back up — so Secret-folder items could already have been
+    // showing up in Home's Continue Watching / Featured rows this whole
+    // time. Computed fresh (not remembered) on every recomposition — cheap
+    // enough for a personal media library, and avoids any staleness risk
+    // from a memoization key that doesn't actually track secret-folder
+    // changes made via SharedPreferences.
+    val secretVideoPaths = loadSecretVideoPaths(context)
+    val secretFolderPaths = loadSecretFolderPaths(context)
+    val homeVisibleVideos = libraryVideos.filter { item ->
+        !secretVideoPaths.contains(item.video.path) &&
+            !videoIsInsideSecretFolder(item, secretFolderPaths) &&
+            !isRestrictedFolderItem(item)
     }
 
     // FIX: previously, swiping back at the root of ANY tab (Library, Search,
@@ -431,6 +451,15 @@ fun CineVaultApp() {
                     )
                 }
 
+                is Destination.RestrictedFolderPage -> {
+                    CollectionScreen(
+                        title = dest.folderName,
+                        items = libraryVideos.filter { folderIdFromRestrictedMarker(it.video.folderPath) == dest.folderId },
+                        onBack = { pop() },
+                        onItemClick = { item -> push(Destination.Detail(item)) }
+                    )
+                }
+
                 is Destination.Tab -> {
                     when (dest.index) {
                         3 -> SettingsScreen(
@@ -463,11 +492,12 @@ fun CineVaultApp() {
                             onSecretChanged = { reloadAfterSecretChange() },
                             onGenreClick = { genreName -> push(Destination.GenrePage(genreName)) },
                             onNativeCollectionClick = { id, name -> push(Destination.NativeCollectionPage(id, name)) },
-                            onCuratedCollectionClick = { name -> push(Destination.CuratedCollectionPage(name)) }
+                            onCuratedCollectionClick = { name -> push(Destination.CuratedCollectionPage(name)) },
+                            onRestrictedFolderClick = { folder -> push(Destination.RestrictedFolderPage(folder.id, folder.displayName)) }
                         )
 
                         else -> HomeScreen(
-                            videos = libraryVideos,
+                            videos = homeVisibleVideos,
                             onScanRequest = { switchTab(1) },
                             onItemClick = { item -> push(Destination.Detail(item)) },
                             onPlayClick = { item -> push(Destination.Player(item.video, item.type, libraryVideos)) }
