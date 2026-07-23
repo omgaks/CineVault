@@ -40,18 +40,24 @@ import com.sole.cinevault.ui.theme.*
 // app (same LibraryGridCard used in Library/Home/Search), rather than four
 // independently-drifting screens.
 //
-// Note: the quick-play button on each card routes to the Detail screen here
-// (same as tapping the card itself) rather than jumping straight into the
-// player — keeps the callback surface these screens need from MainActivity
-// to just onItemClick, instead of also threading a separate play callback
-// through four more screens.
+// FIX: onPlayClick now actually plays — previously every one of these four
+// screens routed the quick-play button on each poster to onItemClick (the
+// SAME thing tapping the card itself does), which opens Detail instead of
+// starting playback. A second, related fix lives in MainActivity.kt: the
+// episodeList passed to the player when playing FROM one of these screens
+// is now the actual filtered `items` list for that screen (this genre /
+// this collection / this folder), not the entire library — so swiping to
+// the next/previous video during playback now correctly stays within this
+// same group instead of jumping to an unrelated video from the whole
+// library.
 
 @Composable
 fun GenreScreen(
     genreName: String,
     videos: List<VideoWithMetadata>,
     onBack: () -> Unit,
-    onItemClick: (VideoWithMetadata) -> Unit
+    onItemClick: (VideoWithMetadata) -> Unit,
+    onPlayClick: (VideoWithMetadata) -> Unit = {}
 ) {
     val items = remember(videos, genreName) {
         videos.filter { v -> v.genres.any { it.equals(genreName, ignoreCase = true) } }
@@ -61,7 +67,8 @@ fun GenreScreen(
         subtitle = titleCountLabel(items.size),
         items = items,
         onBack = onBack,
-        onItemClick = onItemClick
+        onItemClick = onItemClick,
+        onPlayClick = onPlayClick
     )
 }
 
@@ -70,7 +77,8 @@ fun DirectorScreen(
     directorName: String,
     videos: List<VideoWithMetadata>,
     onBack: () -> Unit,
-    onItemClick: (VideoWithMetadata) -> Unit
+    onItemClick: (VideoWithMetadata) -> Unit,
+    onPlayClick: (VideoWithMetadata) -> Unit = {}
 ) {
     val items = remember(videos, directorName) {
         videos.filter { it.director?.equals(directorName, ignoreCase = true) == true }
@@ -80,7 +88,8 @@ fun DirectorScreen(
         subtitle = "Director • ${titleCountLabel(items.size)}",
         items = items,
         onBack = onBack,
-        onItemClick = onItemClick
+        onItemClick = onItemClick,
+        onPlayClick = onPlayClick
     )
 }
 
@@ -91,7 +100,8 @@ fun ActorScreen(
     profilePath: String?,
     videos: List<VideoWithMetadata>,
     onBack: () -> Unit,
-    onItemClick: (VideoWithMetadata) -> Unit
+    onItemClick: (VideoWithMetadata) -> Unit,
+    onPlayClick: (VideoWithMetadata) -> Unit = {}
 ) {
     val context = LocalContext.current
     val items = remember(videos, actorId) {
@@ -103,6 +113,7 @@ fun ActorScreen(
         items = items,
         onBack = onBack,
         onItemClick = onItemClick,
+        onPlayClick = onPlayClick,
         circularProfileUrl = profilePath?.let { "https://image.tmdb.org/t/p/w500$it" },
         // Browsing your own library and "who is this person" are two
         // different intents — this keeps both available instead of forcing
@@ -118,7 +129,8 @@ fun CollectionScreen(
     title: String,
     items: List<VideoWithMetadata>,
     onBack: () -> Unit,
-    onItemClick: (VideoWithMetadata) -> Unit
+    onItemClick: (VideoWithMetadata) -> Unit,
+    onPlayClick: (VideoWithMetadata) -> Unit = {}
 ) {
     val heroBackdrop = remember(items) {
         items.firstOrNull { !it.backdropUrl.isNullOrBlank() }?.backdropUrl
@@ -129,6 +141,7 @@ fun CollectionScreen(
         items = items,
         onBack = onBack,
         onItemClick = onItemClick,
+        onPlayClick = onPlayClick,
         heroBackdropUrl = heroBackdrop
     )
 }
@@ -142,6 +155,7 @@ private fun MediaIntelligenceGridScreen(
     items: List<VideoWithMetadata>,
     onBack: () -> Unit,
     onItemClick: (VideoWithMetadata) -> Unit,
+    onPlayClick: (VideoWithMetadata) -> Unit = {},
     heroBackdropUrl: String? = null,
     circularProfileUrl: String? = null,
     onSearchWebClick: (() -> Unit)? = null
@@ -198,7 +212,7 @@ private fun MediaIntelligenceGridScreen(
                 }
             } else {
                 items(items = items, key = { it.video.path }) { item ->
-                    LibraryGridCard(item = item, onClick = { onItemClick(item) }, onPlayClick = { onItemClick(item) })
+                    LibraryGridCard(item = item, onClick = { onItemClick(item) }, onPlayClick = { onPlayClick(item) })
                 }
             }
 
