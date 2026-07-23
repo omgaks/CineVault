@@ -13,18 +13,34 @@ fun cleanMovieFilename(name: String): String {
             .replace(Regex("\\s+"), " ")
             .trim()
 
+    // Strip edition/anniversary/cut tags BEFORE year detection, since these
+    // often sit where a year would and can confuse titles that have no year
+    // at all, e.g. "Akira 30th Anniversary" -> "Akira"
+    val editionStripped =
+        original
+            .replace(Regex("(?i)\\b\\d{1,3}(st|nd|rd|th)\\s+anniversary\\b"), "")
+            .replace(Regex("(?i)\\banniversary\\s+edition\\b"), "")
+            .replace(Regex("(?i)\\banniversary\\b"), "")
+            .replace(
+                Regex(
+                    "(?i)\\b(extended|theatrical|director'?s|unrated|uncut|remastered|restored|special|ultimate|collector'?s|definitive|final)\\s+(cut|edition|version)\\b"
+                ),
+                ""
+            )
+            .replace(Regex("(?i)\\b(remastered|restored|uncensored|colorized)\\b"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
     // Keep title before year, example:
     // Guardians of the Galaxy 2014 1080p BluRay -> Guardians of the Galaxy
     val beforeYear =
         Regex("(?i)^(.*?)(19\\d{2}|20\\d{2})\\b")
-            .find(original)
+            .find(editionStripped)
             ?.groupValues
             ?.getOrNull(1)
             ?.trim()
-
     var cleaned =
-        beforeYear?.takeIf { it.isNotBlank() } ?: original
-
+        beforeYear?.takeIf { it.isNotBlank() } ?: editionStripped
     cleaned =
         cleaned.replace(
             Regex(
@@ -36,7 +52,6 @@ fun cleanMovieFilename(name: String): String {
             .replace(Regex("(?i)\\b\\d{1,2}x\\d{1,2}\\b"), "")
             .replace(Regex("\\s+"), " ")
             .trim()
-
     return cleaned
         .ifBlank { original }
         .split(" ")
@@ -46,7 +61,6 @@ fun cleanMovieFilename(name: String): String {
             }
         }
 }
-
 fun tmdbMovieSearchQuery(name: String): String {
     return cleanMovieFilename(name)
         .replace(Regex("(?i)\\b(19\\d{2}|20\\d{2})\\b"), "")
