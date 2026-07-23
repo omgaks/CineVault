@@ -400,7 +400,17 @@ fun CineVaultApp() {
                         onDirectorClick = { directorName -> push(Destination.DirectorPage(directorName)) },
                         onActorClick = { actorId, actorName, profilePath -> push(Destination.ActorPage(actorId, actorName, profilePath)) },
                         onNativeCollectionClick = { id, name -> push(Destination.NativeCollectionPage(id, name)) },
-                        onCuratedCollectionClick = { name -> push(Destination.CuratedCollectionPage(name)) }
+                        onCuratedCollectionClick = { name -> push(Destination.CuratedCollectionPage(name)) },
+                        onMetadataUpdated = { updated ->
+                            // Refresh what's on screen right now, no back-out needed
+                            replaceTop(Destination.Detail(updated))
+                            // Patch the in-memory library so Library/Home/Search
+                            // rows also show the corrected title/poster immediately,
+                            // not just after the next full rescan.
+                            libraryVideos = libraryVideos.map { v ->
+                                if (v.video.path == updated.video.path) updated else v
+                            }
+                        }
                     )
                 }
 
