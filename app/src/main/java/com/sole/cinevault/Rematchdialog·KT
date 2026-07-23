@@ -17,21 +17,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
 
 /*
- * RematchDialog
+ * RematchDialog.kt
  *
- * "Fix Match" flow: search field -> candidate grid -> tap to apply.
- * Styled to match the existing space-glass amber system — swap the
- * hardcoded colors below for your actual Color.kt / Glass.kt tokens
- * (AmberCore, AmberGlow, SpaceBlack, SpaceMid, your Glass panel modifier)
- * instead of the placeholders here.
+ * "Fix Match" flow: search field -> candidate list -> tap to apply.
+ * Owns its own state locally (no ViewModel) and calls the suspend
+ * functions in RematchViewModel.kt directly via rememberCoroutineScope —
+ * same pattern the rest of the app uses for TMDB/OMDB calls.
  *
  * Usage from DetailScreen:
  *
@@ -43,36 +44,69 @@ import coil.compose.AsyncImage
  *
  *   if (showRematch) {
  *       RematchDialog(
- *           viewModel = rematchViewModel, // hoisted / hiltViewModel() etc.
- *           posterBaseUrl = "https://image.tmdb.org/t/p/w342",
+ *           currentItem = item, // your VideoWithMetadata for this screen
  *           onDismiss = { showRematch = false },
- *           onApplied = {
+ *           onApplied = { updated ->
  *               showRematch = false
- *               // trigger DetailScreen to reload metadata for this video
+ *               // update whatever state holds `item` on DetailScreen with `updated`
  *           }
  *       )
  *   }
+ *
+ * NOTE ON STYLING: colors below are placeholders (PlaceholderAmberCore etc).
+ * Swap for your real Color.kt / Glass.kt tokens and panel modifier to match
+ * the rest of the app — I don't have those files, so I can't reference them
+ * directly here.
  */
 
-// Placeholder tokens — replace with your real theme references
 private val PlaceholderAmberCore = Color(0xFFF5A623)
-private val PlaceholderAmberGlow = Color(0x33F5A623)
 private val PlaceholderSpaceBlack = Color(0xFF0A0A0F)
 private val PlaceholderSpaceMid = Color(0xFF16161F)
 
 @Composable
 fun RematchDialog(
-    viewModel: RematchViewModel,
-    posterBaseUrl: String,
+    currentItem: VideoWithMetadata,
     onDismiss: () -> Unit,
-    onApplied: () -> Unit
+    onApplied: (VideoWithMetadata) -> Unit
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val query by viewModel.query.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(uiState) {
-        if (uiState is RematchUiState.Applied) {
-            onApplied()
+    var query by remember { mutableStateOf(currentItem.title) }
+    var candidates by remember { mutableStateOf<List<MatchCandidate>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(false) }
+    var isApplying by remember { mutableStateOf(false) }
+    var hasSearched by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    fun runSearch() {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return
+        scope.launch {
+            isLoading = true
+            errorMessage = null
+            hasSearched = true
+            candidates = try {
+                searchMovieCandidates(trimmed)
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Search failed"
+                emptyList()
+            }
+            isLoading = false
+        }
+    }
+
+    fun applyCandidate(candidate: MatchCandidate) {
+        scope.launch {
+            isApplying = true
+            errorMessage = null
+            try {
+                val updated = applyRematch(context, currentItem, candidate)
+                onApplied(updated)
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Failed to apply match"
+                isApplying = false
+            }
         }
     }
 
@@ -106,14 +140,14 @@ fun RematchDialog(
 
                 OutlinedTextField(
                     value = query,
-                    onValueChange = viewModel::onQueryChanged,
+                    onValueChange = { query = it },
                     placeholder = { Text("Search TMDB title…", color = Color.Gray) },
                     singleLine = true,
                     leadingIcon = {
                         Icon(Icons.Default.Search, contentDescription = null, tint = PlaceholderAmberCore)
                     },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { viewModel.search() }),
+                    keyboardActions = KeyboardActions(onSearch = { runSearch() }),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = PlaceholderAmberCore,
                         unfocusedBorderColor = Color.DarkGray,
@@ -125,14 +159,8 @@ fun RematchDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                when (val state = uiState) {
-                    is RematchUiState.Idle -> {
-                        Text(
-                            "Type a title and search to see candidates.",
-                            color = Color.Gray
-                        )
-                    }
-                    is RematchUiState.Loading, is RematchUiState.Applying -> {
+                when {
+                    isLoading || isApplying -> {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -142,34 +170,33 @@ fun RematchDialog(
                             CircularProgressIndicator(color = PlaceholderAmberCore)
                         }
                     }
-                    is RematchUiState.Empty -> {
+                    errorMessage != null -> {
+                        Text("Error: $errorMessage", color = Color(0xFFE05A5A))
+                    }
+                    !hasSearched -> {
+                        Text(
+                            "Type a title and search to see candidates.",
+                            color = Color.Gray
+                        )
+                    }
+                    candidates.isEmpty() -> {
                         Text(
                             "No matches found. Try a shorter or different query.",
                             color = Color.Gray
                         )
                     }
-                    is RematchUiState.Error -> {
-                        Text(
-                            "Error: ${state.message}",
-                            color = Color(0xFFE05A5A)
-                        )
-                    }
-                    is RematchUiState.Results -> {
+                    else -> {
                         LazyColumn(
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.heightIn(max = 360.dp)
                         ) {
-                            items(state.candidates) { candidate ->
+                            items(candidates) { candidate ->
                                 CandidateRow(
                                     candidate = candidate,
-                                    posterBaseUrl = posterBaseUrl,
-                                    onClick = { viewModel.applyMatch(candidate) }
+                                    onClick = { applyCandidate(candidate) }
                                 )
                             }
                         }
-                    }
-                    is RematchUiState.Applied -> {
-                        Text("Match applied.", color = PlaceholderAmberCore)
                     }
                 }
             }
@@ -180,7 +207,6 @@ fun RematchDialog(
 @Composable
 private fun CandidateRow(
     candidate: MatchCandidate,
-    posterBaseUrl: String,
     onClick: () -> Unit
 ) {
     Row(
@@ -193,7 +219,7 @@ private fun CandidateRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         AsyncImage(
-            model = candidate.posterPath?.let { "$posterBaseUrl${it}" },
+            model = candidate.posterPath?.let { "https://image.tmdb.org/t/p/w200$it" },
             contentDescription = candidate.title,
             modifier = Modifier
                 .size(width = 46.dp, height = 68.dp)
