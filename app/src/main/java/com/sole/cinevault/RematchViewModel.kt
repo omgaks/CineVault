@@ -1,116 +1,98 @@
 package com.sole.cinevault
 
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
+import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /*
- * RematchViewModel
+ * RematchViewModel.kt
  *
- * Powers a manual "Fix Match" flow: user types a search query, we hit TMDB,
- * show candidates, user taps one, we re-fetch full details and overwrite
- * the stored metadata for that video.
+ * Not an androidx ViewModel — plain suspend functions, same pattern as
+ * enrichVideoWithOnlineMetadata in MetadataCache.kt. Called directly from
+ * RematchDialog.kt via rememberCoroutineScope, no factory/DI needed.
  *
- * INTEGRATION NOTES (adjust to your actual class/method names):
- *  - `tmdbClient` below should be whatever client you already call for the
- *    append_to_response=credits,keywords fetch in your media intelligence
- *    work. Swap in the real type + method names.
- *  - `metadataStore` should be whatever persists VideoWithMetadata (Room DAO,
- *    repository, etc). Swap in the real type + method names.
- *  - `MatchCandidate` mirrors whatever your TMDB search response model
- *    already looks like — trim/rename fields to match it instead of
- *    duplicating a parallel model if you already have one.
+ * Reuses fetchTmdbExtraDetails / fetchOmdbRatings / extractTopCast from
+ * MetadataCache.kt (now non-private) instead of duplicating that logic, so
+ * this stays in sync automatically if that enrichment logic ever changes.
  */
 
 data class MatchCandidate(
     val tmdbId: Int,
     val title: String,
     val releaseYear: Int?,
-    val posterPath: String?,   // relative TMDB path, e.g. "/abc123.jpg"
-    val overview: String?
+    val posterPath: String?,
+    val backdropPath: String?,
+    val overview: String?,
+    val voteAverage: Double?
 )
 
-sealed class RematchUiState {
-    data object Idle : RematchUiState()
-    data object Loading : RematchUiState()
-    data class Results(val candidates: List<MatchCandidate>) : RematchUiState()
-    data object Empty : RematchUiState()
-    data class Error(val message: String) : RematchUiState()
-    data object Applying : RematchUiState()
-    data object Applied : RematchUiState()
-}
-
-class RematchViewModel(
-    private val videoId: String,
-    private val tmdbClient: TmdbClientContract,
-    private val metadataStore: MetadataStoreContract
-) : ViewModel() {
-
-    private val _uiState = MutableStateFlow<RematchUiState>(RematchUiState.Idle)
-    val uiState: StateFlow<RematchUiState> = _uiState.asStateFlow()
-
-    private val _query = MutableStateFlow("")
-    val query: StateFlow<String> = _query.asStateFlow()
-
-    fun onQueryChanged(newQuery: String) {
-        _query.value = newQuery
-    }
-
-    fun search() {
-        val q = _query.value.trim()
-        if (q.isEmpty()) return
-
-        viewModelScope.launch {
-            _uiState.value = RematchUiState.Loading
-            try {
-                val results = tmdbClient.searchMovies(q)
-                _uiState.value = if (results.isEmpty()) {
-                    RematchUiState.Empty
-                } else {
-                    RematchUiState.Results(results)
-                }
-            } catch (e: Exception) {
-                _uiState.value = RematchUiState.Error(e.message ?: "Search failed")
-            }
-        }
-    }
-
-    fun applyMatch(candidate: MatchCandidate) {
-        viewModelScope.launch {
-            _uiState.value = RematchUiState.Applying
-            try {
-                // Re-fetch full details with credits+keywords, same as your
-                // existing single-call enrichment pattern.
-                val fullDetails = tmdbClient.getMovieDetails(
-                    tmdbId = candidate.tmdbId,
-                    appendToResponse = "credits,keywords"
+/** Searches TMDB movies for the given query and returns candidate matches. */
+suspend fun searchMovieCandidates(query: String): List<MatchCandidate> =
+    withContext(Dispatchers.IO) {
+        try {
+            TmdbClient.api
+                .searchMovie(
+                    bearerToken = BuildConfig.TMDB_TOKEN,
+                    query = query
                 )
-                metadataStore.overwriteMetadata(videoId, fullDetails)
-                _uiState.value = RematchUiState.Applied
-            } catch (e: Exception) {
-                _uiState.value = RematchUiState.Error(e.message ?: "Failed to apply match")
-            }
+                .results
+                .mapNotNull { movie ->
+                    val id = movie.id ?: return@mapNotNull null
+                    MatchCandidate(
+                        tmdbId = id,
+                        title = movie.title ?: "Untitled",
+                        releaseYear = movie.release_date?.take(4)?.toIntOrNull(),
+                        posterPath = movie.poster_path,
+                        backdropPath = movie.backdrop_path,
+                        overview = movie.overview,
+                        voteAverage = movie.vote_average
+                    )
+                }
+        } catch (e: Exception) {
+            emptyList()
         }
     }
-
-    fun reset() {
-        _uiState.value = RematchUiState.Idle
-        _query.value = ""
-    }
-}
 
 /**
- * Thin contracts so this file compiles standalone as a sketch.
- * Delete these and point at your real TMDB client / metadata store types.
+ * Applies a chosen TMDB match to an existing video's metadata: re-fetches
+ * full details (genres, director, collection, cast) and OMDB ratings, then
+ * overwrites the cached metadata for that video path, exactly like a fresh
+ * enrichment would — just using the caller-chosen tmdbId instead of the
+ * first automatic search hit.
  */
-interface TmdbClientContract {
-    suspend fun searchMovies(query: String): List<MatchCandidate>
-    suspend fun getMovieDetails(tmdbId: Int, appendToResponse: String): Any // -> your VideoWithMetadata-producing type
-}
+suspend fun applyRematch(
+    context: Context,
+    currentItem: VideoWithMetadata,
+    candidate: MatchCandidate
+): VideoWithMetadata {
+    val extra = fetchTmdbExtraDetails(candidate.tmdbId, "movie")
 
-interface MetadataStoreContract {
-    suspend fun overwriteMetadata(videoId: String, details: Any)
+    val (imdb, rt) = fetchOmdbRatings(
+        candidate.title,
+        candidate.releaseYear?.toString()
+    )
+
+    val updated = currentItem.copy(
+        title = candidate.title,
+        subtitle = candidate.releaseYear?.toString() ?: currentItem.subtitle,
+        posterUrl = candidate.posterPath?.let { "https://image.tmdb.org/t/p/w780$it" }
+            ?: currentItem.posterUrl,
+        backdropUrl = candidate.backdropPath?.let { "https://image.tmdb.org/t/p/w1280$it" }
+            ?: currentItem.backdropUrl,
+        overview = candidate.overview ?: currentItem.overview,
+        rating = candidate.voteAverage ?: currentItem.rating,
+        imdbRating = imdb ?: currentItem.imdbRating,
+        rottenTomatoesRating = rt ?: currentItem.rottenTomatoesRating,
+        tmdbId = candidate.tmdbId,
+        type = "movie",
+        genres = extra?.genres ?: emptyList(),
+        director = extra?.director,
+        collectionId = extra?.collectionId,
+        collectionName = extra?.collectionName,
+        curatedCollections = extra?.curatedCollections ?: emptyList(),
+        cast = extra?.cast ?: emptyList()
+    )
+
+    saveCachedVideoMetadata(context, currentItem.video.path, updated)
+    return updated
 }
