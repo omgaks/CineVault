@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Audiotrack
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.Button
@@ -82,7 +83,13 @@ fun DetailScreen(
     onDirectorClick: (String) -> Unit = {},
     onActorClick: (Int, String, String?) -> Unit = { _, _, _ -> },
     onNativeCollectionClick: (Int, String) -> Unit = { _, _ -> },
-    onCuratedCollectionClick: (String) -> Unit = {}
+    onCuratedCollectionClick: (String) -> Unit = {},
+    // Called after a manual "Fix Match" is applied, with the freshly
+    // re-matched metadata. The caller (wherever this screen is invoked from,
+    // e.g. MainActivity's nav stack) should update whatever it holds for
+    // this destination so `item` comes back in as the new value on the next
+    // recomposition — DetailScreen itself doesn't own that state.
+    onMetadataUpdated: (VideoWithMetadata) -> Unit = {}
 ) {
     val context = LocalContext.current
     val fullPath = item.video.path.replace("%20", " ")
@@ -91,6 +98,11 @@ fun DetailScreen(
     val savedPosition = remember { loadPlaybackPosition(context, item.video.path) }
     val hasResumePosition = savedPosition > 15_000L
     val trailerSearchUrl = remember(item.title) { "https://www.youtube.com/results?search_query=${Uri.encode("${item.title} official trailer")}" }
+
+    // "Fix Match" — manual re-match flow for items TMDB matched incorrectly
+    // or not at all (e.g. "Akira 30th Anniversary" before the filename
+    // cleaner handled edition tags). See RematchDialog.kt / RematchViewModel.kt.
+    var showRematch by remember { mutableStateOf(false) }
 
     // Cast list — keyed consistently on item.tmdbId/item.type now (the
     // original had remember() keyed on item.video.path but the effect keyed
@@ -328,6 +340,19 @@ fun DetailScreen(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Trailer", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
                     }
+                    // Fix Match — opens RematchDialog to manually correct a
+                    // wrong or missing TMDB match (e.g. special-edition
+                    // filenames that slipped past the automatic cleaner).
+                    val rematchGlow = rememberPillGlowAlpha()
+                    Button(onClick = { showRematch = true },
+                        shape = RoundedCornerShape(40.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = GlassSurface, contentColor = TextBright),
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 9.dp),
+                        modifier = Modifier.strongPillGlow(glow = rematchGlow, cornerRadius = 40.dp, glowRadius = 40.dp)) {
+                        Icon(imageVector = Icons.Rounded.Search, contentDescription = null, tint = AmberCore, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Fix Match", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -358,6 +383,17 @@ fun DetailScreen(
         // Back button — glass circle
         Box(modifier = Modifier.align(Alignment.TopStart).padding(14.dp).size(42.dp).clip(CircleShape).background(GlassSurfaceStrong).clickable { onBack() }, contentAlignment = Alignment.Center) {
             Icon(imageVector = Icons.Rounded.ArrowBack, contentDescription = "Back", tint = TextBright, modifier = Modifier.size(22.dp))
+        }
+
+        if (showRematch) {
+            RematchDialog(
+                currentItem = item,
+                onDismiss = { showRematch = false },
+                onApplied = { updated ->
+                    showRematch = false
+                    onMetadataUpdated(updated)
+                }
+            )
         }
     }
 }
