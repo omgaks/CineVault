@@ -173,7 +173,7 @@ fun needsGenreUpgrade(item: VideoWithMetadata): Boolean {
 
 private val omdbHttpClient by lazy { OkHttpClient() }
 
-private suspend fun fetchOmdbRatings(title: String, year: String?): Pair<String?, String?> =
+suspend fun fetchOmdbRatings(title: String, year: String?): Pair<String?, String?> =
     withContext(Dispatchers.IO) {
         try {
             val key = BuildConfig.OMDB_API_KEY
@@ -231,7 +231,7 @@ private fun matchCuratedCollections(keywordNames: List<String>): List<String> {
 // /tv/{id} "details" endpoints (with credits appended). Kept separate from
 // the DTOs themselves so the enrichment code below doesn't care whether the
 // source was a movie or a TV show.
-private data class TmdbExtraDetails(
+data class TmdbExtraDetails(
     val genres: List<String>,
     val director: String?,
     val collectionId: Int?,
@@ -240,7 +240,7 @@ private data class TmdbExtraDetails(
     val cast: List<CastEntry>
 )
 
-private fun extractTopCast(credits: TmdbCreditsBlock?): List<CastEntry> {
+fun extractTopCast(credits: TmdbCreditsBlock?): List<CastEntry> {
     return credits?.cast
         ?.mapNotNull { c ->
             val id = c.id
@@ -251,7 +251,7 @@ private fun extractTopCast(credits: TmdbCreditsBlock?): List<CastEntry> {
         ?: emptyList()
 }
 
-private suspend fun fetchTmdbExtraDetails(tmdbId: Int, type: String): TmdbExtraDetails? =
+suspend fun fetchTmdbExtraDetails(tmdbId: Int, type: String): TmdbExtraDetails? =
     withContext(Dispatchers.IO) {
         try {
             if (type == "tv") {
