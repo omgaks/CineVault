@@ -405,58 +405,70 @@ fun CineVaultApp() {
                 }
 
                 is Destination.GenrePage -> {
+                    val items = libraryVideos.filter { v -> v.genres.any { it.equals(dest.genreName, ignoreCase = true) } }
                     GenreScreen(
                         genreName = dest.genreName,
                         videos = libraryVideos,
                         onBack = { pop() },
-                        onItemClick = { item -> push(Destination.Detail(item)) }
+                        onItemClick = { item -> push(Destination.Detail(item)) },
+                        onPlayClick = { item -> push(Destination.Player(item.video, item.type, items)) }
                     )
                 }
 
                 is Destination.DirectorPage -> {
+                    val items = libraryVideos.filter { it.director?.equals(dest.directorName, ignoreCase = true) == true }
                     DirectorScreen(
                         directorName = dest.directorName,
                         videos = libraryVideos,
                         onBack = { pop() },
-                        onItemClick = { item -> push(Destination.Detail(item)) }
+                        onItemClick = { item -> push(Destination.Detail(item)) },
+                        onPlayClick = { item -> push(Destination.Player(item.video, item.type, items)) }
                     )
                 }
 
                 is Destination.ActorPage -> {
+                    val items = libraryVideos.filter { v -> v.cast.any { it.id == dest.actorId } }
                     ActorScreen(
                         actorId = dest.actorId,
                         actorName = dest.actorName,
                         profilePath = dest.profilePath,
                         videos = libraryVideos,
                         onBack = { pop() },
-                        onItemClick = { item -> push(Destination.Detail(item)) }
+                        onItemClick = { item -> push(Destination.Detail(item)) },
+                        onPlayClick = { item -> push(Destination.Player(item.video, item.type, items)) }
                     )
                 }
 
                 is Destination.NativeCollectionPage -> {
+                    val items = libraryVideos.filter { it.collectionId == dest.collectionId }
                     CollectionScreen(
                         title = dest.collectionName,
-                        items = libraryVideos.filter { it.collectionId == dest.collectionId },
+                        items = items,
                         onBack = { pop() },
-                        onItemClick = { item -> push(Destination.Detail(item)) }
+                        onItemClick = { item -> push(Destination.Detail(item)) },
+                        onPlayClick = { item -> push(Destination.Player(item.video, item.type, items)) }
                     )
                 }
 
                 is Destination.CuratedCollectionPage -> {
+                    val items = libraryVideos.filter { it.curatedCollections.contains(dest.collectionName) }
                     CollectionScreen(
                         title = dest.collectionName,
-                        items = libraryVideos.filter { it.curatedCollections.contains(dest.collectionName) },
+                        items = items,
                         onBack = { pop() },
-                        onItemClick = { item -> push(Destination.Detail(item)) }
+                        onItemClick = { item -> push(Destination.Detail(item)) },
+                        onPlayClick = { item -> push(Destination.Player(item.video, item.type, items)) }
                     )
                 }
 
                 is Destination.RestrictedFolderPage -> {
+                    val items = libraryVideos.filter { folderIdFromRestrictedMarker(it.video.folderPath) == dest.folderId }
                     CollectionScreen(
                         title = dest.folderName,
-                        items = libraryVideos.filter { folderIdFromRestrictedMarker(it.video.folderPath) == dest.folderId },
+                        items = items,
                         onBack = { pop() },
-                        onItemClick = { item -> push(Destination.Detail(item)) }
+                        onItemClick = { item -> push(Destination.Detail(item)) },
+                        onPlayClick = { item -> push(Destination.Player(item.video, item.type, items)) }
                     )
                 }
 
