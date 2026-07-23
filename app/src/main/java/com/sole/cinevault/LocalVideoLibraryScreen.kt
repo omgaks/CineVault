@@ -914,12 +914,13 @@ private fun CollectionShelfCard(title: String, backdropUrl: String?, onClick: ()
 
 @Composable
 private fun RestrictedFolderShelfCard(title: String, count: Int, thumbnailVideoPath: String?, onClick: () -> Unit) {
-    Box(
+    // Same portrait card shape as the TV Shows row (145dp wide, 210dp
+    // poster, title + count below) instead of the previous landscape shelf
+    // card — keeps folders visually consistent with shows rather than
+    // reading as a different kind of thing.
+    Column(
         modifier = Modifier
-            .width(220.dp)
-            .height(110.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(SpaceMid)
+            .width(145.dp)
             .clickable { onClick() }
     ) {
         // No posterUrl on purpose — restricted-folder items never go through
@@ -928,16 +929,10 @@ private fun RestrictedFolderShelfCard(title: String, count: Int, thumbnailVideoP
         // frame of the video file itself when posterUrl is null, which is
         // exactly what's wanted here (and picks up content:// SAF paths the
         // same way it already handles any other local video path).
-        PosterBox(posterUrl = null, videoPath = thumbnailVideoPath, modifier = Modifier.fillMaxSize())
-        Box(
-            modifier = Modifier.fillMaxSize().background(
-                Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.62f)))
-            )
-        )
-        Column(modifier = Modifier.align(Alignment.BottomStart).padding(12.dp)) {
-            Text(text = title, color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(text = "$count file${if (count != 1) "s" else ""}", color = TextMuted, fontSize = 11.sp)
-        }
+        PosterBox(posterUrl = null, videoPath = thumbnailVideoPath, modifier = Modifier.fillMaxWidth().height(210.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(text = title, color = TextBright, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+        Text(text = "$count file${if (count != 1) "s" else ""}", color = TextMuted, fontSize = 12.sp)
     }
 }
 
