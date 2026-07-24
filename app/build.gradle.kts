@@ -97,6 +97,14 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.10.0")
     implementation("androidx.media3:media3-ui:1.10.0")
 
+    // Media3 session — MediaSession/MediaSessionService for
+    // CineVaultPlaybackService.kt (lock-screen playback survival, media
+    // notification, system media controls). Pinned to the SAME version as
+    // the other media3-* artifacts above — mixing Media3 artifact versions
+    // is a common source of runtime crashes, so this must always be bumped
+    // together with media3-exoplayer/media3-ui, never independently.
+    implementation("androidx.media3:media3-session:1.10.0")
+
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-gif:2.7.0")
     implementation("io.coil-kt:coil-video:2.7.0")
