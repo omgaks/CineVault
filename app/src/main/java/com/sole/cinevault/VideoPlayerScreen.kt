@@ -151,19 +151,27 @@ fun VideoPlayerScreen(
     // or similar) and locks the player to landscape while it's connected —
     // these devices render a fixed-aspect virtual screen, so letting the
     // player sit in portrait while one's attached just produces an
-    // unnecessarily letterboxed picture. Reverts automatically on disconnect
-    // or when leaving the player. See ExternalDisplayHelper.kt for Phase 2
-    // notes (rendering directly to the external display via Presentation).
+    // unnecessarily letterboxed picture. Also auto-dims the tablet's own
+    // brightness to near-zero while connected — previously this had to be
+    // done manually every time (the tablet screen is just mirroring the
+    // glasses' output, no need for it to be bright too), while keeping the
+    // screen genuinely ON and touchable (not locked), so it still works as
+    // a remote/control surface — the tablet only ever LOOKS off. True full
+    // blackout with the glasses continuing to show a distinct feed needs
+    // Phase 2 (Presentation-based separate rendering), not built yet.
+    // Reverts automatically on disconnect or when leaving the player.
     val externalDisplay by rememberExternalDisplayState()
     var showGlassesConnectedHint by remember { mutableStateOf(false) }
     LaunchedEffect(externalDisplay.isConnected) {
         if (externalDisplay.isConnected) {
             activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = 0.02f }
             showGlassesConnectedHint = true
             delay(2200)
             showGlassesConnectedHint = false
         } else {
             activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
         }
     }
 
@@ -542,6 +550,22 @@ fun VideoPlayerScreen(
 
     LaunchedEffect(Unit) {
         CineVaultPlayerHolder.currentPlayer = exoPlayer
+        // Bridges hardware media-button next/previous (headset, Bluetooth)
+        // to this screen's own episode-switching logic — see
+        // CineVaultForwardingPlayer.kt for why a direct player command
+        // doesn't work here.
+        CineVaultPlayerHolder.onNextRequested = { playNext() }
+        CineVaultPlayerHolder.onPreviousRequested = { playPrevious() }
+        // Starts (or re-attaches) the foreground playback service — this is
+        // what keeps playback alive and gives lock-screen media controls
+        // once the screen locks or the app backgrounds, instead of the
+        // previous behavior where MainActivity.onStop() unconditionally
+        // paused playback the moment the screen turned off. The service
+        // reads CineVaultPlayerHolder.currentPlayer itself (just set above)
+        // rather than the player being handed to it directly.
+        androidx.core.content.ContextCompat.startForegroundService(
+            context, Intent(context, CineVaultPlaybackService::class.java)
+        )
         brightnessPercent = try {
             val raw = android.provider.Settings.System.getInt(context.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS)
             ((raw / 255f) * 100f).toInt().coerceIn(5, 100)
@@ -632,6 +656,14 @@ fun VideoPlayerScreen(
             exoPlayer.release()
             AudioSyncHolder.offsetUs = 0L
             if (CineVaultPlayerHolder.currentPlayer == exoPlayer) CineVaultPlayerHolder.currentPlayer = null
+            CineVaultPlayerHolder.onNextRequested = null
+            CineVaultPlayerHolder.onPreviousRequested = null
+            // Only reached on an actual exit from the player (Back pressed,
+            // navigated away) — NOT fired just because the screen locked or
+            // the app backgrounded, since Compose disposal and Activity
+            // onStop/onPause are different things. Safe to stop the service
+            // here since we've already cleared currentPlayer above.
+            context.stopService(Intent(context, CineVaultPlaybackService::class.java))
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
             activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
