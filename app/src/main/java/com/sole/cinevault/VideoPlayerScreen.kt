@@ -79,11 +79,13 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -860,19 +862,45 @@ fun VideoPlayerScreen(
             }
         )
 
+        val view = LocalView.current
+        // Clears any exclusion rect this screen set once it's gone, so it
+        // never lingers and affects some other screen's back gesture.
+        DisposableEffect(Unit) {
+            onDispose {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    view.systemGestureExclusionRects = emptyList()
+                }
+            }
+        }
+
         Box(
             modifier = Modifier.fillMaxSize()
                 // Reserves this gesture surface from Android's system
-                // edge-swipe-back gesture — without this, a swipe starting
-                // near the left/right edge (exactly where the previous/next
-                // drag zones below start) was being intercepted by the OS's
-                // predictive-back gesture FIRST, so the app's own drag
-                // detector never saw the touch at all and it fell through to
-                // the system back action instead. That was the actual cause
-                // of "swiping from the right edge goes back to the folder"
-                // — not a bug in playNext() itself, the gesture just never
-                // reached it.
-                .systemGestureExclusion()
+                // edge-swipe-back gesture using the real underlying View
+                // API (there's no Compose-level modifier for this — an
+                // earlier attempt used a Modifier.systemGestureExclusion()
+                // that doesn't actually exist, which is why the build kept
+                // failing). Without this, a swipe starting near the left/
+                // right edge (exactly where the previous/next drag zones
+                // below start) gets intercepted by the OS's predictive-back
+                // gesture FIRST, so the app's own drag detector never sees
+                // the touch at all and it falls through to the system back
+                // action instead. That was the actual cause of "swiping
+                // from the right edge goes back to the folder" — not a bug
+                // in playNext() itself, the gesture just never reached it.
+                .onGloballyPositioned { coordinates ->
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        val bounds = coordinates.boundsInWindow()
+                        view.systemGestureExclusionRects = listOf(
+                            android.graphics.Rect(
+                                bounds.left.roundToInt(),
+                                bounds.top.roundToInt(),
+                                bounds.right.roundToInt(),
+                                bounds.bottom.roundToInt()
+                            )
+                        )
+                    }
+                }
                 .pointerInput(currentVideo.path) {
                     detectTapGestures(
                         onTap = {
