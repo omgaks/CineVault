@@ -31,11 +31,16 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
@@ -49,6 +54,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
@@ -78,12 +84,6 @@ enum class LibrarySortOption(val label: String) {
     SIZE_SMALL("Size ↑")
 }
 
-// NOTE: findCineActivity() removed — lives in Screens.kt as the single shared version.
-
-// Persists the library grid's scroll position across navigation (Detail -> back).
-// A plain object survives composable disposal since it isn't tied to the
-// composition, unlike remember/rememberSaveable which reset when this screen
-// leaves the composition entirely.
 private object LibraryScrollState {
     var index: Int = 0
     var offset: Int = 0
@@ -92,14 +92,12 @@ private object LibraryScrollState {
     var gridMode: Boolean = true
 }
 
-// Data class for folder grouping
 private data class VideoFolder(
     val folderName: String,
     val folderPath: String,
     val videos: List<VideoWithMetadata>
 )
 
-// Group videos by their parent folder
 private fun groupVideosByFolder(videos: List<VideoWithMetadata>): List<VideoFolder> {
     return videos
         .groupBy { File(it.video.path).parent ?: "/" }
@@ -111,6 +109,22 @@ private fun groupVideosByFolder(videos: List<VideoWithMetadata>): List<VideoFold
             )
         }
         .sortedBy { it.folderName.lowercase() }
+}
+
+// ── Folder type icon heuristic ────────────────────────────────────────────
+// Generic Material icons only — deliberately NOT actual TikTok/Instagram
+// brand marks (those are trademarked assets, not something to reproduce).
+// Matches on the folder's display name, which for restricted folders is
+// usually whatever the source app named its export/download folder.
+private fun folderIconFor(displayName: String): ImageVector {
+    val lower = displayName.lowercase()
+    return when {
+        lower.contains("tiktok") -> Icons.Filled.MusicNote
+        lower.contains("instagram") || lower.contains("insta") -> Icons.Filled.PhotoCamera
+        lower.contains("whatsapp") -> Icons.Filled.Chat
+        lower.contains("camera") || lower.contains("dcim") -> Icons.Filled.CameraAlt
+        else -> Icons.Filled.Folder
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -128,12 +142,6 @@ fun LocalVideoLibraryScreen(
     onRestrictedFolderClick: (RestrictedFolder) -> Unit = {}
 ) {
     val context = LocalContext.current
-    // Bright by design, same as every other browsing screen (Home, Search,
-    // Settings, Detail) — see ForceCineVaultBrightness's own comment in
-    // Screens.kt. This was the actual missing piece before: Library never
-    // had this call at all, so leaving a forced-bright Home/Search screen
-    // landed on Library's un-forced (dimmer) real brightness, looking like
-    // "Library dims." Only the player is the deliberate exception.
     ForceCineVaultBrightness()
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
@@ -150,13 +158,10 @@ fun LocalVideoLibraryScreen(
     var favoritePaths by remember { mutableStateOf(loadFavoriteVideoPaths(context)) }
     var contextSheetItem by remember { mutableStateOf<VideoWithMetadata?>(null) }
 
-    // FOLDER VIEW: track which folders are expanded
     var expandedFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     val keyguardManager = remember { context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager }
 
-    // Restores the grid's scroll position from LibraryScrollState so returning
-    // from the Detail screen lands you back where you left off, not the top.
     val gridState = rememberLazyGridState(
         initialFirstVisibleItemIndex = LibraryScrollState.index,
         initialFirstVisibleItemScrollOffset = LibraryScrollState.offset
@@ -233,12 +238,6 @@ fun LocalVideoLibraryScreen(
         saveFavoriteVideoPaths(context, updated); Toast.makeText(context, "Removed from Favorites", Toast.LENGTH_SHORT).show()
     }
 
-    // DELETE — direct MediaStore flow, not routed through FileManagementHelper.
-    // That helper's delete path is apparently built for the app's own
-    // subtitle files (plain local storage, no MediaStore involved), which is
-    // why reusing it for scanned videos silently kept failing. Videos here
-    // are indexed by MediaStore and live outside the app's own storage, so
-    // scoped storage requires going through MediaStore's consent flow.
     var pendingDeleteResult by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
     val deleteConsentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         pendingDeleteResult?.invoke(result.resultCode == Activity.RESULT_OK)
@@ -253,9 +252,6 @@ fun LocalVideoLibraryScreen(
         Toast.makeText(context, "File deleted", Toast.LENGTH_SHORT).show()
     }
 
-    // Looks up the MediaStore content Uri for a file path — needed because
-    // deleting through the raw java.io.File path is what scoped storage blocks;
-    // deleting through the matching content:// Uri is what's actually allowed.
     fun findMediaStoreUri(path: String): Uri? {
         val projection = arrayOf(MediaStore.Video.Media._ID)
         return try {
@@ -280,10 +276,6 @@ fun LocalVideoLibraryScreen(
                 val mediaUri = findMediaStoreUri(item.video.path)
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && mediaUri != null) {
-                    // Android 11+: proactively trigger the system's own delete
-                    // confirmation for this MediaStore item. This is the only
-                    // reliable path under scoped storage for files the app
-                    // didn't create itself.
                     try {
                         pendingDeleteResult = { granted ->
                             if (granted) finishDeleteSuccess(item)
@@ -304,9 +296,6 @@ fun LocalVideoLibraryScreen(
                             else -> Toast.makeText(context, "Could not delete file", Toast.LENGTH_SHORT).show()
                         }
                     } catch (e: SecurityException) {
-                        // Android 10 throws a RecoverableSecurityException with an
-                        // IntentSender the system provides specifically to grant
-                        // one-time delete permission for this file.
                         val recoverable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) e as? android.app.RecoverableSecurityException else null
                         if (recoverable != null) {
                             pendingDeleteResult = { granted ->
@@ -334,11 +323,6 @@ fun LocalVideoLibraryScreen(
             isLoading = true; scanStatus = "Scanning device videos..."
             val deviceVideos = try { scanDeviceVideos(context) } catch (e: Exception) { e.printStackTrace(); scanStatus = "Scan failed: ${e.message ?: "Unknown error"}"; isLoading = false; return@launch }
 
-            // SMB network shares — merged into the same list so they flow
-            // through the exact same enrichment/poster/library pipeline as
-            // device videos. One failed share (wrong password, device
-            // offline) shows a toast and is skipped, rather than aborting
-            // the whole scan.
             val smbShares = loadSmbShares(context)
             val smbVideos = mutableListOf<VideoWithMetadata>()
             for (share in smbShares) {
@@ -349,11 +333,6 @@ fun LocalVideoLibraryScreen(
                 }
             }
 
-            // Restricted folders — scanned separately via SAF (they don't
-            // live in MediaStore), bypassing the duration/size floor and
-            // personal-video filename filter scanDeviceVideos() applies,
-            // since these were picked on purpose. See RestrictedFolderStore.kt
-            // for why they're tagged type="restricted" and excluded from Home.
             scanStatus = "Scanning restricted folders..."
             val restrictedVideos = try { scanAllRestrictedFolders(context) } catch (e: Exception) { emptyList() }
 
@@ -362,25 +341,11 @@ fun LocalVideoLibraryScreen(
             val instantList = scannedVideos.map { applyCachedMetadataIfAvailable(context, it) }
             onVideosLoaded(instantList); saveLibraryCache(context, instantList)
 
-            // Which items actually need a network fetch (missing metadata, or
-            // cached but predates the ratings/genre-upgrade passes).
-            // Restricted-folder items are excluded outright — they'd never
-            // have "useful online metadata" (no poster/tmdbId), so without
-            // this they'd get swept in here and waste a TMDB search on a
-            // TikTok clip's filename.
             val toEnrich = instantList.withIndex().filter { (_, item) ->
                 !isRestrictedFolderItem(item) && (!hasUsefulOnlineMetadata(item) || needsRatingsUpgrade(item) || needsGenreUpgrade(item))
             }
             scanStatus = "Loaded ${instantList.size} videos. Updating missing posters & ratings..."
 
-            // SPEED FIX: this used to enrich items one at a time, fully
-            // sequentially — each item involves ~2-3 chained network calls
-            // (TMDB search, TMDB details+credits+keywords, OMDB ratings), so
-            // a large library could take several minutes just waiting on
-            // network round-trips one by one. Bounded parallelism (6 at a
-            // time) processes the whole batch far faster while still being
-            // polite to TMDB/OMDB's rate limits rather than firing everything
-            // at once.
             val workingList = instantList.toMutableList()
             var completedCount = 0
             val semaphore = Semaphore(6)
@@ -405,7 +370,6 @@ fun LocalVideoLibraryScreen(
         }
     }
 
-    // FOLDERS category added, Downloads kept
     val categories = listOf("All", "Movies", "TV Shows", "Folders", "Downloads", "Favorites", "Secret")
 
     val sortedVideos = remember(videos, sortOption) {
@@ -423,18 +387,13 @@ fun LocalVideoLibraryScreen(
     val secretVideos = sortedVideos.filter { hiddenPaths.contains(it.video.path) || videoIsInsideSecretFolder(it, hiddenFolders) }
     val favoriteVideos = visibleSortedVideos.filter { favoritePaths.contains(it.video.path) }
 
-    // Restricted-folder items get their own dedicated shelf below instead
-    // of appearing in Movies/Downloads/All or the physical Folders view —
-    // their "folder" is a virtual SAF marker (content:// URIs), not a real
-    // filesystem path, so grouping them into the physical Folders view
-    // wouldn't make sense anyway.
     val videoFolders = remember(visibleSortedVideos) { groupVideosByFolder(visibleSortedVideos.filterNot { it.type.equals("restricted", ignoreCase = true) }) }
 
     val filteredVideos = when (selectedCategory) {
         "Secret" -> if (secretUnlocked) secretVideos else emptyList()
         "Favorites" -> favoriteVideos
         "TV Shows" -> emptyList()
-        "Folders" -> emptyList() // handled separately below
+        "Folders" -> emptyList()
         "Downloads" -> visibleSortedVideos.filter { !it.type.equals("movie", ignoreCase = true) && !it.type.equals("tv", ignoreCase = true) && !it.type.equals("restricted", ignoreCase = true) }
         "Movies" -> visibleSortedVideos.filter { it.type.equals("movie", ignoreCase = true) }
         else -> visibleSortedVideos.filter { !it.type.equals("tv", ignoreCase = true) && !it.type.equals("restricted", ignoreCase = true) }
@@ -451,7 +410,6 @@ fun LocalVideoLibraryScreen(
             verticalArrangement = Arrangement.spacedBy(18.dp),
             contentPadding = PaddingValues(top = 16.dp, bottom = 28.dp)
         ) {
-            // Header
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -521,10 +479,6 @@ fun LocalVideoLibraryScreen(
                 }
             }
 
-            // ── Collections shelf — native TMDB collections + curated ones
-            // (e.g. Marvel Cinematic Universe), only shown if the library
-            // actually has any. Respects hidden/secret items same as the
-            // rest of this screen (built from visibleSortedVideos).
             run {
                 data class CollectionShelfEntry(val key: String, val displayName: String, val backdropUrl: String?, val isCurated: Boolean, val collectionId: Int?)
                 val nativeEntries = visibleSortedVideos
@@ -561,10 +515,13 @@ fun LocalVideoLibraryScreen(
                 }
             }
 
-            // ── Restricted folders shelf — each folder shown as one card,
-            // thumbnail sourced from the last file played in it (falls back
-            // to the first file if nothing's been played yet). Deliberately
-            // NOT rendered on Home — see homeVisibleVideos in MainActivity.kt.
+            // ── TV Shows & Folders — combined section, TV shows first then
+            // restricted folders, left to right, both ahead of Genres.
+            // GATED BY CATEGORY: TV shows only show under "All"/"TV Shows",
+            // restricted folders only show under "All"/"Folders"/"Downloads"
+            // — previously this whole shelf rendered unconditionally on
+            // every tab, which is why TikTok/Instagram folder cards were
+            // showing up even while filtered to "Movies" or "TV Shows".
             run {
                 data class RestrictedShelfEntry(val folder: RestrictedFolder, val items: List<VideoWithMetadata>)
                 val restrictedItems = visibleSortedVideos.filter { it.type.equals("restricted", ignoreCase = true) }
@@ -575,31 +532,59 @@ fun LocalVideoLibraryScreen(
                     }
                 }
 
-                if (restrictedShelf.isNotEmpty()) {
+                val showTvInShelf = selectedCategory in listOf("All", "TV Shows") && tvGroups.isNotEmpty()
+                val showFoldersInShelf = selectedCategory in listOf("All", "Folders", "Downloads") && restrictedShelf.isNotEmpty()
+
+                if (showTvInShelf || showFoldersInShelf) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Column {
-                            Text(text = "Folders", color = TextBright, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            Text(text = "TV Shows & Folders", color = TextBright, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(10.dp))
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                items(items = restrictedShelf, key = { it.folder.id }) { entry ->
-                                    val thumbnailSourcePath = entry.folder.lastPlayedVideoPath
-                                        ?.takeIf { path -> entry.items.any { it.video.path == path } }
-                                        ?: entry.items.firstOrNull()?.video?.path
-                                    RestrictedFolderShelfCard(
-                                        title = entry.folder.displayName,
-                                        count = entry.items.size,
-                                        thumbnailVideoPath = thumbnailSourcePath,
-                                        onClick = { onRestrictedFolderClick(entry.folder) }
-                                    )
+
+                            if (showTvInShelf) {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                    items(items = tvGroups, key = { "tv:${it.showName}" }) { show ->
+                                        Column(
+                                            modifier = Modifier
+                                                .width(145.dp)
+                                                .combinedClickable(
+                                                    onClick = { onTvGroupClick(show) },
+                                                    onLongClick = { show.episodes.firstOrNull()?.let { openContextSheet(it) } }
+                                                )
+                                        ) {
+                                            PosterBox(posterUrl = show.posterUrl, modifier = Modifier.fillMaxWidth().height(210.dp))
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(text = show.showName, color = TextBright, maxLines = 1, fontWeight = FontWeight.SemiBold)
+                                            Text(text = "${show.episodes.size} Episodes", color = TextMuted, fontSize = 12.sp)
+                                        }
+                                    }
                                 }
                             }
+
+                            if (showFoldersInShelf) {
+                                if (showTvInShelf) Spacer(modifier = Modifier.height(14.dp))
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                    items(items = restrictedShelf, key = { "folder:${it.folder.id}" }) { entry ->
+                                        val thumbnailSourcePath = entry.folder.lastPlayedVideoPath
+                                            ?.takeIf { path -> entry.items.any { it.video.path == path } }
+                                            ?: entry.items.firstOrNull()?.video?.path
+                                        RestrictedFolderShelfCard(
+                                            title = entry.folder.displayName,
+                                            count = entry.items.size,
+                                            thumbnailVideoPath = thumbnailSourcePath,
+                                            onClick = { onRestrictedFolderClick(entry.folder) },
+                                            onLongClick = { entry.items.firstOrNull()?.let { openContextSheet(it) } }
+                                        )
+                                    }
+                                }
+                            }
+
                             Spacer(modifier = Modifier.height(20.dp))
                         }
                     }
                 }
             }
 
-            // ── Genres shelf — every distinct genre present in the library ──
             run {
                 val genreNames = visibleSortedVideos.flatMap { it.genres }.distinct().sortedBy { it.lowercase() }
                 if (genreNames.isNotEmpty()) {
@@ -625,7 +610,6 @@ fun LocalVideoLibraryScreen(
                 }
             }
 
-            // Secret locked
             if (selectedCategory == "Secret" && !secretUnlocked) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Box(modifier = Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) {
@@ -640,7 +624,6 @@ fun LocalVideoLibraryScreen(
                 }
             }
 
-            // FOLDER VIEW
             if (selectedCategory == "Folders") {
                 if (videoFolders.isEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
@@ -654,7 +637,6 @@ fun LocalVideoLibraryScreen(
                     }
 
                     videoFolders.forEach { folder ->
-                        // Folder header row
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             val isExpanded = expandedFolders.contains(folder.folderPath)
                             Row(
@@ -687,13 +669,11 @@ fun LocalVideoLibraryScreen(
                             }
                         }
 
-                        // Expanded folder contents — respects isGridMode toggle
                         if (expandedFolders.contains(folder.folderPath)) {
                             if (isGridMode) {
                                 items(items = folder.videos, key = { it.video.path }) { item ->
                                     LibraryGridCard(item = item, onClick = { onItemClick(item) }, onPlayClick = onPlayClick, onLongPress = { openContextSheet(it) })
                                 }
-                                // Fill remaining columns if last row isn't complete
                                 val remainder = folder.videos.size % 3
                                 if (remainder != 0) {
                                     repeat(3 - remainder) {
@@ -710,7 +690,6 @@ fun LocalVideoLibraryScreen(
                 }
             }
 
-            // Empty state for non-folder views
             if (selectedCategory != "Folders" && !isLoading && filteredVideos.isEmpty() && tvGroups.isEmpty() && !(selectedCategory == "Secret" && !secretUnlocked)) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Box(modifier = Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) {
@@ -719,34 +698,6 @@ fun LocalVideoLibraryScreen(
                 }
             }
 
-            // TV Shows row — long-press the poster for actions
-            if (tvGroups.isNotEmpty() && selectedCategory in listOf("All", "TV Shows")) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Column {
-                        Text(text = "TV Shows", color = TextBright, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(10.dp))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            items(items = tvGroups, key = { it.showName }) { show ->
-                                Column(
-                                    modifier = Modifier
-                                        .width(145.dp)
-                                        .combinedClickable(
-                                            onClick = { onTvGroupClick(show) },
-                                            onLongClick = { show.episodes.firstOrNull()?.let { openContextSheet(it) } }
-                                        )
-                                ) {
-                                    PosterBox(posterUrl = show.posterUrl, modifier = Modifier.fillMaxWidth().height(210.dp))
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(text = show.showName, color = TextBright, maxLines = 1, fontWeight = FontWeight.SemiBold)
-                                    Text(text = "${show.episodes.size} Episodes", color = TextMuted, fontSize = 12.sp)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Regular video grid/list — long-press for actions, no more ⋮
             if (filteredVideos.isNotEmpty() && selectedCategory != "Folders") {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Text(
@@ -767,7 +718,6 @@ fun LocalVideoLibraryScreen(
             }
         }
 
-        // ── Long-press context sheet — the premium replacement for the ⋮ menu ──
         AnimatedVisibility(visible = contextSheetItem != null, enter = fadeIn(animationSpec = tween(160)), exit = fadeOut(animationSpec = tween(180))) {
             val selectedItem = contextSheetItem
             Box(
@@ -784,72 +734,74 @@ fun LocalVideoLibraryScreen(
 
                     Column(
                         modifier = Modifier
-                            .width(300.dp)
-                            .glassPanel(cornerRadius = 24.dp, fill = SpaceMid.copy(alpha = 0.98f))
+                            .width(180.dp)
+                            .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.98f))
                             .clickable(enabled = false) { }
-                            .padding(14.dp)
+                            .padding(12.dp)
                     ) {
-                        // Header: poster thumbnail + title
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
-                                    .width(56.dp)
-                                    .height(82.dp)
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .width(34.dp)
+                                    .height(50.dp)
+                                    .clip(RoundedCornerShape(8.dp))
                                     .background(SpaceDeep)
                             ) {
                                 if (!selectedItem.posterUrl.isNullOrBlank()) {
                                     AsyncImage(model = selectedItem.posterUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                                 }
                             }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(text = selectedItem.title, color = TextBright, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                if (selectedItem.subtitle.isNotBlank()) {
-                                    Text(text = selectedItem.subtitle, color = TextMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = selectedItem.title,
+                                color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        HorizontalDivider(color = GlassBorderBottom)
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Icon-only actions — no text labels, small glowing
+                        // circular buttons. FlowRow wraps to a second row on
+                        // its own if it ever needs to.
+                        androidx.compose.foundation.layout.FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            SheetIconButton(icon = Icons.Rounded.PlayArrow, tint = AmberCore, contentDescription = "Play") {
+                                contextSheetItem = null; onPlayClick(selectedItem)
                             }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-                        HorizontalDivider(color = GlassBorderBottom)
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        SheetActionRow(icon = Icons.Rounded.PlayArrow, label = "Play", tint = AmberCore) {
-                            contextSheetItem = null; onPlayClick(selectedItem)
-                        }
-                        SheetActionRow(
-                            icon = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                            label = if (isFavorite) "Remove from Favorites" else "Add to Favorites",
-                            tint = if (isFavorite) AmberCore else TextBright
-                        ) {
-                            if (isFavorite) removeFavorite(selectedItem) else addFavorite(selectedItem)
-                            contextSheetItem = null
-                        }
-                        SheetActionRow(
-                            icon = if (isHidden) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
-                            label = if (isHidden) "Remove from Secret" else "Move to Secret",
-                            tint = TextBright
-                        ) {
-                            if (isHidden) unhideVideo(selectedItem) else hideVideo(selectedItem)
-                            contextSheetItem = null
-                        }
-                        SheetActionRow(
-                            icon = Icons.Filled.Folder,
-                            label = if (isInSecretFolder) "Unlock Folder" else "Hide Entire Folder",
-                            tint = TextBright
-                        ) {
-                            if (isInSecretFolder) unhideEntireFolder(selectedItem) else hideEntireFolder(selectedItem)
-                            contextSheetItem = null
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-                        HorizontalDivider(color = GlassBorderBottom)
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        SheetActionRow(icon = Icons.Rounded.Delete, label = "Delete File", tint = Color(0xFFFF5252)) {
-                            contextSheetItem = null
-                            deleteVideoFile(selectedItem)
+                            SheetIconButton(
+                                icon = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                                tint = if (isFavorite) AmberCore else TextBright,
+                                contentDescription = if (isFavorite) "Remove from Favorites" else "Add to Favorites"
+                            ) {
+                                if (isFavorite) removeFavorite(selectedItem) else addFavorite(selectedItem)
+                                contextSheetItem = null
+                            }
+                            SheetIconButton(
+                                icon = if (isHidden) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
+                                tint = TextBright,
+                                contentDescription = if (isHidden) "Remove from Secret" else "Move to Secret"
+                            ) {
+                                if (isHidden) unhideVideo(selectedItem) else hideVideo(selectedItem)
+                                contextSheetItem = null
+                            }
+                            SheetIconButton(
+                                icon = Icons.Filled.Folder,
+                                tint = TextBright,
+                                contentDescription = if (isInSecretFolder) "Unlock Folder" else "Hide Entire Folder"
+                            ) {
+                                if (isInSecretFolder) unhideEntireFolder(selectedItem) else hideEntireFolder(selectedItem)
+                                contextSheetItem = null
+                            }
+                            SheetIconButton(icon = Icons.Rounded.Delete, tint = Color(0xFFFF5252), contentDescription = "Delete File") {
+                                contextSheetItem = null
+                                deleteVideoFile(selectedItem)
+                            }
                         }
                     }
                 }
@@ -859,18 +811,18 @@ fun LocalVideoLibraryScreen(
 }
 
 @Composable
-private fun SheetActionRow(icon: ImageVector, label: String, tint: Color, onClick: () -> Unit) {
-    Row(
+private fun SheetIconButton(icon: ImageVector, tint: Color, contentDescription: String, onClick: () -> Unit) {
+    Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { onClick() }
-            .padding(horizontal = 12.dp, vertical = 11.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .size(46.dp)
+            .clip(CircleShape)
+            .background(GlassSurfaceStrong)
+            .background(Brush.radialGradient(listOf(tint.copy(alpha = 0.30f), Color.Transparent), radius = 90f))
+            .border(1.2.dp, tint.copy(alpha = 0.55f), CircleShape)
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
     ) {
-        Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(text = label, color = if (tint == Color(0xFFFF5252)) tint else TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Icon(imageVector = icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(20.dp))
     }
 }
 
@@ -887,14 +839,6 @@ private fun CollectionShelfCard(title: String, backdropUrl: String?, onClick: ()
         if (!backdropUrl.isNullOrBlank()) {
             AsyncImage(model = backdropUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
-        // Previously a single gradient stretched transparent-to-75%-black
-        // across the ENTIRE card height — on an already-small 110dp-tall
-        // card, that meant a large chunk of the artwork was visibly dimmed
-        // even well above where the title text sits. Adding a mid
-        // transparent stop keeps the top half of the artwork completely
-        // clear and only starts darkening in the bottom half, right where
-        // it's actually needed for the text to stay legible. Peak alpha
-        // also brought down slightly (0.75 -> 0.62).
         Box(
             modifier = Modifier.fillMaxSize().background(
                 Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.62f)))
@@ -912,24 +856,68 @@ private fun CollectionShelfCard(title: String, backdropUrl: String?, onClick: ()
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun RestrictedFolderShelfCard(title: String, count: Int, thumbnailVideoPath: String?, onClick: () -> Unit) {
+private fun RestrictedFolderShelfCard(
+    title: String,
+    count: Int,
+    thumbnailVideoPath: String?,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = {}
+) {
     // Same portrait card shape as the TV Shows row (145dp wide, 210dp
-    // poster, title + count below) instead of the previous landscape shelf
-    // card — keeps folders visually consistent with shows rather than
-    // reading as a different kind of thing.
+    // poster, title + count below), now with an amber-glass border and a
+    // slightly zoomed/cropped thumbnail so it reads as a designed card
+    // instead of a bare rectangle — previously this had none of the glow/
+    // border treatment every other poster card on this screen already uses.
+    // Long-press now opens the same context sheet movies/TV posters get
+    // (Play / Favorite / Secret / Hide folder / Delete), using the folder's
+    // representative item — previously long-press did nothing at all here.
     Column(
         modifier = Modifier
             .width(145.dp)
-            .clickable { onClick() }
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
-        // No posterUrl on purpose — restricted-folder items never go through
-        // TMDB enrichment, so there's no online artwork. PosterBox already
-        // knows how to fall back to generating a thumbnail directly from a
-        // frame of the video file itself when posterUrl is null, which is
-        // exactly what's wanted here (and picks up content:// SAF paths the
-        // same way it already handles any other local video path).
-        PosterBox(posterUrl = null, videoPath = thumbnailVideoPath, modifier = Modifier.fillMaxWidth().height(210.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(210.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(SpaceMid)
+                .border(1.dp, Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.55f), AmberDeep.copy(alpha = 0.25f))), RoundedCornerShape(14.dp))
+        ) {
+            // No posterUrl on purpose — restricted-folder items never go
+            // through TMDB enrichment, so there's no online artwork.
+            // PosterBox falls back to generating a thumbnail directly from a
+            // frame of the video file itself when posterUrl is null.
+            // Slight scale-up (1.10x) crops in a touch tighter for a more
+            // "designed" zoomed look instead of the raw untouched frame.
+            PosterBox(
+                posterUrl = null,
+                videoPath = thumbnailVideoPath,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { scaleX = 1.10f; scaleY = 1.10f }
+            )
+            Box(
+                modifier = Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.45f)))
+                )
+            )
+            // Folder-type badge — generic icon only (see folderIconFor), not
+            // an actual brand logo.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .size(26.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.Black.copy(alpha = 0.55f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(imageVector = folderIconFor(title), contentDescription = null, tint = AmberCore, modifier = Modifier.size(14.dp))
+            }
+        }
         Spacer(modifier = Modifier.height(8.dp))
         Text(text = title, color = TextBright, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
         Text(text = "$count file${if (count != 1) "s" else ""}", color = TextMuted, fontSize = 12.sp)
