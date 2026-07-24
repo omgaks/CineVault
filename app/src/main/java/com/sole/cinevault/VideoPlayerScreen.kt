@@ -144,6 +144,27 @@ fun VideoPlayerScreen(
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
 
+    // ── Dedicated glasses mode (Phase 1) ───────────────────────────────────
+    // Detects a USB-C DisplayPort Alt Mode external display (RayNeo glasses
+    // or similar) and locks the player to landscape while it's connected —
+    // these devices render a fixed-aspect virtual screen, so letting the
+    // player sit in portrait while one's attached just produces an
+    // unnecessarily letterboxed picture. Reverts automatically on disconnect
+    // or when leaving the player. See ExternalDisplayHelper.kt for Phase 2
+    // notes (rendering directly to the external display via Presentation).
+    val externalDisplay by rememberExternalDisplayState()
+    var showGlassesConnectedHint by remember { mutableStateOf(false) }
+    LaunchedEffect(externalDisplay.isConnected) {
+        if (externalDisplay.isConnected) {
+            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            showGlassesConnectedHint = true
+            delay(2200)
+            showGlassesConnectedHint = false
+        } else {
+            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
+
     var audioSyncMs by remember { mutableIntStateOf(0) }
     LaunchedEffect(audioSyncMs) { AudioSyncHolder.offsetUs = audioSyncMs * 1000L }
 
@@ -611,6 +632,7 @@ fun VideoPlayerScreen(
             if (CineVaultPlayerHolder.currentPlayer == exoPlayer) CineVaultPlayerHolder.currentPlayer = null
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
+            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             activity?.exitImmersiveModeForPlayer()
         }
     }
@@ -926,6 +948,17 @@ fun VideoPlayerScreen(
 
         AnimatedVisibility(visible = edgeSwipeHint.isNotBlank(), enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(200)), modifier = Modifier.align(Alignment.Center)) {
             Text(text = edgeSwipeHint, color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 20.dp, vertical = 10.dp))
+        }
+
+        // Glasses-connected indicator — brief confirmation toast-style pill,
+        // same treatment as edgeSwipeHint above, shown once when an external
+        // display connects (fades out on its own after ~2s).
+        AnimatedVisibility(visible = showGlassesConnectedHint, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(250)), modifier = Modifier.align(Alignment.TopCenter).padding(top = if (isLandscape) 54.dp else 90.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 16.dp, vertical = 9.dp)) {
+                Icon(imageVector = Icons.Rounded.Tv, contentDescription = null, tint = AmberCore, modifier = Modifier.size(15.dp))
+                Spacer(modifier = Modifier.width(7.dp))
+                Text(text = "External display connected", color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
         }
 
         AnimatedVisibility(visible = showBufferingSpinner && playerErrorMessage == null, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(150)), modifier = Modifier.align(Alignment.Center)) {
