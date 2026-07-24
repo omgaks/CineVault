@@ -56,6 +56,8 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.Forward10
+import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -186,14 +188,6 @@ fun VideoPlayerScreen(
     var menuTouchKey by remember { mutableIntStateOf(0) }
     var playerViewForSubtitleStyle by remember { mutableStateOf<PlayerView?>(null) }
 
-    // ── Subtitle sync state ──────────────────────────────────────────────
-    // originalSubtitleUri is the unshifted source of truth for whatever
-    // subtitle is currently attached (cached / downloaded / picked). The
-    // sync-offset feature always re-derives a shifted copy FROM this file
-    // rather than shifting an already-shifted file, so repeated slider moves
-    // don't compound. appliedSubtitleOffsetMs tracks what offset is actually
-    // reflected in the loaded media item right now, so the effect below can
-    // skip redundant reloads when nothing has really changed.
     var originalSubtitleUri by remember { mutableStateOf<Uri?>(null) }
     var appliedSubtitleOffsetMs by remember { mutableLongStateOf(0L) }
 
@@ -214,24 +208,12 @@ fun VideoPlayerScreen(
     var previewFrames by remember { mutableStateOf<List<VideoThumbnailHelper.PreviewFrame>>(emptyList()) }
     var edgeSwipeHint by remember { mutableStateOf("") }
 
-    // ── Robustness state ──────────────────────────────────────────────────
-    // Nothing in the player previously surfaced buffering or errors at all —
-    // a stalled or failed file just sat there frozen with zero feedback.
     var isBuffering by remember { mutableStateOf(false) }
     var showBufferingSpinner by remember { mutableStateOf(false) }
     var stuckBufferingHint by remember { mutableStateOf(false) }
     var playerErrorMessage by remember { mutableStateOf<String?>(null) }
     var errorRetryCount by remember { mutableIntStateOf(0) }
 
-    // ── A/V drift watchdog state ─────────────────────────────────────────
-    // ExoPlayer syncs video frames to the audio clock internally, so true
-    // drift mostly doesn't accumulate the way it would in a naive player.
-    // What actually happens on long sessions is the decoder falling behind
-    // (a burst of dropped frames) after a slow-storage or CPU hiccup, and
-    // not always recovering cleanly on its own. droppedFrameNudgeCount /
-    // lastNudgeAtMs cap how often a corrective same-position seek can fire,
-    // so a device that's genuinely too slow to decode this file doesn't get
-    // seeked on a loop.
     var droppedFrameNudgeCount by remember { mutableIntStateOf(0) }
     var lastNudgeAtMs by remember { mutableLongStateOf(0L) }
 
@@ -246,14 +228,6 @@ fun VideoPlayerScreen(
         }
     }
 
-    // Tuned buffering — local storage (especially USB/SD/network shares) can
-    // have far more variable read speed than a normal network stream, so
-    // buffers are set generously: a fairly large min/max buffer window to
-    // absorb slow reads without stalling, a short initial buffer for fast
-    // start, and a longer rebuffer-recovery buffer so a stall doesn't
-    // immediately stall again the moment playback resumes. Back buffer keeps
-    // ~30s of already-played data around so the -10s skip button doesn't have
-    // to re-read from storage as often.
     val loadControl = remember {
         DefaultLoadControl.Builder()
             .setBufferDurationsMs(
@@ -266,23 +240,10 @@ fun VideoPlayerScreen(
             .build()
     }
 
-    // Real SMB playback — previously smb:// paths had no working DataSource
-    // at all; scanning worked (SmbVideoScanner.kt) but ExoPlayer had nothing
-    // that knew how to read an smb:// URI, so playback silently failed.
-    // cineVaultMediaSourceFactory routes smb:// files to SmbDataSource
-    // (SmbDataSource.kt) and leaves local/stream files on Media3's own
-    // default handling, unchanged.
     val mediaSourceFactory = remember { cineVaultMediaSourceFactory(context) }
 
     val exoPlayer: ExoPlayer = remember {
         ExoPlayer.Builder(context)
-            // EXTENSION_RENDERER_MODE_ON — the default is OFF, which would
-            // mean the FFmpeg fallback audio renderer added in
-            // CineRenderersFactory.kt never actually gets used no matter
-            // what it registers. ON keeps the platform/hardware decoder as
-            // first choice (see that file's ordering) and only falls
-            // through to FFmpeg for codecs the device genuinely can't
-            // decode natively (DTS, TrueHD, some E-AC3 variants).
             .setRenderersFactory(CineRenderersFactory(context).setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON))
             .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
@@ -290,10 +251,6 @@ fun VideoPlayerScreen(
             .build()
     }
 
-    // Restricted-folder items ("restricted" type — see RestrictedFolderStore.kt)
-    // are included here too, so the manual Download button/menu option still
-    // works for them. Only the AUTOMATIC background search is suppressed for
-    // them specifically — see isRestrictedFolderMedia below.
     val canDownloadExternalSubtitles = currentMediaType.equals("movie", ignoreCase = true) || currentMediaType.equals("tv", ignoreCase = true) || currentMediaType.equals("restricted", ignoreCase = true)
     val isCurrentTvShow = currentMediaType.equals("tv", ignoreCase = true)
     val isStreamMedia = currentMediaType.equals("stream", ignoreCase = true)
@@ -384,27 +341,7 @@ fun VideoPlayerScreen(
         scope.launch { delay(1200); edgeSwipeHint = "" }
     }
 
-    // subtitleUri, when non-null AND isOriginalSubtitle, becomes the new
-    // "source of truth" for the sync-offset feature (originalSubtitleUri) and
-    // the offset is reset to 0 so the on-screen slider always reflects what's
-    // actually loaded. Internal offset-driven reloads pass
-    // isOriginalSubtitle = false so they don't stomp on that source of truth.
     fun playCurrentVideoWithSubtitle(subtitleUri: Uri? = null, resumePosition: Long = 0L, isOriginalSubtitle: Boolean = true) {
-        // File-existence check up front for local files — USB drives get
-        // unplugged, SD cards get removed, files get moved/renamed. Without
-        // this, ExoPlayer just throws a raw IO error with no clear message;
-        // catching it here up front gives a much clearer reason immediately
-        // instead of waiting for a confusing failure a moment later.
-        // Deliberately skipped for smb:// paths — java.io.File has no concept
-        // of a network share, so this check always failed on SMB videos
-        // (or, without the isSmbMedia guard, would misreport a perfectly
-        // reachable network file as "not found"). SmbDataSource does its own
-        // existence handling once ExoPlayer actually opens the stream.
-        // Same reasoning for content:// paths — restricted-folder items are
-        // scanned via SAF (RestrictedFolderScanner.kt) and use content://
-        // URIs, which also aren't real filesystem paths java.io.File can
-        // check. Unlike SMB, no custom DataSource was needed here — Media3's
-        // built-in DefaultDataSource already handles content:// natively.
         val isSmbMedia = currentVideo.path.startsWith("smb://", ignoreCase = true)
         val isContentUriMedia = currentVideo.path.startsWith("content://", ignoreCase = true)
         if (!isStreamMedia && !isSmbMedia && !isContentUriMedia && !java.io.File(currentVideo.path).exists()) {
@@ -437,13 +374,6 @@ fun VideoPlayerScreen(
         }
     }
 
-    // Translates a raw PlaybackException into something an actual person can
-    // act on, instead of a bare stack trace or silent nothing (the previous
-    // behavior — there was no onPlayerError handling at all before this pass).
-    // Media3 wraps the real HTTP failure a few layers deep inside the
-    // PlaybackException — walking the cause chain for it turns a vague
-    // "bad HTTP status" into an actual "HTTP 403" or "HTTP 404", which is
-    // the difference between "access denied" and "file moved/doesn't exist".
     fun findHttpStatusDetail(error: Throwable): String? {
         var cause: Throwable? = error
         var depth = 0
@@ -492,15 +422,9 @@ fun VideoPlayerScreen(
                 "Couldn't read this source (unspecified I/O error)."
             else -> error.message ?: "Playback error"
         }
-        // Always shown, even for the mapped cases — this is what was missing
-        // before: a generic-looking message with no way to tell which
-        // specific error actually fired without another screenshot round-trip.
         return "$detail (${error.errorCodeName})"
     }
 
-    // Only retry automatically for errors that are plausibly transient (a
-    // hiccup on a USB/network read) — never retry codec/format/corruption
-    // errors, since those will just fail identically every time.
     fun isTransientPlaybackError(error: PlaybackException): Boolean = when (error.errorCode) {
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
@@ -508,15 +432,6 @@ fun VideoPlayerScreen(
         PlaybackException.ERROR_CODE_TIMEOUT -> true
         else -> false
     }
-
-    // NOTE: an attempt was made to attach subtitles via MergingMediaSource to
-    // avoid the reload blip entirely, but it caused a worse regression —
-    // playback would stop dead and the play button stopped responding once
-    // the merge completed. Reverted back to the reload approach below, which
-    // is reliable; it accepts a brief blip in exchange for actually working.
-    // The resume-position bug (playback jumping backwards) IS still fixed —
-    // see the resumeAt capture right before each playCurrentVideoWithSubtitle
-    // call below, which happens after the download finishes, not before.
 
     fun downloadExternalSubtitle() {
         if (!canDownloadExternalSubtitles) {
@@ -528,14 +443,8 @@ fun VideoPlayerScreen(
         autoSubtitleStatus = "Searching subtitles..."; subtitleDownloadInProgress = true
         scope.launch {
             try {
-                // Uses the *Detailed result now — no computer to check Logcat
-                // on, so the real reason (HTTP code + API's own message) needs
-                // to be visible directly on screen, not just "no subtitle found".
                 val result = OpenSubtitlesClient.downloadBestEnglishSubtitleDetailed(context, currentVideo.path)
                 if (result is SubtitleDownloadResult.Success) {
-                    // Captured HERE, right before the reload — not before the
-                    // multi-second search — so playback resumes from where it
-                    // actually is instead of jumping backwards.
                     val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
                     autoSubtitleStatus = "Subtitle loaded"
                     Toast.makeText(context, "Subtitle loaded", Toast.LENGTH_SHORT).show()
@@ -569,11 +478,6 @@ fun VideoPlayerScreen(
         if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
         if (isRestrictedFolderMedia) updateRestrictedFolderLastPlayed(context, currentVideo.path, currentVideo.folderPath)
 
-        // Check for an already-downloaded subtitle FIRST — pure local disk
-        // check, no network involved — so a movie watched before (even in
-        // an earlier app session) gets its subtitle attached on the very
-        // first load, instead of starting silent and only picking it up a
-        // moment later once a redundant search finishes.
         val cachedSubtitleUri = if (!isStreamMedia && canDownloadExternalSubtitles) {
             withContext(Dispatchers.IO) { OpenSubtitlesClient.findCachedSubtitle(context, currentVideo.path) }
         } else null
@@ -582,9 +486,6 @@ fun VideoPlayerScreen(
             subtitlesEnabled = true
             trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
             playCurrentVideoWithSubtitle(cachedSubtitleUri, savedPosition)
-            // Already have a subtitle for this exact video — mark it as
-            // attempted so the block below doesn't also kick off a
-            // redundant network search.
             autoSubtitleAttemptedForPath = currentVideo.path
         } else {
             playCurrentVideoWithSubtitle(resumePosition = savedPosition)
@@ -606,9 +507,6 @@ fun VideoPlayerScreen(
                         playCurrentVideoWithSubtitle(result.uri, resumeAt)
                         delay(1400); autoSubtitleStatus = ""
                     } else {
-                        // Held on screen much longer than before (3.5s) — this
-                        // is now the ONLY diagnostic surface available, since
-                        // Ash builds from a tablet with no Logcat access.
                         autoSubtitleStatus = result.summary(); delay(3500); autoSubtitleStatus = ""
                     }
                 } catch (e: Exception) {
@@ -621,13 +519,6 @@ fun VideoPlayerScreen(
 
     LaunchedEffect(Unit) {
         CineVaultPlayerHolder.currentPlayer = exoPlayer
-        // Previously forced screenBrightness = 1.0f unconditionally on
-        // entry — silently maxing the screen out regardless of what the
-        // person had actually set, burning battery and making night
-        // viewing unpleasant. Only the brightness swipe gesture should ever
-        // change the window's brightness; this just reads the current
-        // system brightness so the swipe HUD starts from the real value
-        // instead of a hardcoded 90%.
         brightnessPercent = try {
             val raw = android.provider.Settings.System.getInt(context.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS)
             ((raw / 255f) * 100f).toInt().coerceIn(5, 100)
@@ -640,9 +531,6 @@ fun VideoPlayerScreen(
             override fun onPlaybackStateChanged(state: Int) {
                 isBuffering = state == Player.STATE_BUFFERING
                 if (state == Player.STATE_READY) {
-                    // A successful READY state means we've recovered — clear
-                    // any earlier error/retry state so a later, unrelated
-                    // error still gets its own fresh retry attempts.
                     errorRetryCount = 0
                     playerErrorMessage = null
                     val realDuration = exoPlayer.duration
@@ -669,18 +557,12 @@ fun VideoPlayerScreen(
             }
             override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
 
-            // Previously unhandled entirely — a playback failure (corrupt
-            // file, unsupported codec, disconnected drive, transient IO
-            // hiccup) just left the player sitting frozen with zero feedback.
             override fun onPlayerError(error: PlaybackException) {
                 val posAtError = exoPlayer.currentPosition.coerceAtLeast(0L)
                 if (isTransientPlaybackError(error) && errorRetryCount < 2) {
                     errorRetryCount++
                     scope.launch {
                         delay(1000L * errorRetryCount)
-                        // Reattach whatever subtitle was active before the
-                        // error — previously this dropped subtitles silently
-                        // on every auto-retry since no subtitleUri was passed.
                         playCurrentVideoWithSubtitle(subtitleUri = originalSubtitleUri, resumePosition = posAtError, isOriginalSubtitle = false)
                     }
                 } else {
@@ -693,12 +575,6 @@ fun VideoPlayerScreen(
         onDispose { exoPlayer.removeListener(listener) }
     }
 
-    // A/V drift watchdog — see the state comment above for why this exists.
-    // AnalyticsListener.onDroppedVideoFrames fires with a count for a
-    // recent window; a real burst (not the occasional single dropped frame)
-    // is the practical signal that the video renderer has fallen behind the
-    // audio clock. A same-position seek is a cheap, usually-imperceptible
-    // way to force it to re-anchor.
     DisposableEffect(exoPlayer, currentVideo.path) {
         val analyticsListener = object : AnalyticsListener {
             override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
@@ -715,17 +591,11 @@ fun VideoPlayerScreen(
         onDispose { exoPlayer.removeAnalyticsListener(analyticsListener) }
     }
 
-    // Debounced buffering spinner — a raw isBuffering flag flickers on every
-    // brief stall (seeking, keyframe gaps), which is more distracting than
-    // helpful. Only show it if buffering lasts more than 400ms.
     LaunchedEffect(isBuffering) {
         if (isBuffering) { delay(400); if (isBuffering) showBufferingSpinner = true }
         else { showBufferingSpinner = false; stuckBufferingHint = false }
     }
 
-    // If buffering drags on for 15s+, it's probably a slow/disconnected
-    // drive or network share rather than a normal brief stall — surface a
-    // hint instead of leaving the person staring at a silent spinner.
     LaunchedEffect(isBuffering, currentVideo.path) {
         if (isBuffering) {
             delay(15_000)
@@ -862,17 +732,6 @@ fun VideoPlayerScreen(
         sv?.setStyle(CaptionStyleCompat(AndroidColor.WHITE, AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_OUTLINE, AndroidColor.BLACK, null))
     }
 
-    // Subtitle sync offset — previously computed an offsetUs value and even
-    // built a replacement MediaItem, but never actually applied either one
-    // (the MediaItem was discarded immediately) — the slider visually moved
-    // but had zero effect on playback. Media3 has no live "shift the timing
-    // of an already-attached text track" API, so this takes the same
-    // approach already used elsewhere on this screen for attaching
-    // subtitles: rewrite the ORIGINAL srt file's timestamps by the chosen
-    // offset (never a previously-shifted copy, so repeated adjustments don't
-    // compound) and reload it. Debounced so dragging the slider doesn't
-    // trigger a reload on every intermediate value, and skipped entirely if
-    // the resulting offset matches what's already loaded.
     LaunchedEffect(subtitleSyncOffset, originalSubtitleUri) {
         val baseUri = originalSubtitleUri ?: return@LaunchedEffect
         if (!subtitlesEnabled) return@LaunchedEffect
@@ -910,29 +769,11 @@ fun VideoPlayerScreen(
         val smallButton = (66 * scale).dp
         val hudSize = (72 * scale).dp
         val sidePadding = if (isCompactLandscape) 8.dp else 16.dp
-        // Landscape: controls brought DOWN closer to the seek bar (smaller
-        // dock padding) while the seek bar is brought UP ~30% from where it
-        // was, leaving a modest — not huge — gap between the two.
-        // Portrait: seek bar brought up a bit from the very edge, but still
-        // clearly below (closer to the bottom than) the transport dock.
-        // Portrait: seek bar brought way up from the bottom edge to sit
-        // directly under the transport dock instead of floating separately
-        // near the bottom with a big empty gap.
-        // Landscape: another pass on top of the previous adjustment — seek
-        // bar nudged up further, dock brought down a bit more, still leaving
-        // a modest (not huge) gap between the two.
-        // Landscape dock padding was cut too aggressively last round — once
-        // the dock's actual rendered height (~80-100dp incl. play button +
-        // padding) is accounted for, there was only ~1dp of clearance left
-        // above the seek bar, which is why they were overlapping. Restored
-        // enough headroom for a real ~15-20dp gap between the two.
         val bottomDockPadding = when { isCompactLandscape -> 76.dp; isLandscape -> 90.dp; else -> 152.dp }
         val seekBottomPadding = when { isCompactLandscape -> 13.dp; isLandscape -> 17.dp; else -> 92.dp }
         val showIntroSkip = isCurrentTvShow && position in 5_000L..95_000L
         val topClusterPaddingTop = if (isLandscape) 10.dp else 18.dp
 
-        // Default subtitle size: 16sp portrait, 18sp landscape — applied once,
-        // so it doesn't stomp on a size the person already dialed in manually.
         LaunchedEffect(isLandscape) {
             if (!subtitleSizeDefaultApplied) {
                 subtitleTextSizeSp = if (isLandscape) 18f else 16f
@@ -949,40 +790,15 @@ fun VideoPlayerScreen(
             val pad = with(density) { 8.dp.toPx() }
             return (iconCenterX - pw / 2f).coerceIn(pad, (screenWidthPx - pw - pad).coerceAtLeast(pad)).roundToInt()
         }
-        // Always keeps the popup's bottom edge clear of the transport control
-        // dock. Previously this would shrink the bottom offset for tall popups
-        // to keep their top on-screen, which let the popup's bottom slide down
-        // behind the control panel — exactly the overlap that was reported.
-        // Now the dock clearance always wins; if a popup is very tall it simply
-        // scrolls internally instead of overlapping the controls.
         fun anchoredY(desiredBottomPadding: Dp, popupHeightEstimate: Dp): Dp = desiredBottomPadding
         val popupBottomPadding = bottomDockPadding + playButton + 18.dp
 
-        // Popup sizing — tightened and bounded against BOTH screen width and
-        // height so windows never dwarf the actual device screen.
-        // Subtitle popup: SubtitleSettingsMenu.kt now sizes itself internally
-        // via LocalConfiguration (screenWidthDp * 0.17/0.35, halved from the
-        // previous pass) — this mirrors that exact formula so the anchor
-        // positioning lines up with what actually renders, rather than
-        // guessing a width from outside and fighting the component's own size.
         val subtitlePopupWidthBase = if (isLandscape) (maxWidth.value * 0.30f).dp.coerceIn(210.dp, 270.dp) else (maxWidth.value * 0.62f).dp.coerceIn(220.dp, 300.dp)
-        // Calls the SAME function SubtitleSettingsMenu.kt uses internally to
-        // size itself — previously this was a second, separately hand-
-        // written copy of the width formula, which is exactly what went
-        // stale when that file's redesign changed the width percentages.
-        // Now there's one source of truth, so the anchor position and the
-        // popup's actual rendered width can't drift apart again.
         val subtitlePopupWidth = subtitleMenuWidth(maxWidth.value, isLandscape)
         val subtitlePopupHeightEstimate = (((if (isCompactLandscape || isLandscape) 220f else 360f) * uiScale).dp).coerceAtMost(maxHeight * 0.45f)
-        // SRT file browser keeps the pre-reduction width — it's a plain file list, not the dense settings menu
         val srtPopupWidth = (subtitlePopupWidthBase.value * uiScale).dp.coerceAtMost(maxWidth * 0.86f)
         val srtPopupMaxHeight = (((if (isCompactLandscape) 160f else if (isLandscape) 200f else 280f) * uiScale).dp).coerceAtMost(maxHeight * 0.5f)
-        // Audio popup: 40% narrower
         val audioPopupWidth = ((((if (isCompactLandscape) 175f else if (isLandscape) 190f else 205f) * uiScale).dp).coerceAtMost(maxWidth * 0.75f)) * 0.6f
-        // Speed/Sleep popups: 40% smaller footprint, compact rows below
-        // Speed/Sleep popups: width stays 40% narrower, but landscape height
-        // gets most of that back — the narrow width plus the previous height
-        // cut made 5-6 stacked options feel cramped specifically in landscape.
         val smallMenuWidth = (((165f * uiScale).dp).coerceAtMost(maxWidth * 0.6f)) * 0.6f
         val smallMenuHeightScale = if (isLandscape) 0.95f else 0.6f
         val smallMenuMaxHeight = ((((if (isCompactLandscape) 150f else if (isLandscape) 190f else 230f) * uiScale).dp).coerceAtMost(maxHeight * 0.55f)) * smallMenuHeightScale
@@ -992,6 +808,18 @@ fun VideoPlayerScreen(
             episodeList.firstOrNull { it.video.path == currentVideo.path }
                 ?: episodeList.firstOrNull { it.video.name == currentVideo.name }
         }
+
+        // Previous/Next availability — shown ONLY for TV episodes and
+        // Select-Folder videos (where "next in the group" is a meaningful
+        // concept), never for a plain movie played from the general library
+        // list, where episodeList can be the whole library and "next" would
+        // be an unrelated, arbitrary title.
+        val showPrevNextButtons = (isCurrentTvShow || isRestrictedFolderMedia) && episodeList.size > 1
+        val currentEpisodeIndex = remember(currentVideo.path, episodeList) {
+            episodeList.indexOfFirst { it.video.path == currentVideo.path }
+        }
+        val hasPreviousVideo = episodeList.size > 1 && currentEpisodeIndex > 0
+        val hasNextVideo = episodeList.size > 1 && currentEpisodeIndex in 0 until episodeList.lastIndex
 
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -1012,6 +840,17 @@ fun VideoPlayerScreen(
 
         Box(
             modifier = Modifier.fillMaxSize()
+                // Reserves this gesture surface from Android's system
+                // edge-swipe-back gesture — without this, a swipe starting
+                // near the left/right edge (exactly where the previous/next
+                // drag zones below start) was being intercepted by the OS's
+                // predictive-back gesture FIRST, so the app's own drag
+                // detector never saw the touch at all and it fell through to
+                // the system back action instead. That was the actual cause
+                // of "swiping from the right edge goes back to the folder"
+                // — not a bug in playNext() itself, the gesture just never
+                // reached it.
+                .systemGestureExclusion()
                 .pointerInput(currentVideo.path) {
                     detectTapGestures(
                         onTap = {
@@ -1077,22 +916,6 @@ fun VideoPlayerScreen(
                 }
         )
 
-        // Positioned on the OPPOSITE side from the drag gesture that
-        // controls each one — previously both showed on the SAME side as
-        // their gesture (brightness at top-left, matching the left-half
-        // drag zone), meaning the thumb doing the dragging sat right on top
-        // of the indicator it was controlling. Standard pattern elsewhere
-        // (VLC, MX Player, iOS) is to show the indicator in the empty half
-        // of the screen instead.
-        // Portrait: the video is letterboxed (black bars above/below, since
-        // a typical 16:9 video is much wider than a phone's portrait
-        // screen), but this HUD's position was calculated relative to the
-        // WHOLE screen — top-alignment landed it in that empty black bar
-        // instead of over the actual video frame. Center-aligning in
-        // portrait puts it back on the video regardless of how much
-        // letterboxing a given video's aspect ratio produces. Landscape is
-        // untouched — the video already fills close to edge-to-edge there,
-        // so top-alignment was already landing correctly on it.
         AnimatedVisibility(visible = showBrightnessCircle, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(if (isLandscape) Alignment.TopEnd else Alignment.CenterEnd).padding(top = if (isLandscape) 86.dp else 0.dp, end = 28.dp)) {
             VerticalBrightnessHud(value = brightnessPercent, size = hudSize)
         }
@@ -1105,10 +928,6 @@ fun VideoPlayerScreen(
             Text(text = edgeSwipeHint, color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 20.dp, vertical = 10.dp))
         }
 
-        // Buffering spinner — previously there was NO feedback at all during
-        // a stall; the video just froze silently. Shown regardless of the
-        // controls' visibility state since a stall can happen with controls
-        // hidden mid-playback.
         AnimatedVisibility(visible = showBufferingSpinner && playerErrorMessage == null, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(150)), modifier = Modifier.align(Alignment.Center)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(modifier = Modifier.size(56.dp).glassPanel(cornerRadius = 28.dp, fill = GlassSurfaceStrong), contentAlignment = Alignment.Center) {
@@ -1125,10 +944,6 @@ fun VideoPlayerScreen(
             }
         }
 
-        // Playback error card — previously onPlayerError wasn't handled at
-        // all, so a failed file just left the player sitting frozen with no
-        // explanation. Always visible (independent of controls state) since
-        // there's nothing useful to interact with behind it anyway.
         AnimatedVisibility(visible = playerErrorMessage != null, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(150)), modifier = Modifier.align(Alignment.Center).padding(24.dp)) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -1149,9 +964,6 @@ fun VideoPlayerScreen(
                         text = "Retry", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
                         modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore).clickable {
                             errorRetryCount = 0
-                            // Reattach the previously active subtitle (if any)
-                            // on manual retry too — same fix as the automatic
-                            // transient-error retry above.
                             playCurrentVideoWithSubtitle(subtitleUri = originalSubtitleUri, resumePosition = position, isOriginalSubtitle = false)
                         }.padding(horizontal = 18.dp, vertical = 9.dp)
                     )
@@ -1175,9 +987,6 @@ fun VideoPlayerScreen(
         }
 
         val clusterHeightDp = with(density) { clusterHeightPx.toDp() }
-        // Portrait now stacks a title row above the icon cluster (title + 10dp
-        // spacer), so popups anchored below the cluster need that extra offset
-        // or they'd land under the title instead of under the icons.
         val titleRowOffset = if (isLandscape) 0.dp else 46.dp
         AnimatedVisibility(visible = showSpeedMenu, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.TopEnd).padding(top = topClusterPaddingTop + titleRowOffset + clusterHeightDp + 8.dp, end = sidePadding)) {
             SpeedMenuPopup(
@@ -1243,9 +1052,6 @@ fun VideoPlayerScreen(
         val hasInternalSubtitles = exoPlayer.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.length > 0 }
         AnimatedVisibility(visible = showSubtitleSettings, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)),
             modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, subtitlePopupHeightEstimate)).offset { IntOffset(anchoredX(subIconX, subtitlePopupWidth), 0) }) {
-            // SubtitleSettingsMenu.kt sizes and scrolls itself internally via
-            // LocalConfiguration — no outer width/scroll wrapper needed (an
-            // earlier pass added one, which just fought its own sizing logic).
             SubtitleSettingsMenu(
                 isVisible = true,
                 subtitlesEnabled = subtitlesEnabled, hasInternalSubtitles = hasInternalSubtitles,
@@ -1272,11 +1078,6 @@ fun VideoPlayerScreen(
         AnimatedVisibility(visible = showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize()) {
 
-                // Title, rating pill, and the speed/sleep/PiP cluster all now fade
-                // together with the rest of the controls (showControls' 4.5s timer)
-                // instead of the title/pill previously using showTopBar's shorter
-                // 2.8s timer, which made them vanish noticeably earlier than
-                // everything else.
                 val topRowVisible = !showSeekPreview
                 if (isLandscape) {
                     Box(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = topClusterPaddingTop)) {
@@ -1313,8 +1114,6 @@ fun VideoPlayerScreen(
                         )
                     }
                 } else {
-                    // Portrait: title sits on its own row, above the pill/icon row —
-                    // "on top" rather than overlapping/competing with them.
                     Column(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = topClusterPaddingTop)) {
                         AnimatedVisibility(
                             visible = topRowVisible,
@@ -1355,9 +1154,6 @@ fun VideoPlayerScreen(
                 }
 
                 AnimatedVisibility(visible = autoSubtitleStatus.isNotBlank() && !showSeekPreview, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.TopCenter).padding(top = if (isLandscape) 54.dp else 86.dp).padding(horizontal = 24.dp)) {
-                    // Diagnostic messages (HTTP codes, API error text) run much
-                    // longer than "Subtitle loaded" — capped width + wrap keeps
-                    // them readable instead of stretching edge-to-edge or clipping.
                     Text(
                         text = autoSubtitleStatus, color = AmberCore, fontSize = if (isLandscape) 11.sp else 12.sp, fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
@@ -1372,9 +1168,6 @@ fun VideoPlayerScreen(
                     )
                 }
 
-                // Previously only checked showSeekPreview/isDraggingSeekbar —
-                // it stayed visible (and floated on top of) any open popup
-                // menu, most visibly the Subtitle Settings sheet.
                 val anyMenuOpenForIntroSkip = showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu || showSrtBrowser
                 AnimatedVisibility(visible = showIntroSkip && !showSeekPreview && !isDraggingSeekbar && !anyMenuOpenForIntroSkip, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
                     SkipIntroButton(isLandscape = isLandscape) { val t = 95_000L.coerceAtMost(duration.coerceAtLeast(1L)); exoPlayer.seekTo(t); position = t; showControls = true }
@@ -1389,15 +1182,26 @@ fun VideoPlayerScreen(
                         modifier = Modifier.padding(bottom = bottomDockPadding, start = sidePadding, end = sidePadding)
                             .glassPanel(cornerRadius = 42.dp, fill = GlassSurfaceStrong)
                             .padding(horizontal = (12 * scale).dp, vertical = (6 * scale).dp)
-                            // Safety net: if the deck's natural width ever exceeds the
-                            // available screen width on a narrow/portrait device, it now
-                            // scrolls instead of clipping the last icon (the subtitle
-                            // toggle) off-screen.
                             .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy((7 * scale).dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         BackIconButton(size = smallButton, onClick = onBack)
+
+                        // Previous — only for TV episodes / Select-Folder videos.
+                        // Dimmed (not hidden) at the start of the list so the
+                        // deck's width stays stable instead of icons shifting.
+                        if (showPrevNextButtons) {
+                            IconCircle(
+                                icon = Icons.Rounded.SkipPrevious, size = smallButton,
+                                tint = if (hasPreviousVideo) TextBright else TextMuted.copy(alpha = 0.35f)
+                            ) {
+                                if (hasPreviousVideo) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    playPrevious()
+                                }
+                            }
+                        }
 
                         GlassTransportButton(icon = Icons.Rounded.Replay10, size = smallButton) { exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0)); position = exoPlayer.currentPosition; showControls = true }
 
@@ -1408,6 +1212,19 @@ fun VideoPlayerScreen(
                         }
 
                         GlassTransportButton(icon = Icons.Rounded.Forward10, size = smallButton) { exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration.coerceAtLeast(0))); position = exoPlayer.currentPosition; showControls = true }
+
+                        // Next — same visibility/dim logic as Previous above.
+                        if (showPrevNextButtons) {
+                            IconCircle(
+                                icon = Icons.Rounded.SkipNext, size = smallButton,
+                                tint = if (hasNextVideo) TextBright else TextMuted.copy(alpha = 0.35f)
+                            ) {
+                                if (hasNextVideo) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    playNext()
+                                }
+                            }
+                        }
 
                         Spacer(modifier = Modifier.width((4 * scale).dp))
 
@@ -1431,10 +1248,6 @@ fun VideoPlayerScreen(
 
                 SeekPreviewBubble(isVisible = showSeekPreview, bitmap = previewBitmap, timeText = formatTime(previewPosition), isLandscape = isLandscape, isLarge = isSeekPreviewLarge, progress = (previewPosition.toFloat() / duration.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f))
 
-                // Bottom dock — time labels removed; the seek bar now sits alone,
-                // closer to the screen edge. Current time only appears as a
-                // floating pill above the scrub thumb while dragging (see
-                // CinematicSeekBar), using the existing soundwave-bloom effect.
                 Box(
                     modifier = Modifier.align(Alignment.BottomCenter).padding(start = sidePadding, end = sidePadding, bottom = seekBottomPadding)
                         .glassPanel(cornerRadius = 30.dp, fill = GlassSurface)
@@ -1544,13 +1357,6 @@ private fun findNearbySrtFiles(videoPath: String): List<java.io.File> {
     return results.toList()
 }
 
-// ── Subtitle sync offset support ─────────────────────────────────────────
-// Media3 has no public API to shift the timing of an already-attached text
-// track live, so the working approach is: read the ORIGINAL srt file's raw
-// text, shift every "HH:MM:SS,mmm" timestamp by offsetMs, write the result
-// to a single reused temp file, and reload it as the subtitle configuration.
-// Always reshifted from the untouched original (never a previously-shifted
-// copy) so repeated adjustments never compound.
 private val SRT_TIME_REGEX = Regex("(\\d{2}):(\\d{2}):(\\d{2}),(\\d{3})")
 
 private fun readTextFromUri(context: Context, uri: Uri): String? {
@@ -1573,9 +1379,6 @@ private fun shiftSrtTimestampMatch(match: MatchResult, offsetMs: Long): String {
     return "%02d:%02d:%02d,%03d".format(newH, newM, newS, newMs)
 }
 
-// Runs on Dispatchers.IO (called from a coroutine via withContext). Returns
-// the source Uri unchanged for a zero offset — no need to read/write a file
-// just to produce an identical copy.
 private fun buildShiftedSubtitleFile(context: Context, sourceUri: Uri, offsetMs: Long): Uri? {
     if (offsetMs == 0L) return sourceUri
     val original = readTextFromUri(context, sourceUri) ?: return null
@@ -1659,9 +1462,6 @@ private fun SleepMenuPopup(currentMinutes: Int, popupWidth: Dp, popupMaxHeight: 
     }
 }
 
-// Smaller-footprint selectable row used only by the (now 40% narrower)
-// Speed/Sleep popups — keeps the shared GlassMenuRow (used by the SRT
-// browser, which is already sized well) untouched.
 @Composable
 private fun CompactSelectableRow(label: String, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(9.dp)
@@ -1701,12 +1501,6 @@ private fun GlassTransportButton(icon: ImageVector, size: Dp, onClick: () -> Uni
     }
 }
 
-// Contained breathing amber glow, drawn INSIDE the button's own circular
-// bounds (radial gradient behind the icon). Replaces the old two-ring
-// expanding ripple, which drew onto a canvas 1.9x the button's size — that
-// oversized canvas was what inflated the whole transport bar's layout height.
-// This version never measures larger than `size`, so the control bar stays
-// its original, correct size.
 @Composable
 private fun FrostedPlayButton(isPlaying: Boolean, isEnded: Boolean, size: Dp, onClick: () -> Unit) {
     val infinite = rememberInfiniteTransition(label = "playGlow")
@@ -1776,9 +1570,6 @@ private fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolean
     val glow by animateFloatAsState(targetValue = if (isDragging) 1f else 0.45f, animationSpec = tween(220), label = "seekGlow")
     fun positionFromX(x: Float, width: Float): Long { if (duration <= 0L || width <= 0f) return 0L; return (duration * (x / width).coerceIn(0f, 1f)).toLong().coerceIn(0L, duration) }
 
-    // BoxWithConstraints so the floating time pill can be positioned in Dp
-    // directly above the scrub thumb, following the existing waveform-bloom
-    // visibility (isDragging || waveformVisible) instead of a permanent label.
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         val trackWidth = maxWidth
         Box(modifier = Modifier.fillMaxWidth().height(38.dp)
@@ -1900,11 +1691,6 @@ private fun buildPipActions(context: Context, isPlaying: Boolean): List<RemoteAc
     )
 }
 
-// Title pill — previously plain text on glass, which read as "dead" next to
-// the amber-glow rating pills and buttons elsewhere in the design. Gives it
-// the same visual language: a subtle amber gradient border and a small
-// breathing dot (a quiet "now playing" cue) instead of static text sitting
-// on its own.
 @Composable
 private fun NowPlayingTitlePill(text: String, fontSize: androidx.compose.ui.unit.TextUnit) {
     val infinite = rememberInfiniteTransition(label = "titlePulse")
@@ -2138,8 +1924,6 @@ private fun FloatingTrackPopup(title: String, modifier: Modifier, rows: List<Tra
     }
 }
 
-// Smaller-footprint row used inside the narrowed audio popup — same visual
-// language as GlassMenuRow but tighter text/padding for the reduced width.
 @Composable
 private fun CompactGlassMenuRow(icon: ImageVector?, label: String, onClick: () -> Unit) {
     Row(
