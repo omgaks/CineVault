@@ -25,8 +25,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Edit
@@ -75,6 +79,22 @@ private val FolderPillPalette = listOf(
     Color(0xFF7CE0C3), // mint
     Color(0xFFFF9F6E)  // coral
 )
+
+// ── Folder type icon heuristic ────────────────────────────────────────────
+// Generic Material icons only — deliberately NOT actual TikTok/Instagram
+// brand marks (those are trademarked assets, not something to reproduce).
+// Matches on the folder's display name, which for Select-Folder entries is
+// usually whatever the source app named its export/download folder.
+private fun settingsFolderIconFor(displayName: String): ImageVector {
+    val lower = displayName.lowercase()
+    return when {
+        lower.contains("tiktok") -> Icons.Filled.MusicNote
+        lower.contains("instagram") || lower.contains("insta") -> Icons.Filled.PhotoCamera
+        lower.contains("whatsapp") -> Icons.Filled.Chat
+        lower.contains("camera") || lower.contains("dcim") -> Icons.Filled.CameraAlt
+        else -> Icons.Rounded.Folder
+    }
+}
 
 @Composable
 fun SettingsScreen(
@@ -178,13 +198,23 @@ fun SettingsScreen(
             // Select Folder — pills glow with the exact same recipe as the
             // player's breathing play button (see rememberPlayButtonStyleGlow
             // below), just re-colored per pill instead of amber-only.
+            // Layout changed from a vertical Column to a wrapping FlowRow —
+            // previously each folder pill stacked on its own line, which
+            // grew the card's height fast with more than a couple of
+            // folders added. Now they flow left-to-right and wrap onto a
+            // new line only when they run out of horizontal room, same
+            // reading direction as every other chip/pill row in the app
+            // (categories, genres, tech badges).
             GlassSectionCard(title = "Select Folder", subtitle = "Kept out of Home & Continue Watching. Visible in Library and Search only.", icon = Icons.Rounded.Folder, accent = AccentSupport) {
                 AddFolderGlowPill { restrictedFolderPicker.launch(null) }
                 Spacer(modifier = Modifier.height(16.dp))
                 if (restrictedFolders.isEmpty()) {
                     Text(text = "No folder added yet.", color = TextMuted, fontSize = 14.sp)
                 } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         restrictedFolders.forEachIndexed { index, folder ->
                             FolderNamePill(
                                 name = folder.displayName,
@@ -472,6 +502,9 @@ private fun AddFolderGlowPill(onClick: () -> Unit) {
 // row), tall enough to comfortably touch-and-hold, glowing in its own color
 // from FolderPillPalette using the exact same play-button glow recipe.
 // Long-press opens the removal confirmation instead of a trailing delete icon.
+// Leading icon now reflects the folder's likely source (TikTok/Instagram/
+// WhatsApp/Camera/generic) via settingsFolderIconFor instead of always
+// showing the same plain folder glyph.
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FolderNamePill(name: String, accent: Color, onLongPress: () -> Unit) {
@@ -490,7 +523,7 @@ private fun FolderNamePill(name: String, accent: Color, onLongPress: () -> Unit)
             .padding(horizontal = 18.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(imageVector = Icons.Rounded.Folder, contentDescription = null, tint = accent, modifier = Modifier.size(15.dp))
+        Icon(imageVector = settingsFolderIconFor(name), contentDescription = null, tint = accent, modifier = Modifier.size(15.dp))
         Spacer(modifier = Modifier.width(8.dp))
         Text(text = name, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
