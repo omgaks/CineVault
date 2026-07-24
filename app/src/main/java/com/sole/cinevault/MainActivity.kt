@@ -274,7 +274,7 @@ sealed class Destination {
     data class ActorPage(val actorId: Int, val actorName: String, val profilePath: String?) : Destination()
     data class NativeCollectionPage(val collectionId: Int, val collectionName: String) : Destination()
     data class CuratedCollectionPage(val collectionName: String) : Destination()
-    data class RestrictedFolderPage(val folderId: String, val folderName: String) : Destination()
+    data class RestrictedFolderPage(val folderId: String, val folderName: String, val lastPlayedVideoPath: String? = null) : Destination()
 }
 
 @Composable
@@ -478,7 +478,8 @@ fun CineVaultApp() {
                         items = items,
                         onBack = { pop() },
                         onItemClick = { item -> push(Destination.Detail(item)) },
-                        onPlayClick = { item -> push(Destination.Player(item.video, item.type, items)) }
+                        onPlayClick = { item -> push(Destination.Player(item.video, item.type, items)) },
+                        initialScrollTargetVideoPath = dest.lastPlayedVideoPath
                     )
                 }
 
@@ -515,7 +516,7 @@ fun CineVaultApp() {
                             onGenreClick = { genreName -> push(Destination.GenrePage(genreName)) },
                             onNativeCollectionClick = { id, name -> push(Destination.NativeCollectionPage(id, name)) },
                             onCuratedCollectionClick = { name -> push(Destination.CuratedCollectionPage(name)) },
-                            onRestrictedFolderClick = { folder -> push(Destination.RestrictedFolderPage(folder.id, folder.displayName)) }
+                            onRestrictedFolderClick = { folder -> push(Destination.RestrictedFolderPage(folder.id, folder.displayName, folder.lastPlayedVideoPath)) }
                         )
 
                         else -> HomeScreen(
