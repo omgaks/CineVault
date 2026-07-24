@@ -509,23 +509,24 @@ private fun AddFolderGlowPill(onClick: () -> Unit) {
 @Composable
 private fun FolderNamePill(name: String, accent: Color, onLongPress: () -> Unit) {
     val glowAlpha = rememberPlayButtonStyleGlow()
-    Row(
+    Column(
         modifier = Modifier
-            .clip(RoundedCornerShape(50))
+            .width(84.dp)
+            .clip(RoundedCornerShape(18.dp))
             .background(GlassSurfaceStrong)
-            .background(Brush.radialGradient(colors = listOf(accent.copy(alpha = glowAlpha * 0.5f), Color.Transparent), radius = 200f))
+            .background(Brush.radialGradient(colors = listOf(accent.copy(alpha = glowAlpha * 0.45f), Color.Transparent), radius = 170f))
             .border(
                 width = 1.3.dp,
                 brush = Brush.verticalGradient(listOf(accent.copy(alpha = 0.75f + 0.2f * glowAlpha), accent.copy(alpha = 0.30f))),
-                shape = RoundedCornerShape(50)
+                shape = RoundedCornerShape(18.dp)
             )
             .combinedClickable(onClick = {}, onLongClick = onLongPress)
-            .padding(horizontal = 18.dp, vertical = 13.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(vertical = 14.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(imageVector = settingsFolderIconFor(name), contentDescription = null, tint = accent, modifier = Modifier.size(15.dp))
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(text = name, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Icon(imageVector = settingsFolderIconFor(name), contentDescription = null, tint = accent, modifier = Modifier.size(26.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(text = name, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
     }
 }
 
