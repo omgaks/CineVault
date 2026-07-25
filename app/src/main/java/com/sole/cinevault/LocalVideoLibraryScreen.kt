@@ -60,6 +60,7 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.*
@@ -190,21 +191,21 @@ private fun genreIconFor(name: String): ImageVector {
 @Composable
 private fun GenreIconChip(name: String, onClick: () -> Unit) {
     Column(
-        modifier = Modifier.width(72.dp).clickable { onClick() },
+        modifier = Modifier.width(62.dp).clickable { onClick() },
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
-            modifier = Modifier.size(56.dp).clip(CircleShape)
+            modifier = Modifier.size(48.dp).clip(CircleShape)
                 .background(GlassSurfaceStrong)
                 .background(Brush.radialGradient(listOf(AmberGlow.copy(alpha = 0.30f), Color.Transparent)))
                 .border(1.2.dp, Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.70f), AmberDeep.copy(alpha = 0.30f))), CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(imageVector = genreIconFor(name), contentDescription = null, tint = AmberCore, modifier = Modifier.size(24.dp))
+            Icon(imageVector = genreIconFor(name), contentDescription = null, tint = AmberCore, modifier = Modifier.size(20.dp))
         }
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(5.dp))
         Text(
-            text = name, color = TextBright, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+            text = name, color = TextBright, fontSize = 9.sp, fontWeight = FontWeight.SemiBold,
             maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center
         )
     }
@@ -309,6 +310,30 @@ fun LocalVideoLibraryScreen(
     fun unhideVideo(item: VideoWithMetadata) {
         val updated = hiddenPaths - item.video.path; hiddenPaths = updated
         saveSecretVideoPaths(context, updated); Toast.makeText(context, "Removed from Secret folder", Toast.LENGTH_SHORT).show()
+    }
+
+    // Long-pressing a Select-Folder TILE (on the main Library/TV-Shows-&-
+    // Folders row) hides/unhides every video in that folder as one bulk
+    // action, using the same safe per-video hiddenPaths set as regular
+    // Secret (not the old .nomedia-based whole-folder hide, which could
+    // make files vanish from MediaStore entirely on the next rescan).
+    // Long-pressing an individual video ONCE INSIDE the folder still hides
+    // just that one file — see openContextSheet, used by the grid inside
+    // CollectionScreen.
+    fun toggleFolderSecret(folderVideoPaths: List<String>) {
+        if (folderVideoPaths.isEmpty()) return
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        val pathSet = folderVideoPaths.toSet()
+        val allHidden = pathSet.all { hiddenPaths.contains(it) }
+        val updated = if (allHidden) hiddenPaths - pathSet else hiddenPaths + pathSet
+        hiddenPaths = updated
+        saveSecretVideoPaths(context, updated)
+        onSecretChanged()
+        Toast.makeText(
+            context,
+            if (allHidden) "Folder removed from Secret" else "Folder moved to Secret",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     fun addFavorite(item: VideoWithMetadata) {
@@ -470,10 +495,26 @@ fun LocalVideoLibraryScreen(
     val secretVideos = sortedVideos.filter { hiddenPaths.contains(it.video.path) || videoIsInsideSecretFolder(it, hiddenFolders) }
     val favoriteVideos = visibleSortedVideos.filter { favoritePaths.contains(it.video.path) }
 
+    // Restricted (Select-Folder) folders that were bulk-secreted as a whole
+    // via toggleFolderSecret() — every one of their videos is in hiddenPaths.
+    // These render as ONE folder card inside Secret (files and folders "go
+    // to secret as they are"), not as hundreds of individual loose entries.
+    // Long-pressing that card (same toggleFolderSecret call) unlocks the
+    // whole folder in one action.
+    data class SecretFolderGroup(val folder: RestrictedFolder, val items: List<VideoWithMetadata>)
+    val secretRestrictedFolderGroups: List<SecretFolderGroup> = if (!secretUnlocked) emptyList() else {
+        val restrictedInLibrary = sortedVideos.filter { it.type.equals("restricted", ignoreCase = true) }
+        loadRestrictedFolders(context).mapNotNull { folder ->
+            val items = restrictedInLibrary.filter { folderIdFromRestrictedMarker(it.video.folderPath) == folder.id }
+            if (items.isNotEmpty() && items.all { hiddenPaths.contains(it.video.path) }) SecretFolderGroup(folder, items) else null
+        }
+    }
+    val secretGroupedPaths = secretRestrictedFolderGroups.flatMap { group -> group.items.map { it.video.path } }.toSet()
+
     val videoFolders = remember(visibleSortedVideos) { groupVideosByFolder(visibleSortedVideos.filterNot { it.type.equals("restricted", ignoreCase = true) }) }
 
     val filteredVideos = when (selectedCategory) {
-        "Secret" -> if (secretUnlocked) secretVideos else emptyList()
+        "Secret" -> if (secretUnlocked) secretVideos.filter { it.video.path !in secretGroupedPaths } else emptyList()
         "Favorites" -> favoriteVideos
         "TV Shows" -> emptyList()
         "Folders" -> emptyList()
@@ -669,7 +710,7 @@ fun LocalVideoLibraryScreen(
                                                     count = entry.items.size,
                                                     thumbnailVideoPath = thumbnailSourcePath,
                                                     onClick = { onRestrictedFolderClick(entry.folder) },
-                                                    onLongClick = { entry.items.firstOrNull()?.let { openContextSheet(it) } }
+                                                    onLongClick = { toggleFolderSecret(entry.items.map { it.video.path }) }
                                                 )
                                             }
                                         }
@@ -682,13 +723,12 @@ fun LocalVideoLibraryScreen(
                 }
             }
 
-            // ── Genres shelf — ONLY on "All". Redesigned as circular
-            // glowing icon chips (icon + short label) instead of text
-            // pills, wrapping via FlowRow so they align into neat rows
-            // instead of one long horizontal scroll strip. Genre names are
-            // normalized first so TMDB's movie/TV naming differences (e.g.
-            // "Science Fiction" vs "Sci-Fi & Fantasy") collapse into one
-            // chip instead of showing as near-duplicates.
+            // ── Genres shelf — ONLY on "All". Circular glowing icon chips,
+            // same horizontal-scroll format as Collections (not a wrapping
+            // grid), spacing tightened to fit more per screen. Genre names
+            // are normalized first so TMDB's movie/TV naming differences
+            // (e.g. "Science Fiction" vs "Sci-Fi & Fantasy") collapse into
+            // one chip instead of showing as near-duplicates.
             if (selectedCategory == "All") {
                 run {
                     val genreNames = visibleSortedVideos
@@ -701,11 +741,8 @@ fun LocalVideoLibraryScreen(
                             Column {
                                 Text(text = "Genres", color = TextBright, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                                 Spacer(modifier = Modifier.height(12.dp))
-                                androidx.compose.foundation.layout.FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    genreNames.forEach { genre ->
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    items(items = genreNames, key = { it }) { genre ->
                                         GenreIconChip(name = genre, onClick = { onGenreClick(genre) })
                                     }
                                 }
@@ -804,6 +841,30 @@ fun LocalVideoLibraryScreen(
                 }
             }
 
+            if (selectedCategory == "Secret" && secretUnlocked && secretRestrictedFolderGroups.isNotEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column {
+                        Text(text = "Secret Folders", color = TextBright, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(10.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            items(items = secretRestrictedFolderGroups, key = { "secretfolder:${it.folder.id}" }) { group ->
+                                val thumbnailSourcePath = group.folder.lastPlayedVideoPath
+                                    ?.takeIf { path -> group.items.any { it.video.path == path } }
+                                    ?: group.items.firstOrNull()?.video?.path
+                                RestrictedFolderShelfCard(
+                                    title = group.folder.displayName,
+                                    count = group.items.size,
+                                    thumbnailVideoPath = thumbnailSourcePath,
+                                    onClick = { onRestrictedFolderClick(group.folder) },
+                                    onLongClick = { toggleFolderSecret(group.items.map { it.video.path }) }
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(20.dp))
+                    }
+                }
+            }
+
             if (filteredVideos.isNotEmpty() && selectedCategory != "Folders") {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Text(
@@ -889,7 +950,7 @@ fun LocalVideoLibraryScreen(
                                 contextSheetItem = null
                             }
                             SheetIconButton(
-                                icon = if (isHidden) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
+                                icon = if (isHidden) Icons.Filled.LockOpen else Icons.Rounded.Lock,
                                 tint = TextBright,
                                 contentDescription = if (isHidden) "Remove from Secret" else "Move to Secret"
                             ) {
@@ -1011,7 +1072,7 @@ private fun RestrictedFolderShelfCard(
                 videoPath = thumbnailVideoPath,
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer { scaleX = 1.10f; scaleY = 1.10f }
+                    .graphicsLayer { scaleX = 1.22f; scaleY = 1.22f }
             )
             Box(
                 modifier = Modifier.fillMaxSize().background(
