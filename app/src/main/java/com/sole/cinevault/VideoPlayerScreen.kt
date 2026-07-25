@@ -376,7 +376,11 @@ fun VideoPlayerScreen(
         val isSmbMedia = currentVideo.path.startsWith("smb://", ignoreCase = true)
         val isContentUriMedia = currentVideo.path.startsWith("content://", ignoreCase = true)
         if (!isStreamMedia && !isSmbMedia && !isContentUriMedia && !java.io.File(currentVideo.path).exists()) {
-            playerErrorMessage = "File not found. It may have been moved, renamed, or the drive it's on was disconnected."
+            // TEMP DIAGNOSTIC: shows the exact path/type CineVault tried to
+            // play so we can see what's actually wrong (empty path? wrong
+            // format? genuinely-moved file?) instead of guessing blind.
+            // Revert to the plain friendly message once this is diagnosed.
+            playerErrorMessage = "File not found. It may have been moved, renamed, or the drive it's on was disconnected.\n\n[debug] type=$currentMediaType path=\"${currentVideo.path}\""
             return
         }
         try {
