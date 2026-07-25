@@ -15,7 +15,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -227,6 +232,19 @@ private fun MediaIntelligenceGridScreen(
             .collect { (i, o) -> MediaGridScrollState.set(scrollKey, i, o) }
     }
 
+    // Long-press context sheet — Play / Favorite / Secret. Self-contained
+    // (reads/writes the same SharedPreferences-backed favorite/secret sets
+    // LocalVideoLibraryScreen.kt uses) since this grid is shared across
+    // Genre/Director/Actor/Collection screens and doesn't have access to
+    // that screen's own state. Previously LibraryGridCard's onLongPress
+    // simply wasn't wired here at all, which is why long-pressing a video
+    // inside a Select-Folder (or Genre/Actor/Collection) page did nothing.
+    val gridContext = LocalContext.current
+    val gridHaptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    var favoritePaths by remember { mutableStateOf(loadFavoriteVideoPaths(gridContext)) }
+    var hiddenPaths by remember { mutableStateOf(loadSecretVideoPaths(gridContext)) }
+    var contextSheetItem by remember { mutableStateOf<VideoWithMetadata?>(null) }
+
     Box(modifier = Modifier.fillMaxSize().background(SpaceBlack)) {
         LazyVerticalGrid(
             state = gridState,
@@ -280,7 +298,15 @@ private fun MediaIntelligenceGridScreen(
                 }
             } else {
                 items(items = items, key = { it.video.path }) { item ->
-                    LibraryGridCard(item = item, onClick = { onItemClick(item) }, onPlayClick = { onPlayClick(item) })
+                    LibraryGridCard(
+                        item = item,
+                        onClick = { onItemClick(item) },
+                        onPlayClick = { onPlayClick(item) },
+                        onLongPress = {
+                            gridHaptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                            contextSheetItem = it
+                        }
+                    )
                 }
             }
 
@@ -322,5 +348,67 @@ private fun MediaIntelligenceGridScreen(
         ) {
             Icon(imageVector = Icons.Rounded.ArrowBack, contentDescription = "Back", tint = TextBright, modifier = Modifier.size(22.dp))
         }
+
+        // Long-press context sheet — same compact icon-only style as the
+        // main Library screen's sheet, self-contained state (see above).
+        androidx.compose.animation.AnimatedVisibility(
+            visible = contextSheetItem != null,
+            enter = androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(160)),
+            exit = androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(180))
+        ) {
+            val selectedItem = contextSheetItem
+            Box(
+                modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).clickable { contextSheetItem = null },
+                contentAlignment = Alignment.Center
+            ) {
+                if (selectedItem != null) {
+                    val isFavorite = favoritePaths.contains(selectedItem.video.path)
+                    val isHidden = hiddenPaths.contains(selectedItem.video.path)
+                    Column(
+                        modifier = Modifier.width(150.dp).glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.98f))
+                            .clickable(enabled = false) { }.padding(12.dp)
+                    ) {
+                        Text(text = selectedItem.title, color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Spacer(modifier = Modifier.height(10.dp))
+                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            MiniSheetIconButton(icon = Icons.Rounded.PlayArrow, tint = AmberCore, contentDescription = "Play") {
+                                contextSheetItem = null; onPlayClick(selectedItem)
+                            }
+                            MiniSheetIconButton(
+                                icon = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                                tint = if (isFavorite) AmberCore else TextBright,
+                                contentDescription = if (isFavorite) "Remove from Favorites" else "Add to Favorites"
+                            ) {
+                                favoritePaths = if (isFavorite) favoritePaths - selectedItem.video.path else favoritePaths + selectedItem.video.path
+                                saveFavoriteVideoPaths(gridContext, favoritePaths)
+                                contextSheetItem = null
+                            }
+                            MiniSheetIconButton(
+                                icon = if (isHidden) Icons.Filled.LockOpen else Icons.Rounded.Lock,
+                                tint = TextBright,
+                                contentDescription = if (isHidden) "Remove from Secret" else "Move to Secret"
+                            ) {
+                                hiddenPaths = if (isHidden) hiddenPaths - selectedItem.video.path else hiddenPaths + selectedItem.video.path
+                                saveSecretVideoPaths(gridContext, hiddenPaths)
+                                contextSheetItem = null
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniSheetIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, tint: Color, contentDescription: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier.size(42.dp).clip(CircleShape).background(GlassSurfaceStrong)
+            .background(Brush.radialGradient(listOf(tint.copy(alpha = 0.30f), Color.Transparent), radius = 80f))
+            .border(1.2.dp, tint.copy(alpha = 0.55f), CircleShape)
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(imageVector = icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(18.dp))
     }
 }
