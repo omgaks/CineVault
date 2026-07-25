@@ -34,13 +34,28 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Brush
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.FamilyRestroom
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.HistoryEdu
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Landscape
+import androidx.compose.material.icons.filled.LocalMovies
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.TheaterComedy
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
@@ -61,6 +76,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -124,6 +140,73 @@ private fun folderIconFor(displayName: String): ImageVector {
         lower.contains("whatsapp") -> Icons.Filled.Chat
         lower.contains("camera") || lower.contains("dcim") -> Icons.Filled.CameraAlt
         else -> Icons.Filled.Folder
+    }
+}
+
+// ── Genre normalization ─────────────────────────────────────────────────
+// TMDB uses slightly different genre names/groupings for movies vs TV shows
+// (e.g. movies get "Science Fiction", TV shows get "Sci-Fi & Fantasy" for
+// essentially the same thing), which previously showed up as two separate,
+// near-duplicate chips. This collapses known synonyms into one canonical
+// display name before the genre list is deduplicated.
+private val genreNormalizationMap = mapOf(
+    "science fiction" to "Sci-Fi & Fantasy",
+    "sci-fi" to "Sci-Fi & Fantasy",
+    "sci fi" to "Sci-Fi & Fantasy",
+    "war & politics" to "War"
+)
+
+private fun normalizeGenreName(raw: String): String {
+    val key = raw.trim().lowercase()
+    return genreNormalizationMap[key] ?: raw.trim()
+}
+
+// Generic Material icons representing each genre — evocative, not literal
+// (there's no official "genre icon set"), consistent across the whole app.
+private fun genreIconFor(name: String): ImageVector {
+    val lower = name.lowercase()
+    return when {
+        lower.contains("action") -> Icons.Filled.Bolt
+        lower.contains("adventure") -> Icons.Filled.Explore
+        lower.contains("animation") -> Icons.Filled.Brush
+        lower.contains("comedy") -> Icons.Filled.TheaterComedy
+        lower.contains("crime") -> Icons.Filled.Gavel
+        lower.contains("documentary") -> Icons.Filled.Videocam
+        lower.contains("drama") -> Icons.Filled.TheaterComedy
+        lower.contains("family") -> Icons.Filled.FamilyRestroom
+        lower.contains("fantasy") || lower.contains("sci-fi") -> Icons.Filled.AutoAwesome
+        lower.contains("history") -> Icons.Filled.HistoryEdu
+        lower.contains("horror") -> Icons.Filled.DarkMode
+        lower.contains("music") -> Icons.Filled.MusicNote
+        lower.contains("mystery") -> Icons.Filled.Search
+        lower.contains("romance") -> Icons.Rounded.Favorite
+        lower.contains("thriller") -> Icons.Filled.Warning
+        lower.contains("war") -> Icons.Filled.Shield
+        lower.contains("western") -> Icons.Filled.Landscape
+        else -> Icons.Filled.LocalMovies
+    }
+}
+
+@Composable
+private fun GenreIconChip(name: String, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier.width(72.dp).clickable { onClick() },
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier.size(56.dp).clip(CircleShape)
+                .background(GlassSurfaceStrong)
+                .background(Brush.radialGradient(listOf(AmberGlow.copy(alpha = 0.30f), Color.Transparent)))
+                .border(1.2.dp, Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.70f), AmberDeep.copy(alpha = 0.30f))), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(imageVector = genreIconFor(name), contentDescription = null, tint = AmberCore, modifier = Modifier.size(24.dp))
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = name, color = TextBright, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -479,132 +562,155 @@ fun LocalVideoLibraryScreen(
                 }
             }
 
-            run {
-                data class CollectionShelfEntry(val key: String, val displayName: String, val backdropUrl: String?, val isCurated: Boolean, val collectionId: Int?)
-                val nativeEntries = visibleSortedVideos
-                    .filter { it.collectionId != null && it.collectionName != null }
-                    .distinctBy { it.collectionId }
-                    .map { CollectionShelfEntry("native:${it.collectionId}", it.collectionName!!, it.backdropUrl, false, it.collectionId) }
-                val curatedNames = visibleSortedVideos.flatMap { it.curatedCollections }.distinct()
-                val curatedEntries = curatedNames.map { name ->
-                    val backdrop = visibleSortedVideos.firstOrNull { it.curatedCollections.contains(name) && !it.backdropUrl.isNullOrBlank() }?.backdropUrl
-                    CollectionShelfEntry("curated:$name", name, backdrop, true, null)
-                }
-                val collectionShelf = (nativeEntries + curatedEntries).sortedBy { it.displayName.lowercase() }
-
-                if (collectionShelf.isNotEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Column {
-                            Text(text = "Collections", color = TextBright, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(10.dp))
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                items(items = collectionShelf, key = { it.key }) { entry ->
-                                    CollectionShelfCard(
-                                        title = entry.displayName,
-                                        backdropUrl = entry.backdropUrl,
-                                        onClick = {
-                                            if (entry.isCurated) onCuratedCollectionClick(entry.displayName)
-                                            else entry.collectionId?.let { onNativeCollectionClick(it, entry.displayName) }
-                                        }
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(20.dp))
-                        }
+            // ── Collections shelf — ONLY on "All" (the default overview),
+            // same fix as the TV/Folders shelf below: this used to render
+            // unconditionally on every category tab.
+            if (selectedCategory == "All") {
+                run {
+                    data class CollectionShelfEntry(val key: String, val displayName: String, val backdropUrl: String?, val isCurated: Boolean, val collectionId: Int?)
+                    val nativeEntries = visibleSortedVideos
+                        .filter { it.collectionId != null && it.collectionName != null }
+                        .distinctBy { it.collectionId }
+                        .map { CollectionShelfEntry("native:${it.collectionId}", it.collectionName!!, it.backdropUrl, false, it.collectionId) }
+                    val curatedNames = visibleSortedVideos.flatMap { it.curatedCollections }.distinct()
+                    val curatedEntries = curatedNames.map { name ->
+                        val backdrop = visibleSortedVideos.firstOrNull { it.curatedCollections.contains(name) && !it.backdropUrl.isNullOrBlank() }?.backdropUrl
+                        CollectionShelfEntry("curated:$name", name, backdrop, true, null)
                     }
-                }
-            }
+                    val collectionShelf = (nativeEntries + curatedEntries).sortedBy { it.displayName.lowercase() }
 
-            // ── TV Shows & Folders — combined section, TV shows first then
-            // restricted folders, left to right, both ahead of Genres.
-            // GATED BY CATEGORY: TV shows only show under "All"/"TV Shows",
-            // restricted folders only show under "All"/"Folders"/"Downloads"
-            // — previously this whole shelf rendered unconditionally on
-            // every tab, which is why TikTok/Instagram folder cards were
-            // showing up even while filtered to "Movies" or "TV Shows".
-            run {
-                data class RestrictedShelfEntry(val folder: RestrictedFolder, val items: List<VideoWithMetadata>)
-                val restrictedItems = visibleSortedVideos.filter { it.type.equals("restricted", ignoreCase = true) }
-                val restrictedShelf = if (restrictedItems.isEmpty()) emptyList() else {
-                    loadRestrictedFolders(context).mapNotNull { folder ->
-                        val items = restrictedItems.filter { folderIdFromRestrictedMarker(it.video.folderPath) == folder.id }
-                        if (items.isEmpty()) null else RestrictedShelfEntry(folder, items)
-                    }
-                }
-
-                val showTvInShelf = selectedCategory in listOf("All", "TV Shows") && tvGroups.isNotEmpty()
-                val showFoldersInShelf = selectedCategory in listOf("All", "Folders", "Downloads") && restrictedShelf.isNotEmpty()
-
-                if (showTvInShelf || showFoldersInShelf) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Column {
-                            Text(text = "TV Shows & Folders", color = TextBright, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            if (showTvInShelf) {
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                    items(items = tvGroups, key = { "tv:${it.showName}" }) { show ->
-                                        Column(
-                                            modifier = Modifier
-                                                .width(145.dp)
-                                                .combinedClickable(
-                                                    onClick = { onTvGroupClick(show) },
-                                                    onLongClick = { show.episodes.firstOrNull()?.let { openContextSheet(it) } }
-                                                )
-                                        ) {
-                                            PosterBox(posterUrl = show.posterUrl, modifier = Modifier.fillMaxWidth().height(210.dp))
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            Text(text = show.showName, color = TextBright, maxLines = 1, fontWeight = FontWeight.SemiBold)
-                                            Text(text = "${show.episodes.size} Episodes", color = TextMuted, fontSize = 12.sp)
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (showFoldersInShelf) {
-                                if (showTvInShelf) Spacer(modifier = Modifier.height(14.dp))
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                    items(items = restrictedShelf, key = { "folder:${it.folder.id}" }) { entry ->
-                                        val thumbnailSourcePath = entry.folder.lastPlayedVideoPath
-                                            ?.takeIf { path -> entry.items.any { it.video.path == path } }
-                                            ?: entry.items.firstOrNull()?.video?.path
-                                        RestrictedFolderShelfCard(
-                                            title = entry.folder.displayName,
-                                            count = entry.items.size,
-                                            thumbnailVideoPath = thumbnailSourcePath,
-                                            onClick = { onRestrictedFolderClick(entry.folder) },
-                                            onLongClick = { entry.items.firstOrNull()?.let { openContextSheet(it) } }
+                    if (collectionShelf.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Column {
+                                Text(text = "Collections", color = TextBright, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(10.dp))
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    items(items = collectionShelf, key = { it.key }) { entry ->
+                                        CollectionShelfCard(
+                                            title = entry.displayName,
+                                            backdropUrl = entry.backdropUrl,
+                                            onClick = {
+                                                if (entry.isCurated) onCuratedCollectionClick(entry.displayName)
+                                                else entry.collectionId?.let { onNativeCollectionClick(it, entry.displayName) }
+                                            }
                                         )
                                     }
                                 }
+                                Spacer(modifier = Modifier.height(20.dp))
                             }
-
-                            Spacer(modifier = Modifier.height(20.dp))
                         }
                     }
                 }
             }
 
-            run {
-                val genreNames = visibleSortedVideos.flatMap { it.genres }.distinct().sortedBy { it.lowercase() }
-                if (genreNames.isNotEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Column {
-                            Text(text = "Genres", color = TextBright, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(10.dp))
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(items = genreNames, key = { it }) { genre ->
-                                    Box(
-                                        modifier = Modifier.clip(RoundedCornerShape(50)).background(GlassSurface)
-                                            .border(1.dp, Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)), RoundedCornerShape(50))
-                                            .clickable { onGenreClick(genre) }
-                                            .padding(horizontal = 16.dp, vertical = 9.dp)
-                                    ) {
-                                        Text(text = genre, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            // ── TV Shows & Folders — ONE combined scrollable row (same
+            // pattern as the Collections shelf above), not two separate
+            // rows stacked vertically. Previously TV shows and folders each
+            // got their own LazyRow, which is why a single TV show and a
+            // single folder appeared to stack on top of each other instead
+            // of sitting side by side. Only shown on "All" (TV shows) /
+            // "All"+"Folders"+"Downloads" (folders) per the category gate.
+            if (selectedCategory in listOf("All", "TV Shows", "Folders", "Downloads")) {
+                run {
+                    data class RestrictedShelfEntry(val folder: RestrictedFolder, val items: List<VideoWithMetadata>)
+                    val restrictedItems = visibleSortedVideos.filter { it.type.equals("restricted", ignoreCase = true) }
+                    val restrictedShelf = if (restrictedItems.isEmpty()) emptyList() else {
+                        loadRestrictedFolders(context).mapNotNull { folder ->
+                            val items = restrictedItems.filter { folderIdFromRestrictedMarker(it.video.folderPath) == folder.id }
+                            if (items.isEmpty()) null else RestrictedShelfEntry(folder, items)
+                        }
+                    }
+
+                    val showTvInShelf = selectedCategory in listOf("All", "TV Shows") && tvGroups.isNotEmpty()
+                    val showFoldersInShelf = selectedCategory in listOf("All", "Folders", "Downloads") && restrictedShelf.isNotEmpty()
+
+                    // Combined into one ordered list — TV shows first, then
+                    // folders — rendered by ONE LazyRow below instead of two.
+                    val combinedShelf: List<Any> =
+                        (if (showTvInShelf) tvGroups else emptyList()) +
+                        (if (showFoldersInShelf) restrictedShelf else emptyList())
+
+                    if (combinedShelf.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Column {
+                                Text(text = "TV Shows & Folders", color = TextBright, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(10.dp))
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                    items(
+                                        items = combinedShelf,
+                                        key = { entry ->
+                                            when (entry) {
+                                                is TvGroup -> "tv:${entry.showName}"
+                                                is RestrictedShelfEntry -> "folder:${entry.folder.id}"
+                                                else -> entry.hashCode().toString()
+                                            }
+                                        }
+                                    ) { entry ->
+                                        when (entry) {
+                                            is TvGroup -> Column(
+                                                modifier = Modifier
+                                                    .width(145.dp)
+                                                    .combinedClickable(
+                                                        onClick = { onTvGroupClick(entry) },
+                                                        onLongClick = { entry.episodes.firstOrNull()?.let { openContextSheet(it) } }
+                                                    )
+                                            ) {
+                                                PosterBox(posterUrl = entry.posterUrl, modifier = Modifier.fillMaxWidth().height(210.dp))
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                Text(text = entry.showName, color = TextBright, maxLines = 1, fontWeight = FontWeight.SemiBold)
+                                                Text(text = "${entry.episodes.size} Episodes", color = TextMuted, fontSize = 12.sp)
+                                            }
+                                            is RestrictedShelfEntry -> {
+                                                val thumbnailSourcePath = entry.folder.lastPlayedVideoPath
+                                                    ?.takeIf { path -> entry.items.any { it.video.path == path } }
+                                                    ?: entry.items.firstOrNull()?.video?.path
+                                                RestrictedFolderShelfCard(
+                                                    title = entry.folder.displayName,
+                                                    count = entry.items.size,
+                                                    thumbnailVideoPath = thumbnailSourcePath,
+                                                    onClick = { onRestrictedFolderClick(entry.folder) },
+                                                    onLongClick = { entry.items.firstOrNull()?.let { openContextSheet(it) } }
+                                                )
+                                            }
+                                        }
                                     }
                                 }
+                                Spacer(modifier = Modifier.height(20.dp))
                             }
-                            Spacer(modifier = Modifier.height(20.dp))
+                        }
+                    }
+                }
+            }
+
+            // ── Genres shelf — ONLY on "All". Redesigned as circular
+            // glowing icon chips (icon + short label) instead of text
+            // pills, wrapping via FlowRow so they align into neat rows
+            // instead of one long horizontal scroll strip. Genre names are
+            // normalized first so TMDB's movie/TV naming differences (e.g.
+            // "Science Fiction" vs "Sci-Fi & Fantasy") collapse into one
+            // chip instead of showing as near-duplicates.
+            if (selectedCategory == "All") {
+                run {
+                    val genreNames = visibleSortedVideos
+                        .flatMap { it.genres }
+                        .map { normalizeGenreName(it) }
+                        .distinct()
+                        .sortedBy { it.lowercase() }
+                    if (genreNames.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Column {
+                                Text(text = "Genres", color = TextBright, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(12.dp))
+                                androidx.compose.foundation.layout.FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    genreNames.forEach { genre ->
+                                        GenreIconChip(name = genre, onClick = { onGenreClick(genre) })
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(20.dp))
+                            }
                         }
                     }
                 }
@@ -790,13 +896,21 @@ fun LocalVideoLibraryScreen(
                                 if (isHidden) unhideVideo(selectedItem) else hideVideo(selectedItem)
                                 contextSheetItem = null
                             }
-                            SheetIconButton(
-                                icon = Icons.Filled.Folder,
-                                tint = TextBright,
-                                contentDescription = if (isInSecretFolder) "Unlock Folder" else "Hide Entire Folder"
-                            ) {
-                                if (isInSecretFolder) unhideEntireFolder(selectedItem) else hideEntireFolder(selectedItem)
-                                contextSheetItem = null
+                            // "Hide Entire Folder" removed as an option going
+                            // forward — Secret (above) is the one hide
+                            // mechanism now, simpler and easier to reverse.
+                            // Still shown ONLY for items already hidden this
+                            // way from before, so nothing already hidden is
+                            // stranded with no way back to the library.
+                            if (isInSecretFolder) {
+                                SheetIconButton(
+                                    icon = Icons.Filled.Folder,
+                                    tint = TextBright,
+                                    contentDescription = "Unlock Folder"
+                                ) {
+                                    unhideEntireFolder(selectedItem)
+                                    contextSheetItem = null
+                                }
                             }
                             SheetIconButton(icon = Icons.Rounded.Delete, tint = Color(0xFFFF5252), contentDescription = "Delete File") {
                                 contextSheetItem = null
