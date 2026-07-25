@@ -241,6 +241,10 @@ fun LocalVideoLibraryScreen(
     var hiddenFolders by remember { mutableStateOf<Set<String>>(loadSecretFolderPaths(context)) }
     var favoritePaths by remember { mutableStateOf(loadFavoriteVideoPaths(context)) }
     var contextSheetItem by remember { mutableStateOf<VideoWithMetadata?>(null) }
+    // Long-pressing a folder TILE now asks for confirmation first instead
+    // of toggling instantly — holds the folder name + its video paths while
+    // the confirm dialog is showing.
+    var folderSecretConfirm by remember { mutableStateOf<Pair<String, List<String>>?>(null) }
 
     var expandedFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
 
@@ -710,7 +714,7 @@ fun LocalVideoLibraryScreen(
                                                     count = entry.items.size,
                                                     thumbnailVideoPath = thumbnailSourcePath,
                                                     onClick = { onRestrictedFolderClick(entry.folder) },
-                                                    onLongClick = { toggleFolderSecret(entry.items.map { it.video.path }) }
+                                                    onLongClick = { folderSecretConfirm = entry.folder.displayName to entry.items.map { it.video.path } }
                                                 )
                                             }
                                         }
@@ -856,7 +860,7 @@ fun LocalVideoLibraryScreen(
                                     count = group.items.size,
                                     thumbnailVideoPath = thumbnailSourcePath,
                                     onClick = { onRestrictedFolderClick(group.folder) },
-                                    onLongClick = { toggleFolderSecret(group.items.map { it.video.path }) }
+                                    onLongClick = { folderSecretConfirm = group.folder.displayName to group.items.map { it.video.path } }
                                 )
                             }
                         }
@@ -982,6 +986,53 @@ fun LocalVideoLibraryScreen(
                 }
             }
         }
+
+        // Folder-level Secret confirmation — long-pressing a folder tile
+        // now asks first instead of toggling instantly.
+        folderSecretConfirm?.let { (folderName, paths) ->
+            val allHidden = paths.isNotEmpty() && paths.all { hiddenPaths.contains(it) }
+            Box(
+                modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f)).clickable { folderSecretConfirm = null },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .width(290.dp)
+                        .glassPanel(cornerRadius = 24.dp, fill = SpaceMid.copy(alpha = 0.98f))
+                        .clickable(enabled = false) { }
+                        .padding(20.dp)
+                ) {
+                    Text(
+                        text = if (allHidden) "Remove folder from Secret?" else "Move folder to Secret?",
+                        color = TextBright, fontSize = 17.sp, fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (allHidden)
+                            "\"$folderName\" (${paths.size} files) will be removed from Secret and shown normally again."
+                        else
+                            "\"$folderName\" (${paths.size} files) will be hidden — visible only inside Secret.",
+                        color = TextMuted, fontSize = 13.sp, lineHeight = 18.sp
+                    )
+                    Spacer(modifier = Modifier.height(18.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Cancel", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable { folderSecretConfirm = null }.padding(horizontal = 16.dp, vertical = 9.dp)
+                        )
+                        Text(
+                            text = if (allHidden) "Remove" else "Move to Secret",
+                            color = if (allHidden) Color.Black else Color.Black,
+                            fontSize = 13.sp, fontWeight = FontWeight.Black,
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberGlow.copy(alpha = 0.90f)).clickable {
+                                toggleFolderSecret(paths)
+                                folderSecretConfirm = null
+                            }.padding(horizontal = 16.dp, vertical = 9.dp)
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1072,7 +1123,7 @@ private fun RestrictedFolderShelfCard(
                 videoPath = thumbnailVideoPath,
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer { scaleX = 1.22f; scaleY = 1.22f }
+                    .graphicsLayer { scaleX = 1.08f; scaleY = 1.08f }
             )
             Box(
                 modifier = Modifier.fillMaxSize().background(
