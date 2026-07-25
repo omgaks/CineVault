@@ -906,25 +906,31 @@ fun VideoPlayerScreen(
 
         Box(
             modifier = Modifier.fillMaxSize()
-                // Reserves this gesture surface from Android's system
-                // edge-swipe-back gesture using the real underlying View
-                // API (there's no Compose-level modifier for this — an
-                // earlier attempt used a Modifier.systemGestureExclusion()
-                // that doesn't actually exist, which is why the build kept
-                // failing). Without this, a swipe starting near the left/
-                // right edge (exactly where the previous/next drag zones
-                // below start) gets intercepted by the OS's predictive-back
-                // gesture FIRST, so the app's own drag detector never sees
-                // the touch at all and it falls through to the system back
-                // action instead. That was the actual cause of "swiping
-                // from the right edge goes back to the folder" — not a bug
-                // in playNext() itself, the gesture just never reached it.
+                // Reserves ONLY the right-edge strip from Android's system
+                // back gesture — that's the zone the custom Next-swipe below
+                // needs, since without this a right-edge swipe gets
+                // intercepted by the OS's predictive-back gesture first and
+                // our own drag detector never sees it.
+                //
+                // The LEFT edge is deliberately NOT excluded (previously the
+                // whole screen was, and this Box also explicitly called
+                // onBack() on a left-edge swipe) — some OEM gesture overlays
+                // (HyperOS included) don't fully respect
+                // systemGestureExclusionRects, so the system's own back
+                // gesture was firing on the same touch our onBack() call
+                // handled, and getting a double back-navigation on a shallow
+                // screen stack closes the app entirely instead of just
+                // popping one level. Leaving the left edge to native Android
+                // back-gesture handling (same BackHandler already used
+                // everywhere else in the app) is the actually-correct fix,
+                // not something to work around.
                 .onGloballyPositioned { coordinates ->
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         val bounds = coordinates.boundsInWindow()
+                        val rightEdgeStart = bounds.left + (bounds.width * 0.85f)
                         view.systemGestureExclusionRects = listOf(
                             android.graphics.Rect(
-                                bounds.left.roundToInt(),
+                                rightEdgeStart.roundToInt(),
                                 bounds.top.roundToInt(),
                                 bounds.right.roundToInt(),
                                 bounds.bottom.roundToInt()
@@ -967,11 +973,10 @@ fun VideoPlayerScreen(
                             val w = size.width.toFloat()
                             val isHorizontal = kotlin.math.abs(dragTotalX) > kotlin.math.abs(dragTotalY) * 1.5f &&
                                     kotlin.math.abs(dragTotalX) > 48.dp.toPx()
-                            if (isHorizontal) {
-                                when {
-                                    dragStartX < w * 0.12f && dragTotalX > 0f -> onBack()
-                                    dragStartX > w * 0.88f && dragTotalX < 0f -> if (showPrevNextButtons) playNext()
-                                }
+                            // Left edge intentionally NOT handled here anymore
+                            // — see the exclusion-rect comment above.
+                            if (isHorizontal && dragStartX > w * 0.88f && dragTotalX < 0f) {
+                                if (showPrevNextButtons) playNext()
                             }
                         },
                         onDragCancel = { brightnessGestureKey++; volumeGestureKey++ },
