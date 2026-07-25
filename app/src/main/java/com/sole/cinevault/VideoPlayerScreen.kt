@@ -164,13 +164,19 @@ fun VideoPlayerScreen(
     var showGlassesConnectedHint by remember { mutableStateOf(false) }
     LaunchedEffect(externalDisplay.isConnected) {
         if (externalDisplay.isConnected) {
-            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            // setRequestedOrientation() throws IllegalStateException if the
+            // Activity isn't in a plain fullscreen state at that moment
+            // (split-screen, floating/free-form window, or a PiP
+            // transition — all real states HyperOS's tablet multitasking
+            // can put an app into). An orientation lock is a nice-to-have,
+            // never something that should be allowed to crash the app.
+            try { activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE } catch (_: Exception) {}
             activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = 0.02f }
             showGlassesConnectedHint = true
             delay(2200)
             showGlassesConnectedHint = false
         } else {
-            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            try { activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED } catch (_: Exception) {}
             activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
         }
     }
@@ -376,11 +382,7 @@ fun VideoPlayerScreen(
         val isSmbMedia = currentVideo.path.startsWith("smb://", ignoreCase = true)
         val isContentUriMedia = currentVideo.path.startsWith("content://", ignoreCase = true)
         if (!isStreamMedia && !isSmbMedia && !isContentUriMedia && !java.io.File(currentVideo.path).exists()) {
-            // TEMP DIAGNOSTIC: shows the exact path/type CineVault tried to
-            // play so we can see what's actually wrong (empty path? wrong
-            // format? genuinely-moved file?) instead of guessing blind.
-            // Revert to the plain friendly message once this is diagnosed.
-            playerErrorMessage = "File not found. It may have been moved, renamed, or the drive it's on was disconnected.\n\n[debug] type=$currentMediaType path=\"${currentVideo.path}\""
+            playerErrorMessage = "File not found. It may have been moved, renamed, or the drive it's on was disconnected."
             return
         }
         try {
@@ -670,7 +672,12 @@ fun VideoPlayerScreen(
             context.stopService(Intent(context, CineVaultPlaybackService::class.java))
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
-            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            // This runs on every exit from the player — button, swipe, or
+            // hardware back — so if setRequestedOrientation() throws here
+            // (see comment above near the glasses-connect effect), it would
+            // crash on literally any way of leaving the player. Wrapped for
+            // the same reason.
+            try { activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED } catch (_: Exception) {}
             activity?.exitImmersiveModeForPlayer()
         }
     }
