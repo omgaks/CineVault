@@ -970,8 +970,8 @@ fun VideoPlayerScreen(
                                     kotlin.math.abs(dragTotalX) > 48.dp.toPx()
                             if (isHorizontal) {
                                 when {
-                                    dragStartX < w * 0.12f && dragTotalX > 0f -> playPrevious()
-                                    dragStartX > w * 0.88f && dragTotalX < 0f -> playNext()
+                                    dragStartX < w * 0.12f && dragTotalX > 0f -> if (showPrevNextButtons) playPrevious()
+                                    dragStartX > w * 0.88f && dragTotalX < 0f -> if (showPrevNextButtons) playNext()
                                 }
                             }
                         },
