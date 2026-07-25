@@ -12,11 +12,20 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import android.app.AlertDialog
+import android.content.ContentUris
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.IntentSenderRequest
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Lock
@@ -245,6 +254,107 @@ private fun MediaIntelligenceGridScreen(
     var hiddenPaths by remember { mutableStateOf(loadSecretVideoPaths(gridContext)) }
     var contextSheetItem by remember { mutableStateOf<VideoWithMetadata?>(null) }
 
+    // Delete — parity with the main Library screen's context sheet. This
+    // grid has no callback to update the CALLER's video list (unlike
+    // LocalVideoLibraryScreen's onVideosLoaded), so a deleted item is
+    // hidden from THIS screen locally for the rest of the visit; it'll
+    // disappear from everywhere else on the next full library rescan too.
+    var locallyDeletedPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingGridDeleteResult by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
+    val gridDeleteConsentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        pendingGridDeleteResult?.invoke(result.resultCode == android.app.Activity.RESULT_OK)
+        pendingGridDeleteResult = null
+    }
+
+    fun findGridMediaStoreUri(path: String): Uri? {
+        val projection = arrayOf(MediaStore.Video.Media._ID)
+        return try {
+            gridContext.contentResolver.query(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI, projection,
+                "${MediaStore.Video.Media.DATA} = ?", arrayOf(path), null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID))
+                    ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
+                } else null
+            }
+        } catch (_: Exception) { null }
+    }
+
+    fun deleteGridVideo(item: VideoWithMetadata) {
+        val path = item.video.path
+        AlertDialog.Builder(gridContext)
+            .setTitle("Delete File")
+            .setMessage("Delete \"${item.title}\"?\n\nThis cannot be undone.")
+            .setPositiveButton("Delete") { _, _ ->
+                if (path.startsWith("content://")) {
+                    // SAF-based (e.g. a Select-Folder item) — the app already
+                    // holds a persisted permission from when the folder was picked.
+                    try {
+                        val deleted = androidx.documentfile.provider.DocumentFile.fromSingleUri(gridContext, Uri.parse(path))?.delete() == true
+                        if (deleted) {
+                            locallyDeletedPaths = locallyDeletedPaths + path
+                            Toast.makeText(gridContext, "File deleted", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(gridContext, "Could not delete file", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(gridContext, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    val f = java.io.File(path)
+                    val mediaUri = findGridMediaStoreUri(path)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && mediaUri != null) {
+                        try {
+                            pendingGridDeleteResult = { granted ->
+                                if (granted) {
+                                    locallyDeletedPaths = locallyDeletedPaths + path
+                                    Toast.makeText(gridContext, "File deleted", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(gridContext, "Delete cancelled", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            val pi = MediaStore.createDeleteRequest(gridContext.contentResolver, listOf(mediaUri))
+                            gridDeleteConsentLauncher.launch(IntentSenderRequest.Builder(pi.intentSender).build())
+                        } catch (e: Exception) {
+                            pendingGridDeleteResult = null
+                            Toast.makeText(gridContext, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        try {
+                            val deletedRows = if (mediaUri != null) gridContext.contentResolver.delete(mediaUri, null, null) else 0
+                            when {
+                                deletedRows > 0 -> { locallyDeletedPaths = locallyDeletedPaths + path; Toast.makeText(gridContext, "File deleted", Toast.LENGTH_SHORT).show() }
+                                f.exists() && f.delete() -> { locallyDeletedPaths = locallyDeletedPaths + path; Toast.makeText(gridContext, "File deleted", Toast.LENGTH_SHORT).show() }
+                                else -> Toast.makeText(gridContext, "Could not delete file", Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (e: SecurityException) {
+                            val recoverable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) e as? android.app.RecoverableSecurityException else null
+                            if (recoverable != null) {
+                                pendingGridDeleteResult = { granted ->
+                                    if (granted) {
+                                        locallyDeletedPaths = locallyDeletedPaths + path
+                                        Toast.makeText(gridContext, "File deleted", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(gridContext, "Delete cancelled", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                                gridDeleteConsentLauncher.launch(IntentSenderRequest.Builder(recoverable.userAction.actionIntent.intentSender).build())
+                            } else {
+                                Toast.makeText(gridContext, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (e: Exception) {
+                            Toast.makeText(gridContext, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    val visibleGridItems = remember(items, locallyDeletedPaths) { items.filterNot { locallyDeletedPaths.contains(it.video.path) } }
+
     Box(modifier = Modifier.fillMaxSize().background(SpaceBlack)) {
         LazyVerticalGrid(
             state = gridState,
@@ -297,7 +407,7 @@ private fun MediaIntelligenceGridScreen(
                     }
                 }
             } else {
-                items(items = items, key = { it.video.path }) { item ->
+                items(items = visibleGridItems, key = { it.video.path }) { item ->
                     LibraryGridCard(
                         item = item,
                         onClick = { onItemClick(item) },
@@ -391,6 +501,10 @@ private fun MediaIntelligenceGridScreen(
                                 hiddenPaths = if (isHidden) hiddenPaths - selectedItem.video.path else hiddenPaths + selectedItem.video.path
                                 saveSecretVideoPaths(gridContext, hiddenPaths)
                                 contextSheetItem = null
+                            }
+                            MiniSheetIconButton(icon = Icons.Rounded.Delete, tint = Color(0xFFFF5252), contentDescription = "Delete File") {
+                                contextSheetItem = null
+                                deleteGridVideo(selectedItem)
                             }
                         }
                     }
