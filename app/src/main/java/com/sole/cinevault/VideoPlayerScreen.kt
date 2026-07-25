@@ -874,7 +874,6 @@ fun VideoPlayerScreen(
         val currentEpisodeIndex = remember(currentVideo.path, episodeList) {
             episodeList.indexOfFirst { it.video.path == currentVideo.path }
         }
-        val hasPreviousVideo = episodeList.size > 1 && currentEpisodeIndex > 0
         val hasNextVideo = episodeList.size > 1 && currentEpisodeIndex in 0 until episodeList.lastIndex
 
         AndroidView(
@@ -970,7 +969,7 @@ fun VideoPlayerScreen(
                                     kotlin.math.abs(dragTotalX) > 48.dp.toPx()
                             if (isHorizontal) {
                                 when {
-                                    dragStartX < w * 0.12f && dragTotalX > 0f -> if (showPrevNextButtons) playPrevious()
+                                    dragStartX < w * 0.12f && dragTotalX > 0f -> onBack()
                                     dragStartX > w * 0.88f && dragTotalX < 0f -> if (showPrevNextButtons) playNext()
                                 }
                             }
@@ -1280,21 +1279,6 @@ fun VideoPlayerScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         BackIconButton(size = smallButton, onClick = onBack)
-
-                        // Previous — only for TV episodes / Select-Folder videos.
-                        // Dimmed (not hidden) at the start of the list so the
-                        // deck's width stays stable instead of icons shifting.
-                        if (showPrevNextButtons) {
-                            IconCircle(
-                                icon = Icons.Rounded.SkipPrevious, size = smallButton,
-                                tint = if (hasPreviousVideo) TextBright else TextMuted.copy(alpha = 0.35f)
-                            ) {
-                                if (hasPreviousVideo) {
-                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    playPrevious()
-                                }
-                            }
-                        }
 
                         GlassTransportButton(icon = Icons.Rounded.Replay10, size = smallButton) { exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0)); position = exoPlayer.currentPosition; showControls = true }
 
@@ -1649,16 +1633,19 @@ private fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolean
     var localPosition by remember { mutableLongStateOf(position) }
     LaunchedEffect(position, isDragging) { if (!isDragging) localPosition = position }
     val haptic = LocalHapticFeedback.current
-    var lastChapterZone by remember { mutableIntStateOf(-1) }
     var waveformVisible by remember { mutableStateOf(false) }
     LaunchedEffect(isDragging) {
         if (isDragging) { waveformVisible = true }
         else if (waveformVisible) { delay(2000); waveformVisible = false }
     }
-    fun zoneOf(p: Long): Int {
-        val fr = p.toFloat() / duration.coerceAtLeast(1L).toFloat()
-        return (fr / 0.25f).toInt().coerceIn(0, 3)
-    }
+    // Same bar width/gap as the waveform drawn below — used here purely to
+    // detect when a drag crosses into a new bar, so a haptic tick can fire
+    // per bar instead of only 4 times across the whole seek bar. Gives a
+    // scroll-wheel/ratchet feel instead of a few coarse clicks.
+    val density = LocalDensity.current
+    val barStepPx = with(density) { (3.dp + 2.2.dp).toPx() }
+    var lastBarIndex by remember { mutableIntStateOf(-1) }
+    fun barIndexOf(x: Float): Int = (x / barStepPx).toInt()
     val bloom by animateFloatAsState(targetValue = if (isDragging || waveformVisible) 1f else 0f, animationSpec = tween(if (isDragging || waveformVisible) 300 else 600, easing = FastOutSlowInEasing), label = "liquidBloom")
     val glow by animateFloatAsState(targetValue = if (isDragging) 1f else 0.45f, animationSpec = tween(220), label = "seekGlow")
     fun positionFromX(x: Float, width: Float): Long { if (duration <= 0L || width <= 0f) return 0L; return (duration * (x / width).coerceIn(0f, 1f)).toLong().coerceIn(0L, duration) }
@@ -1668,11 +1655,11 @@ private fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolean
         Box(modifier = Modifier.fillMaxWidth().height(38.dp)
             .pointerInput(duration) { detectTapGestures { o -> val p = positionFromX(o.x, size.width.toFloat()); localPosition = p; onPreviewPositionChanged(p); onSeekFinished(p) } }
             .pointerInput(duration) { detectDragGestures(
-                onDragStart = { o -> localPosition = positionFromX(o.x, size.width.toFloat()); lastChapterZone = zoneOf(localPosition); onPreviewPositionChanged(localPosition) },
+                onDragStart = { o -> localPosition = positionFromX(o.x, size.width.toFloat()); lastBarIndex = barIndexOf(o.x); onPreviewPositionChanged(localPosition) },
                 onDrag = { c, _ ->
                     localPosition = positionFromX(c.position.x, size.width.toFloat())
-                    val z = zoneOf(localPosition)
-                    if (z != lastChapterZone) { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); lastChapterZone = z }
+                    val bar = barIndexOf(c.position.x)
+                    if (bar != lastBarIndex) { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); lastBarIndex = bar }
                     onPreviewPositionChanged(localPosition)
                 },
                 onDragEnd = { onSeekFinished(localPosition) },
