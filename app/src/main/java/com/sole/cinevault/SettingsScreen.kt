@@ -111,6 +111,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     var showStreamDialog by remember { mutableStateOf(false) }
+    var showCrashLog by remember { mutableStateOf(false) }
 
     var smbShares by remember { mutableStateOf(loadSmbShares(context)) }
     var showSmbDialog by remember { mutableStateOf(false) }
@@ -122,6 +123,7 @@ fun SettingsScreen(
     // Android's default behavior (closing the app) instead of dismissing
     // the dialog and returning to Settings.
     BackHandler(enabled = showStreamDialog) { showStreamDialog = false }
+    BackHandler(enabled = showCrashLog) { showCrashLog = false }
     BackHandler(enabled = showSmbDialog) { showSmbDialog = false; editingShare = null }
 
     // Select Folder — the general "Add Media Folder" picker (and the whole
@@ -252,6 +254,12 @@ fun SettingsScreen(
                     text = "Your personal cinema, built from the ground up. Play straight from local storage, a USB drive, or a NAS over SMB — with real decoding for DTS, TrueHD and the formats most players choke on. TMDB and OMDB automatically bring in posters, cast, genres, collections, and IMDb/Rotten Tomatoes ratings for everything you own. A cinematic glass-and-amber design throughout, gesture-driven playback, and a private Select Folder space that stays exactly that.",
                     color = TextMuted, fontSize = 13.sp, lineHeight = 19.sp
                 )
+                Spacer(modifier = Modifier.height(14.dp))
+                GlassActionRow(
+                    icon = Icons.Filled.Info, iconTint = AccentAbout,
+                    title = "View Crash Log", subtitle = "For diagnosing crashes — screenshot and share",
+                    action = "OPEN"
+                ) { showCrashLog = true }
             }
 
             Spacer(modifier = Modifier.height(30.dp))
@@ -284,6 +292,47 @@ fun SettingsScreen(
                     editingShare = null
                 }
             )
+        }
+
+        // Crash log viewer — reads the file installCrashLogger() writes to
+        // (MainActivity.kt). Scrollable text so it can be screenshotted in
+        // pieces if it's long; Clear empties the file for a fresh start.
+        if (showCrashLog) {
+            val logText = remember(showCrashLog) { readCrashLog(context) }
+            Box(
+                modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.70f)).clickable { showCrashLog = false },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .heightIn(max = 480.dp)
+                        .glassPanel(cornerRadius = 24.dp, fill = SpaceMid.copy(alpha = 0.98f))
+                        .clickable(enabled = false) { }
+                        .padding(18.dp)
+                ) {
+                    Text(text = "Crash Log", color = TextBright, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Box(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                        Text(
+                            text = logText.ifBlank { "No crashes logged yet." },
+                            color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Close", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable { showCrashLog = false }.padding(horizontal = 16.dp, vertical = 9.dp)
+                        )
+                        Text(
+                            text = "Clear Log", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFFFF5252)).clickable { clearCrashLog(context); showCrashLog = false }.padding(horizontal = 16.dp, vertical = 9.dp)
+                        )
+                    }
+                }
+            }
         }
 
         // Folder-removal confirmation — replaces the old inline delete icon.
