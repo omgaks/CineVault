@@ -82,6 +82,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Crash logger — writes any uncaught exception's full stack trace to
+        // an app-internal file (filesDir, always readable by the app itself
+        // regardless of Android version — no adb, no file-manager access,
+        // no permissions needed). Settings > About > View Crash Log reads it
+        // back so a crash can actually be diagnosed from a tablet-only
+        // workflow instead of guessing blind. Still calls the real default
+        // handler afterward so the OS crash behavior is unchanged.
+        installCrashLogger(applicationContext)
+
         // Required for the lock-screen/media notification (CineVaultPlaybackService.kt)
         // to actually be visible on Android 13+. The service itself still runs and
         // keeps playback alive without this permission — it just has no visible
@@ -629,4 +638,46 @@ private fun resolveOpenedVideoDisplayName(context: android.content.Context, uri:
         } catch (_: Exception) {}
     }
     return uri.lastPathSegment?.substringAfterLast("/")?.takeIf { it.isNotBlank() } ?: "Video"
+}
+
+// ── Crash logger ────────────────────────────────────────────────────────
+// See onCreate() above. File lives in the app's private internal storage
+// (context.filesDir) — no permissions or file-manager access required to
+// write it; Settings' "View Crash Log" reads it back through the app itself.
+const val CRASH_LOG_FILE_NAME = "cinevault_crash_log.txt"
+
+fun installCrashLogger(context: Context) {
+    val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+    Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+        try {
+            val logFile = java.io.File(context.filesDir, CRASH_LOG_FILE_NAME)
+            val writer = java.io.StringWriter()
+            throwable.printStackTrace(java.io.PrintWriter(writer))
+            val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+            val entry = "\n\n=== Crash at $timestamp (thread: ${thread.name}) ===\n$writer"
+            // Keeps the log from growing forever — trims to the last ~50KB
+            // (roughly the last several crashes) before appending the new one.
+            val existing = try { logFile.readText() } catch (_: Exception) { "" }
+            val trimmed = if (existing.length > 50_000) existing.takeLast(50_000) else existing
+            logFile.writeText(trimmed + entry)
+        } catch (_: Exception) {
+            // If logging itself fails, don't let that mask the real crash.
+        }
+        defaultHandler?.uncaughtException(thread, throwable)
+    }
+}
+
+fun readCrashLog(context: Context): String {
+    return try {
+        val logFile = java.io.File(context.filesDir, CRASH_LOG_FILE_NAME)
+        if (logFile.exists()) logFile.readText().trim() else ""
+    } catch (_: Exception) {
+        ""
+    }
+}
+
+fun clearCrashLog(context: Context) {
+    try {
+        java.io.File(context.filesDir, CRASH_LOG_FILE_NAME).delete()
+    } catch (_: Exception) {}
 }
