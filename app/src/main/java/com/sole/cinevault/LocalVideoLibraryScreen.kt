@@ -56,6 +56,12 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.TheaterComedy
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
@@ -236,6 +242,7 @@ fun LocalVideoLibraryScreen(
     var isGridMode by remember { mutableStateOf(LibraryScrollState.gridMode) }
     var sortOption by remember { mutableStateOf(LibraryScrollState.sort) }
     var sortMenuExpanded by remember { mutableStateOf(false) }
+    var toolsMenuExpanded by remember { mutableStateOf(false) }
     var secretUnlocked by remember { mutableStateOf(false) }
     var hiddenPaths by remember { mutableStateOf<Set<String>>(loadSecretVideoPaths(context)) }
     var hiddenFolders by remember { mutableStateOf<Set<String>>(loadSecretFolderPaths(context)) }
@@ -264,9 +271,16 @@ fun LocalVideoLibraryScreen(
         LibraryScrollState.gridMode = isGridMode
     }
 
+    // FIX (#4): the previous version only set secretUnlocked = true here and
+    // relied on the NEXT tap of the "Secret" chip to actually navigate,
+    // because openSecretFolder() checks `if (secretUnlocked)` up front and
+    // that check hadn't run yet on the tap that triggered the auth prompt.
+    // Now we navigate immediately in the same callback that confirms the
+    // unlock, so it opens on the first successful unlock.
     val secretUnlockLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result: ActivityResult ->
         if (result.resultCode == Activity.RESULT_OK) {
             secretUnlocked = true
+            selectedCategory = "Secret"
             Toast.makeText(context, "Secret folder unlocked", Toast.LENGTH_SHORT).show()
         } else {
             secretUnlocked = false; selectedCategory = "All"
@@ -296,14 +310,6 @@ fun LocalVideoLibraryScreen(
         onSecretChanged(); Toast.makeText(context, "Moved to Secret folder", Toast.LENGTH_SHORT).show()
     }
 
-    fun hideEntireFolder(item: VideoWithMetadata) {
-        val folderPath = getVideoFolderKey(item); if (folderPath.isBlank()) return
-        val updatedFolders = hiddenFolders + folderPath; hiddenFolders = updatedFolders
-        saveSecretFolderPaths(context, updatedFolders); clearPlaybackFolderPositions(context, folderPath)
-        createNoMediaFileForFolder(folderPath); onSecretChanged()
-        Toast.makeText(context, "Folder hidden in CineVault. Gallery hide is not guaranteed on all Android versions.", Toast.LENGTH_LONG).show()
-    }
-
     fun unhideEntireFolder(item: VideoWithMetadata) {
         val folderPath = hiddenFolders.firstOrNull { item.video.path.startsWith(it) } ?: File(item.video.path).parent ?: return
         val updatedFolders = hiddenFolders - folderPath; hiddenFolders = updatedFolders
@@ -316,14 +322,13 @@ fun LocalVideoLibraryScreen(
         saveSecretVideoPaths(context, updated); Toast.makeText(context, "Removed from Secret folder", Toast.LENGTH_SHORT).show()
     }
 
-    // Long-pressing a Select-Folder TILE (on the main Library/TV-Shows-&-
-    // Folders row) hides/unhides every video in that folder as one bulk
-    // action, using the same safe per-video hiddenPaths set as regular
-    // Secret (not the old .nomedia-based whole-folder hide, which could
-    // make files vanish from MediaStore entirely on the next rescan).
-    // Long-pressing an individual video ONCE INSIDE the folder still hides
-    // just that one file — see openContextSheet, used by the grid inside
-    // CollectionScreen.
+    // Long-pressing a folder (whether it's a Select-Folder TILE on the
+    // TV-Shows-&-Folders shelf, OR a plain device folder row in the
+    // "Folders" tab — see FIX #3 below) hides/unhides EVERY video in that
+    // folder as one bulk action, using the same per-video hiddenPaths set
+    // as regular Secret. This is the single folder-level hide mechanism in
+    // the app now — both entry points funnel into this same function, so
+    // behavior can't drift between the two again.
     fun toggleFolderSecret(folderVideoPaths: List<String>) {
         if (folderVideoPaths.isEmpty()) return
         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -538,40 +543,19 @@ fun LocalVideoLibraryScreen(
             verticalArrangement = Arrangement.spacedBy(18.dp),
             contentPadding = PaddingValues(top = 16.dp, bottom = 28.dp)
         ) {
+            // ── Header (FIX #5) ──────────────────────────────────────────
+            // "Library" title text removed — redundant, we're already in
+            // the Library tab (bottom nav shows that). Category chips now
+            // lead at the very top. Scan / Refresh / Sort / Grid-List
+            // collapse into one row of small glowing icon buttons instead
+            // of two full-width pill buttons + a separate sort pill +
+            // separate List/Grid button, reclaiming a lot of vertical
+            // space. Each icon gets a distinct tint (still same amber-glow
+            // treatment as the signature play button — radial glow +
+            // border in the icon's own color) so they read as separate
+            // controls at a glance.
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {
-                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = "Library", color = TextBright, fontSize = 32.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        Button(onClick = { isGridMode = !isGridMode }, shape = RoundedCornerShape(30.dp), colors = ButtonDefaults.buttonColors(containerColor = GlassSurface, contentColor = TextBright)) {
-                            Text(if (isGridMode) "List" else "Grid")
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(enabled = !isLoading, onClick = { permissionLauncher.launch(permission) }, shape = RoundedCornerShape(40.dp), colors = ButtonDefaults.buttonColors(containerColor = GlassSurface, contentColor = TextBright)) {
-                            Text(if (isLoading) scanStatus.ifBlank { "Scanning..." } else "Scan Device Videos")
-                        }
-                        OutlinedButton(enabled = !isLoading, onClick = { clearLibraryCache(context); onVideosLoaded(emptyList()); scanStatus = "Cache cleared. Scan again." }, shape = RoundedCornerShape(40.dp)) {
-                            Text("Refresh")
-                        }
-                    }
-
-                    if (scanStatus.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Box(modifier = Modifier.fillMaxWidth().glassPanel(cornerRadius = 18.dp).padding(horizontal = 16.dp, vertical = 12.dp)) {
-                            Text(text = scanStatus, color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-
-                    loadLibraryCache(context)?.let {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = "Last Scan: " + java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(it.timestamp)), color = TextFaint, fontSize = 11.sp)
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(items = categories) { category ->
                             FilterChip(
@@ -590,20 +574,68 @@ fun LocalVideoLibraryScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    Box {
-                        Box(modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberGlow.copy(alpha = 0.18f)).clickable { sortMenuExpanded = true }.padding(horizontal = 18.dp, vertical = 10.dp)) {
-                            Text(text = "Sort by: ${sortOption.label}", color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box {
+                            LibraryToolIconButton(
+                                icon = if (isLoading) Icons.Filled.Radar else Icons.Filled.Radar,
+                                tint = AmberCore,
+                                contentDescription = "Scan Device Videos",
+                                enabled = !isLoading,
+                                onClick = { permissionLauncher.launch(permission) }
+                            )
                         }
-                        DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }, modifier = Modifier.background(SpaceMid)) {
-                            LibrarySortOption.values().forEach { option ->
-                                DropdownMenuItem(
-                                    text = { Text(text = option.label, color = if (sortOption == option) AmberCore else TextBright, fontWeight = if (sortOption == option) FontWeight.Bold else FontWeight.Normal) },
-                                    onClick = { sortOption = option; sortMenuExpanded = false }
-                                )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        LibraryToolIconButton(
+                            icon = Icons.Filled.Refresh,
+                            tint = Color(0xFF6FCF97),
+                            contentDescription = "Refresh / Clear Cache",
+                            enabled = !isLoading,
+                            onClick = { clearLibraryCache(context); onVideosLoaded(emptyList()); scanStatus = "Cache cleared. Scan again." }
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Box {
+                            LibraryToolIconButton(
+                                icon = Icons.Filled.Sort,
+                                tint = Color(0xFF56CCF2),
+                                contentDescription = "Sort by: ${sortOption.label}",
+                                onClick = { sortMenuExpanded = true }
+                            )
+                            DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }, modifier = Modifier.background(SpaceMid)) {
+                                LibrarySortOption.values().forEach { option ->
+                                    DropdownMenuItem(
+                                        text = { Text(text = option.label, color = if (sortOption == option) AmberCore else TextBright, fontWeight = if (sortOption == option) FontWeight.Bold else FontWeight.Normal) },
+                                        onClick = { sortOption = option; sortMenuExpanded = false }
+                                    )
+                                }
                             }
                         }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        LibraryToolIconButton(
+                            icon = if (isGridMode) Icons.Filled.ViewList else Icons.Filled.GridView,
+                            tint = Color(0xFFBB86FC),
+                            contentDescription = if (isGridMode) "Switch to List" else "Switch to Grid",
+                            onClick = { isGridMode = !isGridMode }
+                        )
+
+                        if (scanStatus.isNotBlank()) {
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = scanStatus,
+                                color = TextMuted,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
-                    Spacer(modifier = Modifier.height(6.dp))
+
+                    loadLibraryCache(context)?.let {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(text = "Last Scan: " + java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(it.timestamp)), color = TextFaint, fontSize = 11.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
                 }
             }
 
@@ -786,13 +818,32 @@ fun LocalVideoLibraryScreen(
                     videoFolders.forEach { folder ->
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             val isExpanded = expandedFolders.contains(folder.folderPath)
+                            // FIX (#3): plain device folders in this tab
+                            // previously had no long-press action at all —
+                            // only expand/collapse on tap. That meant a
+                            // long-press here either did nothing, or (if the
+                            // finger landed on an already-expanded video
+                            // card underneath) silently hid just that ONE
+                            // file — which is almost certainly what looked
+                            // like "a random file getting hidden" instead of
+                            // the whole folder. Long-press now routes
+                            // through the exact same folderSecretConfirm ->
+                            // toggleFolderSecret(all paths in folder) path
+                            // used by the TV Shows & Folders shelf, so
+                            // behavior is identical and correct in both
+                            // places.
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .glassPanel(cornerRadius = 14.dp)
-                                    .clickable {
-                                        expandedFolders = if (isExpanded) expandedFolders - folder.folderPath else expandedFolders + folder.folderPath
-                                    }
+                                    .combinedClickable(
+                                        onClick = {
+                                            expandedFolders = if (isExpanded) expandedFolders - folder.folderPath else expandedFolders + folder.folderPath
+                                        },
+                                        onLongClick = {
+                                            folderSecretConfirm = folder.folderName to folder.videos.map { it.video.path }
+                                        }
+                                    )
                                     .padding(horizontal = 14.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -989,6 +1040,10 @@ fun LocalVideoLibraryScreen(
 
         // Folder-level Secret confirmation — long-pressing a folder tile
         // now asks first instead of toggling instantly.
+        // FIX (#2): restyled to use the same SheetIconButton glowing-circle
+        // treatment as the single-file context sheet above, instead of the
+        // old flat text-pill Cancel/Confirm buttons — so both long-press
+        // menus in the app now share one visual language.
         folderSecretConfirm?.let { (folderName, paths) ->
             val allHidden = paths.isNotEmpty() && paths.all { hiddenPaths.contains(it) }
             Box(
@@ -997,42 +1052,73 @@ fun LocalVideoLibraryScreen(
             ) {
                 Column(
                     modifier = Modifier
-                        .width(290.dp)
-                        .glassPanel(cornerRadius = 24.dp, fill = SpaceMid.copy(alpha = 0.98f))
+                        .width(220.dp)
+                        .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.98f))
                         .clickable(enabled = false) { }
-                        .padding(20.dp)
+                        .padding(12.dp)
                 ) {
-                    Text(
-                        text = if (allHidden) "Remove folder from Secret?" else "Move folder to Secret?",
-                        color = TextBright, fontSize = 17.sp, fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = if (allHidden)
-                            "\"$folderName\" (${paths.size} files) will be removed from Secret and shown normally again."
-                        else
-                            "\"$folderName\" (${paths.size} files) will be hidden — visible only inside Secret.",
-                        color = TextMuted, fontSize = 13.sp, lineHeight = 18.sp
-                    )
-                    Spacer(modifier = Modifier.height(18.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = "Cancel", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                            modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable { folderSecretConfirm = null }.padding(horizontal = 16.dp, vertical = 9.dp)
-                        )
-                        Text(
-                            text = if (allHidden) "Remove" else "Move to Secret",
-                            color = if (allHidden) Color.Black else Color.Black,
-                            fontSize = 13.sp, fontWeight = FontWeight.Black,
-                            modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberGlow.copy(alpha = 0.90f)).clickable {
-                                toggleFolderSecret(paths)
-                                folderSecretConfirm = null
-                            }.padding(horizontal = 16.dp, vertical = 9.dp)
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(SpaceDeep),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(imageVector = Icons.Filled.Folder, contentDescription = null, tint = AmberGlow, modifier = Modifier.size(20.dp))
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = folderName, color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(text = "${paths.size} files", color = TextMuted, fontSize = 10.sp)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    HorizontalDivider(color = GlassBorderBottom)
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        SheetIconButton(
+                            icon = if (allHidden) Icons.Filled.LockOpen else Icons.Rounded.Lock,
+                            tint = AmberCore,
+                            contentDescription = if (allHidden) "Remove Folder from Secret" else "Move Folder to Secret"
+                        ) {
+                            toggleFolderSecret(paths)
+                            folderSecretConfirm = null
+                        }
+                        SheetIconButton(icon = Icons.Filled.Close, tint = TextBright, contentDescription = "Cancel") {
+                            folderSecretConfirm = null
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun LibraryToolIconButton(
+    icon: ImageVector,
+    tint: Color,
+    contentDescription: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(42.dp)
+            .clip(CircleShape)
+            .background(GlassSurfaceStrong)
+            .background(Brush.radialGradient(listOf(tint.copy(alpha = if (enabled) 0.30f else 0.10f), Color.Transparent), radius = 80f))
+            .border(1.2.dp, tint.copy(alpha = if (enabled) 0.60f else 0.20f), CircleShape)
+            .clickable(enabled = enabled) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(imageVector = icon, contentDescription = contentDescription, tint = if (enabled) tint else tint.copy(alpha = 0.35f), modifier = Modifier.size(19.dp))
     }
 }
 
