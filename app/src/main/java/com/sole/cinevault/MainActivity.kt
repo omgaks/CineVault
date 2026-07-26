@@ -4,6 +4,7 @@ import android.os.Build
 import android.os.Bundle
 import android.app.Activity
 import android.content.Intent
+import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
