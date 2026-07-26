@@ -61,6 +61,9 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material.icons.filled.ViewAgenda
+import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.TrackChanges
 import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
@@ -574,28 +577,34 @@ fun LocalVideoLibraryScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box {
-                            LibraryToolIconButton(
-                                icon = if (isLoading) Icons.Filled.Radar else Icons.Filled.Radar,
-                                tint = AmberCore,
-                                contentDescription = "Scan Device Videos",
-                                enabled = !isLoading,
-                                onClick = { permissionLauncher.launch(permission) }
+                    // FIX: tool row now lives on the right, reading
+                    // left-to-right on screen as Sort → Grid/List → Refresh
+                    // → Scan — i.e. Scan is the rightmost/outermost icon,
+                    // matching "icons position right to left: Scan – Refresh
+                    // – Grid – Sort" (Scan first from the right edge).
+                    // Icons swapped for more distinct/recognizable shapes:
+                    // Scan uses a radar-style sweep, Sort uses ascending
+                    // bars instead of the generic sort glyph, so all four
+                    // silhouettes are easy to tell apart at a glance even
+                    // before reading color.
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                        if (scanStatus.isNotBlank()) {
+                            Text(
+                                text = scanStatus,
+                                color = TextMuted,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
                             )
+                            Spacer(modifier = Modifier.width(10.dp))
+                        } else {
+                            Spacer(modifier = Modifier.weight(1f))
                         }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        LibraryToolIconButton(
-                            icon = Icons.Filled.Refresh,
-                            tint = Color(0xFF6FCF97),
-                            contentDescription = "Refresh / Clear Cache",
-                            enabled = !isLoading,
-                            onClick = { clearLibraryCache(context); onVideosLoaded(emptyList()); scanStatus = "Cache cleared. Scan again." }
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
+
                         Box {
                             LibraryToolIconButton(
-                                icon = Icons.Filled.Sort,
+                                icon = Icons.Filled.SwapVert,
                                 tint = Color(0xFF56CCF2),
                                 contentDescription = "Sort by: ${sortOption.label}",
                                 onClick = { sortMenuExpanded = true }
@@ -611,23 +620,27 @@ fun LocalVideoLibraryScreen(
                         }
                         Spacer(modifier = Modifier.width(10.dp))
                         LibraryToolIconButton(
-                            icon = if (isGridMode) Icons.Filled.ViewList else Icons.Filled.GridView,
+                            icon = if (isGridMode) Icons.Filled.ViewAgenda else Icons.Filled.GridView,
                             tint = Color(0xFFBB86FC),
                             contentDescription = if (isGridMode) "Switch to List" else "Switch to Grid",
                             onClick = { isGridMode = !isGridMode }
                         )
-
-                        if (scanStatus.isNotBlank()) {
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = scanStatus,
-                                color = TextMuted,
-                                fontSize = 11.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        LibraryToolIconButton(
+                            icon = Icons.Filled.Refresh,
+                            tint = Color(0xFF6FCF97),
+                            contentDescription = "Refresh / Clear Cache",
+                            enabled = !isLoading,
+                            onClick = { clearLibraryCache(context); onVideosLoaded(emptyList()); scanStatus = "Cache cleared. Scan again." }
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        LibraryToolIconButton(
+                            icon = Icons.Filled.TrackChanges,
+                            tint = AmberCore,
+                            contentDescription = "Scan Device Videos",
+                            enabled = !isLoading,
+                            onClick = { permissionLauncher.launch(permission) }
+                        )
                     }
 
                     loadLibraryCache(context)?.let {
