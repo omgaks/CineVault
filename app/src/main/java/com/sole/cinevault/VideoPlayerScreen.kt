@@ -222,6 +222,13 @@ fun VideoPlayerScreen(
     var subtitleSizeDefaultApplied by remember { mutableStateOf(false) }
     var subtitleBottomPadding by remember { mutableFloatStateOf(0.02f) }
     var subtitleSyncOffset by remember { mutableFloatStateOf(0.0f) }
+    var subtitleDriftScale by remember { mutableFloatStateOf(1.0f) }
+    var appliedSubtitleDriftScale by remember { mutableFloatStateOf(1.0f) }
+    var dialogueSyncArmed by remember { mutableStateOf(false) }
+    var dialogueSyncReferenceMs by remember { mutableStateOf<Long?>(null) }
+    var showDriftDialog by remember { mutableStateOf(false) }
+    var driftPointA by remember { mutableStateOf<DriftPoint?>(null) }
+    var driftPointB by remember { mutableStateOf<DriftPoint?>(null) }
     var subtitleMenuTouchKey by remember { mutableIntStateOf(0) }
     var subtitlesEnabled by remember { mutableStateOf(true) }
     var autoSubtitleAttemptedForPath by remember { mutableStateOf<String?>(null) }
@@ -313,6 +320,7 @@ fun VideoPlayerScreen(
         showSubtitleSettings = false
         showTrackSelector = false
         showSubtitleSearch = false
+        showDriftDialog = false
         showSpeedMenu = false
         showSleepMenu = false
         showSrtBrowser = false
@@ -541,6 +549,8 @@ fun VideoPlayerScreen(
         previewBitmap = null; previewFrames = emptyList(); isVideoEnded = false
         playerErrorMessage = null; errorRetryCount = 0; stuckBufferingHint = false
         originalSubtitleUri = null; appliedSubtitleOffsetMs = 0L; subtitleSyncOffset = 0.0f
+        subtitleDriftScale = 1.0f; appliedSubtitleDriftScale = 1.0f; driftPointA = null; driftPointB = null
+        dialogueSyncArmed = false; dialogueSyncReferenceMs = null; showDriftDialog = false
         selectedSubtitleTrackKey = null; selectedSubtitleTrackLabel = ""; selectedSubtitleTrackSource = ""
         droppedFrameNudgeCount = 0; lastNudgeAtMs = 0L
         if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
@@ -839,18 +849,61 @@ fun VideoPlayerScreen(
         sv?.setStyle(CaptionStyleCompat(AndroidColor.WHITE, AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_OUTLINE, AndroidColor.BLACK, null))
     }
 
-    LaunchedEffect(subtitleSyncOffset, originalSubtitleUri) {
+    LaunchedEffect(subtitleSyncOffset, subtitleDriftScale, originalSubtitleUri) {
         val baseUri = originalSubtitleUri ?: return@LaunchedEffect
         if (!subtitlesEnabled) return@LaunchedEffect
         val offsetMs = (subtitleSyncOffset * 1000f).toLong()
-        if (offsetMs == appliedSubtitleOffsetMs) return@LaunchedEffect
+        if (offsetMs == appliedSubtitleOffsetMs && subtitleDriftScale == appliedSubtitleDriftScale) return@LaunchedEffect
         delay(350)
         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
-        val shiftedUri = withContext(Dispatchers.IO) { buildShiftedSubtitleFile(context, baseUri, offsetMs) }
+        val shiftedUri = withContext(Dispatchers.IO) { buildShiftedSubtitleFile(context, baseUri, offsetMs, subtitleDriftScale) }
         if (shiftedUri != null) {
             appliedSubtitleOffsetMs = offsetMs
+            appliedSubtitleDriftScale = subtitleDriftScale
             playCurrentVideoWithSubtitle(subtitleUri = shiftedUri, resumePosition = resumeAt, isOriginalSubtitle = false)
         }
+    }
+
+    // ── Dialogue Tap Sync ─────────────────────────────────────────────
+    // Step 1: person pauses on a subtitle line they can read, taps "Start"
+    // (armDialogueSync below) — we record the position they paused at as
+    // the reference, then resume playback automatically.
+    // Step 2: they tap "Tap Now" on DialogueTapSyncBar the instant they
+    // HEAR that same line spoken. The additional correction needed is just
+    // (where they tapped) - (where the subtitle visually appeared),
+    // stacked on top of whatever sync offset was already active.
+    fun armDialogueSync() {
+        dialogueSyncReferenceMs = exoPlayer.currentPosition.coerceAtLeast(0L)
+        dialogueSyncArmed = true
+        exoPlayer.play()
+        showSubtitleSettings = false
+    }
+    fun cancelDialogueSync() {
+        dialogueSyncArmed = false
+        dialogueSyncReferenceMs = null
+    }
+    fun confirmDialogueSyncTap() {
+        val reference = dialogueSyncReferenceMs
+        if (reference != null) {
+            val deltaMs = exoPlayer.currentPosition - reference
+            subtitleSyncOffset = (subtitleSyncOffset + deltaMs / 1000f).coerceIn(-10f, 10f)
+            Toast.makeText(context, "Sync adjusted by ${if (deltaMs >= 0) "+" else ""}${String.format("%.1f", deltaMs / 1000f)}s", Toast.LENGTH_SHORT).show()
+        }
+        dialogueSyncArmed = false
+        dialogueSyncReferenceMs = null
+    }
+
+    // ── Progressive Drift Correction ─────────────────────────────────
+    fun markDriftPointA(correctionSeconds: Float) { driftPointA = DriftPoint(exoPlayer.currentPosition.coerceAtLeast(0L), correctionSeconds) }
+    fun markDriftPointB(correctionSeconds: Float) { driftPointB = DriftPoint(exoPlayer.currentPosition.coerceAtLeast(0L), correctionSeconds) }
+    fun applyDriftFix() {
+        val a = driftPointA; val b = driftPointB
+        if (a == null || b == null || a.positionMs == b.positionMs) return
+        val (scale, shiftMs) = computeDriftTransform(a, b)
+        subtitleDriftScale = scale
+        subtitleSyncOffset = (shiftMs / 1000f).coerceIn(-30f, 30f)
+        showDriftDialog = false
+        Toast.makeText(context, "Drift correction applied", Toast.LENGTH_SHORT).show()
     }
 
     LaunchedEffect(showNextEpisodeOverlay, pendingNextEpisode) {
@@ -999,6 +1052,8 @@ fun VideoPlayerScreen(
                                 showSubtitleSettings -> showSubtitleSettings = false
                                 showTrackSelector -> showTrackSelector = false
                                 showSubtitleSearch -> showSubtitleSearch = false
+                                showDriftDialog -> showDriftDialog = false
+                                dialogueSyncArmed -> {}
                                 showSpeedMenu -> showSpeedMenu = false
                                 showSleepMenu -> showSleepMenu = false
                                 showSrtBrowser -> showSrtBrowser = false
@@ -1274,7 +1329,9 @@ fun VideoPlayerScreen(
             currentFontSize = subtitleTextSizeSp, onFontSizeChange = { subtitleTextSizeSp = it; showControls = true; subtitleMenuTouchKey++ },
             currentVerticalPosition = subtitleBottomPadding, onVerticalPositionChange = { subtitleBottomPadding = it; showControls = true; subtitleMenuTouchKey++ },
             currentSyncOffset = subtitleSyncOffset, onSyncOffsetChange = { subtitleSyncOffset = it; showControls = true; subtitleMenuTouchKey++ },
-            onReset = { subtitleTextSizeSp = if (isLandscape) 18f else 16f; subtitleBottomPadding = 0.02f; subtitleSyncOffset = 0.0f; subtitlesEnabled = true; trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build(); showControls = true; subtitleMenuTouchKey++ },
+            onReset = { subtitleTextSizeSp = if (isLandscape) 18f else 16f; subtitleBottomPadding = 0.02f; subtitleSyncOffset = 0.0f; subtitleDriftScale = 1.0f; driftPointA = null; driftPointB = null; subtitlesEnabled = true; trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build(); showControls = true; subtitleMenuTouchKey++ },
+            onDialogueSyncClick = { armDialogueSync() },
+            onDriftFixClick = { showSubtitleSettings = false; showDriftDialog = true; showControls = true },
             onUserInteraction = { subtitleMenuTouchKey++; showControls = true }
         )
         }
@@ -1355,6 +1412,29 @@ fun VideoPlayerScreen(
                 onDownloadAndApply = { result -> subtitleMenuTouchKey++; applySearchResult(result, alsoPlay = true) },
                 onDownloadOnly = { result -> subtitleMenuTouchKey++; applySearchResult(result, alsoPlay = false) },
                 onDismiss = { showSubtitleSearch = false; showControls = true }
+            )
+        }
+
+        // Dialogue Tap Sync — floating pill, visible over the video (not
+        // anchored to the subtitle icon like the menus, since the whole
+        // point is the person is watching the scene play out while this is
+        // up) armed via the Sync section's "Tap Sync" button.
+        AnimatedVisibility(visible = dialogueSyncArmed, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(150)),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = if (isLandscape) 54.dp else 90.dp)) {
+            DialogueTapSyncBar(isLandscape = isLandscape, onTap = { confirmDialogueSyncTap() }, onCancel = { cancelDialogueSync() })
+        }
+
+        AnimatedVisibility(visible = showDriftDialog, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.Center)) {
+            DriftCorrectionSheet(
+                videoDurationMs = duration,
+                currentPositionMs = position,
+                pointA = driftPointA,
+                pointB = driftPointB,
+                popupWidth = trackSelectorWidth.coerceAtLeast(220.dp),
+                onMarkPointA = { correction -> markDriftPointA(correction) },
+                onMarkPointB = { correction -> markDriftPointB(correction) },
+                onApply = { applyDriftFix() },
+                onDismiss = { showDriftDialog = false; showControls = true }
             )
         }
 
@@ -1633,12 +1713,13 @@ private fun readTextFromUri(context: Context, uri: Uri): String? {
     } catch (e: Exception) { null }
 }
 
-private fun shiftSrtTimestampMatch(match: MatchResult, offsetMs: Long): String {
+private fun shiftSrtTimestampMatch(match: MatchResult, offsetMs: Long, scale: Float = 1f): String {
     val h = match.groupValues[1].toLong()
     val m = match.groupValues[2].toLong()
     val s = match.groupValues[3].toLong()
     val ms = match.groupValues[4].toLong()
-    var totalMs = (h * 3_600_000L) + (m * 60_000L) + (s * 1_000L) + ms + offsetMs
+    val originalMs = (h * 3_600_000L) + (m * 60_000L) + (s * 1_000L) + ms
+    var totalMs = (originalMs * scale).toLong() + offsetMs
     if (totalMs < 0L) totalMs = 0L
     val newH = totalMs / 3_600_000L
     val newM = (totalMs % 3_600_000L) / 60_000L
@@ -1647,15 +1728,32 @@ private fun shiftSrtTimestampMatch(match: MatchResult, offsetMs: Long): String {
     return "%02d:%02d:%02d,%03d".format(newH, newM, newS, newMs)
 }
 
-private fun buildShiftedSubtitleFile(context: Context, sourceUri: Uri, offsetMs: Long): Uri? {
-    if (offsetMs == 0L) return sourceUri
+private fun buildShiftedSubtitleFile(context: Context, sourceUri: Uri, offsetMs: Long, scale: Float = 1f): Uri? {
+    if (offsetMs == 0L && scale == 1f) return sourceUri
     val original = readTextFromUri(context, sourceUri) ?: return null
-    val shifted = SRT_TIME_REGEX.replace(original) { shiftSrtTimestampMatch(it, offsetMs) }
+    val shifted = SRT_TIME_REGEX.replace(original) { shiftSrtTimestampMatch(it, offsetMs, scale) }
     return try {
         val outFile = java.io.File(context.cacheDir, "cinevault_synced_subtitle.srt")
         outFile.writeText(shifted)
         Uri.fromFile(outFile)
     } catch (e: Exception) { null }
+}
+
+// Given two (position, correction) reference points, derives the linear
+// scale + shift that makes both points land exactly on their intended
+// corrected time — the math behind "Fix Gradual Drift". Point A is assumed
+// to be earlier in the video than Point B; if they're passed in reverse
+// order this still works since it solves the two-point line algebraically
+// rather than assuming an order.
+private fun computeDriftTransform(pointA: DriftPoint, pointB: DriftPoint): Pair<Float, Long> {
+    val t1 = pointA.positionMs.toDouble()
+    val t2 = pointB.positionMs.toDouble()
+    val c1 = t1 + pointA.correctionSeconds * 1000.0
+    val c2 = t2 + pointB.correctionSeconds * 1000.0
+    if (t2 == t1) return 1f to 0L
+    val scale = (c2 - c1) / (t2 - t1)
+    val shift = c1 - scale * t1
+    return scale.toFloat() to shift.toLong()
 }
 
 @Composable
