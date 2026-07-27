@@ -71,7 +71,7 @@ fun SubtitleSettingsMenu(
     isVisible: Boolean,
     subtitlesEnabled: Boolean,
     hasInternalSubtitles: Boolean,
-    activeTrackStatusText: String,
+    activeTrackStatusText: String = "",
     onInternalClick: () -> Unit,
     onDownloadClick: () -> Unit,
     onPickFileClick: () -> Unit = {},
@@ -127,12 +127,17 @@ fun SubtitleSettingsMenu(
             // now ("English · OpenSubtitles", "English · Embedded", or "No
             // subtitle selected"), matching the spec's header layout. Text
             // is computed by VideoPlayerScreen.kt (it's the one with access
-            // to track/source state), this just displays it.
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = activeTrackStatusText, color = TextMuted, fontSize = statusSize, fontWeight = FontWeight.SemiBold,
-                maxLines = 1, overflow = TextOverflow.Ellipsis
-            )
+            // to track/source state), this just displays it. Only rendered
+            // when non-blank so any OTHER call site to this composable that
+            // doesn't pass this new parameter (default "") doesn't show a
+            // dangling empty line under the header.
+            if (activeTrackStatusText.isNotBlank()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = activeTrackStatusText, color = TextMuted, fontSize = statusSize, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+            }
         }
 
         // 2x2 action-pill grid — Tracks/Download on top, On-Off/Browse
