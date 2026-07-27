@@ -27,7 +27,13 @@ data class SubtitleBehaviorPrefs(
     val autoLoadMatchingLocalFile: Boolean = true,
     val autoDownloadWhenMissing: Boolean = true,
     val rememberLastSelectedLanguage: Boolean = true,
-    val disableWhenAudioMatchesPreferred: Boolean = false
+    val disableWhenAudioMatchesPreferred: Boolean = false,
+    // Off by default — see VideoPlayerScreen.kt's gesture-zone comment for
+    // why this is opt-in rather than always-on: swipe/pinch/long-press
+    // gestures on a region of the video screen carry real collision risk
+    // with the existing brightness/volume/seek/zoom gestures already
+    // living there, so the person has to deliberately choose this on.
+    val enableSubtitleGestures: Boolean = false
 )
 
 private const val BEHAVIOR_PREFS_NAME = "cinevault_subtitle_behavior"
@@ -44,7 +50,8 @@ fun loadSubtitleBehaviorPrefs(context: Context): SubtitleBehaviorPrefs {
         autoLoadMatchingLocalFile = prefs.getBoolean("autoLoadLocalMatch", true),
         autoDownloadWhenMissing = prefs.getBoolean("autoDownloadWhenMissing", true),
         rememberLastSelectedLanguage = prefs.getBoolean("rememberLastLanguage", true),
-        disableWhenAudioMatchesPreferred = prefs.getBoolean("disableWhenAudioMatches", false)
+        disableWhenAudioMatchesPreferred = prefs.getBoolean("disableWhenAudioMatches", false),
+        enableSubtitleGestures = prefs.getBoolean("enableSubtitleGestures", false)
     )
 }
 
@@ -58,6 +65,7 @@ fun saveSubtitleBehaviorPrefs(context: Context, prefs: SubtitleBehaviorPrefs) {
         .putBoolean("autoDownloadWhenMissing", prefs.autoDownloadWhenMissing)
         .putBoolean("rememberLastLanguage", prefs.rememberLastSelectedLanguage)
         .putBoolean("disableWhenAudioMatches", prefs.disableWhenAudioMatchesPreferred)
+        .putBoolean("enableSubtitleGestures", prefs.enableSubtitleGestures)
         .apply()
 }
 
