@@ -27,7 +27,7 @@ data class SubtitleCleaningOptions(
                 mergeVeryShortLines || correctEncodingSymbols || removeHtmlTags || convertAllCaps || removeDuplicateLines
 }
 
-private data class SrtBlock(val index: String, val timing: String, val lines: List<String>)
+internal data class SrtBlock(val index: String, val timing: String, val lines: List<String>)
 
 // Sound-cue / music notation: [MUSIC PLAYING], (door opens), ♪ lines, etc.
 // Matches a line that's ENTIRELY bracketed content, not just contains
@@ -49,7 +49,7 @@ private val encodingFixMap = listOf(
     "â€\"" to "–", "Â " to " ", "Â°" to "°", "Ã©" to "é", "Ã¨" to "è", "Ã " to "à"
 )
 
-private fun parseSrtBlocks(text: String): List<SrtBlock> {
+internal fun parseSrtBlocks(text: String): List<SrtBlock> {
     val blocks = mutableListOf<SrtBlock>()
     val rawBlocks = text.replace("\r\n", "\n").split(Regex("\n\\s*\n"))
     for (raw in rawBlocks) {
