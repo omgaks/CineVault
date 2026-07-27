@@ -40,6 +40,17 @@ android {
             "OPENSUB_API_KEY",
             "\"${localProperties.getProperty("OPENSUB_API_KEY", "")}\""
         )
+
+        // sherpa-onnx (VAD, for Auto-Sync Phase 1) only ships jniLibs for
+        // arm64-v8a in this project — that's the only ABI actually
+        // committed under app/src/main/jniLibs/, matching both of Ash's
+        // real test devices (Xiaomi Pad 7, Vivo X300 Pro). Restricting the
+        // ABI filter here keeps the APK from claiming support for
+        // architectures it has no native libs for, and keeps the build
+        // from needing armeabi-v7a/x86/x86_64 .so files we never committed.
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     // Signing config — reads from environment variables set by GitHub Actions,
@@ -74,6 +85,20 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    // sherpa-onnx's VAD model (assets/silero_vad.onnx) is mmap'd directly
+    // by ONNX Runtime at load time, which requires the file to be stored
+    // UNCOMPRESSED inside the APK — Android compresses assets/ by default,
+    // and reading a compressed file via mmap corrupts the byte alignment
+    // ONNX Runtime expects, causing a native SIGBUS crash on some devices
+    // (reported specifically on some MediaTek chips, but not guaranteed
+    // safe on any device). This is a real, documented failure mode for
+    // this exact library, not a hypothetical — skipping this would likely
+    // not even fail the build, just crash at runtime the first time Auto-
+    // Sync tries to load the model.
+    androidResources {
+        noCompress += "onnx"
     }
 }
 
