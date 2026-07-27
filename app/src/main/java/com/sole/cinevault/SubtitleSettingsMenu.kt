@@ -87,6 +87,7 @@ fun SubtitleSettingsMenu(
     onReset: () -> Unit,
     onDialogueSyncClick: () -> Unit = {},
     onDriftFixClick: () -> Unit = {},
+    onStyleClick: () -> Unit = {},
     onUserInteraction: () -> Unit
 ) {
     if (!isVisible) return
@@ -218,6 +219,10 @@ fun SubtitleSettingsMenu(
         // both small text links rather than full pills so they don't
         // compete visually with the primary slider above them.
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                text = "Style", color = Color(0xFFC9A765), fontSize = 9.5.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable { onUserInteraction(); onStyleClick() }
+            )
             Text(
                 text = "Tap Sync", color = Color(0xFFC9A765), fontSize = 9.5.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable { onUserInteraction(); onDialogueSyncClick() }
