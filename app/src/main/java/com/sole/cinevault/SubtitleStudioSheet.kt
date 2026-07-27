@@ -81,6 +81,14 @@ fun SubtitleStudioSheet(
     onBehaviorPrefsChange: (SubtitleBehaviorPrefs) -> Unit,
     cleaningOptions: SubtitleCleaningOptions,
     onCleaningOptionsChange: (SubtitleCleaningOptions) -> Unit,
+    dualSubtitlesEnabled: Boolean,
+    dualCanEnable: Boolean,
+    dualSecondaryLanguage: String,
+    dualGapLines: Int,
+    dualStatusText: String,
+    onToggleDual: (Boolean) -> Unit,
+    onDualSecondaryLanguageChange: (String) -> Unit,
+    onDualGapLinesChange: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(initialTab) }
@@ -175,7 +183,15 @@ fun SubtitleStudioSheet(
                             prefs = behaviorPrefs,
                             onChange = onBehaviorPrefsChange,
                             cleaningOptions = cleaningOptions,
-                            onCleaningOptionsChange = onCleaningOptionsChange
+                            onCleaningOptionsChange = onCleaningOptionsChange,
+                            dualEnabled = dualSubtitlesEnabled,
+                            dualCanEnable = dualCanEnable,
+                            dualSecondaryLanguage = dualSecondaryLanguage,
+                            dualGapLines = dualGapLines,
+                            dualStatusText = dualStatusText,
+                            onToggleDual = onToggleDual,
+                            onDualSecondaryLanguageChange = onDualSecondaryLanguageChange,
+                            onDualGapLinesChange = onDualGapLinesChange
                         )
                     }
                 }
@@ -278,7 +294,15 @@ private fun StudioAdvancedTab(
     prefs: SubtitleBehaviorPrefs,
     onChange: (SubtitleBehaviorPrefs) -> Unit,
     cleaningOptions: SubtitleCleaningOptions,
-    onCleaningOptionsChange: (SubtitleCleaningOptions) -> Unit
+    onCleaningOptionsChange: (SubtitleCleaningOptions) -> Unit,
+    dualEnabled: Boolean,
+    dualCanEnable: Boolean,
+    dualSecondaryLanguage: String,
+    dualGapLines: Int,
+    dualStatusText: String,
+    onToggleDual: (Boolean) -> Unit,
+    onDualSecondaryLanguageChange: (String) -> Unit,
+    onDualGapLinesChange: (Int) -> Unit
 ) {
     val languages = listOf("en" to "English", "hi" to "Hindi", "sm" to "Samoan", "fr" to "French", "es" to "Spanish")
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -348,6 +372,64 @@ private fun StudioAdvancedTab(
                 text = "Cleaning applies the next time a subtitle is (re)loaded — reopen Tracks and reselect if you don't see it yet.",
                 color = AmberCore, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, lineHeight = 14.sp
             )
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+        HorizontalDivider(color = GlassBorderBottom)
+        Spacer(modifier = Modifier.height(14.dp))
+
+        StudioSectionLabel("Dual Subtitles")
+        Text(
+            text = "Shows a second language underneath the primary one, using a real subtitle release for that language — not machine translation, which CineVault doesn't do. Only works when one exists.",
+            color = TextMuted, fontSize = 10.sp, lineHeight = 14.sp
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        if (!dualCanEnable) {
+            Text(
+                text = "Unavailable for the current track — dual mode needs a downloaded or local subtitle as the primary (not an embedded track).",
+                color = TextMuted, fontSize = 10.sp, lineHeight = 14.sp
+            )
+        } else {
+            StudioToggleRow(label = "Enable dual subtitles", checked = dualEnabled, onCheckedChange = onToggleDual)
+            if (dualEnabled) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(text = "Secondary language", color = Color(0xFFC9A765), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    languages.forEach { (code, label) ->
+                        val selected = dualSecondaryLanguage == code
+                        Text(
+                            text = label, color = if (selected) Color.Black else TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(if (selected) AmberCore else SpaceDeep.copy(alpha = 0.7f))
+                                .border(1.dp, if (selected) AmberCore else AmberCore.copy(alpha = 0.3f), RoundedCornerShape(50))
+                                .clickable { onDualSecondaryLanguageChange(code) }
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(text = "Gap between lines", color = Color(0xFFC9A765), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
+                    (0..2).forEach { n ->
+                        val selected = dualGapLines == n
+                        Text(
+                            text = if (n == 0) "None" else "$n line${if (n > 1) "s" else ""}", color = if (selected) Color.Black else TextBright,
+                            fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (selected) AmberCore else SpaceDeep.copy(alpha = 0.7f))
+                                .clickable { onDualGapLinesChange(n) }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+                if (dualStatusText.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = dualStatusText, color = AmberCore, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
         }
     }
 }
