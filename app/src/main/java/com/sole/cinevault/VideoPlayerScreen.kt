@@ -204,6 +204,10 @@ fun VideoPlayerScreen(
     var showAudioSelector by remember { mutableStateOf(false) }
     var showSubtitleSettings by remember { mutableStateOf(false) }
     var showTrackSelector by remember { mutableStateOf(false) }
+    var showSubtitleSearch by remember { mutableStateOf(false) }
+    var subtitleSearchResults by remember { mutableStateOf<List<SubtitleSearchResult>>(emptyList()) }
+    var subtitleSearchLoading by remember { mutableStateOf(false) }
+    var subtitleSearchStatus by remember { mutableStateOf("") }
 
     var showSpeedMenu by remember { mutableStateOf(false) }
     var showSleepMenu by remember { mutableStateOf(false) }
@@ -308,6 +312,7 @@ fun VideoPlayerScreen(
         showAudioSelector = false
         showSubtitleSettings = false
         showTrackSelector = false
+        showSubtitleSearch = false
         showSpeedMenu = false
         showSleepMenu = false
         showSrtBrowser = false
@@ -482,45 +487,56 @@ fun VideoPlayerScreen(
         else -> false
     }
 
-    fun downloadExternalSubtitle() {
-        if (!canDownloadExternalSubtitles) {
-            Toast.makeText(context, "Subtitle download is only for Movies and TV Shows", Toast.LENGTH_SHORT).show()
-            showSubtitleSettings = false; autoSubtitleStatus = ""; return
-        }
-        if (subtitleDownloadInProgress) { Toast.makeText(context, "Subtitle search already running", Toast.LENGTH_SHORT).show(); return }
-        showControls = true; showSubtitleSettings = false
-        autoSubtitleStatus = "Searching subtitles..."; subtitleDownloadInProgress = true
+    fun performSubtitleSearch(query: String, seasonText: String, episodeText: String) {
+        subtitleSearchLoading = true
+        subtitleSearchStatus = ""
         scope.launch {
-            try {
-                val result = OpenSubtitlesClient.downloadBestEnglishSubtitleDetailed(context, currentVideo.path)
-                if (result is SubtitleDownloadResult.Success) {
-                    val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
-                    autoSubtitleStatus = "Subtitle loaded"
-                    Toast.makeText(context, "Subtitle loaded", Toast.LENGTH_SHORT).show()
-                    subtitlesEnabled = true
-                    trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-                    playCurrentVideoWithSubtitle(result.uri, resumeAt)
-                    selectedSubtitleTrackKey = "downloaded"
-                    selectedSubtitleTrackLabel = "English"; selectedSubtitleTrackSource = "OpenSubtitles"
-                    delay(1400); autoSubtitleStatus = ""
-                } else {
-                    val summary = result.summary()
-                    autoSubtitleStatus = summary
-                    Toast.makeText(context, summary, Toast.LENGTH_LONG).show()
-                    delay(3500); autoSubtitleStatus = ""
-                }
-            } catch (e: Exception) {
-                val msg = "Subtitle failed: ${e.message ?: e.javaClass.simpleName}"
-                autoSubtitleStatus = msg; Toast.makeText(context, msg, Toast.LENGTH_LONG).show(); delay(3500); autoSubtitleStatus = ""
+            val result = OpenSubtitlesClient.searchSubtitlesDetailed(
+                query = query,
+                season = seasonText.toIntOrNull(),
+                episode = episodeText.toIntOrNull()
+            )
+            subtitleSearchLoading = false
+            when (result) {
+                is SubtitleSearchListResult.Success -> { subtitleSearchResults = result.results; subtitleSearchStatus = "" }
+                is SubtitleSearchListResult.HttpError -> { subtitleSearchResults = emptyList(); subtitleSearchStatus = "Search error: ${result.detail}" }
+                SubtitleSearchListResult.NoResults -> { subtitleSearchResults = emptyList(); subtitleSearchStatus = "No subtitles found for this search" }
             }
-            finally { subtitleDownloadInProgress = false }
         }
     }
+
+    fun applySearchResult(result: SubtitleSearchResult, alsoPlay: Boolean) {
+        scope.launch {
+            val downloadResult = OpenSubtitlesClient.downloadSubtitleByFileId(context, currentVideo.path, result.fileId)
+            when (downloadResult) {
+                is SubtitleDownloadResult.Success -> {
+                    subtitlesEnabled = true
+                    trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
+                    selectedSubtitleTrackKey = "downloaded"
+                    selectedSubtitleTrackLabel = friendlyLanguageName(result.language); selectedSubtitleTrackSource = "OpenSubtitles"
+                    if (alsoPlay) {
+                        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+                        playCurrentVideoWithSubtitle(subtitleUri = downloadResult.uri, resumePosition = resumeAt)
+                        showSubtitleSearch = false; showControls = true
+                        Toast.makeText(context, "Subtitle applied", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Subtitle saved — apply it from Tracks", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                else -> {
+                    Toast.makeText(context, downloadResult.summary(), Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+
 
     LaunchedEffect(currentVideo.path) {
         val savedPosition = if (isStreamMedia) 0L else loadPlaybackPosition(context, currentVideo.path)
         position = savedPosition; duration = 1L; showControls = true; showTopBar = true
-        showAudioSelector = false; showSubtitleSettings = false; showTrackSelector = false; showSpeedMenu = false; showSleepMenu = false; showSrtBrowser = false
+        showAudioSelector = false; showSubtitleSettings = false; showTrackSelector = false; showSubtitleSearch = false; showSpeedMenu = false; showSleepMenu = false; showSrtBrowser = false
+        subtitleSearchResults = emptyList(); subtitleSearchStatus = ""; subtitleSearchLoading = false
         pendingNextEpisode = null; nextEpisodeCountdown = 0; showNextEpisodeOverlay = false
         previewBitmap = null; previewFrames = emptyList(); isVideoEnded = false
         playerErrorMessage = null; errorRetryCount = 0; stuckBufferingHint = false
@@ -773,16 +789,16 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(showControls, showAudioSelector, showSubtitleSettings, showTrackSelector, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSpeedMenu || showSleepMenu || showSrtBrowser
+    LaunchedEffect(showControls, showAudioSelector, showSubtitleSettings, showTrackSelector, showSubtitleSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
+        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || showSpeedMenu || showSleepMenu || showSrtBrowser
         if (showControls && !anyMenuOpen && !isDraggingSeekbar) {
             delay(4500)
             if (!isDraggingSeekbar && !anyMenuOpen) showControls = false
         }
     }
 
-    LaunchedEffect(showTopBar, showAudioSelector, showSubtitleSettings, showTrackSelector, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSpeedMenu || showSleepMenu || showSrtBrowser
+    LaunchedEffect(showTopBar, showAudioSelector, showSubtitleSettings, showTrackSelector, showSubtitleSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
+        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || showSpeedMenu || showSleepMenu || showSrtBrowser
         if (showTopBar && !anyMenuOpen && !isDraggingSeekbar) {
             delay(2800)
             if (!isDraggingSeekbar && !anyMenuOpen) showTopBar = false
@@ -792,6 +808,7 @@ fun VideoPlayerScreen(
     LaunchedEffect(showAudioSelector, menuTouchKey) { if (showAudioSelector) { delay(9000); showAudioSelector = false } }
     LaunchedEffect(showSubtitleSettings, subtitleMenuTouchKey) { if (showSubtitleSettings) { delay(9000); showSubtitleSettings = false } }
     LaunchedEffect(showTrackSelector, subtitleMenuTouchKey) { if (showTrackSelector) { delay(12000); showTrackSelector = false } }
+    LaunchedEffect(showSubtitleSearch, subtitleMenuTouchKey) { if (showSubtitleSearch) { delay(25000); showSubtitleSearch = false } }
     LaunchedEffect(showSrtBrowser) { if (showSrtBrowser) { delay(20000); showSrtBrowser = false } }
     LaunchedEffect(showSpeedMenu) { if (showSpeedMenu) { delay(8000); showSpeedMenu = false } }
     LaunchedEffect(showSleepMenu) { if (showSleepMenu) { delay(8000); showSleepMenu = false } }
@@ -981,6 +998,7 @@ fun VideoPlayerScreen(
                                 showAudioSelector -> showAudioSelector = false
                                 showSubtitleSettings -> showSubtitleSettings = false
                                 showTrackSelector -> showTrackSelector = false
+                                showSubtitleSearch -> showSubtitleSearch = false
                                 showSpeedMenu -> showSpeedMenu = false
                                 showSleepMenu -> showSleepMenu = false
                                 showSrtBrowser -> showSrtBrowser = false
@@ -1235,7 +1253,15 @@ fun VideoPlayerScreen(
                 }
                 subtitleMenuTouchKey++
             },
-            onDownloadClick = { subtitleMenuTouchKey++; downloadExternalSubtitle() },
+            onDownloadClick = {
+                subtitleMenuTouchKey++
+                showSubtitleSettings = false
+                showSubtitleSearch = true
+                showControls = true
+                if (subtitleSearchResults.isEmpty() && !subtitleSearchLoading) {
+                    performSubtitleSearch(OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path), "", "")
+                }
+            },
             onPickFileClick = { showSubtitleSettings = false; showSrtBrowser = true; showControls = true },
             onTracksClick = { showSubtitleSettings = false; showTrackSelector = true; showControls = true; subtitleMenuTouchKey++ },
             onToggleSubtitles = {
@@ -1309,7 +1335,30 @@ fun VideoPlayerScreen(
             )
         }
 
-        AnimatedVisibility(visible = showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showTrackSelector || showSpeedMenu || showSleepMenu, enter = fadeIn(), exit = fadeOut()) {
+        // Subtitle Download Search sheet — same anchor as the quick menu/
+        // track selector since it's opened from the quick menu's Download
+        // pill. Search results/loading state are owned by VideoPlayerScreen
+        // (not the sheet itself) so a re-search after editing the query
+        // doesn't lose state if the sheet briefly recomposes.
+        AnimatedVisibility(visible = showSubtitleSearch, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)),
+            modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, trackSelectorMaxHeight)).offset { IntOffset(anchoredX(subIconX, trackSelectorWidth), 0) }) {
+            SubtitleSearchSheet(
+                initialQuery = remember(currentVideo.path) { OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path) },
+                initialSeason = "",
+                initialEpisode = "",
+                results = subtitleSearchResults,
+                isSearching = subtitleSearchLoading,
+                statusText = subtitleSearchStatus,
+                popupWidth = trackSelectorWidth,
+                popupMaxHeight = trackSelectorMaxHeight,
+                onSearch = { q, s, e -> subtitleMenuTouchKey++; performSubtitleSearch(q, s, e) },
+                onDownloadAndApply = { result -> subtitleMenuTouchKey++; applySearchResult(result, alsoPlay = true) },
+                onDownloadOnly = { result -> subtitleMenuTouchKey++; applySearchResult(result, alsoPlay = false) },
+                onDismiss = { showSubtitleSearch = false; showControls = true }
+            )
+        }
+
+        AnimatedVisibility(visible = showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || showSpeedMenu || showSleepMenu, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize()) {
 
                 val topRowVisible = !showSeekPreview
@@ -1402,7 +1451,7 @@ fun VideoPlayerScreen(
                     )
                 }
 
-                val anyMenuOpenForIntroSkip = showAudioSelector || showSubtitleSettings || showTrackSelector || showSpeedMenu || showSleepMenu || showSrtBrowser
+                val anyMenuOpenForIntroSkip = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || showSpeedMenu || showSleepMenu || showSrtBrowser
                 AnimatedVisibility(visible = showIntroSkip && !showSeekPreview && !isDraggingSeekbar && !anyMenuOpenForIntroSkip, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
                     SkipIntroButton(isLandscape = isLandscape) { val t = 95_000L.coerceAtMost(duration.coerceAtLeast(1L)); exoPlayer.seekTo(t); position = t; showControls = true }
                 }
@@ -1458,8 +1507,8 @@ fun VideoPlayerScreen(
                         }
 
                         if (!isStreamMedia) {
-                            IconCircle(icon = Icons.Rounded.ClosedCaption, size = smallButton, tint = if (showSubtitleSettings || showTrackSelector) AmberCore else TextBright, modifier = Modifier.onGloballyPositioned { subIconX = it.positionInRoot().x + it.size.width / 2f }) {
-                                val wasOpen = showSubtitleSettings || showTrackSelector; closeAllMenus(); showSubtitleSettings = !wasOpen; showControls = true; menuTouchKey++
+                            IconCircle(icon = Icons.Rounded.ClosedCaption, size = smallButton, tint = if (showSubtitleSettings || showTrackSelector || showSubtitleSearch) AmberCore else TextBright, modifier = Modifier.onGloballyPositioned { subIconX = it.positionInRoot().x + it.size.width / 2f }) {
+                                val wasOpen = showSubtitleSettings || showTrackSelector || showSubtitleSearch; closeAllMenus(); showSubtitleSettings = !wasOpen; showControls = true; menuTouchKey++
                             }
                         }
                     }
