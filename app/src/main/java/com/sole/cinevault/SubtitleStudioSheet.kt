@@ -375,6 +375,14 @@ private fun StudioAdvancedTab(
         StudioToggleRow(label = "Remember last selected language", checked = prefs.rememberLastSelectedLanguage) { onChange(prefs.copy(rememberLastSelectedLanguage = it)) }
         StudioToggleRow(label = "Disable subtitles when audio matches preferred language", checked = prefs.disableWhenAudioMatchesPreferred) { onChange(prefs.copy(disableWhenAudioMatchesPreferred = it)) }
 
+        Spacer(modifier = Modifier.height(16.dp))
+        StudioSectionLabel("Gestures")
+        StudioToggleRow(label = "Enable subtitle gestures (swipe/pinch/long-press)", checked = prefs.enableSubtitleGestures) { onChange(prefs.copy(enableSubtitleGestures = it)) }
+        Text(
+            text = "Off by default. When on, a zone above the player controls responds to: drag up/down for position, drag left/right for sync, pinch to resize, long-press to pause, double-tap to reset sync. Off elsewhere on screen — brightness, volume, and seek gestures are unaffected either way.",
+            color = TextMuted, fontSize = 10.sp, lineHeight = 14.sp
+        )
+
         Spacer(modifier = Modifier.height(10.dp))
         Text(
             text = "Restricted-folder videos never auto-download subtitles, regardless of these settings — that protection is fixed, not optional.",
