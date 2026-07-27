@@ -79,6 +79,8 @@ fun SubtitleStudioSheet(
     // Advanced tab
     behaviorPrefs: SubtitleBehaviorPrefs,
     onBehaviorPrefsChange: (SubtitleBehaviorPrefs) -> Unit,
+    cleaningOptions: SubtitleCleaningOptions,
+    onCleaningOptionsChange: (SubtitleCleaningOptions) -> Unit,
     onDismiss: () -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(initialTab) }
@@ -171,7 +173,9 @@ fun SubtitleStudioSheet(
                         )
                         SubtitleStudioTab.ADVANCED -> StudioAdvancedTab(
                             prefs = behaviorPrefs,
-                            onChange = onBehaviorPrefsChange
+                            onChange = onBehaviorPrefsChange,
+                            cleaningOptions = cleaningOptions,
+                            onCleaningOptionsChange = onCleaningOptionsChange
                         )
                     }
                 }
@@ -270,7 +274,12 @@ private fun StudioPositionTab(
 }
 
 @Composable
-private fun StudioAdvancedTab(prefs: SubtitleBehaviorPrefs, onChange: (SubtitleBehaviorPrefs) -> Unit) {
+private fun StudioAdvancedTab(
+    prefs: SubtitleBehaviorPrefs,
+    onChange: (SubtitleBehaviorPrefs) -> Unit,
+    cleaningOptions: SubtitleCleaningOptions,
+    onCleaningOptionsChange: (SubtitleCleaningOptions) -> Unit
+) {
     val languages = listOf("en" to "English", "hi" to "Hindi", "sm" to "Samoan", "fr" to "French", "es" to "Spanish")
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         StudioSectionLabel("Preferred Language")
@@ -298,6 +307,48 @@ private fun StudioAdvancedTab(prefs: SubtitleBehaviorPrefs, onChange: (SubtitleB
             text = "These preferences are saved now and will drive automatic download ranking once the full subtitle-behaviour settings are wired up.",
             color = TextMuted, fontSize = 10.sp, lineHeight = 14.sp
         )
+
+        Spacer(modifier = Modifier.height(20.dp))
+        HorizontalDivider(color = GlassBorderBottom)
+        Spacer(modifier = Modifier.height(14.dp))
+
+        StudioSectionLabel("Subtitle Cleaning")
+        Text(
+            text = "Applies to downloaded and local .srt files only — embedded tracks can't be rewritten this way. SDH users who want the sound descriptions should leave the first toggle off.",
+            color = TextMuted, fontSize = 10.sp, lineHeight = 14.sp
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        StudioToggleRow(label = "Hide hearing-impaired descriptions ([MUSIC], (door opens))", checked = cleaningOptions.hideHearingImpairedDescriptions) {
+            onCleaningOptionsChange(cleaningOptions.copy(hideHearingImpairedDescriptions = it))
+        }
+        StudioToggleRow(label = "Remove speaker names (JOHN:)", checked = cleaningOptions.removeSpeakerNames) {
+            onCleaningOptionsChange(cleaningOptions.copy(removeSpeakerNames = it))
+        }
+        StudioToggleRow(label = "Fix broken line breaks", checked = cleaningOptions.fixBrokenLineBreaks) {
+            onCleaningOptionsChange(cleaningOptions.copy(fixBrokenLineBreaks = it))
+        }
+        StudioToggleRow(label = "Merge very short lines", checked = cleaningOptions.mergeVeryShortLines) {
+            onCleaningOptionsChange(cleaningOptions.copy(mergeVeryShortLines = it))
+        }
+        StudioToggleRow(label = "Correct encoding symbols", checked = cleaningOptions.correctEncodingSymbols) {
+            onCleaningOptionsChange(cleaningOptions.copy(correctEncodingSymbols = it))
+        }
+        StudioToggleRow(label = "Remove HTML tags", checked = cleaningOptions.removeHtmlTags) {
+            onCleaningOptionsChange(cleaningOptions.copy(removeHtmlTags = it))
+        }
+        StudioToggleRow(label = "Convert ALL CAPS lines", checked = cleaningOptions.convertAllCaps) {
+            onCleaningOptionsChange(cleaningOptions.copy(convertAllCaps = it))
+        }
+        StudioToggleRow(label = "Remove duplicate lines", checked = cleaningOptions.removeDuplicateLines) {
+            onCleaningOptionsChange(cleaningOptions.copy(removeDuplicateLines = it))
+        }
+        if (cleaningOptions.isAnyEnabled) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Cleaning applies the next time a subtitle is (re)loaded — reopen Tracks and reselect if you don't see it yet.",
+                color = AmberCore, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, lineHeight = 14.sp
+            )
+        }
     }
 }
 
