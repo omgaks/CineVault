@@ -504,6 +504,15 @@ object OpenSubtitlesClient {
 
             if (!response.isSuccessful || body.isBlank()) {
                 Log.w(TAG, "Download-link request failed. code=${response.code} body=${body.take(500)}")
+                // OpenSubtitles returns HTTP 406 (not a 200-with-remaining:0)
+                // when the daily download quota is actually hit — this was
+                // previously falling through to the generic error path,
+                // surfacing a raw "Download blocked (406): ..." message
+                // instead of the friendly quota message below.
+                if (response.code == 406) {
+                    Log.w(TAG, "OpenSubtitles daily download quota exceeded (HTTP 406).")
+                    return DownloadLinkResult.QuotaExhausted
+                }
                 val detail = extractApiMessage(body) ?: "HTTP ${response.code}"
                 return DownloadLinkResult.HttpError(response.code, detail)
             }
