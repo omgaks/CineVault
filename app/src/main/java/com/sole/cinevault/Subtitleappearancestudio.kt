@@ -22,6 +22,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -207,6 +209,7 @@ private fun SectionLabel2(text: String) {
 
 @Composable
 private fun PresetChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val haptics = LocalHapticFeedback.current
     Text(
         text = label,
         color = if (selected) Color.Black else TextBright,
@@ -215,7 +218,7 @@ private fun PresetChip(label: String, selected: Boolean, onClick: () -> Unit) {
             .clip(RoundedCornerShape(50))
             .background(if (selected) AmberCore else SpaceDeep.copy(alpha = 0.7f))
             .border(1.dp, if (selected) AmberCore else AmberCore.copy(alpha = 0.3f), RoundedCornerShape(50))
-            .clickable { onClick() }
+            .clickable { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); onClick() }
             .padding(horizontal = 11.dp, vertical = 6.dp)
     )
 }
