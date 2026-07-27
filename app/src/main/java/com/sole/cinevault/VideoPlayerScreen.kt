@@ -232,6 +232,7 @@ fun VideoPlayerScreen(
     var showAppearanceStudio by remember { mutableStateOf(false) }
     var subtitleAppearancePreset by remember { mutableStateOf("CineVault") }
     var subtitleAppearance by remember { mutableStateOf(SubtitlePresets.CineVault) }
+    var subtitlePreserveOriginalStyling by remember { mutableStateOf(false) }
     var showSubtitleStudio by remember { mutableStateOf(false) }
     var subtitleStudioInitialTab by remember { mutableStateOf(SubtitleStudioTab.TRACK) }
     var subtitleBehaviorPrefs by remember { mutableStateOf(loadSubtitleBehaviorPrefs(context)) }
@@ -442,9 +443,18 @@ fun VideoPlayerScreen(
             }
             val mediaItemBuilder = MediaItem.Builder().setUri(currentVideo.path)
             if (subtitleUri != null) {
+                // MIME type now reflects the SUBTITLE FILE'S actual format
+                // rather than always claiming SubRip — files our own sync/
+                // clean/dual pipeline generates (cinevault_synced_subtitle,
+                // cinevault_cleaned_subtitle, cinevault_dual_merged) are
+                // always genuine SRT regardless of the original source
+                // format, since those pipelines only operate on SRT text,
+                // so they still correctly report as SRT here.
+                val detectedFormat = detectSubtitleFormat(subtitleUri)
+                val subtitleMimeType = detectedFormat.mimeType ?: MimeTypes.APPLICATION_SUBRIP
                 mediaItemBuilder.setSubtitleConfigurations(listOf(
                     MediaItem.SubtitleConfiguration.Builder(subtitleUri)
-                        .setMimeType(MimeTypes.APPLICATION_SUBRIP).setLanguage("en")
+                        .setMimeType(subtitleMimeType).setLanguage("en")
                         .setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
                 ))
             }
@@ -584,6 +594,7 @@ fun VideoPlayerScreen(
         subtitleDriftScale = 1.0f; appliedSubtitleDriftScale = 1.0f; driftPointA = null; driftPointB = null
         dialogueSyncArmed = false; dialogueSyncReferenceMs = null; showDriftDialog = false
         dualSubtitlesEnabled = false; dualStatusText = ""; primarySubtitleUri = null; audioLanguageCheckedForPath = null
+        subtitlePreserveOriginalStyling = false
         selectedSubtitleTrackKey = null; selectedSubtitleTrackLabel = ""; selectedSubtitleTrackSource = ""
         droppedFrameNudgeCount = 0; lastNudgeAtMs = 0L
         if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
@@ -971,15 +982,18 @@ fun VideoPlayerScreen(
         pendingSrtUri = null
     }
 
-    LaunchedEffect(playerViewForSubtitleStyle, subtitleTextSizeSp, subtitleBottomPadding, subtitleAppearance, dualSubtitlesEnabled) {
+    val activeSubtitleFormat = remember(originalSubtitleUri) { originalSubtitleUri?.let { detectSubtitleFormat(it) } ?: SubtitleFormat.UNKNOWN }
+    val isAssOrSsaFormat = activeSubtitleFormat == SubtitleFormat.ASS || activeSubtitleFormat == SubtitleFormat.SSA
+
+    LaunchedEffect(playerViewForSubtitleStyle, subtitleTextSizeSp, subtitleBottomPadding, subtitleAppearance, dualSubtitlesEnabled, subtitlePreserveOriginalStyling, isAssOrSsaFormat) {
         val sv = playerViewForSubtitleStyle?.subtitleView
         sv?.setUserDefaultStyle()
-        // Embedded styling (the <font color="..."> tags dual mode injects)
-        // is normally OFF so CineVault's own styling stays authoritative —
-        // turned ON only while dual mode is active, since that's the one
-        // case that needs per-line color to actually distinguish the two
-        // languages. Reverts the instant dual mode is turned off.
-        sv?.setApplyEmbeddedStyles(dualSubtitlesEnabled); sv?.setApplyEmbeddedFontSizes(false)
+        // Embedded styling is enabled in TWO cases: dual mode (needs the
+        // injected <font color> tag to render) or the person explicitly
+        // asked to preserve an ASS/SSA file's own styling. Off otherwise,
+        // so CineVault's own styling stays authoritative for plain SRT/VTT.
+        val useEmbeddedStyles = dualSubtitlesEnabled || (subtitlePreserveOriginalStyling && isAssOrSsaFormat)
+        sv?.setApplyEmbeddedStyles(useEmbeddedStyles); sv?.setApplyEmbeddedFontSizes(false)
         sv?.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleTextSizeSp)
         sv?.setBottomPaddingFraction(subtitleBottomPadding)
         sv?.setStyle(
@@ -1062,6 +1076,11 @@ fun VideoPlayerScreen(
         val primary = primarySubtitleUri
         if (primary == null) {
             Toast.makeText(context, "Dual subtitles need a downloaded or local subtitle as the primary track", Toast.LENGTH_LONG).show()
+            dualSubtitlesEnabled = false
+            return
+        }
+        if (!supportsCustomTextPipeline(detectSubtitleFormat(primary))) {
+            Toast.makeText(context, "Dual subtitles currently only work with .srt as the primary track", Toast.LENGTH_LONG).show()
             dualSubtitlesEnabled = false
             return
         }
@@ -1679,6 +1698,9 @@ fun VideoPlayerScreen(
                 onEdgeTypeChange = { t -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeType = t) },
                 onEdgeColorChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeColor = c) },
                 onBackgroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(backgroundColor = c) },
+                isAssOrSsaFormat = isAssOrSsaFormat,
+                preserveOriginalStyling = subtitlePreserveOriginalStyling,
+                onPreserveOriginalStylingChange = { subtitlePreserveOriginalStyling = it },
                 onDismiss = { showAppearanceStudio = false; showControls = true }
             )
         }
@@ -1713,6 +1735,9 @@ fun VideoPlayerScreen(
                 onEdgeTypeChange = { t -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeType = t) },
                 onEdgeColorChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeColor = c) },
                 onBackgroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(backgroundColor = c) },
+                isAssOrSsaFormat = isAssOrSsaFormat,
+                preserveOriginalStyling = subtitlePreserveOriginalStyling,
+                onPreserveOriginalStylingChange = { subtitlePreserveOriginalStyling = it },
                 bottomPadding = subtitleBottomPadding,
                 onBottomPaddingChange = { subtitleBottomPadding = it },
                 behaviorPrefs = subtitleBehaviorPrefs,
@@ -2005,6 +2030,12 @@ private fun GlassMenuRow(icon: ImageVector?, label: String, selected: Boolean, o
     }
 }
 
+// Extensions the local-subtitle browser/matcher recognizes — matches
+// SubtitleFormatSupport.kt's SRT/VTT/ASS/SSA/TTML set (VobSub .idx and
+// MicroDVD .sub deliberately excluded since CineVault can't decode either;
+// see that file for why).
+private val SUPPORTED_LOCAL_SUBTITLE_EXTENSIONS = setOf("srt", "vtt", "ass", "ssa", "ttml")
+
 private fun findNearbySrtFiles(videoPath: String): List<java.io.File> {
     val results = LinkedHashSet<java.io.File>()
     try {
@@ -2020,7 +2051,7 @@ private fun findNearbySrtFiles(videoPath: String): List<java.io.File> {
         for (dir in dirs) {
             if (!dir.isDirectory) continue
             dir.listFiles()
-                ?.filter { it.isFile && it.extension.equals("srt", ignoreCase = true) }
+                ?.filter { it.isFile && it.extension.lowercase() in SUPPORTED_LOCAL_SUBTITLE_EXTENSIONS }
                 ?.sortedByDescending { it.nameWithoutExtension.lowercase().contains(base) }
                 ?.take(25)
                 ?.forEach { results.add(it) }
@@ -2055,6 +2086,10 @@ private fun shiftSrtTimestampMatch(match: MatchResult, offsetMs: Long, scale: Fl
 
 private fun buildShiftedSubtitleFile(context: Context, sourceUri: Uri, offsetMs: Long, scale: Float = 1f): Uri? {
     if (offsetMs == 0L && scale == 1f) return sourceUri
+    // Only SRT's specific timing syntax is understood by shiftSrtTimestampMatch
+    // below — for any other format, sync/drift adjustment is a no-op rather
+    // than a silent corruption risk. See SubtitleFormatSupport.kt.
+    if (!supportsCustomTextPipeline(detectSubtitleFormat(sourceUri))) return sourceUri
     val original = readTextFromUri(context, sourceUri) ?: return null
     val shifted = SRT_TIME_REGEX.replace(original) { shiftSrtTimestampMatch(it, offsetMs, scale) }
     return try {
@@ -2071,6 +2106,7 @@ private fun buildShiftedSubtitleFile(context: Context, sourceUri: Uri, offsetMs:
 // regardless of what order the person actually adjusts settings in.
 private fun buildCleanedSubtitleFile(context: Context, sourceUri: Uri, options: SubtitleCleaningOptions): Uri? {
     if (!options.isAnyEnabled) return sourceUri
+    if (!supportsCustomTextPipeline(detectSubtitleFormat(sourceUri))) return sourceUri
     val original = readTextFromUri(context, sourceUri) ?: return null
     val cleaned = cleanSrtText(original, options)
     return try {
