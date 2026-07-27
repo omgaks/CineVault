@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.ListAlt
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.SubtitlesOff
@@ -57,18 +58,24 @@ private val DangerRed = Color(0xFFFF5252)
 // have happened here, since this redesign changed the width percentages).
 // Not private, so it's callable from VideoPlayerScreen.kt in the same
 // package.
+// Widened slightly (0.19->0.21 landscape, 0.40->0.44 portrait, higher caps)
+// versus the original — the new 2x2 action-pill grid plus the active-track
+// status line need a touch more room than the old 3-pill single row did to
+// avoid the pill labels clipping.
 fun subtitleMenuWidth(screenWidthDp: Float, isLandscape: Boolean): Dp =
-    if (isLandscape) (screenWidthDp * 0.19f).dp.coerceIn(135.dp, 175.dp)
-    else (screenWidthDp * 0.40f).dp.coerceIn(150.dp, 210.dp)
+    if (isLandscape) (screenWidthDp * 0.21f).dp.coerceIn(150.dp, 195.dp)
+    else (screenWidthDp * 0.44f).dp.coerceIn(170.dp, 230.dp)
 
 @Composable
 fun SubtitleSettingsMenu(
     isVisible: Boolean,
     subtitlesEnabled: Boolean,
     hasInternalSubtitles: Boolean,
+    activeTrackStatusText: String,
     onInternalClick: () -> Unit,
     onDownloadClick: () -> Unit,
     onPickFileClick: () -> Unit = {},
+    onTracksClick: () -> Unit = {},
     onToggleSubtitles: () -> Unit,
     onDismiss: () -> Unit,
     currentFontSize: Float,
@@ -88,13 +95,14 @@ fun SubtitleSettingsMenu(
     val screenHeightDp = configuration.screenHeightDp
     val popupWidth: Dp = subtitleMenuWidth(screenWidthDp.toFloat(), isLandscape)
     val panelMaxHeight: Dp = if (isLandscape) {
-        (screenHeightDp * 0.62f).dp.coerceAtMost(200.dp)
+        (screenHeightDp * 0.62f).dp.coerceAtMost(210.dp)
     } else {
-        (screenHeightDp * 0.46f).dp.coerceAtMost(320.dp)
+        (screenHeightDp * 0.46f).dp.coerceAtMost(340.dp)
     }
 
     val rowGap = if (isLandscape) 7.dp else 8.dp
     val titleSize = if (isLandscape) 11.sp else 12.sp
+    val statusSize = if (isLandscape) 8.5.sp else 9.sp
     val labelSize = if (isLandscape) 9.sp else 9.5.sp
     val valueSize = if (isLandscape) 8.5.sp else 9.sp
 
@@ -108,40 +116,63 @@ fun SubtitleSettingsMenu(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(rowGap)
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(text = "Subtitles", color = AmberCore, fontSize = titleSize, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            IconButton(onClick = { onUserInteraction(); onDismiss() }, modifier = Modifier.size(if (isLandscape) 20.dp else 22.dp).clip(CircleShape).background(GlassSurface)) {
-                Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = TextBright, modifier = Modifier.size(if (isLandscape) 11.dp else 12.dp))
+        Column {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "Subtitles", color = AmberCore, fontSize = titleSize, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                IconButton(onClick = { onUserInteraction(); onDismiss() }, modifier = Modifier.size(if (isLandscape) 20.dp else 22.dp).clip(CircleShape).background(GlassSurface)) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = TextBright, modifier = Modifier.size(if (isLandscape) 11.dp else 12.dp))
+                }
             }
+            // Active-track status line — shows what's actually playing right
+            // now ("English · OpenSubtitles", "English · Embedded", or "No
+            // subtitle selected"), matching the spec's header layout. Text
+            // is computed by VideoPlayerScreen.kt (it's the one with access
+            // to track/source state), this just displays it.
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = activeTrackStatusText, color = TextMuted, fontSize = statusSize, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
         }
 
-        // Three separate pills, not a stacked list — Download always carries
-        // a soft amber glow (it's the primary action here); Off/On glows RED
-        // specifically when subtitles are actually off, so the pill's state
-        // doubles as a status indicator, not just a button; Browse stays
-        // neutral since it has no persistent on/off state of its own.
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-            ActionPill(
-                icon = Icons.Default.Download,
-                label = "Download",
-                modifier = Modifier.weight(1f),
-                glow = PillGlow.Amber,
-                isLandscape = isLandscape
-            ) { onUserInteraction(); onDownloadClick() }
-            ActionPill(
-                icon = if (subtitlesEnabled) Icons.Default.Subtitles else Icons.Default.SubtitlesOff,
-                label = if (subtitlesEnabled) "On" else "Off",
-                modifier = Modifier.weight(1f),
-                glow = if (!subtitlesEnabled) PillGlow.Red else PillGlow.None,
-                isLandscape = isLandscape
-            ) { onUserInteraction(); onToggleSubtitles() }
-            ActionPill(
-                icon = Icons.Default.FolderOpen,
-                label = "Browse",
-                modifier = Modifier.weight(1f),
-                glow = PillGlow.None,
-                isLandscape = isLandscape
-            ) { onUserInteraction(); onPickFileClick() }
+        // 2x2 action-pill grid — Tracks/Download on top, On-Off/Browse
+        // below. Was a single 3-pill row; a 4th action (Tracks) didn't fit
+        // that layout at the menu's minimum width without clipping labels,
+        // so it's a grid now instead of forcing the popup wider than the
+        // space-glass proportions elsewhere in the player allow.
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                ActionPill(
+                    icon = Icons.Default.ListAlt,
+                    label = "Tracks",
+                    modifier = Modifier.weight(1f),
+                    glow = PillGlow.Amber,
+                    isLandscape = isLandscape
+                ) { onUserInteraction(); onTracksClick() }
+                ActionPill(
+                    icon = Icons.Default.Download,
+                    label = "Download",
+                    modifier = Modifier.weight(1f),
+                    glow = PillGlow.None,
+                    isLandscape = isLandscape
+                ) { onUserInteraction(); onDownloadClick() }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                ActionPill(
+                    icon = if (subtitlesEnabled) Icons.Default.Subtitles else Icons.Default.SubtitlesOff,
+                    label = if (subtitlesEnabled) "On" else "Off",
+                    modifier = Modifier.weight(1f),
+                    glow = if (!subtitlesEnabled) PillGlow.Red else PillGlow.None,
+                    isLandscape = isLandscape
+                ) { onUserInteraction(); onToggleSubtitles() }
+                ActionPill(
+                    icon = Icons.Default.FolderOpen,
+                    label = "Browse",
+                    modifier = Modifier.weight(1f),
+                    glow = PillGlow.None,
+                    isLandscape = isLandscape
+                ) { onUserInteraction(); onPickFileClick() }
+            }
         }
 
         HorizontalDivider(color = GlassBorderBottom)
@@ -202,9 +233,9 @@ private fun formatSyncSeconds(value: Float): String =
 
 private enum class PillGlow { None, Amber, Red }
 
-// One of the three top actions. Glow is entirely driven by the `glow`
-// parameter so the same composable serves the always-amber Download pill,
-// the state-reflecting Off/On pill, and the neutral Browse pill.
+// One of the four top actions. Glow is entirely driven by the `glow`
+// parameter so the same composable serves the always-amber Tracks pill,
+// the state-reflecting Off/On pill, and the neutral Download/Browse pills.
 @Composable
 private fun ActionPill(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
