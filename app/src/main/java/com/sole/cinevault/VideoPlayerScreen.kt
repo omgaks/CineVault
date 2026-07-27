@@ -235,6 +235,7 @@ fun VideoPlayerScreen(
     var showSubtitleStudio by remember { mutableStateOf(false) }
     var subtitleStudioInitialTab by remember { mutableStateOf(SubtitleStudioTab.TRACK) }
     var subtitleBehaviorPrefs by remember { mutableStateOf(SubtitleBehaviorPrefs("en", false, false)) }
+    var subtitleCleaningOptions by remember { mutableStateOf(SubtitleCleaningOptions()) }
     var subtitleMenuTouchKey by remember { mutableIntStateOf(0) }
     var subtitlesEnabled by remember { mutableStateOf(true) }
     var autoSubtitleAttemptedForPath by remember { mutableStateOf<String?>(null) }
@@ -532,7 +533,8 @@ fun VideoPlayerScreen(
                     selectedSubtitleTrackLabel = friendlyLanguageName(result.language); selectedSubtitleTrackSource = "OpenSubtitles"
                     if (alsoPlay) {
                         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
-                        playCurrentVideoWithSubtitle(subtitleUri = downloadResult.uri, resumePosition = resumeAt)
+                        val cleanedApplyUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, downloadResult.uri, subtitleCleaningOptions) } ?: downloadResult.uri
+                        playCurrentVideoWithSubtitle(subtitleUri = cleanedApplyUri, resumePosition = resumeAt)
                         showSubtitleSearch = false; showControls = true
                         Toast.makeText(context, "Subtitle applied", Toast.LENGTH_SHORT).show()
                     } else {
@@ -571,7 +573,8 @@ fun VideoPlayerScreen(
         if (cachedSubtitleUri != null) {
             subtitlesEnabled = true
             trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-            playCurrentVideoWithSubtitle(cachedSubtitleUri, savedPosition)
+            val cleanedCachedUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, cachedSubtitleUri, subtitleCleaningOptions) } ?: cachedSubtitleUri
+            playCurrentVideoWithSubtitle(cleanedCachedUri, savedPosition)
             autoSubtitleAttemptedForPath = currentVideo.path
             selectedSubtitleTrackKey = "downloaded"
             selectedSubtitleTrackLabel = "English"; selectedSubtitleTrackSource = "OpenSubtitles"
@@ -592,7 +595,8 @@ fun VideoPlayerScreen(
                         subtitlesEnabled = true
                         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                         autoSubtitleStatus = "Subtitle loaded"
-                        playCurrentVideoWithSubtitle(result.uri, resumeAt)
+                        val cleanedResultUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, result.uri, subtitleCleaningOptions) } ?: result.uri
+                        playCurrentVideoWithSubtitle(cleanedResultUri, resumeAt)
                         selectedSubtitleTrackKey = "downloaded"
                         selectedSubtitleTrackLabel = "English"; selectedSubtitleTrackSource = "OpenSubtitles"
                         delay(1400); autoSubtitleStatus = ""
@@ -609,6 +613,7 @@ fun VideoPlayerScreen(
 
     LaunchedEffect(Unit) {
         subtitleBehaviorPrefs = loadSubtitleBehaviorPrefs(context)
+        subtitleCleaningOptions = loadSubtitleCleaningOptions(context)
         CineVaultPlayerHolder.currentPlayer = exoPlayer
         // Bridges hardware media-button next/previous (headset, Bluetooth)
         // to this screen's own episode-switching logic — see
@@ -836,13 +841,57 @@ fun VideoPlayerScreen(
     LaunchedEffect(brightnessGestureKey) { if (brightnessGestureKey > 0) { delay(1400); showBrightnessCircle = false } }
     LaunchedEffect(volumeGestureKey) { if (volumeGestureKey > 0) { delay(1400); showVolumeCircle = false } }
 
+    // Shared by both the standalone Track Selector sheet and the Subtitle
+    // Studio's Track tab — previously duplicated verbatim in both places,
+    // which is exactly how the Downloaded case would have silently NOT
+    // gotten cleaning applied in one of the two copies if edited by hand.
+    // One function, both call sites use it.
+    fun selectSubtitleTrack(choice: SubtitleTrackChoice) {
+        subtitleMenuTouchKey++
+        when (choice) {
+            is SubtitleTrackChoice.Off -> {
+                subtitlesEnabled = false
+                trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
+                selectedSubtitleTrackKey = choice.key; selectedSubtitleTrackLabel = ""; selectedSubtitleTrackSource = ""
+            }
+            is SubtitleTrackChoice.Embedded -> {
+                subtitlesEnabled = true
+                val group = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.getOrNull(choice.groupIndex)
+                if (group != null) {
+                    trackSelector.parameters = trackSelector.buildUponParameters()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                        .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, listOf(choice.trackIndexInGroup)))
+                        .build()
+                }
+                selectedSubtitleTrackKey = choice.key
+                selectedSubtitleTrackLabel = friendlyLanguageName(choice.language)
+                selectedSubtitleTrackSource = "Embedded"
+            }
+            is SubtitleTrackChoice.Downloaded -> {
+                subtitlesEnabled = true
+                trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
+                val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+                scope.launch {
+                    val cleaned = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, Uri.fromFile(choice.file), subtitleCleaningOptions) } ?: Uri.fromFile(choice.file)
+                    playCurrentVideoWithSubtitle(subtitleUri = cleaned, resumePosition = resumeAt)
+                }
+                selectedSubtitleTrackKey = choice.key
+                selectedSubtitleTrackLabel = "English"; selectedSubtitleTrackSource = "OpenSubtitles"
+            }
+            is SubtitleTrackChoice.Local -> {
+                pendingSrtUri = Uri.fromFile(choice.file)
+            }
+        }
+    }
+
     LaunchedEffect(pendingSrtUri) {
         val uri = pendingSrtUri ?: return@LaunchedEffect
         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
         subtitlesEnabled = true
         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
         autoSubtitleStatus = "SRT loaded"
-        playCurrentVideoWithSubtitle(subtitleUri = uri, resumePosition = resumeAt)
+        val cleanedSrtUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, uri, subtitleCleaningOptions) } ?: uri
+        playCurrentVideoWithSubtitle(subtitleUri = cleanedSrtUri, resumePosition = resumeAt)
         val pickedFile = uri.path?.let { java.io.File(it) }
         selectedSubtitleTrackKey = "local:${pickedFile?.absolutePath ?: uri.toString()}"
         selectedSubtitleTrackLabel = pickedFile?.name ?: "Subtitle file"; selectedSubtitleTrackSource = "Local file"
@@ -1417,38 +1466,7 @@ fun VideoPlayerScreen(
                 popupWidth = trackSelectorWidth,
                 popupMaxHeight = trackSelectorMaxHeight,
                 onSelect = { choice ->
-                    subtitleMenuTouchKey++
-                    when (choice) {
-                        is SubtitleTrackChoice.Off -> {
-                            subtitlesEnabled = false
-                            trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
-                            selectedSubtitleTrackKey = choice.key; selectedSubtitleTrackLabel = ""; selectedSubtitleTrackSource = ""
-                        }
-                        is SubtitleTrackChoice.Embedded -> {
-                            subtitlesEnabled = true
-                            val group = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.getOrNull(choice.groupIndex)
-                            if (group != null) {
-                                trackSelector.parameters = trackSelector.buildUponParameters()
-                                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                                    .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, listOf(choice.trackIndexInGroup)))
-                                    .build()
-                            }
-                            selectedSubtitleTrackKey = choice.key
-                            selectedSubtitleTrackLabel = friendlyLanguageName(choice.language)
-                            selectedSubtitleTrackSource = "Embedded"
-                        }
-                        is SubtitleTrackChoice.Downloaded -> {
-                            subtitlesEnabled = true
-                            trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-                            val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
-                            playCurrentVideoWithSubtitle(subtitleUri = Uri.fromFile(choice.file), resumePosition = resumeAt)
-                            selectedSubtitleTrackKey = choice.key
-                            selectedSubtitleTrackLabel = "English"; selectedSubtitleTrackSource = "OpenSubtitles"
-                        }
-                        is SubtitleTrackChoice.Local -> {
-                            pendingSrtUri = Uri.fromFile(choice.file)
-                        }
-                    }
+                    selectSubtitleTrack(choice)
                     showTrackSelector = false; showControls = true
                 },
                 onDeleteLocal = { file -> requestDeleteSubtitle(file) },
@@ -1537,38 +1555,7 @@ fun VideoPlayerScreen(
                 downloadedTrack = downloadedTrackChoice,
                 localFiles = localFileChoices,
                 selectedTrackKey = selectedSubtitleTrackKey,
-                onSelectTrack = { choice ->
-                    subtitleMenuTouchKey++
-                    when (choice) {
-                        is SubtitleTrackChoice.Off -> {
-                            subtitlesEnabled = false
-                            trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
-                            selectedSubtitleTrackKey = choice.key; selectedSubtitleTrackLabel = ""; selectedSubtitleTrackSource = ""
-                        }
-                        is SubtitleTrackChoice.Embedded -> {
-                            subtitlesEnabled = true
-                            val group = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.getOrNull(choice.groupIndex)
-                            if (group != null) {
-                                trackSelector.parameters = trackSelector.buildUponParameters()
-                                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                                    .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, listOf(choice.trackIndexInGroup)))
-                                    .build()
-                            }
-                            selectedSubtitleTrackKey = choice.key
-                            selectedSubtitleTrackLabel = friendlyLanguageName(choice.language)
-                            selectedSubtitleTrackSource = "Embedded"
-                        }
-                        is SubtitleTrackChoice.Downloaded -> {
-                            subtitlesEnabled = true
-                            trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-                            val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
-                            playCurrentVideoWithSubtitle(subtitleUri = Uri.fromFile(choice.file), resumePosition = resumeAt)
-                            selectedSubtitleTrackKey = choice.key
-                            selectedSubtitleTrackLabel = "English"; selectedSubtitleTrackSource = "OpenSubtitles"
-                        }
-                        is SubtitleTrackChoice.Local -> { pendingSrtUri = Uri.fromFile(choice.file) }
-                    }
-                },
+                onSelectTrack = { choice -> selectSubtitleTrack(choice) },
                 onDeleteLocalTrack = { file -> requestDeleteSubtitle(file) },
                 onOpenFilePicker = { srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
                 currentSyncOffset = subtitleSyncOffset,
@@ -1588,6 +1575,8 @@ fun VideoPlayerScreen(
                 onBottomPaddingChange = { subtitleBottomPadding = it },
                 behaviorPrefs = subtitleBehaviorPrefs,
                 onBehaviorPrefsChange = { subtitleBehaviorPrefs = it; saveSubtitleBehaviorPrefs(context, it) },
+                cleaningOptions = subtitleCleaningOptions,
+                onCleaningOptionsChange = { subtitleCleaningOptions = it; saveSubtitleCleaningOptions(context, it) },
                 onDismiss = { showSubtitleStudio = false; showControls = true }
             )
         }
@@ -1912,6 +1901,22 @@ private fun buildShiftedSubtitleFile(context: Context, sourceUri: Uri, offsetMs:
     return try {
         val outFile = java.io.File(context.cacheDir, "cinevault_synced_subtitle.srt")
         outFile.writeText(shifted)
+        Uri.fromFile(outFile)
+    } catch (e: Exception) { null }
+}
+
+// Cleaning is applied BEFORE sync/drift shifting whenever a subtitle first
+// becomes the active one — since cleaning only ever touches text lines and
+// shifting only ever touches timestamp lines, running clean-then-shift (in
+// that order, on the cleaned file's own timestamps) composes correctly
+// regardless of what order the person actually adjusts settings in.
+private fun buildCleanedSubtitleFile(context: Context, sourceUri: Uri, options: SubtitleCleaningOptions): Uri? {
+    if (!options.isAnyEnabled) return sourceUri
+    val original = readTextFromUri(context, sourceUri) ?: return null
+    val cleaned = cleanSrtText(original, options)
+    return try {
+        val outFile = java.io.File(context.cacheDir, "cinevault_cleaned_subtitle.srt")
+        outFile.writeText(cleaned)
         Uri.fromFile(outFile)
     } catch (e: Exception) { null }
 }
