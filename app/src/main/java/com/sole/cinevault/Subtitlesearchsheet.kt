@@ -91,12 +91,21 @@ fun SubtitleSearchSheet(
             )
         )
 
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = if (showManualFields) "Hide season/episode" else "Season / episode…",
-            color = Color(0xFFC9A765), fontSize = 10.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.clickable { showManualFields = !showManualFields }
-        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .background(if (showManualFields) AmberGlow.copy(alpha = 0.16f) else SpaceDeep.copy(alpha = 0.6f))
+                .border(1.dp, AmberCore.copy(alpha = if (showManualFields) 0.6f else 0.25f), RoundedCornerShape(10.dp))
+                .clickable { showManualFields = !showManualFields }
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            Text(
+                text = if (showManualFields) "▾ TV show: Season / Episode" else "▸ TV show? Set Season / Episode",
+                color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold
+            )
+        }
 
         if (showManualFields) {
             Spacer(modifier = Modifier.height(6.dp))
