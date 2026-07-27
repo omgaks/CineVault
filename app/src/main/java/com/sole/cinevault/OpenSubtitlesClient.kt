@@ -156,12 +156,20 @@ object OpenSubtitlesClient {
     suspend fun downloadBestEnglishSubtitleDetailed(
         context: Context,
         videoPath: String
+    ): SubtitleDownloadResult = downloadBestSubtitleDetailed(context, videoPath, listOf("en"))
+
+    // Tries each language in priority order, using the same cache-check +
+    // progressive search-name fallback as the English-only version above —
+    // this is what "preferred languages" (spec item #10) actually drives:
+    // English-then-Hindi-then-Samoan tries English's search terms first,
+    // and only moves to the next language if NONE of English's fallback
+    // search attempts found anything.
+    suspend fun downloadBestSubtitleDetailed(
+        context: Context,
+        videoPath: String,
+        languages: List<String>
     ): SubtitleDownloadResult = withContext(Dispatchers.IO) {
         try {
-            // Cache check FIRST — if this exact video already has a
-            // downloaded subtitle sitting on disk (even from a previous app
-            // session), reuse it instantly instead of re-searching/
-            // re-downloading every time the same movie is opened.
             findCachedSubtitle(context, videoPath)?.let { cachedUri ->
                 Log.d(TAG, "Subtitle cache hit for $videoPath")
                 return@withContext SubtitleDownloadResult.Success(cachedUri)
@@ -175,15 +183,18 @@ object OpenSubtitlesClient {
             }
 
             val attempts = buildSearchAttempts(cleanName)
-            Log.d(TAG, "Search attempts (in order): $attempts")
+            val languagesToTry = languages.ifEmpty { listOf("en") }
+            Log.d(TAG, "Search attempts (in order): $attempts across languages: $languagesToTry")
 
             var fileId: Int? = null
             var lastHttpError: Pair<Int, String>? = null
-            for (attempt in attempts) {
-                when (val r = searchFileId(attempt)) {
-                    is SearchAttemptResult.Found -> { fileId = r.fileId; break }
-                    is SearchAttemptResult.HttpError -> lastHttpError = r.code to r.bodyPreview
-                    SearchAttemptResult.NoResults -> {}
+            outer@ for (lang in languagesToTry) {
+                for (attempt in attempts) {
+                    when (val r = searchFileId(attempt, lang)) {
+                        is SearchAttemptResult.Found -> { fileId = r.fileId; break@outer }
+                        is SearchAttemptResult.HttpError -> lastHttpError = r.code to r.bodyPreview
+                        SearchAttemptResult.NoResults -> {}
+                    }
                 }
             }
 
@@ -213,7 +224,9 @@ object OpenSubtitlesClient {
         query: String,
         season: Int? = null,
         episode: Int? = null,
-        language: String = "en"
+        language: String = "en",
+        preferForced: Boolean = false,
+        preferSdh: Boolean = false
     ): SubtitleSearchListResult = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext SubtitleSearchListResult.NoResults
         try {
@@ -281,6 +294,10 @@ object OpenSubtitlesClient {
                     var score = wordHits * 100
                     if (r.fromTrusted) score += 30
                     if (!r.machineTranslated && !r.aiTranslated) score += 20
+                    if (preferForced && r.forced) score += 40
+                    if (!preferForced && r.forced) score -= 15
+                    if (preferSdh && r.hearingImpaired) score += 40
+                    if (!preferSdh && r.hearingImpaired) score -= 10
                     score += (r.downloadCount / 100).coerceAtMost(50)
                     return score
                 }
@@ -414,12 +431,12 @@ object OpenSubtitlesClient {
         object NoResults : SearchAttemptResult()
     }
 
-    private fun searchFileId(searchName: String): SearchAttemptResult {
+    private fun searchFileId(searchName: String, language: String = "en"): SearchAttemptResult {
         if (searchName.isBlank()) return SearchAttemptResult.NoResults
 
         val query = URLEncoder.encode(searchName, "UTF-8")
         val searchUrl =
-            "$BASE_URL/subtitles?query=$query&languages=en&order_by=download_count&order_direction=desc"
+            "$BASE_URL/subtitles?query=$query&languages=$language&order_by=download_count&order_direction=desc"
 
         val request = Request.Builder()
             .url(searchUrl)
