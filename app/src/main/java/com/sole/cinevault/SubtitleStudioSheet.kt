@@ -23,8 +23,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.ui.theme.*
@@ -49,6 +52,8 @@ private val positionPresets = listOf(
 
 @Composable
 fun SubtitleStudioSheet(
+    panelWidth: Dp,
+    panelMaxHeight: Dp,
     initialTab: SubtitleStudioTab,
     // Track tab
     embeddedTracks: List<SubtitleTrackChoice.Embedded>,
@@ -95,11 +100,12 @@ fun SubtitleStudioSheet(
     onDismiss: () -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(initialTab) }
+    val haptics = LocalHapticFeedback.current
 
     Box(
         modifier = Modifier
-            .fillMaxWidth(0.94f)
-            .fillMaxHeight(0.82f)
+            .width(panelWidth)
+            .heightIn(max = panelMaxHeight)
             .glassPanel(cornerRadius = 26.dp, fill = SpaceMid.copy(alpha = 0.98f))
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(14.dp)) {
@@ -127,7 +133,7 @@ fun SubtitleStudioSheet(
                                 if (selected) Modifier.border(1.dp, Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.8f), AmberDeep.copy(alpha = 0.3f))), RoundedCornerShape(12.dp))
                                 else Modifier
                             )
-                            .clickable { selectedTab = tab }
+                            .clickable { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); selectedTab = tab }
                             .padding(vertical = 8.dp)
                     ) {
                         Icon(imageVector = tab.icon, contentDescription = tab.label, tint = if (selected) AmberCore else TextMuted, modifier = Modifier.size(16.dp))
@@ -493,13 +499,15 @@ private fun StudioAdvancedTab(
 
 @Composable
 private fun StudioToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    val haptics = LocalHapticFeedback.current
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(text = label, color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
         Switch(
-            checked = checked, onCheckedChange = onCheckedChange,
+            checked = checked,
+            onCheckedChange = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); onCheckedChange(it) },
             colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
         )
     }
