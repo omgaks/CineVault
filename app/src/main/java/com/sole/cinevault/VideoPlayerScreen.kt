@@ -203,6 +203,7 @@ fun VideoPlayerScreen(
 
     var showAudioSelector by remember { mutableStateOf(false) }
     var showSubtitleSettings by remember { mutableStateOf(false) }
+    var showTrackSelector by remember { mutableStateOf(false) }
 
     var showSpeedMenu by remember { mutableStateOf(false) }
     var showSleepMenu by remember { mutableStateOf(false) }
@@ -227,6 +228,16 @@ fun VideoPlayerScreen(
 
     var originalSubtitleUri by remember { mutableStateOf<Uri?>(null) }
     var appliedSubtitleOffsetMs by remember { mutableLongStateOf(0L) }
+
+    // Which subtitle source/track is actually active right now — the single
+    // source of truth for both the checkmark in SubtitleTrackSelectorSheet
+    // AND the status line under the quick menu's header. Built with the
+    // exact same key format SubtitleTrackChoice uses (see
+    // SubtitleTrackSelector.kt) so the two files can never silently
+    // disagree about what "selected" means.
+    var selectedSubtitleTrackKey by remember { mutableStateOf<String?>(null) }
+    var selectedSubtitleTrackLabel by remember { mutableStateOf("") }
+    var selectedSubtitleTrackSource by remember { mutableStateOf("") }
 
     var position by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(1L) }
@@ -296,6 +307,7 @@ fun VideoPlayerScreen(
     fun closeAllMenus() {
         showAudioSelector = false
         showSubtitleSettings = false
+        showTrackSelector = false
         showSpeedMenu = false
         showSleepMenu = false
         showSrtBrowser = false
@@ -488,6 +500,8 @@ fun VideoPlayerScreen(
                     subtitlesEnabled = true
                     trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                     playCurrentVideoWithSubtitle(result.uri, resumeAt)
+                    selectedSubtitleTrackKey = "downloaded"
+                    selectedSubtitleTrackLabel = "English"; selectedSubtitleTrackSource = "OpenSubtitles"
                     delay(1400); autoSubtitleStatus = ""
                 } else {
                     val summary = result.summary()
@@ -506,11 +520,12 @@ fun VideoPlayerScreen(
     LaunchedEffect(currentVideo.path) {
         val savedPosition = if (isStreamMedia) 0L else loadPlaybackPosition(context, currentVideo.path)
         position = savedPosition; duration = 1L; showControls = true; showTopBar = true
-        showAudioSelector = false; showSubtitleSettings = false; showSpeedMenu = false; showSleepMenu = false; showSrtBrowser = false
+        showAudioSelector = false; showSubtitleSettings = false; showTrackSelector = false; showSpeedMenu = false; showSleepMenu = false; showSrtBrowser = false
         pendingNextEpisode = null; nextEpisodeCountdown = 0; showNextEpisodeOverlay = false
         previewBitmap = null; previewFrames = emptyList(); isVideoEnded = false
         playerErrorMessage = null; errorRetryCount = 0; stuckBufferingHint = false
         originalSubtitleUri = null; appliedSubtitleOffsetMs = 0L; subtitleSyncOffset = 0.0f
+        selectedSubtitleTrackKey = null; selectedSubtitleTrackLabel = ""; selectedSubtitleTrackSource = ""
         droppedFrameNudgeCount = 0; lastNudgeAtMs = 0L
         if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
         if (isRestrictedFolderMedia) updateRestrictedFolderLastPlayed(context, currentVideo.path, currentVideo.folderPath)
@@ -524,6 +539,8 @@ fun VideoPlayerScreen(
             trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
             playCurrentVideoWithSubtitle(cachedSubtitleUri, savedPosition)
             autoSubtitleAttemptedForPath = currentVideo.path
+            selectedSubtitleTrackKey = "downloaded"
+            selectedSubtitleTrackLabel = "English"; selectedSubtitleTrackSource = "OpenSubtitles"
         } else {
             playCurrentVideoWithSubtitle(resumePosition = savedPosition)
         }
@@ -542,6 +559,8 @@ fun VideoPlayerScreen(
                         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                         autoSubtitleStatus = "Subtitle loaded"
                         playCurrentVideoWithSubtitle(result.uri, resumeAt)
+                        selectedSubtitleTrackKey = "downloaded"
+                        selectedSubtitleTrackLabel = "English"; selectedSubtitleTrackSource = "OpenSubtitles"
                         delay(1400); autoSubtitleStatus = ""
                     } else {
                         autoSubtitleStatus = result.summary(); delay(3500); autoSubtitleStatus = ""
@@ -754,16 +773,16 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(showControls, showAudioSelector, showSubtitleSettings, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu || showSrtBrowser
+    LaunchedEffect(showControls, showAudioSelector, showSubtitleSettings, showTrackSelector, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
+        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSpeedMenu || showSleepMenu || showSrtBrowser
         if (showControls && !anyMenuOpen && !isDraggingSeekbar) {
             delay(4500)
             if (!isDraggingSeekbar && !anyMenuOpen) showControls = false
         }
     }
 
-    LaunchedEffect(showTopBar, showAudioSelector, showSubtitleSettings, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu || showSrtBrowser
+    LaunchedEffect(showTopBar, showAudioSelector, showSubtitleSettings, showTrackSelector, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
+        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSpeedMenu || showSleepMenu || showSrtBrowser
         if (showTopBar && !anyMenuOpen && !isDraggingSeekbar) {
             delay(2800)
             if (!isDraggingSeekbar && !anyMenuOpen) showTopBar = false
@@ -772,6 +791,7 @@ fun VideoPlayerScreen(
 
     LaunchedEffect(showAudioSelector, menuTouchKey) { if (showAudioSelector) { delay(9000); showAudioSelector = false } }
     LaunchedEffect(showSubtitleSettings, subtitleMenuTouchKey) { if (showSubtitleSettings) { delay(9000); showSubtitleSettings = false } }
+    LaunchedEffect(showTrackSelector, subtitleMenuTouchKey) { if (showTrackSelector) { delay(12000); showTrackSelector = false } }
     LaunchedEffect(showSrtBrowser) { if (showSrtBrowser) { delay(20000); showSrtBrowser = false } }
     LaunchedEffect(showSpeedMenu) { if (showSpeedMenu) { delay(8000); showSpeedMenu = false } }
     LaunchedEffect(showSleepMenu) { if (showSleepMenu) { delay(8000); showSleepMenu = false } }
@@ -785,7 +805,10 @@ fun VideoPlayerScreen(
         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
         autoSubtitleStatus = "SRT loaded"
         playCurrentVideoWithSubtitle(subtitleUri = uri, resumePosition = resumeAt)
-        showSubtitleSettings = false; showControls = true
+        val pickedFile = uri.path?.let { java.io.File(it) }
+        selectedSubtitleTrackKey = "local:${pickedFile?.absolutePath ?: uri.toString()}"
+        selectedSubtitleTrackLabel = pickedFile?.name ?: "Subtitle file"; selectedSubtitleTrackSource = "Local file"
+        showSubtitleSettings = false; showTrackSelector = false; showControls = true
         Toast.makeText(context, "SRT file loaded", Toast.LENGTH_SHORT).show()
         delay(1400); autoSubtitleStatus = ""
         pendingSrtUri = null
@@ -863,6 +886,8 @@ fun VideoPlayerScreen(
         val subtitlePopupWidthBase = if (isLandscape) (maxWidth.value * 0.30f).dp.coerceIn(210.dp, 270.dp) else (maxWidth.value * 0.62f).dp.coerceIn(220.dp, 300.dp)
         val subtitlePopupWidth = subtitleMenuWidth(maxWidth.value, isLandscape)
         val subtitlePopupHeightEstimate = (((if (isCompactLandscape || isLandscape) 220f else 360f) * uiScale).dp).coerceAtMost(maxHeight * 0.45f)
+        val trackSelectorWidth = subtitlePopupWidth
+        val trackSelectorMaxHeight = (((if (isCompactLandscape || isLandscape) 230f else 380f) * uiScale).dp).coerceAtMost(maxHeight * 0.55f)
         val srtPopupWidth = (subtitlePopupWidthBase.value * uiScale).dp.coerceAtMost(maxWidth * 0.86f)
         val srtPopupMaxHeight = (((if (isCompactLandscape) 160f else if (isLandscape) 200f else 280f) * uiScale).dp).coerceAtMost(maxHeight * 0.5f)
         val audioPopupWidth = ((((if (isCompactLandscape) 175f else if (isLandscape) 190f else 205f) * uiScale).dp).coerceAtMost(maxWidth * 0.75f)) * 0.6f
@@ -955,6 +980,7 @@ fun VideoPlayerScreen(
                             when {
                                 showAudioSelector -> showAudioSelector = false
                                 showSubtitleSettings -> showSubtitleSettings = false
+                                showTrackSelector -> showTrackSelector = false
                                 showSpeedMenu -> showSpeedMenu = false
                                 showSleepMenu -> showSleepMenu = false
                                 showSrtBrowser -> showSrtBrowser = false
@@ -1158,11 +1184,49 @@ fun VideoPlayerScreen(
         }
 
         val hasInternalSubtitles = exoPlayer.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.length > 0 }
+
+        // ── Track Selector data, built fresh from live player + disk state
+        // every time it's shown. Embedded tracks read straight off
+        // ExoPlayer's current track groups (source of truth for what's
+        // actually IN the file); downloaded/local read off disk the same
+        // way the existing SRT browser and OpenSubtitlesClient cache
+        // already do — no new scanning logic, just reused in one place.
+        val embeddedTrackChoices = remember(exoPlayer.currentTracks) {
+            exoPlayer.currentTracks.groups
+                .filter { it.type == C.TRACK_TYPE_TEXT }
+                .flatMapIndexed { groupIndex, group ->
+                    (0 until group.length).map { trackIndexInGroup ->
+                        val fmt = group.getTrackFormat(trackIndexInGroup)
+                        SubtitleTrackChoice.Embedded(
+                            groupIndex = groupIndex,
+                            trackIndexInGroup = trackIndexInGroup,
+                            language = fmt.language ?: "und",
+                            isForced = (fmt.selectionFlags and C.SELECTION_FLAG_FORCED) != 0,
+                            isSdh = (fmt.roleFlags and C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND) != 0
+                        )
+                    }
+                }
+        }
+        val downloadedTrackChoice = remember(currentVideo.path, showTrackSelector) {
+            if (!canDownloadExternalSubtitles) null
+            else OpenSubtitlesClient.findCachedSubtitle(context, currentVideo.path)?.path?.let { path ->
+                SubtitleTrackChoice.Downloaded(file = java.io.File(path), language = "en")
+            }
+        }
+        val localFileChoices = remember(currentVideo.path, showTrackSelector) { findNearbySrtFiles(currentVideo.path) }
+
         AnimatedVisibility(visible = showSubtitleSettings, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)),
             modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, subtitlePopupHeightEstimate)).offset { IntOffset(anchoredX(subIconX, subtitlePopupWidth), 0) }) {
+            val statusText = when {
+                !subtitlesEnabled -> "Subtitles off"
+                selectedSubtitleTrackLabel.isNotBlank() -> "$selectedSubtitleTrackLabel · $selectedSubtitleTrackSource"
+                hasInternalSubtitles -> "Embedded track active"
+                else -> "No subtitle selected"
+            }
             SubtitleSettingsMenu(
                 isVisible = true,
                 subtitlesEnabled = subtitlesEnabled, hasInternalSubtitles = hasInternalSubtitles,
+                activeTrackStatusText = statusText,
             onInternalClick = {
                 if (hasInternalSubtitles) {
                     subtitlesEnabled = true; trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build(); showSubtitleSettings = false; showControls = true
@@ -1173,7 +1237,13 @@ fun VideoPlayerScreen(
             },
             onDownloadClick = { subtitleMenuTouchKey++; downloadExternalSubtitle() },
             onPickFileClick = { showSubtitleSettings = false; showSrtBrowser = true; showControls = true },
-            onToggleSubtitles = { subtitlesEnabled = !subtitlesEnabled; trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subtitlesEnabled).build(); showControls = true; subtitleMenuTouchKey++ },
+            onTracksClick = { showSubtitleSettings = false; showTrackSelector = true; showControls = true; subtitleMenuTouchKey++ },
+            onToggleSubtitles = {
+                subtitlesEnabled = !subtitlesEnabled
+                trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subtitlesEnabled).build()
+                if (!subtitlesEnabled) { selectedSubtitleTrackKey = "off"; selectedSubtitleTrackLabel = ""; selectedSubtitleTrackSource = "" }
+                showControls = true; subtitleMenuTouchKey++
+            },
             onDismiss = { showSubtitleSettings = false; showControls = true },
             currentFontSize = subtitleTextSizeSp, onFontSizeChange = { subtitleTextSizeSp = it; showControls = true; subtitleMenuTouchKey++ },
             currentVerticalPosition = subtitleBottomPadding, onVerticalPositionChange = { subtitleBottomPadding = it; showControls = true; subtitleMenuTouchKey++ },
@@ -1183,7 +1253,63 @@ fun VideoPlayerScreen(
         )
         }
 
-        AnimatedVisibility(visible = showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu, enter = fadeIn(), exit = fadeOut()) {
+        // Track Selector sheet — anchored at the same spot the quick menu
+        // uses, since it's opened from that menu's "Tracks" pill and should
+        // feel like a continuation of it, not a jump to a new location.
+        AnimatedVisibility(visible = showTrackSelector, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)),
+            modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, trackSelectorMaxHeight)).offset { IntOffset(anchoredX(subIconX, trackSelectorWidth), 0) }) {
+            SubtitleTrackSelectorSheet(
+                embeddedTracks = embeddedTrackChoices,
+                downloadedTrack = downloadedTrackChoice,
+                localFiles = localFileChoices,
+                selectedKey = selectedSubtitleTrackKey,
+                popupWidth = trackSelectorWidth,
+                popupMaxHeight = trackSelectorMaxHeight,
+                onSelect = { choice ->
+                    subtitleMenuTouchKey++
+                    when (choice) {
+                        is SubtitleTrackChoice.Off -> {
+                            subtitlesEnabled = false
+                            trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
+                            selectedSubtitleTrackKey = choice.key; selectedSubtitleTrackLabel = ""; selectedSubtitleTrackSource = ""
+                        }
+                        is SubtitleTrackChoice.Embedded -> {
+                            subtitlesEnabled = true
+                            val group = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.getOrNull(choice.groupIndex)
+                            if (group != null) {
+                                trackSelector.parameters = trackSelector.buildUponParameters()
+                                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                                    .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, listOf(choice.trackIndexInGroup)))
+                                    .build()
+                            }
+                            selectedSubtitleTrackKey = choice.key
+                            selectedSubtitleTrackLabel = friendlyLanguageName(choice.language)
+                            selectedSubtitleTrackSource = "Embedded"
+                        }
+                        is SubtitleTrackChoice.Downloaded -> {
+                            subtitlesEnabled = true
+                            trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
+                            val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+                            playCurrentVideoWithSubtitle(subtitleUri = Uri.fromFile(choice.file), resumePosition = resumeAt)
+                            selectedSubtitleTrackKey = choice.key
+                            selectedSubtitleTrackLabel = "English"; selectedSubtitleTrackSource = "OpenSubtitles"
+                        }
+                        is SubtitleTrackChoice.Local -> {
+                            pendingSrtUri = Uri.fromFile(choice.file)
+                        }
+                    }
+                    showTrackSelector = false; showControls = true
+                },
+                onDeleteLocal = { file -> requestDeleteSubtitle(file) },
+                onOpenFilePicker = {
+                    showTrackSelector = false
+                    srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*"))
+                },
+                onDismiss = { showTrackSelector = false; showControls = true }
+            )
+        }
+
+        AnimatedVisibility(visible = showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showTrackSelector || showSpeedMenu || showSleepMenu, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize()) {
 
                 val topRowVisible = !showSeekPreview
@@ -1276,7 +1402,7 @@ fun VideoPlayerScreen(
                     )
                 }
 
-                val anyMenuOpenForIntroSkip = showAudioSelector || showSubtitleSettings || showSpeedMenu || showSleepMenu || showSrtBrowser
+                val anyMenuOpenForIntroSkip = showAudioSelector || showSubtitleSettings || showTrackSelector || showSpeedMenu || showSleepMenu || showSrtBrowser
                 AnimatedVisibility(visible = showIntroSkip && !showSeekPreview && !isDraggingSeekbar && !anyMenuOpenForIntroSkip, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
                     SkipIntroButton(isLandscape = isLandscape) { val t = 95_000L.coerceAtMost(duration.coerceAtLeast(1L)); exoPlayer.seekTo(t); position = t; showControls = true }
                 }
@@ -1332,8 +1458,8 @@ fun VideoPlayerScreen(
                         }
 
                         if (!isStreamMedia) {
-                            IconCircle(icon = Icons.Rounded.ClosedCaption, size = smallButton, tint = if (showSubtitleSettings) AmberCore else TextBright, modifier = Modifier.onGloballyPositioned { subIconX = it.positionInRoot().x + it.size.width / 2f }) {
-                                val wasOpen = showSubtitleSettings; closeAllMenus(); showSubtitleSettings = !wasOpen; showControls = true; menuTouchKey++
+                            IconCircle(icon = Icons.Rounded.ClosedCaption, size = smallButton, tint = if (showSubtitleSettings || showTrackSelector) AmberCore else TextBright, modifier = Modifier.onGloballyPositioned { subIconX = it.positionInRoot().x + it.size.width / 2f }) {
+                                val wasOpen = showSubtitleSettings || showTrackSelector; closeAllMenus(); showSubtitleSettings = !wasOpen; showControls = true; menuTouchKey++
                             }
                         }
                     }
