@@ -24,7 +24,7 @@ private val LANGUAGE_TOKEN_MAP = mapOf(
 // language when the file has no recognizable language token (bare
 // "Movie.srt" case) rather than guessing.
 private fun parseSubtitleFilename(fileName: String): Triple<String?, Boolean, Boolean> {
-    val withoutExt = fileName.removeSuffix(".srt").removeSuffix(".SRT")
+    val withoutExt = fileName.substringBeforeLast(".")
     val tokens = withoutExt.split(".").map { it.lowercase() }
     var language: String? = null
     var forced = false
@@ -51,7 +51,7 @@ fun findBestMatchingLocalSubtitle(videoPath: String, preferredLanguages: List<St
     val episodeCode = Regex("[Ss](\\d{1,2})[Ee](\\d{1,2})").find(base)?.value
 
     val candidates = folder.listFiles()
-        ?.filter { it.isFile && it.extension.equals("srt", ignoreCase = true) }
+        ?.filter { it.isFile && it.extension.lowercase() in setOf("srt", "vtt", "ass", "ssa", "ttml") }
         ?.filter { file ->
             val name = file.nameWithoutExtension
             name.equals(base, ignoreCase = true) ||
