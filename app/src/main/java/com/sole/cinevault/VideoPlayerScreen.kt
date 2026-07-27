@@ -19,6 +19,7 @@ import android.view.WindowManager
 import android.widget.Toast
 import android.graphics.Color as AndroidColor
 import android.graphics.Bitmap
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.IntentSenderRequest
@@ -338,6 +339,30 @@ fun VideoPlayerScreen(
     val isCurrentTvShow = currentMediaType.equals("tv", ignoreCase = true)
     val isStreamMedia = currentMediaType.equals("stream", ignoreCase = true)
     val isRestrictedFolderMedia = folderIdFromRestrictedMarker(currentVideo.folderPath) != null
+
+    // Closing the player while something is actively playing now enters
+    // Picture-in-Picture instead of just tearing down the full-screen view
+    // — previously "closing" left the video with no visible window at all
+    // while the foreground service kept it playing audio-only in the
+    // background, which read as the app losing track of what was
+    // happening. Falls back to a normal exit when paused, when PiP isn't
+    // supported (pre-API 26), or if entering PiP throws for any device-
+    // specific reason (same defensive pattern already used elsewhere on
+    // this screen for orientation-lock calls).
+    fun handleExitRequest() {
+        if (isPlaying && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val actions = buildPipActions(context, exoPlayer.isPlaying)
+                val entered = activity?.enterPictureInPictureMode(
+                    PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).setActions(actions).build()
+                )
+                if (entered == true) return
+            } catch (_: Exception) {}
+        }
+        onBack()
+    }
+
+    BackHandler(enabled = true) { handleExitRequest() }
 
     fun closeAllMenus() {
         showAudioSelector = false
@@ -1724,7 +1749,20 @@ fun VideoPlayerScreen(
         // (not the sheet itself) so a re-search after editing the query
         // doesn't lose state if the sheet briefly recomposes.
         AnimatedVisibility(visible = showSubtitleSearch, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)),
-            modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, trackSelectorMaxHeight)).offset { IntOffset(anchoredX(subIconX, trackSelectorWidth), 0) }) {
+            modifier = Modifier.align(Alignment.Center)) {
+            // Previously reused trackSelectorWidth/Height (sized for a
+            // simple list), which is why it looked cramped — Search has
+            // meaningfully more content (query field, season/episode,
+            // full result cards) so it gets its own larger sizing, same
+            // adaptive approach as Studio above. Centered rather than
+            // icon-anchored since the main controls are hidden behind it
+            // now anyway (see hideControlsForLargeSheet), so there's no
+            // need to dodge the subtitle icon's position anymore.
+            val searchWidth = if (isLandscape) (maxWidth.value * 0.56f).dp.coerceIn(320.dp, 480.dp)
+                else (maxWidth.value * 0.90f).dp.coerceAtMost(400.dp)
+            val searchMaxHeight = if (isCompactLandscape) (maxHeight.value * 0.76f).dp.coerceAtMost(280.dp)
+                else if (isLandscape) (maxHeight.value * 0.78f).dp.coerceAtMost(360.dp)
+                else (maxHeight.value * 0.65f).dp.coerceAtMost(580.dp)
             SubtitleSearchSheet(
                 initialQuery = remember(currentVideo.path) { OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path) },
                 initialSeason = "",
@@ -1732,8 +1770,8 @@ fun VideoPlayerScreen(
                 results = subtitleSearchResults,
                 isSearching = subtitleSearchLoading,
                 statusText = subtitleSearchStatus,
-                popupWidth = trackSelectorWidth,
-                popupMaxHeight = trackSelectorMaxHeight,
+                popupWidth = searchWidth,
+                popupMaxHeight = searchMaxHeight,
                 onSearch = { q, s, e -> subtitleMenuTouchKey++; performSubtitleSearch(q, s, e) },
                 onDownloadAndApply = { result -> subtitleMenuTouchKey++; applySearchResult(result, alsoPlay = true) },
                 onDownloadOnly = { result -> subtitleMenuTouchKey++; applySearchResult(result, alsoPlay = false) },
@@ -1792,7 +1830,20 @@ fun VideoPlayerScreen(
         // standalone sheets (see SubtitleStudioSheet.kt) so there's no
         // parallel implementation to drift out of sync.
         AnimatedVisibility(visible = showSubtitleStudio, enter = fadeIn(animationSpec = tween(180)), exit = fadeOut(animationSpec = tween(200)), modifier = Modifier.align(Alignment.Center)) {
+            // Device-adaptive sizing — previously fillMaxWidth(0.94f)/
+            // fillMaxHeight(0.82f), which is near-fullscreen on any phone
+            // regardless of actual screen size. Uses the same
+            // isLandscape/isCompactLandscape/uiScale signals every other
+            // popup on this screen already computes, so Studio scales down
+            // properly on a phone instead of covering nearly everything.
+            val studioWidth = if (isLandscape) (maxWidth.value * 0.58f).dp.coerceIn(340.dp, 520.dp)
+                else (maxWidth.value * 0.90f).dp.coerceAtMost(420.dp)
+            val studioMaxHeight = if (isCompactLandscape) (maxHeight.value * 0.76f).dp.coerceAtMost(280.dp)
+                else if (isLandscape) (maxHeight.value * 0.78f).dp.coerceAtMost(360.dp)
+                else (maxHeight.value * 0.60f).dp.coerceAtMost(560.dp)
             SubtitleStudioSheet(
+                panelWidth = studioWidth,
+                panelMaxHeight = studioMaxHeight,
                 initialTab = subtitleStudioInitialTab,
                 embeddedTracks = embeddedTrackChoices,
                 downloadedTrack = downloadedTrackChoice,
@@ -1844,7 +1895,17 @@ fun VideoPlayerScreen(
             )
         }
 
-        AnimatedVisibility(visible = showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || showDriftDialog || showAppearanceStudio || showSubtitleStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu, enter = fadeIn(), exit = fadeOut()) {
+        // Studio and Search are large, self-contained sheets that cover
+        // most of the screen — showing the transport dock/seek bar/top
+        // cluster underneath them just doubles up the UI for no reason
+        // (confirmed on-device: Vivo X300 Pro screenshots showed both
+        // layers competing for the same space). Both are explicitly
+        // EXCLUDED from the trigger list and explicitly HIDE this whole
+        // block via the trailing && clause, unlike the smaller anchored
+        // popups (Track Selector, Drift, Appearance, quick menu) which
+        // were designed to sit alongside visible controls and still do.
+        val hideControlsForLargeSheet = showSubtitleStudio || showSubtitleSearch
+        AnimatedVisibility(visible = (showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showTrackSelector || showDriftDialog || showAppearanceStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu) && !hideControlsForLargeSheet, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize()) {
 
                 val topRowVisible = !showSeekPreview
@@ -1955,7 +2016,7 @@ fun VideoPlayerScreen(
                         horizontalArrangement = Arrangement.spacedBy((7 * scale).dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        BackIconButton(size = smallButton, onClick = onBack)
+                        BackIconButton(size = smallButton, onClick = { handleExitRequest() })
 
                         GlassTransportButton(icon = Icons.Rounded.Replay10, size = smallButton) { exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0)); position = exoPlayer.currentPosition; showControls = true }
 
