@@ -77,6 +77,9 @@ fun SubtitleAppearanceStudioSheet(
     onEdgeTypeChange: (Int) -> Unit,
     onEdgeColorChange: (Int) -> Unit,
     onBackgroundChange: (Int) -> Unit,
+    isAssOrSsaFormat: Boolean = false,
+    preserveOriginalStyling: Boolean = false,
+    onPreserveOriginalStylingChange: (Boolean) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     Column(
@@ -114,6 +117,29 @@ fun SubtitleAppearanceStudioSheet(
         Spacer(modifier = Modifier.height(10.dp))
 
         Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+            if (isAssOrSsaFormat) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "Preserve original ASS/SSA styling", color = TextBright, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                        Text(text = "Uses this subtitle's own fonts/colors/positioning instead of CineVault's", color = TextMuted, fontSize = 9.sp, lineHeight = 12.sp)
+                    }
+                    androidx.compose.material3.Switch(
+                        checked = preserveOriginalStyling, onCheckedChange = onPreserveOriginalStylingChange,
+                        colors = androidx.compose.material3.SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
+                    )
+                }
+                if (preserveOriginalStyling) {
+                    Text(
+                        text = "The controls below are ignored while this is on — this subtitle renders with its own embedded styling.",
+                        color = AmberCore, fontSize = 9.5.sp, fontWeight = FontWeight.SemiBold, lineHeight = 13.sp,
+                        modifier = Modifier.padding(bottom = 10.dp)
+                    )
+                }
+            }
+
             SectionLabel2("Presets")
             androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 SubtitlePresets.all.forEach { (name, preset) ->
