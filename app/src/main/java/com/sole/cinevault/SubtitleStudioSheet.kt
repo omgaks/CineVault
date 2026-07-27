@@ -73,6 +73,9 @@ fun SubtitleStudioSheet(
     onEdgeTypeChange: (Int) -> Unit,
     onEdgeColorChange: (Int) -> Unit,
     onBackgroundChange: (Int) -> Unit,
+    isAssOrSsaFormat: Boolean = false,
+    preserveOriginalStyling: Boolean = false,
+    onPreserveOriginalStylingChange: (Boolean) -> Unit = {},
     // Position tab
     bottomPadding: Float,
     onBottomPaddingChange: (Float) -> Unit,
@@ -171,6 +174,9 @@ fun SubtitleStudioSheet(
                             onEdgeTypeChange = onEdgeTypeChange,
                             onEdgeColorChange = onEdgeColorChange,
                             onBackgroundChange = onBackgroundChange,
+                            isAssOrSsaFormat = isAssOrSsaFormat,
+                            preserveOriginalStyling = preserveOriginalStyling,
+                            onPreserveOriginalStylingChange = onPreserveOriginalStylingChange,
                             onDismiss = {}
                         )
                         SubtitleStudioTab.POSITION -> StudioPositionTab(
