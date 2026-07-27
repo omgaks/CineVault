@@ -234,8 +234,8 @@ fun VideoPlayerScreen(
     var subtitleAppearance by remember { mutableStateOf(SubtitlePresets.CineVault) }
     var showSubtitleStudio by remember { mutableStateOf(false) }
     var subtitleStudioInitialTab by remember { mutableStateOf(SubtitleStudioTab.TRACK) }
-    var subtitleBehaviorPrefs by remember { mutableStateOf(SubtitleBehaviorPrefs("en", false, false)) }
-    var subtitleCleaningOptions by remember { mutableStateOf(SubtitleCleaningOptions()) }
+    var subtitleBehaviorPrefs by remember { mutableStateOf(loadSubtitleBehaviorPrefs(context)) }
+    var subtitleCleaningOptions by remember { mutableStateOf(loadSubtitleCleaningOptions(context)) }
     var subtitleMenuTouchKey by remember { mutableIntStateOf(0) }
     var subtitlesEnabled by remember { mutableStateOf(true) }
     var autoSubtitleAttemptedForPath by remember { mutableStateOf<String?>(null) }
@@ -253,6 +253,7 @@ fun VideoPlayerScreen(
     // off can revert to the actual primary instead of getting stuck on a
     // merged file with nothing to un-merge from.
     var primarySubtitleUri by remember { mutableStateOf<Uri?>(null) }
+    var audioLanguageCheckedForPath by remember { mutableStateOf<String?>(null) }
     var dualSubtitlesEnabled by remember { mutableStateOf(false) }
     var dualSecondaryLanguage by remember { mutableStateOf("hi") }
     var dualGapLines by remember { mutableStateOf(1) }
@@ -300,9 +301,10 @@ fun VideoPlayerScreen(
     val trackSelector = remember {
         DefaultTrackSelector(context).apply {
             parameters = buildUponParameters()
-                .setPreferredAudioLanguage("en").setPreferredTextLanguage("en")
+                .setPreferredAudioLanguage(subtitleBehaviorPrefs.preferredLanguages.firstOrNull() ?: "en")
+                .setPreferredTextLanguage(subtitleBehaviorPrefs.preferredLanguages.firstOrNull() ?: "en")
                 .setSelectUndeterminedTextLanguage(true)
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subtitleBehaviorPrefs.autoEnableEmbeddedSubtitles).build()
         }
     }
 
@@ -516,14 +518,17 @@ fun VideoPlayerScreen(
         else -> false
     }
 
-    fun performSubtitleSearch(query: String, seasonText: String, episodeText: String) {
+    fun performSubtitleSearch(query: String, seasonText: String, episodeText: String, language: String = subtitleBehaviorPrefs.preferredLanguages.firstOrNull() ?: "en") {
         subtitleSearchLoading = true
         subtitleSearchStatus = ""
         scope.launch {
             val result = OpenSubtitlesClient.searchSubtitlesDetailed(
                 query = query,
                 season = seasonText.toIntOrNull(),
-                episode = episodeText.toIntOrNull()
+                episode = episodeText.toIntOrNull(),
+                language = language,
+                preferForced = subtitleBehaviorPrefs.preferForced,
+                preferSdh = subtitleBehaviorPrefs.preferSdh
             )
             subtitleSearchLoading = false
             when (result) {
@@ -543,6 +548,10 @@ fun VideoPlayerScreen(
                     trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                     selectedSubtitleTrackKey = "downloaded"
                     selectedSubtitleTrackLabel = friendlyLanguageName(result.language); selectedSubtitleTrackSource = "OpenSubtitles"
+                    if (subtitleBehaviorPrefs.rememberLastSelectedLanguage && result.language.isNotBlank()) {
+                        subtitleBehaviorPrefs = promoteLanguageToFront(subtitleBehaviorPrefs, result.language.take(2).lowercase())
+                        saveSubtitleBehaviorPrefs(context, subtitleBehaviorPrefs)
+                    }
                     if (alsoPlay) {
                         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
                         val cleanedApplyUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, downloadResult.uri, subtitleCleaningOptions) } ?: downloadResult.uri
@@ -574,7 +583,7 @@ fun VideoPlayerScreen(
         originalSubtitleUri = null; appliedSubtitleOffsetMs = 0L; subtitleSyncOffset = 0.0f
         subtitleDriftScale = 1.0f; appliedSubtitleDriftScale = 1.0f; driftPointA = null; driftPointB = null
         dialogueSyncArmed = false; dialogueSyncReferenceMs = null; showDriftDialog = false
-        dualSubtitlesEnabled = false; dualStatusText = ""; primarySubtitleUri = null
+        dualSubtitlesEnabled = false; dualStatusText = ""; primarySubtitleUri = null; audioLanguageCheckedForPath = null
         selectedSubtitleTrackKey = null; selectedSubtitleTrackLabel = ""; selectedSubtitleTrackSource = ""
         droppedFrameNudgeCount = 0; lastNudgeAtMs = 0L
         if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
@@ -584,27 +593,52 @@ fun VideoPlayerScreen(
             withContext(Dispatchers.IO) { OpenSubtitlesClient.findCachedSubtitle(context, currentVideo.path) }
         } else null
 
-        if (cachedSubtitleUri != null) {
-            subtitlesEnabled = true
-            trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-            val cleanedCachedUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, cachedSubtitleUri, subtitleCleaningOptions) } ?: cachedSubtitleUri
-            primarySubtitleUri = cleanedCachedUri
-            playCurrentVideoWithSubtitle(cleanedCachedUri, savedPosition)
-            autoSubtitleAttemptedForPath = currentVideo.path
-            selectedSubtitleTrackKey = "downloaded"
-            selectedSubtitleTrackLabel = "English"; selectedSubtitleTrackSource = "OpenSubtitles"
-        } else {
-            playCurrentVideoWithSubtitle(resumePosition = savedPosition)
+        // Local-file match (spec: "Automatically load matching local
+        // subtitle") is checked BEFORE falling back to a network download —
+        // a subtitle already sitting next to the video file is both faster
+        // and more likely to be release-accurate than a network guess.
+        val localMatch = if (cachedSubtitleUri == null && !isStreamMedia && subtitleBehaviorPrefs.autoLoadMatchingLocalFile) {
+            withContext(Dispatchers.IO) { findBestMatchingLocalSubtitle(currentVideo.path, subtitleBehaviorPrefs.preferredLanguages) }
+        } else null
+
+        when {
+            cachedSubtitleUri != null -> {
+                subtitlesEnabled = true
+                trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
+                val cleanedCachedUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, cachedSubtitleUri, subtitleCleaningOptions) } ?: cachedSubtitleUri
+                primarySubtitleUri = cleanedCachedUri
+                playCurrentVideoWithSubtitle(cleanedCachedUri, savedPosition)
+                autoSubtitleAttemptedForPath = currentVideo.path
+                selectedSubtitleTrackKey = "downloaded"
+                selectedSubtitleTrackLabel = "English"; selectedSubtitleTrackSource = "OpenSubtitles"
+            }
+            localMatch != null -> {
+                subtitlesEnabled = true
+                trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
+                val localUri = Uri.fromFile(localMatch.file)
+                val cleanedLocalUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, localUri, subtitleCleaningOptions) } ?: localUri
+                primarySubtitleUri = cleanedLocalUri
+                playCurrentVideoWithSubtitle(cleanedLocalUri, savedPosition)
+                autoSubtitleAttemptedForPath = currentVideo.path
+                selectedSubtitleTrackKey = "local:${localMatch.file.absolutePath}"
+                selectedSubtitleTrackLabel = localMatch.file.name; selectedSubtitleTrackSource = "Local file"
+            }
+            else -> {
+                playCurrentVideoWithSubtitle(resumePosition = savedPosition)
+            }
         }
 
-        if (!isStreamMedia && canDownloadExternalSubtitles && !isRestrictedFolderMedia && autoSubtitleAttemptedForPath != currentVideo.path) {
+        if (!isStreamMedia && canDownloadExternalSubtitles && !isRestrictedFolderMedia &&
+            subtitleBehaviorPrefs.autoDownloadWhenMissing && cachedSubtitleUri == null && localMatch == null &&
+            autoSubtitleAttemptedForPath != currentVideo.path
+        ) {
             autoSubtitleAttemptedForPath = currentVideo.path
             scope.launch {
                 delay(1200); if (subtitleDownloadInProgress) return@launch
                 subtitleDownloadInProgress = true
                 autoSubtitleStatus = "Searching subtitles..."
                 try {
-                    val result = OpenSubtitlesClient.downloadBestEnglishSubtitleDetailed(context, currentVideo.path)
+                    val result = OpenSubtitlesClient.downloadBestSubtitleDetailed(context, currentVideo.path, subtitleBehaviorPrefs.preferredLanguages)
                     if (result is SubtitleDownloadResult.Success) {
                         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
                         subtitlesEnabled = true
@@ -614,7 +648,7 @@ fun VideoPlayerScreen(
                         primarySubtitleUri = cleanedResultUri
                         playCurrentVideoWithSubtitle(cleanedResultUri, resumeAt)
                         selectedSubtitleTrackKey = "downloaded"
-                        selectedSubtitleTrackLabel = "English"; selectedSubtitleTrackSource = "OpenSubtitles"
+                        selectedSubtitleTrackLabel = friendlyLanguageName(subtitleBehaviorPrefs.preferredLanguages.firstOrNull()); selectedSubtitleTrackSource = "OpenSubtitles"
                         delay(1400); autoSubtitleStatus = ""
                     } else {
                         autoSubtitleStatus = result.summary(); delay(3500); autoSubtitleStatus = ""
@@ -628,8 +662,6 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(Unit) {
-        subtitleBehaviorPrefs = loadSubtitleBehaviorPrefs(context)
-        subtitleCleaningOptions = loadSubtitleCleaningOptions(context)
         CineVaultPlayerHolder.currentPlayer = exoPlayer
         // Bridges hardware media-button next/previous (headset, Bluetooth)
         // to this screen's own episode-switching logic — see
@@ -664,6 +696,22 @@ fun VideoPlayerScreen(
                     val realDuration = exoPlayer.duration
                     if (realDuration > 0L && !isStreamMedia) {
                         saveDuration(context, currentVideo.path, realDuration)
+                    }
+                    // "Disable subtitles when audio matches preferred
+                    // language" — checked once per video (guarded by
+                    // audioLanguageCheckedForPath) right when tracks first
+                    // become available, so it sets the DEFAULT state rather
+                    // than fighting a choice the person makes afterward.
+                    if (subtitleBehaviorPrefs.disableWhenAudioMatchesPreferred && audioLanguageCheckedForPath != currentVideo.path) {
+                        audioLanguageCheckedForPath = currentVideo.path
+                        val audioLang = exoPlayer.currentTracks.groups
+                            .firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
+                            ?.let { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { idx -> g.getTrackFormat(idx).language } }
+                        val preferred = subtitleBehaviorPrefs.preferredLanguages.firstOrNull()
+                        if (audioLang != null && preferred != null && audioLang.take(2).equals(preferred.take(2), ignoreCase = true)) {
+                            subtitlesEnabled = false
+                            trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
+                        }
                     }
                 }
                 if (state == Player.STATE_ENDED) {
@@ -882,6 +930,10 @@ fun VideoPlayerScreen(
                 selectedSubtitleTrackKey = choice.key
                 selectedSubtitleTrackLabel = friendlyLanguageName(choice.language)
                 selectedSubtitleTrackSource = "Embedded"
+                if (subtitleBehaviorPrefs.rememberLastSelectedLanguage && choice.language.isNotBlank() && choice.language != "und") {
+                    subtitleBehaviorPrefs = promoteLanguageToFront(subtitleBehaviorPrefs, choice.language.take(2).lowercase())
+                    saveSubtitleBehaviorPrefs(context, subtitleBehaviorPrefs)
+                }
             }
             is SubtitleTrackChoice.Downloaded -> {
                 subtitlesEnabled = true
