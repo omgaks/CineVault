@@ -88,6 +88,7 @@ fun SubtitleSettingsMenu(
     onDialogueSyncClick: () -> Unit = {},
     onDriftFixClick: () -> Unit = {},
     onStyleClick: () -> Unit = {},
+    onOpenStudioClick: () -> Unit = {},
     onUserInteraction: () -> Unit
 ) {
     if (!isVisible) return
@@ -240,6 +241,21 @@ fun SubtitleSettingsMenu(
         // rather than blending in with the rest of the controls.
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             PulsingResetPill(isLandscape = isLandscape) { onUserInteraction(); onReset() }
+        }
+
+        HorizontalDivider(color = GlassBorderBottom)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(50))
+                .background(GlassSurface)
+                .border(1.dp, AmberCore.copy(alpha = 0.35f), RoundedCornerShape(50))
+                .clickable { onUserInteraction(); onOpenStudioClick() }
+                .padding(vertical = if (isLandscape) 6.dp else 8.dp)
+        ) {
+            Text(text = "Subtitle Studio", color = AmberCore, fontSize = if (isLandscape) 10.sp else 11.sp, fontWeight = FontWeight.Black)
         }
     }
 }
