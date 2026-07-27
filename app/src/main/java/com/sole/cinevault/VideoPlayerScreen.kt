@@ -34,6 +34,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -233,6 +234,7 @@ fun VideoPlayerScreen(
     var subtitleAppearancePreset by remember { mutableStateOf("CineVault") }
     var subtitleAppearance by remember { mutableStateOf(SubtitlePresets.CineVault) }
     var subtitlePreserveOriginalStyling by remember { mutableStateOf(false) }
+    var subtitleGestureFeedback by remember { mutableStateOf("") }
     var showSubtitleStudio by remember { mutableStateOf(false) }
     var subtitleStudioInitialTab by remember { mutableStateOf(SubtitleStudioTab.TRACK) }
     var subtitleBehaviorPrefs by remember { mutableStateOf(loadSubtitleBehaviorPrefs(context)) }
@@ -595,6 +597,7 @@ fun VideoPlayerScreen(
         dialogueSyncArmed = false; dialogueSyncReferenceMs = null; showDriftDialog = false
         dualSubtitlesEnabled = false; dualStatusText = ""; primarySubtitleUri = null; audioLanguageCheckedForPath = null
         subtitlePreserveOriginalStyling = false
+        subtitleGestureFeedback = ""
         selectedSubtitleTrackKey = null; selectedSubtitleTrackLabel = ""; selectedSubtitleTrackSource = ""
         droppedFrameNudgeCount = 0; lastNudgeAtMs = 0L
         if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
@@ -1388,7 +1391,83 @@ fun VideoPlayerScreen(
                 }
         )
 
-        AnimatedVisibility(visible = showBrightnessCircle, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(if (isLandscape) Alignment.TopEnd else Alignment.CenterEnd).padding(top = if (isLandscape) 86.dp else 0.dp, end = 28.dp)) {
+        LaunchedEffect(subtitleGestureFeedback) {
+            if (subtitleGestureFeedback.isBlank()) return@LaunchedEffect
+            delay(900)
+            subtitleGestureFeedback = ""
+        }
+
+        // ── Subtitle gestures (opt-in, off by default) ──────────────────
+        // Deliberately NOT pixel-tracking the subtitle's actual rendered
+        // position (which depends on subtitleBottomPadding, itself
+        // adjustable 0.02-0.90) — at low padding values that would sit
+        // directly on top of the transport dock and seek bar, guaranteeing
+        // touch conflicts with existing controls. Instead this is a FIXED
+        // band positioned safely above the dock, spanning most of the
+        // width but leaving generous margin so it doesn't compete with the
+        // brightness/volume vertical-swipe zones on the far left/right
+        // edges of the full screen. A deliberate simplification, not an
+        // attempt at exact subtitle-position tracking.
+        if (subtitleBehaviorPrefs.enableSubtitleGestures && subtitlesEnabled && !isStreamMedia) {
+            val gestureZoneHeight = 110.dp
+            val gestureZoneBottomOffset = bottomDockPadding + playButton + 26.dp
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = gestureZoneBottomOffset, start = 48.dp, end = 48.dp)
+                    .fillMaxWidth()
+                    .height(gestureZoneHeight)
+                    .pointerInput(subtitleBehaviorPrefs.enableSubtitleGestures) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            if (zoom != 1f) {
+                                subtitleTextSizeSp = (subtitleTextSizeSp * zoom).coerceIn(12f, 32f)
+                                subtitleGestureFeedback = "${subtitleTextSizeSp.toInt()}sp"
+                            } else if (kotlin.math.abs(pan.x) > kotlin.math.abs(pan.y)) {
+                                // Horizontal drag — sync offset. Positive
+                                // (rightward) delay matches the same sign
+                                // convention as the Sync slider elsewhere.
+                                val deltaSeconds = pan.x / 60f
+                                subtitleSyncOffset = (subtitleSyncOffset + deltaSeconds).coerceIn(-10f, 10f)
+                                val formattedOffset = String.format("%.1f", subtitleSyncOffset)
+                                subtitleGestureFeedback = if (subtitleSyncOffset >= 0f) "+${formattedOffset}s" else "${formattedOffset}s"
+                            } else {
+                                // Vertical drag — position. Dragging UP
+                                // (negative pan.y) raises the subtitle,
+                                // which is a DECREASE in bottom-padding
+                                // fraction, hence the sign flip.
+                                val deltaFraction = -pan.y / size.height.toFloat() * 0.6f
+                                subtitleBottomPadding = (subtitleBottomPadding + deltaFraction).coerceIn(0.02f, 0.90f)
+                                subtitleGestureFeedback = "Position"
+                            }
+                        }
+                    }
+                    .pointerInput(subtitleBehaviorPrefs.enableSubtitleGestures) {
+                        detectTapGestures(
+                            onDoubleTap = {
+                                subtitleSyncOffset = 0f
+                                subtitleGestureFeedback = "Sync reset"
+                            },
+                            onLongPress = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                                showControls = true
+                            }
+                        )
+                    }
+            )
+            AnimatedVisibility(
+                visible = subtitleGestureFeedback.isNotBlank(),
+                enter = fadeIn(animationSpec = tween(100)), exit = fadeOut(animationSpec = tween(200)),
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = gestureZoneBottomOffset + gestureZoneHeight / 2)
+            ) {
+                Text(
+                    text = subtitleGestureFeedback, color = AmberCore, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 14.dp, vertical = 7.dp)
+                )
+            }
+        }
+
+
             VerticalBrightnessHud(value = brightnessPercent, size = hudSize)
         }
         AnimatedVisibility(visible = showVolumeCircle, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(if (isLandscape) Alignment.TopStart else Alignment.CenterStart).padding(top = if (isLandscape) 86.dp else 0.dp, start = 28.dp)) {
