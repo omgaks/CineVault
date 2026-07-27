@@ -229,6 +229,9 @@ fun VideoPlayerScreen(
     var showDriftDialog by remember { mutableStateOf(false) }
     var driftPointA by remember { mutableStateOf<DriftPoint?>(null) }
     var driftPointB by remember { mutableStateOf<DriftPoint?>(null) }
+    var showAppearanceStudio by remember { mutableStateOf(false) }
+    var subtitleAppearancePreset by remember { mutableStateOf("CineVault") }
+    var subtitleAppearance by remember { mutableStateOf(SubtitlePresets.CineVault) }
     var subtitleMenuTouchKey by remember { mutableIntStateOf(0) }
     var subtitlesEnabled by remember { mutableStateOf(true) }
     var autoSubtitleAttemptedForPath by remember { mutableStateOf<String?>(null) }
@@ -321,6 +324,7 @@ fun VideoPlayerScreen(
         showTrackSelector = false
         showSubtitleSearch = false
         showDriftDialog = false
+        showAppearanceStudio = false
         showSpeedMenu = false
         showSleepMenu = false
         showSrtBrowser = false
@@ -800,7 +804,7 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(showControls, showAudioSelector, showSubtitleSettings, showTrackSelector, showSubtitleSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || showSpeedMenu || showSleepMenu || showSrtBrowser
+        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || showDriftDialog || showAppearanceStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
         if (showControls && !anyMenuOpen && !isDraggingSeekbar) {
             delay(4500)
             if (!isDraggingSeekbar && !anyMenuOpen) showControls = false
@@ -808,7 +812,7 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(showTopBar, showAudioSelector, showSubtitleSettings, showTrackSelector, showSubtitleSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || showSpeedMenu || showSleepMenu || showSrtBrowser
+        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || showDriftDialog || showAppearanceStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
         if (showTopBar && !anyMenuOpen && !isDraggingSeekbar) {
             delay(2800)
             if (!isDraggingSeekbar && !anyMenuOpen) showTopBar = false
@@ -819,6 +823,7 @@ fun VideoPlayerScreen(
     LaunchedEffect(showSubtitleSettings, subtitleMenuTouchKey) { if (showSubtitleSettings) { delay(9000); showSubtitleSettings = false } }
     LaunchedEffect(showTrackSelector, subtitleMenuTouchKey) { if (showTrackSelector) { delay(12000); showTrackSelector = false } }
     LaunchedEffect(showSubtitleSearch, subtitleMenuTouchKey) { if (showSubtitleSearch) { delay(25000); showSubtitleSearch = false } }
+    LaunchedEffect(showAppearanceStudio, subtitleMenuTouchKey) { if (showAppearanceStudio) { delay(25000); showAppearanceStudio = false } }
     LaunchedEffect(showSrtBrowser) { if (showSrtBrowser) { delay(20000); showSrtBrowser = false } }
     LaunchedEffect(showSpeedMenu) { if (showSpeedMenu) { delay(8000); showSpeedMenu = false } }
     LaunchedEffect(showSleepMenu) { if (showSleepMenu) { delay(8000); showSleepMenu = false } }
@@ -841,12 +846,21 @@ fun VideoPlayerScreen(
         pendingSrtUri = null
     }
 
-    LaunchedEffect(playerViewForSubtitleStyle, subtitleTextSizeSp, subtitleBottomPadding) {
+    LaunchedEffect(playerViewForSubtitleStyle, subtitleTextSizeSp, subtitleBottomPadding, subtitleAppearance) {
         val sv = playerViewForSubtitleStyle?.subtitleView
         sv?.setUserDefaultStyle(); sv?.setApplyEmbeddedStyles(false); sv?.setApplyEmbeddedFontSizes(false)
         sv?.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleTextSizeSp)
         sv?.setBottomPaddingFraction(subtitleBottomPadding)
-        sv?.setStyle(CaptionStyleCompat(AndroidColor.WHITE, AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_OUTLINE, AndroidColor.BLACK, null))
+        sv?.setStyle(
+            CaptionStyleCompat(
+                subtitleAppearance.foregroundColor,
+                subtitleAppearance.backgroundColor,
+                AndroidColor.TRANSPARENT,
+                subtitleAppearance.edgeType,
+                subtitleAppearance.edgeColor,
+                null
+            )
+        )
     }
 
     LaunchedEffect(subtitleSyncOffset, subtitleDriftScale, originalSubtitleUri) {
@@ -1053,6 +1067,7 @@ fun VideoPlayerScreen(
                                 showTrackSelector -> showTrackSelector = false
                                 showSubtitleSearch -> showSubtitleSearch = false
                                 showDriftDialog -> showDriftDialog = false
+                                showAppearanceStudio -> showAppearanceStudio = false
                                 dialogueSyncArmed -> {}
                                 showSpeedMenu -> showSpeedMenu = false
                                 showSleepMenu -> showSleepMenu = false
@@ -1332,6 +1347,7 @@ fun VideoPlayerScreen(
             onReset = { subtitleTextSizeSp = if (isLandscape) 18f else 16f; subtitleBottomPadding = 0.02f; subtitleSyncOffset = 0.0f; subtitleDriftScale = 1.0f; driftPointA = null; driftPointB = null; subtitlesEnabled = true; trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build(); showControls = true; subtitleMenuTouchKey++ },
             onDialogueSyncClick = { armDialogueSync() },
             onDriftFixClick = { showSubtitleSettings = false; showDriftDialog = true; showControls = true },
+            onStyleClick = { showSubtitleSettings = false; showAppearanceStudio = true; showControls = true },
             onUserInteraction = { subtitleMenuTouchKey++; showControls = true }
         )
         }
@@ -1438,7 +1454,24 @@ fun VideoPlayerScreen(
             )
         }
 
-        AnimatedVisibility(visible = showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || showSpeedMenu || showSleepMenu, enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(visible = showAppearanceStudio, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)),
+            modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, trackSelectorMaxHeight)).offset { IntOffset(anchoredX(subIconX, trackSelectorWidth), 0) }) {
+            SubtitleAppearanceStudioSheet(
+                presetName = subtitleAppearancePreset,
+                appearance = subtitleAppearance,
+                fontSizeSp = subtitleTextSizeSp,
+                popupWidth = trackSelectorWidth,
+                popupMaxHeight = trackSelectorMaxHeight,
+                onApplyPreset = { name, preset -> subtitleAppearancePreset = name; subtitleAppearance = preset },
+                onForegroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(foregroundColor = c) },
+                onEdgeTypeChange = { t -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeType = t) },
+                onEdgeColorChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeColor = c) },
+                onBackgroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(backgroundColor = c) },
+                onDismiss = { showAppearanceStudio = false; showControls = true }
+            )
+        }
+
+        AnimatedVisibility(visible = showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || showDriftDialog || showAppearanceStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize()) {
 
                 val topRowVisible = !showSeekPreview
@@ -1531,7 +1564,7 @@ fun VideoPlayerScreen(
                     )
                 }
 
-                val anyMenuOpenForIntroSkip = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || showSpeedMenu || showSleepMenu || showSrtBrowser
+                val anyMenuOpenForIntroSkip = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || showDriftDialog || showAppearanceStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
                 AnimatedVisibility(visible = showIntroSkip && !showSeekPreview && !isDraggingSeekbar && !anyMenuOpenForIntroSkip, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
                     SkipIntroButton(isLandscape = isLandscape) { val t = 95_000L.coerceAtMost(duration.coerceAtLeast(1L)); exoPlayer.seekTo(t); position = t; showControls = true }
                 }
@@ -1587,8 +1620,8 @@ fun VideoPlayerScreen(
                         }
 
                         if (!isStreamMedia) {
-                            IconCircle(icon = Icons.Rounded.ClosedCaption, size = smallButton, tint = if (showSubtitleSettings || showTrackSelector || showSubtitleSearch) AmberCore else TextBright, modifier = Modifier.onGloballyPositioned { subIconX = it.positionInRoot().x + it.size.width / 2f }) {
-                                val wasOpen = showSubtitleSettings || showTrackSelector || showSubtitleSearch; closeAllMenus(); showSubtitleSettings = !wasOpen; showControls = true; menuTouchKey++
+                            IconCircle(icon = Icons.Rounded.ClosedCaption, size = smallButton, tint = if (showSubtitleSettings || showTrackSelector || showSubtitleSearch || showDriftDialog || showAppearanceStudio) AmberCore else TextBright, modifier = Modifier.onGloballyPositioned { subIconX = it.positionInRoot().x + it.size.width / 2f }) {
+                                val wasOpen = showSubtitleSettings || showTrackSelector || showSubtitleSearch || showDriftDialog || showAppearanceStudio; closeAllMenus(); showSubtitleSettings = !wasOpen; showControls = true; menuTouchKey++
                             }
                         }
                     }
