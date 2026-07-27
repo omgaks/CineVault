@@ -39,6 +39,44 @@ sealed class SubtitleDownloadResult {
     }
 }
 
+// One row of a multi-result search — everything the "Subtitle Download
+// Search" result-card UI needs is captured here directly off the API
+// response, so the composable layer never has to re-parse JSON.
+data class SubtitleSearchResult(
+    val fileId: Int,
+    val language: String,
+    val release: String,
+    val downloadCount: Int,
+    val rating: Double,
+    val hearingImpaired: Boolean,
+    val forced: Boolean,
+    val aiTranslated: Boolean,
+    val machineTranslated: Boolean,
+    val fromTrusted: Boolean,
+    val fps: Double?
+) {
+    // Best-effort source tag pulled from the release string itself (the API
+    // doesn't return a separate structured field for this) — used for the
+    // "Blu-ray / WEB-DL / HDTV" badge.
+    val sourceTag: String? by lazy {
+        val r = release.lowercase()
+        when {
+            r.contains("bluray") || r.contains("blu-ray") || r.contains("bdrip") -> "Blu-ray"
+            r.contains("web-dl") || r.contains("webdl") -> "WEB-DL"
+            r.contains("webrip") -> "WEBRip"
+            r.contains("hdtv") -> "HDTV"
+            r.contains("dvdrip") -> "DVDRip"
+            else -> null
+        }
+    }
+}
+
+sealed class SubtitleSearchListResult {
+    data class Success(val results: List<SubtitleSearchResult>) : SubtitleSearchListResult()
+    data class HttpError(val code: Int, val detail: String) : SubtitleSearchListResult()
+    object NoResults : SubtitleSearchListResult()
+}
+
 object OpenSubtitlesClient {
 
     private val API_KEY: String get() = BuildConfig.OPENSUB_API_KEY
@@ -156,30 +194,145 @@ object OpenSubtitlesClient {
                 return@withContext SubtitleDownloadResult.NoResults(attempts)
             }
 
-            val linkResult = getDownloadLink(fileId)
-            val subtitleLink = when (linkResult) {
-                is DownloadLinkResult.Found -> linkResult.link
-                is DownloadLinkResult.HttpError -> return@withContext SubtitleDownloadResult.DownloadHttpError(linkResult.code, linkResult.bodyPreview)
-                DownloadLinkResult.QuotaExhausted -> return@withContext SubtitleDownloadResult.QuotaExhausted
-                DownloadLinkResult.EmptyLink -> return@withContext SubtitleDownloadResult.DownloadHttpError(0, "API returned no download link")
-            }
-
-            val srtResult = downloadSrt(subtitleLink)
-            val srtText = when (srtResult) {
-                is SrtResult.Found -> srtResult.text
-                is SrtResult.HttpError -> return@withContext SubtitleDownloadResult.SrtFetchError(srtResult.code)
-            }
-
-            val subtitleFile = subtitleCacheFile(context, videoPath)
-            subtitleFile.writeText(srtText, Charsets.UTF_8)
-
-            Log.d(TAG, "Subtitle saved: ${subtitleFile.absolutePath}")
-            SubtitleDownloadResult.Success(Uri.fromFile(subtitleFile))
-
+            finishDownload(context, videoPath, fileId)
         } catch (e: Exception) {
             Log.e(TAG, "Subtitle error: ${e.message}", e)
             SubtitleDownloadResult.UnexpectedError(e.message ?: e.javaClass.simpleName)
         }
+    }
+
+    // ── Multi-result search (Subtitle Download Search) ──────────────────
+    // Returns every candidate the API found for this video (up to a
+    // reasonable cap), fully parsed with the metadata the result-card UI
+    // needs — release name, hearing-impaired/forced flags, download count,
+    // rating, translation flags — ranked so the best match sorts first.
+    // Distinct from downloadBestEnglishSubtitleDetailed above, which is the
+    // fire-and-forget auto-download path used on video load; this one is
+    // for the person actively browsing "Download subtitles" results.
+    suspend fun searchSubtitlesDetailed(
+        query: String,
+        season: Int? = null,
+        episode: Int? = null,
+        language: String = "en"
+    ): SubtitleSearchListResult = withContext(Dispatchers.IO) {
+        if (query.isBlank()) return@withContext SubtitleSearchListResult.NoResults
+        try {
+            val encoded = URLEncoder.encode(query, "UTF-8")
+            var searchUrl = "$BASE_URL/subtitles?query=$encoded&languages=$language&order_by=download_count&order_direction=desc"
+            if (season != null) searchUrl += "&season_number=$season"
+            if (episode != null) searchUrl += "&episode_number=$episode"
+
+            val request = Request.Builder()
+                .url(searchUrl).get()
+                .addHeader("Api-Key", API_KEY)
+                .addHeader("User-Agent", USER_AGENT)
+                .addHeader("Accept", "application/json")
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful || body.isBlank()) {
+                    val detail = extractApiMessage(body) ?: "HTTP ${response.code}"
+                    return@withContext SubtitleSearchListResult.HttpError(response.code, detail)
+                }
+
+                val json = JSONObject(body)
+                val dataArray = json.optJSONArray("data") ?: return@withContext SubtitleSearchListResult.NoResults
+                val results = mutableListOf<SubtitleSearchResult>()
+
+                for (i in 0 until dataArray.length()) {
+                    val item = dataArray.optJSONObject(i) ?: continue
+                    val attrs = item.optJSONObject("attributes") ?: continue
+                    val files = attrs.optJSONArray("files") ?: continue
+                    if (files.length() == 0) continue
+                    val fileObj = files.optJSONObject(0) ?: continue
+                    val fileId = fileObj.optInt("file_id", -1)
+                    if (fileId <= 0) continue
+
+                    val ratingsObj = attrs.optJSONObject("ratings")
+                    val rating = attrs.optDouble("ratings", Double.NaN).let {
+                        if (!it.isNaN()) it else ratingsObj?.optDouble("value", 0.0) ?: 0.0
+                    }
+                    val fps = attrs.optDouble("fps", Double.NaN).takeIf { !it.isNaN() && it > 0.0 }
+
+                    results.add(
+                        SubtitleSearchResult(
+                            fileId = fileId,
+                            language = attrs.optString("language", language),
+                            release = attrs.optString("release", "").ifBlank { fileObj.optString("file_name", "Unknown release") },
+                            downloadCount = attrs.optInt("download_count", 0),
+                            rating = rating,
+                            hearingImpaired = attrs.optBoolean("hearing_impaired", false),
+                            forced = attrs.optBoolean("foreign_parts_only", false),
+                            aiTranslated = attrs.optBoolean("ai_translated", false),
+                            machineTranslated = attrs.optBoolean("machine_translated", false),
+                            fromTrusted = attrs.optBoolean("from_trusted", false),
+                            fps = fps
+                        )
+                    )
+                }
+
+                if (results.isEmpty()) return@withContext SubtitleSearchListResult.NoResults
+
+                val queryWords = query.lowercase().split(Regex("\\s+")).filter { it.length > 2 }
+                fun matchScore(r: SubtitleSearchResult): Int {
+                    val releaseLower = r.release.lowercase()
+                    val wordHits = queryWords.count { releaseLower.contains(it) }
+                    var score = wordHits * 100
+                    if (r.fromTrusted) score += 30
+                    if (!r.machineTranslated && !r.aiTranslated) score += 20
+                    score += (r.downloadCount / 100).coerceAtMost(50)
+                    return score
+                }
+
+                val ranked = results.sortedByDescending { matchScore(it) }.take(25)
+                SubtitleSearchListResult.Success(ranked)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Search error: ${e.message}", e)
+            SubtitleSearchListResult.HttpError(0, e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    // Downloads a specific, user-picked result by file_id — same
+    // download-link + fetch + cache pipeline the auto-download path uses,
+    // just entered from a chosen search result instead of the first hit.
+    suspend fun downloadSubtitleByFileId(
+        context: Context,
+        videoPath: String,
+        fileId: Int
+    ): SubtitleDownloadResult = withContext(Dispatchers.IO) {
+        try {
+            finishDownload(context, videoPath, fileId)
+        } catch (e: Exception) {
+            Log.e(TAG, "Download-by-id error: ${e.message}", e)
+            SubtitleDownloadResult.UnexpectedError(e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    // Shared tail end of both download paths — get the download link,
+    // fetch the SRT body, write it to this video's cache file. Pulled out
+    // so the manual result-picker and the automatic best-guess path can't
+    // silently diverge in how a subtitle actually gets saved.
+    private fun finishDownload(context: Context, videoPath: String, fileId: Int): SubtitleDownloadResult {
+        val linkResult = getDownloadLink(fileId)
+        val subtitleLink = when (linkResult) {
+            is DownloadLinkResult.Found -> linkResult.link
+            is DownloadLinkResult.HttpError -> return SubtitleDownloadResult.DownloadHttpError(linkResult.code, linkResult.bodyPreview)
+            DownloadLinkResult.QuotaExhausted -> return SubtitleDownloadResult.QuotaExhausted
+            DownloadLinkResult.EmptyLink -> return SubtitleDownloadResult.DownloadHttpError(0, "API returned no download link")
+        }
+
+        val srtResult = downloadSrt(subtitleLink)
+        val srtText = when (srtResult) {
+            is SrtResult.Found -> srtResult.text
+            is SrtResult.HttpError -> return SubtitleDownloadResult.SrtFetchError(srtResult.code)
+        }
+
+        val subtitleFile = subtitleCacheFile(context, videoPath)
+        subtitleFile.writeText(srtText, Charsets.UTF_8)
+        Log.d(TAG, "Subtitle saved: ${subtitleFile.absolutePath}")
+        return SubtitleDownloadResult.Success(Uri.fromFile(subtitleFile))
     }
 
     // Progressive fallback: full cleaned name -> name without year -> first 4
@@ -197,6 +350,11 @@ object OpenSubtitlesClient {
 
         return attempts.toList()
     }
+
+    // Public wrapper — the manual search UI pre-fills its query box with
+    // this same cleaned name, so what the person edits starts from the same
+    // baseline the automatic search would have tried first.
+    fun cleanMovieNamePublic(videoPath: String): String = cleanMovieName(videoPath)
 
     private fun cleanMovieName(videoPath: String): String {
         var name = videoPath
