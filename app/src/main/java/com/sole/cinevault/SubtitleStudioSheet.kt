@@ -1,0 +1,329 @@
+package com.sole.cinevault
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.sole.cinevault.ui.theme.*
+import java.io.File
+
+enum class SubtitleStudioTab(val label: String, val icon: ImageVector) {
+    TRACK("Track", Icons.Filled.ViewList),
+    SYNC("Sync", Icons.Filled.Sync),
+    STYLE("Style", Icons.Filled.Palette),
+    POSITION("Position", Icons.Filled.SwapVert),
+    ADVANCED("Advanced", Icons.Filled.Settings)
+}
+
+// Vertical placement presets — approximated via bottom-padding-fraction
+// since that's the one positioning knob SubtitleView.setBottomPaddingFraction
+// actually exposes. There's no horizontal control or on-video drag yet
+// (that's gestures territory, #12 on the roadmap) — Position tab here only
+// covers vertical placement + the safe-area-aware presets from the spec.
+private val positionPresets = listOf(
+    "Bottom" to 0.02f, "Above Controls" to 0.16f, "Centre" to 0.45f, "Top" to 0.85f
+)
+
+@Composable
+fun SubtitleStudioSheet(
+    initialTab: SubtitleStudioTab,
+    // Track tab
+    embeddedTracks: List<SubtitleTrackChoice.Embedded>,
+    downloadedTrack: SubtitleTrackChoice.Downloaded?,
+    localFiles: List<File>,
+    selectedTrackKey: String?,
+    onSelectTrack: (SubtitleTrackChoice) -> Unit,
+    onDeleteLocalTrack: (File) -> Unit,
+    onOpenFilePicker: () -> Unit,
+    // Sync tab
+    currentSyncOffset: Float,
+    onSyncOffsetChange: (Float) -> Unit,
+    onDialogueSyncClick: () -> Unit,
+    onDriftFixClick: () -> Unit,
+    // Style tab
+    presetName: String,
+    appearance: SubtitleAppearance,
+    fontSizeSp: Float,
+    onFontSizeChange: (Float) -> Unit,
+    onApplyPreset: (String, SubtitleAppearance) -> Unit,
+    onForegroundChange: (Int) -> Unit,
+    onEdgeTypeChange: (Int) -> Unit,
+    onEdgeColorChange: (Int) -> Unit,
+    onBackgroundChange: (Int) -> Unit,
+    // Position tab
+    bottomPadding: Float,
+    onBottomPaddingChange: (Float) -> Unit,
+    // Advanced tab
+    behaviorPrefs: SubtitleBehaviorPrefs,
+    onBehaviorPrefsChange: (SubtitleBehaviorPrefs) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedTab by remember { mutableStateOf(initialTab) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth(0.94f)
+            .fillMaxHeight(0.82f)
+            .glassPanel(cornerRadius = 26.dp, fill = SpaceMid.copy(alpha = 0.98f))
+    ) {
+        Column(modifier = Modifier.fillMaxSize().padding(14.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "Subtitle Studio", color = AmberCore, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Box(
+                    modifier = Modifier.size(26.dp).clip(CircleShape).background(GlassSurface).clickable { onDismiss() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = TextBright, modifier = Modifier.size(14.dp))
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                SubtitleStudioTab.values().forEach { tab ->
+                    val selected = tab == selectedTab
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (selected) AmberGlow.copy(alpha = 0.18f) else Color.Transparent)
+                            .then(
+                                if (selected) Modifier.border(1.dp, Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.8f), AmberDeep.copy(alpha = 0.3f))), RoundedCornerShape(12.dp))
+                                else Modifier
+                            )
+                            .clickable { selectedTab = tab }
+                            .padding(vertical = 8.dp)
+                    ) {
+                        Icon(imageVector = tab.icon, contentDescription = tab.label, tint = if (selected) AmberCore else TextMuted, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(text = tab.label, color = if (selected) AmberCore else TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(color = GlassBorderBottom)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                    val tabContentWidth = maxWidth
+                    val tabContentHeight = maxHeight
+                    when (selectedTab) {
+                        SubtitleStudioTab.TRACK -> SubtitleTrackSelectorSheet(
+                            embeddedTracks = embeddedTracks,
+                            downloadedTrack = downloadedTrack,
+                            localFiles = localFiles,
+                            selectedKey = selectedTrackKey,
+                            popupWidth = tabContentWidth,
+                            popupMaxHeight = tabContentHeight,
+                            onSelect = onSelectTrack,
+                            onDeleteLocal = onDeleteLocalTrack,
+                            onOpenFilePicker = onOpenFilePicker,
+                            onDismiss = {}
+                        )
+                        SubtitleStudioTab.SYNC -> StudioSyncTab(
+                            currentSyncOffset = currentSyncOffset,
+                            onSyncOffsetChange = onSyncOffsetChange,
+                            onDialogueSyncClick = onDialogueSyncClick,
+                            onDriftFixClick = onDriftFixClick
+                        )
+                        SubtitleStudioTab.STYLE -> SubtitleAppearanceStudioSheet(
+                            presetName = presetName,
+                            appearance = appearance,
+                            fontSizeSp = fontSizeSp,
+                            popupWidth = tabContentWidth,
+                            popupMaxHeight = tabContentHeight,
+                            onApplyPreset = onApplyPreset,
+                            onForegroundChange = onForegroundChange,
+                            onEdgeTypeChange = onEdgeTypeChange,
+                            onEdgeColorChange = onEdgeColorChange,
+                            onBackgroundChange = onBackgroundChange,
+                            onDismiss = {}
+                        )
+                        SubtitleStudioTab.POSITION -> StudioPositionTab(
+                            fontSizeSp = fontSizeSp,
+                            onFontSizeChange = onFontSizeChange,
+                            bottomPadding = bottomPadding,
+                            onBottomPaddingChange = onBottomPaddingChange
+                        )
+                        SubtitleStudioTab.ADVANCED -> StudioAdvancedTab(
+                            prefs = behaviorPrefs,
+                            onChange = onBehaviorPrefsChange
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudioSyncTab(
+    currentSyncOffset: Float,
+    onSyncOffsetChange: (Float) -> Unit,
+    onDialogueSyncClick: () -> Unit,
+    onDriftFixClick: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        StudioSectionLabel("Delay")
+        Text(
+            text = if (currentSyncOffset >= 0f) "+${"%.1f".format(currentSyncOffset)}s (later)" else "${"%.1f".format(currentSyncOffset)}s (earlier)",
+            color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Slider(
+            value = currentSyncOffset.coerceIn(-10f, 10f), onValueChange = onSyncOffsetChange, valueRange = -10f..10f,
+            colors = SliderDefaults.colors(thumbColor = AmberCore, activeTrackColor = AmberGlow, inactiveTrackColor = Color.White.copy(alpha = 0.15f))
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(-5f, -1f, -0.1f, 0f, 0.1f, 1f, 5f).forEach { step ->
+                Text(
+                    text = if (step == 0f) "Reset" else if (step > 0) "+${step}s" else "${step}s",
+                    color = TextBright, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(GlassSurface).clickable {
+                        onSyncOffsetChange(if (step == 0f) 0f else (currentSyncOffset + step).coerceIn(-10f, 10f))
+                    }.padding(horizontal = 8.dp, vertical = 6.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+        StudioSectionLabel("Dialogue Sync")
+        Text(text = "Pause on a visible line, tap Start, then tap the instant you hear it spoken.", color = TextMuted, fontSize = 11.sp, lineHeight = 15.sp)
+        Spacer(modifier = Modifier.height(8.dp))
+        StudioActionButton(label = "Start Dialogue Sync") { onDialogueSyncClick() }
+
+        Spacer(modifier = Modifier.height(20.dp))
+        StudioSectionLabel("Progressive Drift")
+        Text(text = "Fixes subtitles that start in sync but drift later/earlier as the video plays.", color = TextMuted, fontSize = 11.sp, lineHeight = 15.sp)
+        Spacer(modifier = Modifier.height(8.dp))
+        StudioActionButton(label = "Fix Gradual Drift") { onDriftFixClick() }
+    }
+}
+
+@Composable
+private fun StudioPositionTab(
+    fontSizeSp: Float,
+    onFontSizeChange: (Float) -> Unit,
+    bottomPadding: Float,
+    onBottomPaddingChange: (Float) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        StudioSectionLabel("Text Size")
+        Text(text = "${fontSizeSp.toInt()}sp", color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Slider(
+            value = fontSizeSp, onValueChange = onFontSizeChange, valueRange = 12f..32f,
+            colors = SliderDefaults.colors(thumbColor = AmberCore, activeTrackColor = AmberGlow, inactiveTrackColor = Color.White.copy(alpha = 0.15f))
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+        StudioSectionLabel("Placement Presets")
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            positionPresets.forEach { (label, value) ->
+                val selected = kotlin.math.abs(bottomPadding - value) < 0.005f
+                Text(
+                    text = label, color = if (selected) Color.Black else TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(if (selected) AmberCore else SpaceDeep.copy(alpha = 0.7f))
+                        .border(1.dp, if (selected) AmberCore else AmberCore.copy(alpha = 0.3f), RoundedCornerShape(50))
+                        .clickable { onBottomPaddingChange(value) }
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        StudioSectionLabel("Fine Vertical Position")
+        Slider(
+            value = bottomPadding, onValueChange = onBottomPaddingChange, valueRange = 0.02f..0.90f,
+            colors = SliderDefaults.colors(thumbColor = AmberCore, activeTrackColor = AmberGlow, inactiveTrackColor = Color.White.copy(alpha = 0.15f))
+        )
+        Text(
+            text = "Placement automatically stays clear of the player controls while they're visible.",
+            color = TextMuted, fontSize = 10.sp, lineHeight = 14.sp
+        )
+    }
+}
+
+@Composable
+private fun StudioAdvancedTab(prefs: SubtitleBehaviorPrefs, onChange: (SubtitleBehaviorPrefs) -> Unit) {
+    val languages = listOf("en" to "English", "hi" to "Hindi", "sm" to "Samoan", "fr" to "French", "es" to "Spanish")
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        StudioSectionLabel("Preferred Language")
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            languages.forEach { (code, label) ->
+                val selected = prefs.preferredLanguage == code
+                Text(
+                    text = label, color = if (selected) Color.Black else TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(if (selected) AmberCore else SpaceDeep.copy(alpha = 0.7f))
+                        .border(1.dp, if (selected) AmberCore else AmberCore.copy(alpha = 0.3f), RoundedCornerShape(50))
+                        .clickable { onChange(prefs.copy(preferredLanguage = code)) }
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        StudioToggleRow(label = "Prefer forced subtitles", checked = prefs.preferForced) { onChange(prefs.copy(preferForced = it)) }
+        StudioToggleRow(label = "Prefer SDH (hearing-impaired) subtitles", checked = prefs.preferSdh) { onChange(prefs.copy(preferSdh = it)) }
+
+        Spacer(modifier = Modifier.height(14.dp))
+        Text(
+            text = "These preferences are saved now and will drive automatic download ranking once the full subtitle-behaviour settings are wired up.",
+            color = TextMuted, fontSize = 10.sp, lineHeight = 14.sp
+        )
+    }
+}
+
+@Composable
+private fun StudioToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Switch(
+            checked = checked, onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
+        )
+    }
+}
+
+@Composable
+private fun StudioSectionLabel(text: String) {
+    Text(text = text.uppercase(), color = Color(0xFFC9A765), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp, modifier = Modifier.padding(bottom = 6.dp))
+}
+
+@Composable
+private fun StudioActionButton(label: String, onClick: () -> Unit) {
+    Text(
+        text = label, color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Black,
+        modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore).clickable { onClick() }.padding(horizontal = 16.dp, vertical = 9.dp)
+    )
+}
