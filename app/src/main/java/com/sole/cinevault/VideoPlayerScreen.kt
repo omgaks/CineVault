@@ -219,7 +219,6 @@ fun VideoPlayerScreen(
     var sleepTimerActive by remember { mutableStateOf(false) }
 
     var subtitleTextSizeSp by remember { mutableFloatStateOf(22f) }
-    var subtitleSizeDefaultApplied by remember { mutableStateOf(false) }
     var subtitleBottomPadding by remember { mutableFloatStateOf(0.02f) }
     var subtitleSyncOffset by remember { mutableFloatStateOf(0.0f) }
     var subtitleDriftScale by remember { mutableFloatStateOf(1.0f) }
@@ -948,11 +947,55 @@ fun VideoPlayerScreen(
         val showIntroSkip = isCurrentTvShow && position in 5_000L..95_000L
         val topClusterPaddingTop = if (isLandscape) 10.dp else 18.dp
 
-        LaunchedEffect(isLandscape) {
-            if (!subtitleSizeDefaultApplied) {
-                subtitleTextSizeSp = if (isLandscape) 18f else 16f
-                subtitleSizeDefaultApplied = true
-            }
+        // ── Per-display subtitle profiles ──────────────────────────────
+        // Which profile applies right now — external (RayNeo/DP Alt Mode)
+        // always wins over phone/tablet since it's a distinct viewing
+        // surface, regardless of what the tablet's own screen size says.
+        // TV isn't reachable yet (see DisplayProfiles.kt) so it never
+        // appears here.
+        val displayProfileType = when {
+            externalDisplay.isConnected -> DisplayProfileType.EXTERNAL
+            isSmallPhone -> DisplayProfileType.PHONE
+            else -> DisplayProfileType.TABLET
+        }
+        val currentProfileId = remember(displayProfileType, isLandscape) { displayProfileId(displayProfileType, isLandscape) }
+        var profileLoadedFor by remember { mutableStateOf<String?>(null) }
+
+        // Loads this profile's saved size/position/style the moment the
+        // profile changes (rotation, or a RayNeo connecting/disconnecting)
+        // — e.g. switching from tablet-landscape to external mid-playback
+        // instantly swaps in whatever subtitle look was last used on the
+        // glasses, not whatever was active a second ago on the tablet.
+        LaunchedEffect(currentProfileId) {
+            val settings = loadSubtitleProfileSettings(context, displayProfileType, isLandscape)
+            subtitleTextSizeSp = settings.fontSizeSp
+            subtitleBottomPadding = settings.bottomPadding
+            subtitleAppearancePreset = settings.presetName
+            subtitleAppearance = SubtitleAppearance(settings.foregroundColor, settings.edgeType, settings.edgeColor, settings.backgroundColor)
+            profileLoadedFor = currentProfileId
+        }
+
+        // Persists back to the SAME profile whenever the person adjusts
+        // size/position/style — guarded by profileLoadedFor so the values
+        // freshly loaded above (for a brand new profile) don't immediately
+        // get written back over themselves, and so a value still carrying
+        // over from the PREVIOUS profile during the one-frame transition
+        // can't leak into the new profile's saved settings.
+        LaunchedEffect(currentProfileId, subtitleTextSizeSp, subtitleBottomPadding, subtitleAppearancePreset, subtitleAppearance) {
+            if (profileLoadedFor != currentProfileId) return@LaunchedEffect
+            delay(400)
+            saveSubtitleProfileSettings(
+                context, displayProfileType, isLandscape,
+                SubtitleProfileSettings(
+                    fontSizeSp = subtitleTextSizeSp,
+                    bottomPadding = subtitleBottomPadding,
+                    presetName = subtitleAppearancePreset,
+                    foregroundColor = subtitleAppearance.foregroundColor,
+                    edgeType = subtitleAppearance.edgeType,
+                    edgeColor = subtitleAppearance.edgeColor,
+                    backgroundColor = subtitleAppearance.backgroundColor
+                )
+            )
         }
 
         val uiScale = (maxWidth.value / 400f).coerceIn(0.85f, 1.25f)
@@ -1146,7 +1189,7 @@ fun VideoPlayerScreen(
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 16.dp, vertical = 9.dp)) {
                 Icon(imageVector = Icons.Rounded.Tv, contentDescription = null, tint = AmberCore, modifier = Modifier.size(15.dp))
                 Spacer(modifier = Modifier.width(7.dp))
-                Text(text = "External display connected", color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text(text = "External display connected — RayNeo subtitle profile", color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
 
