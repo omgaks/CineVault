@@ -306,19 +306,54 @@ private fun StudioAdvancedTab(
 ) {
     val languages = listOf("en" to "English", "hi" to "Hindi", "sm" to "Samoan", "fr" to "French", "es" to "Spanish")
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        StudioSectionLabel("Preferred Language")
-        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            languages.forEach { (code, label) ->
-                val selected = prefs.preferredLanguage == code
-                Text(
-                    text = label, color = if (selected) Color.Black else TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(if (selected) AmberCore else SpaceDeep.copy(alpha = 0.7f))
-                        .border(1.dp, if (selected) AmberCore else AmberCore.copy(alpha = 0.3f), RoundedCornerShape(50))
-                        .clickable { onChange(prefs.copy(preferredLanguage = code)) }
-                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                )
+        StudioSectionLabel("Preferred Languages (priority order)")
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            prefs.preferredLanguages.forEachIndexed { index, code ->
+                val label = languages.firstOrNull { it.first == code }?.second ?: code.uppercase()
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(SpaceDeep.copy(alpha = 0.6f)).padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Text(text = "${index + 1}.", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(18.dp))
+                    Text(text = label, color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    if (index > 0) {
+                        Text(
+                            text = "↑", color = TextMuted, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable {
+                                val reordered = prefs.preferredLanguages.toMutableList()
+                                reordered[index] = reordered[index - 1].also { reordered[index - 1] = reordered[index] }
+                                onChange(prefs.copy(preferredLanguages = reordered))
+                            }.padding(horizontal = 6.dp)
+                        )
+                    }
+                    if (prefs.preferredLanguages.size > 1) {
+                        Text(
+                            text = "✕", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable {
+                                onChange(prefs.copy(preferredLanguages = prefs.preferredLanguages.filterIndexed { i, _ -> i != index }))
+                            }.padding(horizontal = 6.dp)
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        val addable = languages.filter { (code, _) -> code !in prefs.preferredLanguages }
+        if (addable.isNotEmpty()) {
+            Text(text = "Add language", color = Color(0xFFC9A765), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(4.dp))
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                addable.forEach { (code, label) ->
+                    Text(
+                        text = "+ $label", color = TextBright, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(SpaceDeep.copy(alpha = 0.7f))
+                            .border(1.dp, AmberCore.copy(alpha = 0.3f), RoundedCornerShape(50))
+                            .clickable { onChange(prefs.copy(preferredLanguages = prefs.preferredLanguages + code)) }
+                            .padding(horizontal = 12.dp, vertical = 7.dp)
+                    )
+                }
             }
         }
 
@@ -326,9 +361,17 @@ private fun StudioAdvancedTab(
         StudioToggleRow(label = "Prefer forced subtitles", checked = prefs.preferForced) { onChange(prefs.copy(preferForced = it)) }
         StudioToggleRow(label = "Prefer SDH (hearing-impaired) subtitles", checked = prefs.preferSdh) { onChange(prefs.copy(preferSdh = it)) }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+        StudioSectionLabel("Automatic Behavior")
+        StudioToggleRow(label = "Automatically enable embedded subtitles", checked = prefs.autoEnableEmbeddedSubtitles) { onChange(prefs.copy(autoEnableEmbeddedSubtitles = it)) }
+        StudioToggleRow(label = "Automatically load matching local subtitle", checked = prefs.autoLoadMatchingLocalFile) { onChange(prefs.copy(autoLoadMatchingLocalFile = it)) }
+        StudioToggleRow(label = "Automatically download when none exists", checked = prefs.autoDownloadWhenMissing) { onChange(prefs.copy(autoDownloadWhenMissing = it)) }
+        StudioToggleRow(label = "Remember last selected language", checked = prefs.rememberLastSelectedLanguage) { onChange(prefs.copy(rememberLastSelectedLanguage = it)) }
+        StudioToggleRow(label = "Disable subtitles when audio matches preferred language", checked = prefs.disableWhenAudioMatchesPreferred) { onChange(prefs.copy(disableWhenAudioMatchesPreferred = it)) }
+
+        Spacer(modifier = Modifier.height(10.dp))
         Text(
-            text = "These preferences are saved now and will drive automatic download ranking once the full subtitle-behaviour settings are wired up.",
+            text = "Restricted-folder videos never auto-download subtitles, regardless of these settings — that protection is fixed, not optional.",
             color = TextMuted, fontSize = 10.sp, lineHeight = 14.sp
         )
 
