@@ -247,6 +247,18 @@ fun VideoPlayerScreen(
     var originalSubtitleUri by remember { mutableStateOf<Uri?>(null) }
     var appliedSubtitleOffsetMs by remember { mutableLongStateOf(0L) }
 
+    // The "true" primary subtitle source — distinct from originalSubtitleUri
+    // (which sync/drift build FROM, and which becomes the DUAL-MERGED file
+    // whenever dual mode is on). Kept separately so turning dual mode back
+    // off can revert to the actual primary instead of getting stuck on a
+    // merged file with nothing to un-merge from.
+    var primarySubtitleUri by remember { mutableStateOf<Uri?>(null) }
+    var dualSubtitlesEnabled by remember { mutableStateOf(false) }
+    var dualSecondaryLanguage by remember { mutableStateOf("hi") }
+    var dualGapLines by remember { mutableStateOf(1) }
+    var dualStatusText by remember { mutableStateOf("") }
+    val dualSecondaryColorHex = "#7FDBFF"
+
     // Which subtitle source/track is actually active right now — the single
     // source of truth for both the checkmark in SubtitleTrackSelectorSheet
     // AND the status line under the quick menu's header. Built with the
@@ -534,6 +546,7 @@ fun VideoPlayerScreen(
                     if (alsoPlay) {
                         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
                         val cleanedApplyUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, downloadResult.uri, subtitleCleaningOptions) } ?: downloadResult.uri
+                        primarySubtitleUri = cleanedApplyUri
                         playCurrentVideoWithSubtitle(subtitleUri = cleanedApplyUri, resumePosition = resumeAt)
                         showSubtitleSearch = false; showControls = true
                         Toast.makeText(context, "Subtitle applied", Toast.LENGTH_SHORT).show()
@@ -561,6 +574,7 @@ fun VideoPlayerScreen(
         originalSubtitleUri = null; appliedSubtitleOffsetMs = 0L; subtitleSyncOffset = 0.0f
         subtitleDriftScale = 1.0f; appliedSubtitleDriftScale = 1.0f; driftPointA = null; driftPointB = null
         dialogueSyncArmed = false; dialogueSyncReferenceMs = null; showDriftDialog = false
+        dualSubtitlesEnabled = false; dualStatusText = ""; primarySubtitleUri = null
         selectedSubtitleTrackKey = null; selectedSubtitleTrackLabel = ""; selectedSubtitleTrackSource = ""
         droppedFrameNudgeCount = 0; lastNudgeAtMs = 0L
         if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
@@ -574,6 +588,7 @@ fun VideoPlayerScreen(
             subtitlesEnabled = true
             trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
             val cleanedCachedUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, cachedSubtitleUri, subtitleCleaningOptions) } ?: cachedSubtitleUri
+            primarySubtitleUri = cleanedCachedUri
             playCurrentVideoWithSubtitle(cleanedCachedUri, savedPosition)
             autoSubtitleAttemptedForPath = currentVideo.path
             selectedSubtitleTrackKey = "downloaded"
@@ -596,6 +611,7 @@ fun VideoPlayerScreen(
                         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                         autoSubtitleStatus = "Subtitle loaded"
                         val cleanedResultUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, result.uri, subtitleCleaningOptions) } ?: result.uri
+                        primarySubtitleUri = cleanedResultUri
                         playCurrentVideoWithSubtitle(cleanedResultUri, resumeAt)
                         selectedSubtitleTrackKey = "downloaded"
                         selectedSubtitleTrackLabel = "English"; selectedSubtitleTrackSource = "OpenSubtitles"
@@ -873,6 +889,7 @@ fun VideoPlayerScreen(
                 val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
                 scope.launch {
                     val cleaned = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, Uri.fromFile(choice.file), subtitleCleaningOptions) } ?: Uri.fromFile(choice.file)
+                    primarySubtitleUri = cleaned
                     playCurrentVideoWithSubtitle(subtitleUri = cleaned, resumePosition = resumeAt)
                 }
                 selectedSubtitleTrackKey = choice.key
@@ -891,6 +908,7 @@ fun VideoPlayerScreen(
         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
         autoSubtitleStatus = "SRT loaded"
         val cleanedSrtUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, uri, subtitleCleaningOptions) } ?: uri
+        primarySubtitleUri = cleanedSrtUri
         playCurrentVideoWithSubtitle(subtitleUri = cleanedSrtUri, resumePosition = resumeAt)
         val pickedFile = uri.path?.let { java.io.File(it) }
         selectedSubtitleTrackKey = "local:${pickedFile?.absolutePath ?: uri.toString()}"
@@ -901,9 +919,15 @@ fun VideoPlayerScreen(
         pendingSrtUri = null
     }
 
-    LaunchedEffect(playerViewForSubtitleStyle, subtitleTextSizeSp, subtitleBottomPadding, subtitleAppearance) {
+    LaunchedEffect(playerViewForSubtitleStyle, subtitleTextSizeSp, subtitleBottomPadding, subtitleAppearance, dualSubtitlesEnabled) {
         val sv = playerViewForSubtitleStyle?.subtitleView
-        sv?.setUserDefaultStyle(); sv?.setApplyEmbeddedStyles(false); sv?.setApplyEmbeddedFontSizes(false)
+        sv?.setUserDefaultStyle()
+        // Embedded styling (the <font color="..."> tags dual mode injects)
+        // is normally OFF so CineVault's own styling stays authoritative —
+        // turned ON only while dual mode is active, since that's the one
+        // case that needs per-line color to actually distinguish the two
+        // languages. Reverts the instant dual mode is turned off.
+        sv?.setApplyEmbeddedStyles(dualSubtitlesEnabled); sv?.setApplyEmbeddedFontSizes(false)
         sv?.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleTextSizeSp)
         sv?.setBottomPaddingFraction(subtitleBottomPadding)
         sv?.setStyle(
@@ -973,6 +997,72 @@ fun VideoPlayerScreen(
         subtitleSyncOffset = (shiftMs / 1000f).coerceIn(-30f, 30f)
         showDriftDialog = false
         Toast.makeText(context, "Drift correction applied", Toast.LENGTH_SHORT).show()
+    }
+
+    // ── Dual Subtitles ─────────────────────────────────────────────────
+    // Finds a genuine secondary-language subtitle (not machine-translated
+    // — see SubtitleDualMerge.kt), downloads it to a LANGUAGE-SPECIFIC
+    // cache file (never the primary's cache slot), merges it under the
+    // primary via overlap-join, and applies the merged file as the active
+    // subtitle. Rebuilds automatically if the secondary language changes
+    // while dual mode is already on.
+    fun fetchAndApplyDualSecondary() {
+        val primary = primarySubtitleUri
+        if (primary == null) {
+            Toast.makeText(context, "Dual subtitles need a downloaded or local subtitle as the primary track", Toast.LENGTH_LONG).show()
+            dualSubtitlesEnabled = false
+            return
+        }
+        dualStatusText = "Searching ${friendlyLanguageName(dualSecondaryLanguage)} subtitles..."
+        scope.launch {
+            val searchQuery = OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path)
+            val searchResult = OpenSubtitlesClient.searchSubtitlesDetailed(searchQuery, language = dualSecondaryLanguage)
+            val bestFileId = (searchResult as? SubtitleSearchListResult.Success)?.results?.firstOrNull()?.fileId
+            if (bestFileId == null) {
+                dualStatusText = "No ${friendlyLanguageName(dualSecondaryLanguage)} subtitle found for this video"
+                Toast.makeText(context, dualStatusText, Toast.LENGTH_LONG).show()
+                dualSubtitlesEnabled = false
+                return@launch
+            }
+            dualStatusText = "Downloading ${friendlyLanguageName(dualSecondaryLanguage)} subtitle..."
+            val targetFile = OpenSubtitlesClient.secondaryLanguageCacheFile(context, currentVideo.path, dualSecondaryLanguage)
+            val downloadResult = OpenSubtitlesClient.downloadSubtitleToFile(targetFile, bestFileId)
+            if (downloadResult !is SubtitleDownloadResult.Success) {
+                dualStatusText = downloadResult.summary()
+                Toast.makeText(context, dualStatusText, Toast.LENGTH_LONG).show()
+                dualSubtitlesEnabled = false
+                return@launch
+            }
+            val merged = withContext(Dispatchers.IO) {
+                val primaryText = readTextFromUri(context, primary) ?: return@withContext null
+                val secondaryText = readTextFromUri(context, downloadResult.uri) ?: return@withContext null
+                val mergedText = mergeDualSubtitles(primaryText, secondaryText, dualSecondaryColorHex, dualGapLines)
+                try {
+                    val outFile = java.io.File(context.cacheDir, "cinevault_dual_merged.srt")
+                    outFile.writeText(mergedText)
+                    Uri.fromFile(outFile)
+                } catch (e: Exception) { null }
+            }
+            if (merged == null) {
+                dualStatusText = "Couldn't merge subtitles"
+                Toast.makeText(context, dualStatusText, Toast.LENGTH_LONG).show()
+                dualSubtitlesEnabled = false
+                return@launch
+            }
+            val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+            playCurrentVideoWithSubtitle(subtitleUri = merged, resumePosition = resumeAt, isOriginalSubtitle = false)
+            originalSubtitleUri = merged
+            appliedSubtitleOffsetMs = (subtitleSyncOffset * 1000f).toLong()
+            dualStatusText = "Dual subtitles: English + ${friendlyLanguageName(dualSecondaryLanguage)}"
+        }
+    }
+
+    fun disableDualSubtitles() {
+        dualSubtitlesEnabled = false
+        dualStatusText = ""
+        val primary = primarySubtitleUri ?: return
+        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+        playCurrentVideoWithSubtitle(subtitleUri = primary, resumePosition = resumeAt)
     }
 
     LaunchedEffect(showNextEpisodeOverlay, pendingNextEpisode) {
@@ -1577,6 +1667,23 @@ fun VideoPlayerScreen(
                 onBehaviorPrefsChange = { subtitleBehaviorPrefs = it; saveSubtitleBehaviorPrefs(context, it) },
                 cleaningOptions = subtitleCleaningOptions,
                 onCleaningOptionsChange = { subtitleCleaningOptions = it; saveSubtitleCleaningOptions(context, it) },
+                dualSubtitlesEnabled = dualSubtitlesEnabled,
+                dualCanEnable = primarySubtitleUri != null,
+                dualSecondaryLanguage = dualSecondaryLanguage,
+                dualGapLines = dualGapLines,
+                dualStatusText = dualStatusText,
+                onToggleDual = { enabled ->
+                    dualSubtitlesEnabled = enabled
+                    if (enabled) fetchAndApplyDualSecondary() else disableDualSubtitles()
+                },
+                onDualSecondaryLanguageChange = { lang ->
+                    dualSecondaryLanguage = lang
+                    if (dualSubtitlesEnabled) fetchAndApplyDualSecondary()
+                },
+                onDualGapLinesChange = { gap ->
+                    dualGapLines = gap
+                    if (dualSubtitlesEnabled) fetchAndApplyDualSecondary()
+                },
                 onDismiss = { showSubtitleStudio = false; showControls = true }
             )
         }
