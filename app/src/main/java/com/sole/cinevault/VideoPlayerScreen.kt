@@ -236,6 +236,7 @@ fun VideoPlayerScreen(
     var subtitleAppearance by remember { mutableStateOf(SubtitlePresets.CineVault) }
     var subtitlePreserveOriginalStyling by remember { mutableStateOf(false) }
     var subtitleGestureFeedback by remember { mutableStateOf("") }
+    var autoSyncStatus by remember { mutableStateOf<AutoSyncStatus>(AutoSyncStatus.Idle) }
     var showSubtitleStudio by remember { mutableStateOf(false) }
     var subtitleStudioInitialTab by remember { mutableStateOf(SubtitleStudioTab.TRACK) }
     var subtitleBehaviorPrefs by remember { mutableStateOf(loadSubtitleBehaviorPrefs(context)) }
@@ -623,6 +624,7 @@ fun VideoPlayerScreen(
         dualSubtitlesEnabled = false; dualStatusText = ""; primarySubtitleUri = null; audioLanguageCheckedForPath = null
         subtitlePreserveOriginalStyling = false
         subtitleGestureFeedback = ""
+        autoSyncStatus = AutoSyncStatus.Idle
         selectedSubtitleTrackKey = null; selectedSubtitleTrackLabel = ""; selectedSubtitleTrackSource = ""
         droppedFrameNudgeCount = 0; lastNudgeAtMs = 0L
         if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
@@ -1162,6 +1164,45 @@ fun VideoPlayerScreen(
         val primary = primarySubtitleUri ?: return
         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
         playCurrentVideoWithSubtitle(subtitleUri = primary, resumePosition = resumeAt)
+    }
+
+    // ── Auto-Sync (Phase 1: speech-timing only) ──────────────────────────
+    // Runs entirely off-main-thread (audio decode + VAD are real CPU work,
+    // not something to do on the composition thread). Reads the CURRENTLY
+    // SELECTED audio track's language so analysis matches what's actually
+    // playing, not just track 0 — a subtitle can be right for the main
+    // audio and wrong for a commentary track.
+    val autoSyncAvailable = primarySubtitleUri != null && !currentVideo.path.startsWith("smb://", ignoreCase = true)
+
+    fun runAutoSync() {
+        val primary = primarySubtitleUri
+        if (primary == null) {
+            Toast.makeText(context, "Auto-Sync needs a downloaded or local subtitle loaded first", Toast.LENGTH_LONG).show()
+            return
+        }
+        autoSyncStatus = AutoSyncStatus.Analyzing("Extracting audio…")
+        scope.launch {
+            val srtText = withContext(Dispatchers.IO) { readTextFromUri(context, primary) }
+            if (srtText == null) {
+                autoSyncStatus = AutoSyncStatus.Failed("Couldn't read the subtitle file")
+                return@launch
+            }
+            autoSyncStatus = AutoSyncStatus.Analyzing("Analysing dialogue…")
+            val audioLang = exoPlayer.currentTracks.groups
+                .firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
+                ?.let { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { idx -> g.getTrackFormat(idx).language } }
+            val result = withContext(Dispatchers.Default) {
+                AutoSyncEngine.run(context, currentVideo.path, audioLang, srtText)
+            }
+            autoSyncStatus = result
+        }
+    }
+
+    fun applyAutoSyncResult(result: SubtitleSyncResult) {
+        subtitleSyncOffset = (result.initialOffsetMs / 1000f).coerceIn(-10f, 10f)
+        autoSyncStatus = AutoSyncStatus.Idle
+        subtitleMenuTouchKey++
+        Toast.makeText(context, "Auto-Sync applied", Toast.LENGTH_SHORT).show()
     }
 
     LaunchedEffect(showNextEpisodeOverlay, pendingNextEpisode) {
@@ -1856,6 +1897,11 @@ fun VideoPlayerScreen(
                 onSyncOffsetChange = { subtitleSyncOffset = it; subtitleMenuTouchKey++ },
                 onDialogueSyncClick = { armDialogueSync() },
                 onDriftFixClick = { showSubtitleStudio = false; showDriftDialog = true },
+                autoSyncStatus = autoSyncStatus,
+                autoSyncAvailable = autoSyncAvailable,
+                onAutoSyncClick = { runAutoSync() },
+                onApplyAutoSync = { result -> applyAutoSyncResult(result) },
+                onCancelAutoSync = { autoSyncStatus = AutoSyncStatus.Idle },
                 presetName = subtitleAppearancePreset,
                 appearance = subtitleAppearance,
                 fontSizeSp = subtitleTextSizeSp,
