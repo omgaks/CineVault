@@ -19,7 +19,16 @@ import java.util.concurrent.TimeUnit
 // failure reason (HTTP code + the API's own error message) all the way back
 // to the player screen so it can be shown directly on-screen instead.
 sealed class SubtitleDownloadResult {
-    data class Success(val uri: Uri) : SubtitleDownloadResult()
+    // FIX: Success now carries the ACTUAL language that was downloaded.
+    // Previously the cache was hardcoded to a single ".en.srt" slot per
+    // video regardless of what language was actually requested/found, and
+    // every caller hardcoded the UI label to "English" — meaning a Hindi
+    // or Samoan download would silently show as "English" in Tracks, a
+    // second download in a different language would overwrite the first
+    // one's cache file, and "remember last language" could never work
+    // correctly. See subtitleCacheFile() below for the storage side of
+    // this fix.
+    data class Success(val uri: Uri, val language: String) : SubtitleDownloadResult()
     data class SearchHttpError(val code: Int, val detail: String) : SubtitleDownloadResult()
     data class NoResults(val triedTerms: List<String>) : SubtitleDownloadResult()
     data class DownloadHttpError(val code: Int, val detail: String) : SubtitleDownloadResult()
@@ -77,6 +86,11 @@ sealed class SubtitleSearchListResult {
     object NoResults : SubtitleSearchListResult()
 }
 
+// A single cached subtitle's identity — returned by findCachedSubtitle so
+// callers know not just WHERE the file is but WHAT LANGUAGE it actually is,
+// rather than assuming.
+data class CachedSubtitle(val uri: Uri, val language: String)
+
 object OpenSubtitlesClient {
 
     private val API_KEY: String get() = BuildConfig.OPENSUB_API_KEY
@@ -96,12 +110,26 @@ object OpenSubtitlesClient {
         return (result as? SubtitleDownloadResult.Success)?.uri
     }
 
-    // Fast, network-free check for a subtitle already downloaded for this
-    // exact video in a previous session. Lets the player attach it
-    // immediately on load instead of always kicking off a search first.
-    fun findCachedSubtitle(context: Context, videoPath: String): Uri? {
-        val file = subtitleCacheFile(context, videoPath)
-        return if (file.exists() && file.length() > 0) Uri.fromFile(file) else null
+    // FIX: now language-aware — checks each preferred language IN ORDER
+    // and returns both the URI and which language actually hit, instead
+    // of blindly checking a single hardcoded ".en.srt" slot regardless of
+    // what the person's actual language preference was. Returns null only
+    // if NONE of the preferred languages have a cached copy.
+    fun findCachedSubtitle(context: Context, videoPath: String, preferredLanguages: List<String>): CachedSubtitle? {
+        for (lang in preferredLanguages.ifEmpty { listOf("en") }) {
+            val file = subtitleCacheFile(context, videoPath, lang)
+            if (file.exists() && file.length() > 0) return CachedSubtitle(Uri.fromFile(file), lang)
+        }
+        return null
+    }
+
+    // Single-language convenience overload — for the few call sites that
+    // only ever care about one specific language (e.g. dual subtitles
+    // checking whether ITS OWN secondary language already has a cached
+    // copy before re-downloading it).
+    fun findCachedSubtitle(context: Context, videoPath: String, language: String): CachedSubtitle? {
+        val file = subtitleCacheFile(context, videoPath, language)
+        return if (file.exists() && file.length() > 0) CachedSubtitle(Uri.fromFile(file), language) else null
     }
 
     // Persistent (not OS-clearable) storage, keyed by a hash of the exact
@@ -150,8 +178,20 @@ object OpenSubtitlesClient {
         }
     }
 
-    private fun subtitleCacheFile(context: Context, videoPath: String): File =
-        File(subtitleCacheDir(context), "${subtitleCacheKey(videoPath)}.en.srt")
+    // FIX: now takes the actual language as a parameter and folds it into
+    // the filename — previously ALWAYS produced "<hash>.en.srt" no matter
+    // what language was actually downloaded, meaning a second download in
+    // a different language would silently overwrite the first, and Dual
+    // Subtitles needed a completely separate secondaryLanguageCacheFile()
+    // function just to avoid that collision. One function now; every
+    // language gets its own slot by construction, so the collision this
+    // was working around can't happen anymore. Public since VideoPlayer-
+    // Screen.kt's dual-subtitle code calls this directly (replacing the
+    // old dedicated secondaryLanguageCacheFile()).
+    fun subtitleCacheFile(context: Context, videoPath: String, language: String): File {
+        val normalizedLang = SubtitleLanguageRegistry.normalize(language) ?: language.take(2).lowercase().ifBlank { "en" }
+        return File(subtitleCacheDir(context), "${subtitleCacheKey(videoPath)}.$normalizedLang.srt")
+    }
 
     suspend fun downloadBestEnglishSubtitleDetailed(
         context: Context,
@@ -170,9 +210,9 @@ object OpenSubtitlesClient {
         languages: List<String>
     ): SubtitleDownloadResult = withContext(Dispatchers.IO) {
         try {
-            findCachedSubtitle(context, videoPath)?.let { cachedUri ->
-                Log.d(TAG, "Subtitle cache hit for $videoPath")
-                return@withContext SubtitleDownloadResult.Success(cachedUri)
+            findCachedSubtitle(context, videoPath, languages)?.let { cached ->
+                Log.d(TAG, "Subtitle cache hit for $videoPath (${cached.language})")
+                return@withContext SubtitleDownloadResult.Success(cached.uri, cached.language)
             }
 
             val cleanName = cleanMovieName(videoPath)
@@ -187,25 +227,30 @@ object OpenSubtitlesClient {
             Log.d(TAG, "Search attempts (in order): $attempts across languages: $languagesToTry")
 
             var fileId: Int? = null
+            // FIX: previously only the fileId was captured from the search
+            // loop — WHICH language actually succeeded was thrown away,
+            // which is exactly how a Hindi result ended up being cached
+            // and labeled as English elsewhere. Now tracked alongside it.
+            var succeededLanguage: String? = null
             var lastHttpError: Pair<Int, String>? = null
             outer@ for (lang in languagesToTry) {
                 for (attempt in attempts) {
                     when (val r = searchFileId(attempt, lang)) {
-                        is SearchAttemptResult.Found -> { fileId = r.fileId; break@outer }
+                        is SearchAttemptResult.Found -> { fileId = r.fileId; succeededLanguage = lang; break@outer }
                         is SearchAttemptResult.HttpError -> lastHttpError = r.code to r.bodyPreview
                         SearchAttemptResult.NoResults -> {}
                     }
                 }
             }
 
-            if (fileId == null) {
+            if (fileId == null || succeededLanguage == null) {
                 if (lastHttpError != null) {
                     return@withContext SubtitleDownloadResult.SearchHttpError(lastHttpError.first, lastHttpError.second)
                 }
                 return@withContext SubtitleDownloadResult.NoResults(attempts)
             }
 
-            finishDownload(subtitleCacheFile(context, videoPath), fileId)
+            finishDownload(subtitleCacheFile(context, videoPath, succeededLanguage), fileId, succeededLanguage)
         } catch (e: Exception) {
             Log.e(TAG, "Subtitle error: ${e.message}", e)
             SubtitleDownloadResult.UnexpectedError(e.message ?: e.javaClass.simpleName)
@@ -314,47 +359,45 @@ object OpenSubtitlesClient {
     // Downloads a specific, user-picked result by file_id — same
     // download-link + fetch + cache pipeline the auto-download path uses,
     // just entered from a chosen search result instead of the first hit.
+    // FIX: now takes the result's actual language so it's cached under the
+    // correct language-specific slot instead of always ".en.srt".
     suspend fun downloadSubtitleByFileId(
         context: Context,
         videoPath: String,
-        fileId: Int
+        fileId: Int,
+        language: String
     ): SubtitleDownloadResult = withContext(Dispatchers.IO) {
         try {
-            finishDownload(subtitleCacheFile(context, videoPath), fileId)
+            finishDownload(subtitleCacheFile(context, videoPath, language), fileId, language)
         } catch (e: Exception) {
             Log.e(TAG, "Download-by-id error: ${e.message}", e)
             SubtitleDownloadResult.UnexpectedError(e.message ?: e.javaClass.simpleName)
         }
     }
 
-    // Downloads to an ARBITRARY target file rather than this video's normal
-    // single-slot cache — used by Dual Subtitles to fetch a SECOND
-    // language's subtitle without overwriting whatever's cached for the
-    // primary language at the same video path. Without this, a dual-mode
-    // fetch would silently clobber the primary subtitle's cache file, since
-    // the normal cache key is per-VIDEO, not per-video-per-LANGUAGE.
-    suspend fun downloadSubtitleToFile(targetFile: File, fileId: Int): SubtitleDownloadResult = withContext(Dispatchers.IO) {
+    // Downloads to an ARBITRARY target file — used by Dual Subtitles when
+    // it needs precise control over the exact file location. Since
+    // subtitleCacheFile() is now itself language-aware (see FIX above),
+    // most callers should just use downloadSubtitleByFileId with the
+    // right language instead of this; this lower-level entry point still
+    // exists for that one case.
+    suspend fun downloadSubtitleToFile(targetFile: File, fileId: Int, language: String): SubtitleDownloadResult = withContext(Dispatchers.IO) {
         try {
-            finishDownload(targetFile, fileId)
+            finishDownload(targetFile, fileId, language)
         } catch (e: Exception) {
             Log.e(TAG, "Download-to-file error: ${e.message}", e)
             SubtitleDownloadResult.UnexpectedError(e.message ?: e.javaClass.simpleName)
         }
     }
 
-    // Public per-video-per-LANGUAGE cache path — same key derivation as the
-    // normal (English-only) subtitleCacheFile, just with the language
-    // folded into the filename so different languages for the same video
-    // never collide.
-    fun secondaryLanguageCacheFile(context: Context, videoPath: String, language: String): File =
-        File(subtitleCacheDir(context), "${subtitleCacheKey(videoPath)}.$language.srt")
-
-    // Shared tail end of both download paths — get the download link,
+    // Shared tail end of every download path — get the download link,
     // fetch the SRT body, write it to the given target file. Pulled out
     // so the manual result-picker, the automatic best-guess path, and the
     // dual-language path can't silently diverge in how a subtitle actually
-    // gets saved.
-    private fun finishDownload(targetFile: File, fileId: Int): SubtitleDownloadResult {
+    // gets saved. Now takes `language` purely to embed it in the returned
+    // Success result — the actual file location is entirely the caller's
+    // decision.
+    private fun finishDownload(targetFile: File, fileId: Int, language: String): SubtitleDownloadResult {
         val linkResult = getDownloadLink(fileId)
         val subtitleLink = when (linkResult) {
             is DownloadLinkResult.Found -> linkResult.link
@@ -372,7 +415,7 @@ object OpenSubtitlesClient {
         targetFile.parentFile?.mkdirs()
         targetFile.writeText(srtText, Charsets.UTF_8)
         Log.d(TAG, "Subtitle saved: ${targetFile.absolutePath}")
-        return SubtitleDownloadResult.Success(Uri.fromFile(targetFile))
+        return SubtitleDownloadResult.Success(Uri.fromFile(targetFile), language)
     }
 
     // Progressive fallback: full cleaned name -> name without year -> first 4
