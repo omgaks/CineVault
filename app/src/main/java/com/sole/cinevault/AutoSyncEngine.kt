@@ -54,7 +54,12 @@ object AutoSyncEngine {
     // the app — Auto-Sync can't produce a result the manual controls
     // couldn't also represent.
     private const val MAX_OFFSET_MS = 10_000L
-    private const val SEARCH_STEP_MS = 50L
+    // FIX: this used to be 50L, but SEARCH_STEP_MS / TIMELINE_STEP_MS (20L)
+    // is integer division — 50/20 truncates to 2, making the ACTUAL search
+    // step 40ms regardless of what this constant said. Set to the true
+    // value rather than changing search granularity as a side effect of
+    // fixing the discrepancy.
+    private const val SEARCH_STEP_MS = 40L
     private const val TIMELINE_STEP_MS = 20L
 
     private val TIMING_REGEX = Regex("(\\d{2}):(\\d{2}):(\\d{2}),(\\d{3})\\s*-->\\s*(\\d{2}):(\\d{2}):(\\d{2}),(\\d{3})")
@@ -74,6 +79,7 @@ object AutoSyncEngine {
         }
 
         val extracted = AutoSyncAudioExtractor.extractWindow(
+            context = context,
             filePath = videoPath,
             trackLanguage = audioTrackLanguage,
             startMs = WINDOW_START_MS,
@@ -201,12 +207,7 @@ object AutoSyncEngine {
         val maxOffsetSteps = (MAX_OFFSET_MS / TIMELINE_STEP_MS).toInt()
         val searchStepInSteps = (SEARCH_STEP_MS / TIMELINE_STEP_MS).toInt().coerceAtLeast(1)
 
-        var bestOffsetSteps = 0
-        var bestScore = -1.0
-        var secondBestScore = -1.0
-
-        var offsetSteps = -maxOffsetSteps
-        while (offsetSteps <= maxOffsetSteps) {
+        fun scoreAt(offsetSteps: Int): Double {
             var overlap = 0
             var subtitleActiveCount = 0
             for (i in subtitleTimeline.indices) {
@@ -215,17 +216,32 @@ object AutoSyncEngine {
                 val vadIdx = i + offsetSteps
                 if (vadIdx in vadTimeline.indices && vadTimeline[vadIdx]) overlap++
             }
-            val score = if (subtitleActiveCount > 0) overlap.toDouble() / subtitleActiveCount else 0.0
+            return if (subtitleActiveCount > 0) overlap.toDouble() / subtitleActiveCount else 0.0
+        }
 
-            if (score > bestScore) {
-                secondBestScore = bestScore
-                bestScore = score
-                bestOffsetSteps = offsetSteps
-            } else if (score > secondBestScore && abs(offsetSteps - bestOffsetSteps) > searchStepInSteps * 3) {
-                secondBestScore = score
-            }
+        // FIX: previously a single pass that set secondBestScore to
+        // whatever the PREVIOUS best was every time a new best was found —
+        // on a smooth score curve (the normal shape near a true peak),
+        // that previous best is almost always immediately ADJACENT to the
+        // new one, so "second best" ended up being a near-duplicate of the
+        // peak itself rather than a genuinely different candidate offset.
+        // That silently inflated the sharpness score computeConfidence()
+        // relies on. Two passes now: find the real best first, then only
+        // consider offsets far enough away (>3 search steps) as candidates
+        // for second-best, exactly matching what the confidence math
+        // documents it's doing.
+        val scores = mutableListOf<Pair<Int, Double>>()
+        var offsetSteps = -maxOffsetSteps
+        while (offsetSteps <= maxOffsetSteps) {
+            scores.add(offsetSteps to scoreAt(offsetSteps))
             offsetSteps += searchStepInSteps
         }
+
+        val (bestOffsetSteps, bestScore) = scores.maxByOrNull { it.second } ?: (0 to 0.0)
+        val exclusionRadius = searchStepInSteps * 3
+        val secondBestScore = scores
+            .filter { (offset, _) -> abs(offset - bestOffsetSteps) > exclusionRadius }
+            .maxOfOrNull { it.second } ?: 0.0
 
         val offsetMs = bestOffsetSteps * TIMELINE_STEP_MS
         return Triple(offsetMs, bestScore, secondBestScore.coerceAtLeast(0.0))
