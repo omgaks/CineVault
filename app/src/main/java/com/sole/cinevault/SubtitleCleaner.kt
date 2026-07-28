@@ -62,11 +62,41 @@ private val encodingFixMap = listOf(
     "\u00c2 " to " ", "\u00c2\u00b0" to "\u00b0", "\u00c3\u00a9" to "\u00e9", "\u00c3\u00a8" to "\u00e8", "\u00c3 " to "\u00e0"
 )
 
+// FIX (tolerant parser round): real-world subtitle files aren't always
+// textbook-clean SRT. Three specific gaps fixed here, each independently
+// confirmed to silently break parsing before this fix:
+//   1. A UTF-8 BOM (\uFEFF) at the very start of the file would corrupt
+//      the FIRST block's index field (it'd read as "\uFEFF1" instead of
+//      "1") — harmless for index itself since it's just a label, but a
+//      BOM anywhere else after unusual re-saving could land right before
+//      a timing line and break the "-->" check.
+//   2. Only \r\n (Windows CRLF) was normalized — a file saved with old
+//      Mac-style bare \r line endings would never split into blocks at
+//      all, since the block-boundary regex only looks for \n.
+//   3. A block missing its cue-NUMBER line (some malformed/hand-edited
+//      SRTs go straight to the timing line) was silently DROPPED
+//      entirely, losing that cue rather than recovering it.
 internal fun parseSrtBlocks(text: String): List<SrtBlock> {
     val blocks = mutableListOf<SrtBlock>()
-    val rawBlocks = text.replace("\r\n", "\n").split(Regex("\n\\s*\n"))
+    val normalized = text
+        .removePrefix("\uFEFF")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+    val rawBlocks = normalized.split(Regex("\n\\s*\n"))
     for (raw in rawBlocks) {
         val lines = raw.trim().split("\n")
+        if (lines.isEmpty()) continue
+
+        // Missing cue-number recovery: if the FIRST line already looks
+        // like a timing line, treat the block as having no explicit
+        // index rather than rejecting it outright.
+        if (lines[0].contains("-->")) {
+            val timing = lines[0].trim()
+            val textLines = lines.drop(1)
+            blocks.add(SrtBlock(index = "", timing = timing, lines = textLines))
+            continue
+        }
+
         if (lines.size < 2) continue
         val index = lines[0].trim()
         val timing = lines.getOrNull(1)?.trim() ?: continue
