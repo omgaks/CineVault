@@ -19,7 +19,6 @@ import android.view.WindowManager
 import android.widget.Toast
 import android.graphics.Color as AndroidColor
 import android.graphics.Bitmap
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.IntentSenderRequest
@@ -350,6 +349,16 @@ fun VideoPlayerScreen(
     // supported (pre-API 26), or if entering PiP throws for any device-
     // specific reason (same defensive pattern already used elsewhere on
     // this screen for orientation-lock calls).
+    //
+    // NOT wired to system back anymore (see removed BackHandler below) —
+    // BackHandler fires on EVERY back action, including left-edge swipe
+    // and the hardware back button, which are legitimate "go to the
+    // previous screen" gestures and should never trigger PiP. Only
+    // Home/Recents/task-switch (Activity.onUserLeaveHint(), which lives in
+    // MainActivity.kt, not this file) should ever trigger PiP-on-close.
+    // Left unused here until that's wired up — kept as a plain function so
+    // it's ready to call from the right place once MainActivity exposes
+    // that hook, instead of rebuilding this logic from scratch then.
     fun handleExitRequest() {
         if (isPlaying && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
@@ -362,8 +371,6 @@ fun VideoPlayerScreen(
         }
         onBack()
     }
-
-    BackHandler(enabled = true) { handleExitRequest() }
 
     fun closeAllMenus() {
         showAudioSelector = false
@@ -2062,7 +2069,7 @@ fun VideoPlayerScreen(
                         horizontalArrangement = Arrangement.spacedBy((7 * scale).dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        BackIconButton(size = smallButton, onClick = { handleExitRequest() })
+                        BackIconButton(size = smallButton, onClick = onBack)
 
                         GlassTransportButton(icon = Icons.Rounded.Replay10, size = smallButton) { exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0)); position = exoPlayer.currentPosition; showControls = true }
 
