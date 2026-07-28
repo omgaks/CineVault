@@ -84,7 +84,7 @@ object AutoSyncEngine {
     // roughly +-5%. A fitted scale outside this range almost certainly
     // means the three windows don't actually describe consistent drift —
     // reject rather than apply an implausible stretch factor.
-    private const val PLAUSIBLE_SCALE_RANGE = 0.90..1.10
+    private val PLAUSIBLE_SCALE_RANGE = 0.90..1.10
 
     private val TIMING_REGEX = Regex("(\\d{2}):(\\d{2}):(\\d{2})[,.](\\d{3})\\s*-->\\s*(\\d{2}):(\\d{2}):(\\d{2})[,.](\\d{3})")
 
