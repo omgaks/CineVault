@@ -11,19 +11,18 @@ import java.io.File
 // preferred-language priority order when multiple language matches exist.
 data class LocalSubtitleMatch(val file: File, val languageCode: String?, val isForced: Boolean, val isSdh: Boolean)
 
-private val LANGUAGE_TOKEN_MAP = mapOf(
-    "en" to "en", "eng" to "en", "english" to "en",
-    "hi" to "hi", "hin" to "hi", "hindi" to "hi",
-    "sm" to "sm", "smo" to "sm", "samoan" to "sm",
-    "fr" to "fr", "fre" to "fr", "fra" to "fr", "french" to "fr",
-    "es" to "es", "spa" to "es", "spanish" to "es"
-)
-
 // Parses "Movie.en.forced.srt" / "S01E05.eng.sdh.srt" / "Movie.srt" style
 // filenames into their language/forced/sdh components. Returns null
 // language when the file has no recognizable language token (bare
 // "Movie.srt" case) rather than guessing.
-private fun parseSubtitleFilename(fileName: String): Triple<String?, Boolean, Boolean> {
+//
+// FIX: previously used a private 5-language LANGUAGE_TOKEN_MAP here while
+// the rest of the app (track selector, search results, dual subtitles)
+// recognized 12+ — meaning a Korean or Arabic local subtitle file simply
+// wouldn't be recognized by name here even though the app fully supports
+// those languages everywhere else. Now delegates to the same registry
+// everything else uses.
+internal fun parseSubtitleFilename(fileName: String): Triple<String?, Boolean, Boolean> {
     val withoutExt = fileName.substringBeforeLast(".")
     val tokens = withoutExt.split(".").map { it.lowercase() }
     var language: String? = null
@@ -33,7 +32,7 @@ private fun parseSubtitleFilename(fileName: String): Triple<String?, Boolean, Bo
         when {
             token == "forced" -> forced = true
             token == "sdh" -> sdh = true
-            LANGUAGE_TOKEN_MAP.containsKey(token) && language == null -> language = LANGUAGE_TOKEN_MAP[token]
+            language == null -> SubtitleLanguageRegistry.normalize(token)?.let { language = it }
         }
     }
     return Triple(language, forced, sdh)
