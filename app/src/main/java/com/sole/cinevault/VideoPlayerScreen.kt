@@ -257,6 +257,7 @@ fun VideoPlayerScreen(
     // off can revert to the actual primary instead of getting stuck on a
     // merged file with nothing to un-merge from.
     var primarySubtitleUri by remember { mutableStateOf<Uri?>(null) }
+    var primarySubtitleLanguage by remember { mutableStateOf<String?>(null) }
     var audioLanguageCheckedForPath by remember { mutableStateOf<String?>(null) }
     var dualSubtitlesEnabled by remember { mutableStateOf(false) }
     var dualSecondaryLanguage by remember { mutableStateOf("hi") }
@@ -586,7 +587,7 @@ fun VideoPlayerScreen(
 
     fun applySearchResult(result: SubtitleSearchResult, alsoPlay: Boolean) {
         scope.launch {
-            val downloadResult = OpenSubtitlesClient.downloadSubtitleByFileId(context, currentVideo.path, result.fileId)
+            val downloadResult = OpenSubtitlesClient.downloadSubtitleByFileId(context, currentVideo.path, result.fileId, result.language)
             when (downloadResult) {
                 is SubtitleDownloadResult.Success -> {
                     if (alsoPlay) {
@@ -609,6 +610,7 @@ fun VideoPlayerScreen(
                         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
                         val cleanedApplyUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, downloadResult.uri, subtitleCleaningOptions) } ?: downloadResult.uri
                         primarySubtitleUri = cleanedApplyUri
+                        primarySubtitleLanguage = SubtitleLanguageRegistry.normalize(result.language)
                         playCurrentVideoWithSubtitle(subtitleUri = cleanedApplyUri, resumePosition = resumeAt)
                         showSubtitleSearch = false; showControls = true
                         Toast.makeText(context, "Subtitle applied", Toast.LENGTH_SHORT).show()
@@ -636,7 +638,7 @@ fun VideoPlayerScreen(
         originalSubtitleUri = null; appliedSubtitleOffsetMs = 0L; subtitleSyncOffset = 0.0f
         subtitleDriftScale = 1.0f; appliedSubtitleDriftScale = 1.0f; driftPointA = null; driftPointB = null
         dialogueSyncArmed = false; dialogueSyncReferenceMs = null; showDriftDialog = false
-        dualSubtitlesEnabled = false; dualStatusText = ""; primarySubtitleUri = null; audioLanguageCheckedForPath = null
+        dualSubtitlesEnabled = false; dualStatusText = ""; primarySubtitleUri = null; primarySubtitleLanguage = null; audioLanguageCheckedForPath = null
         subtitlePreserveOriginalStyling = false
         subtitleGestureFeedback = ""
         autoSyncStatus = AutoSyncStatus.Idle
@@ -645,39 +647,43 @@ fun VideoPlayerScreen(
         if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
         if (isRestrictedFolderMedia) updateRestrictedFolderLastPlayed(context, currentVideo.path, currentVideo.folderPath)
 
-        val cachedSubtitleUri = if (!isStreamMedia && canDownloadExternalSubtitles) {
-            withContext(Dispatchers.IO) { OpenSubtitlesClient.findCachedSubtitle(context, currentVideo.path) }
-        } else null
-
-        // Local-file match (spec: "Automatically load matching local
-        // subtitle") is checked BEFORE falling back to a network download —
-        // a subtitle already sitting next to the video file is both faster
-        // and more likely to be release-accurate than a network guess.
-        val localMatch = if (cachedSubtitleUri == null && !isStreamMedia && subtitleBehaviorPrefs.autoLoadMatchingLocalFile) {
+        // FIX: local-file match is now checked BEFORE the cached network
+        // subtitle, not after — previously an old cached OpenSubtitles
+        // download always won even when a local .srt sitting right next to
+        // the video (almost always more release-accurate) was available.
+        // A local match is also generally free/instant to check, so trying
+        // it first doesn't cost anything even when it doesn't pan out.
+        val localMatch = if (!isStreamMedia && subtitleBehaviorPrefs.autoLoadMatchingLocalFile) {
             withContext(Dispatchers.IO) { findBestMatchingLocalSubtitle(currentVideo.path, subtitleBehaviorPrefs.preferredLanguages) }
         } else null
 
+        val cachedSubtitle = if (localMatch == null && !isStreamMedia && canDownloadExternalSubtitles) {
+            withContext(Dispatchers.IO) { OpenSubtitlesClient.findCachedSubtitle(context, currentVideo.path, subtitleBehaviorPrefs.preferredLanguages) }
+        } else null
+
         when {
-            cachedSubtitleUri != null -> {
-                subtitlesEnabled = true
-                trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-                val cleanedCachedUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, cachedSubtitleUri, subtitleCleaningOptions) } ?: cachedSubtitleUri
-                primarySubtitleUri = cleanedCachedUri
-                playCurrentVideoWithSubtitle(cleanedCachedUri, savedPosition)
-                autoSubtitleAttemptedForPath = currentVideo.path
-                selectedSubtitleTrackKey = "downloaded"
-                selectedSubtitleTrackLabel = "English"; selectedSubtitleTrackSource = "OpenSubtitles"
-            }
             localMatch != null -> {
                 subtitlesEnabled = true
                 trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                 val localUri = Uri.fromFile(localMatch.file)
                 val cleanedLocalUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, localUri, subtitleCleaningOptions) } ?: localUri
                 primarySubtitleUri = cleanedLocalUri
+                primarySubtitleLanguage = localMatch.languageCode
                 playCurrentVideoWithSubtitle(cleanedLocalUri, savedPosition)
                 autoSubtitleAttemptedForPath = currentVideo.path
                 selectedSubtitleTrackKey = "local:${localMatch.file.absolutePath}"
                 selectedSubtitleTrackLabel = localMatch.file.name; selectedSubtitleTrackSource = "Local file"
+            }
+            cachedSubtitle != null -> {
+                subtitlesEnabled = true
+                trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
+                val cleanedCachedUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, cachedSubtitle.uri, subtitleCleaningOptions) } ?: cachedSubtitle.uri
+                primarySubtitleUri = cleanedCachedUri
+                primarySubtitleLanguage = cachedSubtitle.language
+                playCurrentVideoWithSubtitle(cleanedCachedUri, savedPosition)
+                autoSubtitleAttemptedForPath = currentVideo.path
+                selectedSubtitleTrackKey = "downloaded"
+                selectedSubtitleTrackLabel = friendlyLanguageName(cachedSubtitle.language); selectedSubtitleTrackSource = "OpenSubtitles"
             }
             else -> {
                 playCurrentVideoWithSubtitle(resumePosition = savedPosition)
@@ -685,7 +691,7 @@ fun VideoPlayerScreen(
         }
 
         if (!isStreamMedia && canDownloadExternalSubtitles && !isRestrictedFolderMedia &&
-            subtitleBehaviorPrefs.autoDownloadWhenMissing && cachedSubtitleUri == null && localMatch == null &&
+            subtitleBehaviorPrefs.autoDownloadWhenMissing && cachedSubtitle == null && localMatch == null &&
             autoSubtitleAttemptedForPath != currentVideo.path
         ) {
             autoSubtitleAttemptedForPath = currentVideo.path
@@ -702,9 +708,10 @@ fun VideoPlayerScreen(
                         autoSubtitleStatus = "Subtitle loaded"
                         val cleanedResultUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, result.uri, subtitleCleaningOptions) } ?: result.uri
                         primarySubtitleUri = cleanedResultUri
+                        primarySubtitleLanguage = SubtitleLanguageRegistry.normalize(result.language)
                         playCurrentVideoWithSubtitle(cleanedResultUri, resumeAt)
                         selectedSubtitleTrackKey = "downloaded"
-                        selectedSubtitleTrackLabel = friendlyLanguageName(subtitleBehaviorPrefs.preferredLanguages.firstOrNull()); selectedSubtitleTrackSource = "OpenSubtitles"
+                        selectedSubtitleTrackLabel = friendlyLanguageName(result.language); selectedSubtitleTrackSource = "OpenSubtitles"
                         delay(1400); autoSubtitleStatus = ""
                     } else {
                         autoSubtitleStatus = result.summary(); delay(3500); autoSubtitleStatus = ""
@@ -998,10 +1005,11 @@ fun VideoPlayerScreen(
                 scope.launch {
                     val cleaned = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, Uri.fromFile(choice.file), subtitleCleaningOptions) } ?: Uri.fromFile(choice.file)
                     primarySubtitleUri = cleaned
+                    primarySubtitleLanguage = SubtitleLanguageRegistry.normalize(choice.language)
                     playCurrentVideoWithSubtitle(subtitleUri = cleaned, resumePosition = resumeAt)
                 }
                 selectedSubtitleTrackKey = choice.key
-                selectedSubtitleTrackLabel = "English"; selectedSubtitleTrackSource = "OpenSubtitles"
+                selectedSubtitleTrackLabel = friendlyLanguageName(choice.language); selectedSubtitleTrackSource = "OpenSubtitles"
             }
             is SubtitleTrackChoice.Local -> {
                 pendingSrtUri = Uri.fromFile(choice.file)
@@ -1022,8 +1030,13 @@ fun VideoPlayerScreen(
         autoSubtitleStatus = "$formatLabel loaded"
         val cleanedSrtUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, uri, subtitleCleaningOptions) } ?: uri
         primarySubtitleUri = cleanedSrtUri
-        playCurrentVideoWithSubtitle(subtitleUri = cleanedSrtUri, resumePosition = resumeAt)
         val pickedFile = uri.path?.let { java.io.File(it) }
+        // Best-effort language detection from the filename itself (e.g.
+        // "Movie.hi.srt") using the same parser the auto-matcher uses —
+        // stays null (unknown) for a bare "Movie.srt" with no language
+        // token, which is a safe/honest fallback rather than guessing.
+        primarySubtitleLanguage = pickedFile?.name?.let { name -> parseSubtitleFilename(name).first }
+        playCurrentVideoWithSubtitle(subtitleUri = cleanedSrtUri, resumePosition = resumeAt)
         selectedSubtitleTrackKey = "local:${pickedFile?.absolutePath ?: uri.toString()}"
         selectedSubtitleTrackLabel = pickedFile?.name ?: "Subtitle file"; selectedSubtitleTrackSource = "Local file"
         showSubtitleSettings = false; showTrackSelector = false; showControls = true
@@ -1134,6 +1147,17 @@ fun VideoPlayerScreen(
             dualSubtitlesEnabled = false
             return
         }
+        // FIX: previously nothing stopped the secondary language from
+        // being the SAME as the primary — picking, say, English as both
+        // would silently "merge" a subtitle with itself. Now blocked with
+        // a clear message, using the real tracked primary language rather
+        // than guessing from preferences.
+        val normalizedSecondary = SubtitleLanguageRegistry.normalize(dualSecondaryLanguage)
+        if (primarySubtitleLanguage != null && normalizedSecondary != null && primarySubtitleLanguage == normalizedSecondary) {
+            Toast.makeText(context, "Secondary language can't be the same as the primary (${friendlyLanguageName(primarySubtitleLanguage)}) — pick a different one", Toast.LENGTH_LONG).show()
+            dualSubtitlesEnabled = false
+            return
+        }
         dualStatusText = "Searching ${friendlyLanguageName(dualSecondaryLanguage)} subtitles..."
         scope.launch {
             val searchQuery = OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path)
@@ -1146,8 +1170,13 @@ fun VideoPlayerScreen(
                 return@launch
             }
             dualStatusText = "Downloading ${friendlyLanguageName(dualSecondaryLanguage)} subtitle..."
-            val targetFile = OpenSubtitlesClient.secondaryLanguageCacheFile(context, currentVideo.path, dualSecondaryLanguage)
-            val downloadResult = OpenSubtitlesClient.downloadSubtitleToFile(targetFile, bestFileId)
+            // FIX: secondaryLanguageCacheFile() no longer exists — the main
+            // subtitleCacheFile() is itself language-aware now, so every
+            // language (primary or secondary) gets its own slot by
+            // construction and there's nothing special-case needed here
+            // anymore to avoid a collision.
+            val targetFile = OpenSubtitlesClient.subtitleCacheFile(context, currentVideo.path, dualSecondaryLanguage)
+            val downloadResult = OpenSubtitlesClient.downloadSubtitleToFile(targetFile, bestFileId, dualSecondaryLanguage)
             if (downloadResult !is SubtitleDownloadResult.Success) {
                 dualStatusText = downloadResult.summary()
                 Toast.makeText(context, dualStatusText, Toast.LENGTH_LONG).show()
@@ -1159,7 +1188,15 @@ fun VideoPlayerScreen(
                 val secondaryText = readTextFromUri(context, downloadResult.uri) ?: return@withContext null
                 val mergedText = mergeDualSubtitles(primaryText, secondaryText, dualSecondaryColorHex, dualGapLines)
                 try {
-                    val outFile = java.io.File(context.cacheDir, "cinevault_dual_merged.srt")
+                    // FIX: was a single fixed filename shared by every video
+                    // and every dual-merge request ("cinevault_dual_merged.
+                    // srt") — rapid changes or overlapping coroutines could
+                    // have one request's write clobber a file another
+                    // request/ExoPlayer was still reading. Now unique per
+                    // video + secondary language, matching the same fix
+                    // applied to the sync/clean temp files below.
+                    val uniqueName = "cinevault_dual_${OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path).hashCode()}_$normalizedSecondary.srt"
+                    val outFile = java.io.File(context.cacheDir, uniqueName)
                     outFile.writeText(mergedText)
                     Uri.fromFile(outFile)
                 } catch (e: Exception) { null }
@@ -1174,7 +1211,7 @@ fun VideoPlayerScreen(
             playCurrentVideoWithSubtitle(subtitleUri = merged, resumePosition = resumeAt, isOriginalSubtitle = false)
             originalSubtitleUri = merged
             appliedSubtitleOffsetMs = (subtitleSyncOffset * 1000f).toLong()
-            dualStatusText = "Dual subtitles: English + ${friendlyLanguageName(dualSecondaryLanguage)}"
+            dualStatusText = "Dual subtitles: ${if (primarySubtitleLanguage != null) friendlyLanguageName(primarySubtitleLanguage) else "Primary"} + ${friendlyLanguageName(dualSecondaryLanguage)}"
         }
     }
 
@@ -1734,8 +1771,8 @@ fun VideoPlayerScreen(
         }
         val downloadedTrackChoice = remember(currentVideo.path, showTrackSelector) {
             if (!canDownloadExternalSubtitles) null
-            else OpenSubtitlesClient.findCachedSubtitle(context, currentVideo.path)?.path?.let { path ->
-                SubtitleTrackChoice.Downloaded(file = java.io.File(path), language = "en")
+            else OpenSubtitlesClient.findCachedSubtitle(context, currentVideo.path, subtitleBehaviorPrefs.preferredLanguages)?.let { cached ->
+                cached.uri.path?.let { path -> SubtitleTrackChoice.Downloaded(file = java.io.File(path), language = cached.language) }
             }
         }
         val localFileChoices = remember(currentVideo.path, showTrackSelector) { findNearbySrtFiles(currentVideo.path) }
@@ -2310,7 +2347,14 @@ private fun buildShiftedSubtitleFile(context: Context, sourceUri: Uri, offsetMs:
     val original = readTextFromUri(context, sourceUri) ?: return null
     val shifted = SRT_TIME_REGEX.replace(original) { shiftSrtTimestampMatch(it, offsetMs, scale) }
     return try {
-        val outFile = java.io.File(context.cacheDir, "cinevault_synced_subtitle.srt")
+        // FIX: was a single fixed filename ("cinevault_synced_subtitle.srt")
+        // shared by EVERY video and EVERY offset/drift value — rapid sync
+        // adjustments or overlapping coroutines could have one request's
+        // write clobber a file ExoPlayer was still actively reading from a
+        // different request. Now unique per source file + exact transform
+        // parameters, so two different requests can never collide.
+        val uniqueName = "cinevault_synced_${sourceUri.hashCode()}_${offsetMs}_${scale.hashCode()}.srt"
+        val outFile = java.io.File(context.cacheDir, uniqueName)
         outFile.writeText(shifted)
         Uri.fromFile(outFile)
     } catch (e: Exception) { null }
@@ -2327,7 +2371,10 @@ private fun buildCleanedSubtitleFile(context: Context, sourceUri: Uri, options: 
     val original = readTextFromUri(context, sourceUri) ?: return null
     val cleaned = cleanSrtText(original, options)
     return try {
-        val outFile = java.io.File(context.cacheDir, "cinevault_cleaned_subtitle.srt")
+        // FIX: same shared-fixed-filename race as the sync file above —
+        // now unique per source file + the exact cleaning options applied.
+        val uniqueName = "cinevault_cleaned_${sourceUri.hashCode()}_${options.hashCode()}.srt"
+        val outFile = java.io.File(context.cacheDir, uniqueName)
         outFile.writeText(cleaned)
         Uri.fromFile(outFile)
     } catch (e: Exception) { null }
@@ -2812,13 +2859,7 @@ private fun FilledCircleHud(value: Int, maxValue: Int, color: Color, size: Dp) {
 
 private data class TrackPopupRowData(val title: String, val subtitle: String, val onClick: () -> Unit)
 
-private fun friendlyLanguageName(code: String?): String = when (code?.lowercase()) {
-    null, "", "und" -> "Unknown"; "en", "eng" -> "English"; "it", "ita" -> "Italian"
-    "ja", "jpn" -> "Japanese"; "hi", "hin" -> "Hindi"; "fr", "fre", "fra" -> "French"
-    "es", "spa" -> "Spanish"; "ko", "kor" -> "Korean"; "de", "ger", "deu" -> "German"
-    "pt", "por" -> "Portuguese"; "zh", "chi", "zho" -> "Chinese"; "ar", "ara" -> "Arabic"
-    "ru", "rus" -> "Russian"; else -> code?.uppercase() ?: "Unknown"
-}
+private fun friendlyLanguageName(code: String?): String = SubtitleLanguageRegistry.displayName(code)
 
 private fun cleanVideoTitle(path: String): String {
     var t = path.substringAfterLast("/").substringAfterLast("\\").substringBeforeLast(".")
