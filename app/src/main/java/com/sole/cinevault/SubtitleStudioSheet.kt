@@ -573,7 +573,7 @@ private fun AutoSyncSection(
         is AutoSyncStatus.Idle -> {
             if (!available) {
                 Text(
-                    text = "Not available for network shares yet, or no subtitle is loaded — try Dialogue Sync instead.",
+                    text = "Not available right now — needs an .srt subtitle as the primary track, a readable local/downloaded video, and no network share. Try Dialogue Sync instead.",
                     color = TextMuted, fontSize = 10.5.sp, lineHeight = 14.sp
                 )
             } else {
