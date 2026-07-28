@@ -1260,17 +1260,25 @@ fun VideoPlayerScreen(
                 .firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
                 ?.let { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { idx -> g.getTrackFormat(idx).language } }
             val result = withContext(Dispatchers.Default) {
-                AutoSyncEngine.run(context, currentVideo.path, audioLang, srtText)
+                AutoSyncEngine.run(context, currentVideo.path, exoPlayer.duration.coerceAtLeast(0L), audioLang, srtText)
             }
             autoSyncStatus = result
         }
     }
 
     fun applyAutoSyncResult(result: SubtitleSyncResult) {
+        // FIX: previously only ever applied initialOffsetMs — a drift
+        // result (timeScale != 1.0) would compute correctly but then
+        // silently have its scale discarded on Apply, leaving only the
+        // flat-offset portion in effect. Now applies both, through the
+        // exact same subtitleDriftScale state the manual "Fix Gradual
+        // Drift" tool already uses, so it goes through the identical
+        // reactive rebuild path.
         subtitleSyncOffset = (result.initialOffsetMs / 1000f).coerceIn(-10f, 10f)
+        subtitleDriftScale = result.timeScale.toFloat()
         autoSyncStatus = AutoSyncStatus.Idle
         subtitleMenuTouchKey++
-        Toast.makeText(context, "Auto-Sync applied", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, if (result.timeScale != 1.0) "Auto-Sync applied (drift correction)" else "Auto-Sync applied", Toast.LENGTH_SHORT).show()
     }
 
     LaunchedEffect(showNextEpisodeOverlay, pendingNextEpisode) {
