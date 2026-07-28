@@ -237,7 +237,7 @@ fun VideoPlayerScreen(
     var subtitleGestureFeedback by remember { mutableStateOf("") }
     var autoSyncStatus by remember { mutableStateOf<AutoSyncStatus>(AutoSyncStatus.Idle) }
     var showSubtitleStudio by remember { mutableStateOf(false) }
-    var subtitleStudioInitialTab by remember { mutableStateOf(SubtitleStudioTab.TRACK) }
+    var subtitleStudioInitialTab by remember { mutableStateOf<SubtitleStudioTab?>(null) }
     var subtitleBehaviorPrefs by remember { mutableStateOf(loadSubtitleBehaviorPrefs(context)) }
     var subtitleCleaningOptions by remember { mutableStateOf(loadSubtitleCleaningOptions(context)) }
     var subtitleMenuTouchKey by remember { mutableIntStateOf(0) }
@@ -1787,17 +1787,9 @@ fun VideoPlayerScreen(
             }
             SubtitleSettingsMenu(
                 isVisible = true,
-                subtitlesEnabled = subtitlesEnabled, hasInternalSubtitles = hasInternalSubtitles,
+                subtitlesEnabled = subtitlesEnabled,
                 activeTrackStatusText = statusText,
-            onInternalClick = {
-                if (hasInternalSubtitles) {
-                    subtitlesEnabled = true; trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build(); showSubtitleSettings = false; showControls = true
-                } else {
-                    showSubtitleSettings = false; showSrtBrowser = true; showControls = true
-                }
-                subtitleMenuTouchKey++
-            },
-            onDownloadClick = {
+            onFindClick = {
                 subtitleMenuTouchKey++
                 showSubtitleSettings = false
                 showSubtitleSearch = true
@@ -1806,7 +1798,6 @@ fun VideoPlayerScreen(
                     performSubtitleSearch(OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path), "", "")
                 }
             },
-            onPickFileClick = { showSubtitleSettings = false; showSrtBrowser = true; showControls = true },
             onTracksClick = { showSubtitleSettings = false; showTrackSelector = true; showControls = true; subtitleMenuTouchKey++ },
             onToggleSubtitles = {
                 subtitlesEnabled = !subtitlesEnabled
@@ -1817,12 +1808,11 @@ fun VideoPlayerScreen(
             onDismiss = { showSubtitleSettings = false; showControls = true },
             currentFontSize = subtitleTextSizeSp, onFontSizeChange = { subtitleTextSizeSp = it; showControls = true; subtitleMenuTouchKey++ },
             currentVerticalPosition = subtitleBottomPadding, onVerticalPositionChange = { subtitleBottomPadding = it; showControls = true; subtitleMenuTouchKey++ },
-            currentSyncOffset = subtitleSyncOffset, onSyncOffsetChange = { subtitleSyncOffset = it; showControls = true; subtitleMenuTouchKey++ },
-            onReset = { subtitleTextSizeSp = if (isLandscape) 18f else 16f; subtitleBottomPadding = 0.02f; subtitleSyncOffset = 0.0f; subtitleDriftScale = 1.0f; driftPointA = null; driftPointB = null; subtitlesEnabled = true; trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build(); showControls = true; subtitleMenuTouchKey++ },
-            onDialogueSyncClick = { armDialogueSync() },
-            onDriftFixClick = { showSubtitleSettings = false; showDriftDialog = true; showControls = true },
+            // New quick shortcut — jumps straight into the Studio's Timing
+            // tool (no standalone equivalent exists for this one, unlike
+            // Tracks/Style which reuse their existing standalone popups).
+            onSyncClick = { showSubtitleSettings = false; subtitleStudioInitialTab = SubtitleStudioTab.TIMING; showSubtitleStudio = true; showControls = true },
             onStyleClick = { showSubtitleSettings = false; showAppearanceStudio = true; showControls = true },
-            onOpenStudioClick = { showSubtitleSettings = false; subtitleStudioInitialTab = SubtitleStudioTab.TRACK; showSubtitleStudio = true; showControls = true },
             onUserInteraction = { subtitleMenuTouchKey++; showControls = true }
         )
         }
@@ -1932,8 +1922,9 @@ fun VideoPlayerScreen(
         }
 
         // Subtitle Studio — the "everything in one place" destination,
-        // reachable via the quick menu's footer button or a long-press on
-        // the subtitle icon. Centered and much larger than the anchored
+        // reachable via long-press on the subtitle icon (opens the Tools
+        // Grid) or a quick-menu shortcut icon (jumps straight into a
+        // specific tool). Centered and much larger than the anchored
         // popups above since it's a genuine destination, not a quick
         // action. Reuses the exact same track/style tab content as the
         // standalone sheets (see SubtitleStudioSheet.kt) so there's no
@@ -1954,6 +1945,14 @@ fun VideoPlayerScreen(
                 panelWidth = studioWidth,
                 panelMaxHeight = studioMaxHeight,
                 initialTab = subtitleStudioInitialTab,
+                onOpenSearch = {
+                    showSubtitleStudio = false
+                    showSubtitleSearch = true
+                    showControls = true
+                    if (subtitleSearchResults.isEmpty() && !subtitleSearchLoading) {
+                        performSubtitleSearch(OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path), "", "")
+                    }
+                },
                 embeddedTracks = embeddedTrackChoices,
                 downloadedTrack = downloadedTrackChoice,
                 localFiles = localFileChoices,
@@ -2183,7 +2182,7 @@ fun VideoPlayerScreen(
                                         },
                                         onLongClick = {
                                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            closeAllMenus(); subtitleStudioInitialTab = SubtitleStudioTab.TRACK; showSubtitleStudio = true; showControls = true
+                                            closeAllMenus(); subtitleStudioInitialTab = null; showSubtitleStudio = true; showControls = true
                                         }
                                     ),
                                 contentAlignment = Alignment.Center
