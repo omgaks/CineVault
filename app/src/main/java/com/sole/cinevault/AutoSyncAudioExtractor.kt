@@ -5,6 +5,9 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import java.nio.ByteOrder
 
 // ── Auto-Sync: audio extraction ──────────────────────────────────────────
@@ -36,7 +39,13 @@ object AutoSyncAudioExtractor {
     // actual file descriptor for those, not a path string. The interface
     // already implied content:// support (AutoSyncEngine.kt explicitly
     // checked for it); this makes the implementation actually match.
-    fun extractWindow(
+    // FIX: now suspend and cancellation-aware — the decode loop below can
+    // run for real seconds on a multi-minute audio window, and previously
+    // had no way to notice if the surrounding coroutine was cancelled
+    // (video changed, screen closed mid-analysis), so it would keep
+    // decoding to completion regardless. ensureActive() calls inside the
+    // loop below make it stop promptly instead.
+    suspend fun extractWindow(
         context: Context,
         filePath: String,
         trackLanguage: String?,
@@ -85,6 +94,7 @@ object AutoSyncAudioExtractor {
                 var iterationsWithoutProgress = 0
 
                 while (!sawOutputEOS && lastPresentationUs < endUs) {
+                    currentCoroutineContext().ensureActive()
                     if (!sawInputEOS) {
                         val inIndex = codec.dequeueInputBuffer(10_000)
                         if (inIndex >= 0) {
@@ -145,6 +155,8 @@ object AutoSyncAudioExtractor {
             val mono = downmixToMono(pcmChunks, sourceChannelCount)
             val resampled = resampleLinear(mono, sourceSampleRate, targetSampleRate)
             return ExtractedAudio(resampled, targetSampleRate)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             return null
         } finally {
