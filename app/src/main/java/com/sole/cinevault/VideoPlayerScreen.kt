@@ -589,15 +589,23 @@ fun VideoPlayerScreen(
             val downloadResult = OpenSubtitlesClient.downloadSubtitleByFileId(context, currentVideo.path, result.fileId)
             when (downloadResult) {
                 is SubtitleDownloadResult.Success -> {
-                    subtitlesEnabled = true
-                    trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-                    selectedSubtitleTrackKey = "downloaded"
-                    selectedSubtitleTrackLabel = friendlyLanguageName(result.language); selectedSubtitleTrackSource = "OpenSubtitles"
-                    if (subtitleBehaviorPrefs.rememberLastSelectedLanguage && result.language.isNotBlank()) {
-                        subtitleBehaviorPrefs = promoteLanguageToFront(subtitleBehaviorPrefs, result.language.take(2).lowercase())
-                        saveSubtitleBehaviorPrefs(context, subtitleBehaviorPrefs)
-                    }
                     if (alsoPlay) {
+                        // FIX: active-track state (subtitlesEnabled, track
+                        // selector, selectedSubtitleTrackKey/label/source,
+                        // and the remember-last-language promotion) used to
+                        // be set unconditionally above this check — meaning
+                        // "Save only" incorrectly marked this subtitle as
+                        // the ACTIVE one in the UI even though playback was
+                        // never touched. All of that now only happens when
+                        // the person actually chose to apply it.
+                        subtitlesEnabled = true
+                        trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
+                        selectedSubtitleTrackKey = "downloaded"
+                        selectedSubtitleTrackLabel = friendlyLanguageName(result.language); selectedSubtitleTrackSource = "OpenSubtitles"
+                        if (subtitleBehaviorPrefs.rememberLastSelectedLanguage && result.language.isNotBlank()) {
+                            subtitleBehaviorPrefs = promoteLanguageToFront(subtitleBehaviorPrefs, result.language.take(2).lowercase())
+                            saveSubtitleBehaviorPrefs(context, subtitleBehaviorPrefs)
+                        }
                         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
                         val cleanedApplyUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, downloadResult.uri, subtitleCleaningOptions) } ?: downloadResult.uri
                         primarySubtitleUri = cleanedApplyUri
@@ -1006,7 +1014,12 @@ fun VideoPlayerScreen(
         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
         subtitlesEnabled = true
         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-        autoSubtitleStatus = "SRT loaded"
+        // FIX: previously hardcoded "SRT loaded"/"SRT file loaded" even
+        // when the picked file was .vtt/.ass/.ssa/.ttml — now reflects
+        // what was actually loaded.
+        val pickedFormat = detectSubtitleFormat(uri)
+        val formatLabel = if (pickedFormat == SubtitleFormat.SRT || pickedFormat == SubtitleFormat.UNKNOWN) "Subtitle" else pickedFormat.label.substringBefore(" (")
+        autoSubtitleStatus = "$formatLabel loaded"
         val cleanedSrtUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, uri, subtitleCleaningOptions) } ?: uri
         primarySubtitleUri = cleanedSrtUri
         playCurrentVideoWithSubtitle(subtitleUri = cleanedSrtUri, resumePosition = resumeAt)
@@ -1014,7 +1027,7 @@ fun VideoPlayerScreen(
         selectedSubtitleTrackKey = "local:${pickedFile?.absolutePath ?: uri.toString()}"
         selectedSubtitleTrackLabel = pickedFile?.name ?: "Subtitle file"; selectedSubtitleTrackSource = "Local file"
         showSubtitleSettings = false; showTrackSelector = false; showControls = true
-        Toast.makeText(context, "SRT file loaded", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "$formatLabel file loaded", Toast.LENGTH_SHORT).show()
         delay(1400); autoSubtitleStatus = ""
         pendingSrtUri = null
     }
@@ -1179,7 +1192,18 @@ fun VideoPlayerScreen(
     // SELECTED audio track's language so analysis matches what's actually
     // playing, not just track 0 — a subtitle can be right for the main
     // audio and wrong for a commentary track.
-    val autoSyncAvailable = primarySubtitleUri != null && !currentVideo.path.startsWith("smb://", ignoreCase = true)
+    // FIX: previously only checked "a primary subtitle exists" + "not
+    // SMB" — didn't verify the subtitle was actually SRT (the ONLY format
+    // AutoSyncEngine's cue parser understands; a .vtt/.ass primary would
+    // silently fail deep inside the engine instead of being caught here)
+    // or that the video itself is a genuinely readable local/content
+    // source rather than some other unplayable state.
+    val primarySubtitleForAutoSync = primarySubtitleUri
+    val autoSyncAvailable = primarySubtitleForAutoSync != null &&
+        supportsCustomTextPipeline(detectSubtitleFormat(primarySubtitleForAutoSync)) &&
+        !isStreamMedia &&
+        !currentVideo.path.startsWith("smb://", ignoreCase = true) &&
+        (currentVideo.path.startsWith("content://", ignoreCase = true) || java.io.File(currentVideo.path).exists())
 
     fun runAutoSync() {
         val primary = primarySubtitleUri
