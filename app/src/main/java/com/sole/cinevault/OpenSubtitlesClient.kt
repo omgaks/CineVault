@@ -62,7 +62,15 @@ data class SubtitleSearchResult(
     val aiTranslated: Boolean,
     val machineTranslated: Boolean,
     val fromTrusted: Boolean,
-    val fps: Double?
+    val fps: Double?,
+    // True when this result came back from a moviehash-based lookup — the
+    // API's own moviehash_match flag. This is the STRONGEST possible
+    // confidence signal available (means the exact file bytes matched a
+    // release someone else already uploaded a subtitle against), stronger
+    // than "Trusted"/"Best Match", which are both just filename/metadata
+    // heuristics. Defaults false so this is non-breaking for every
+    // existing call site that builds a result from a plain text search.
+    val hashMatch: Boolean = false
 ) {
     // Best-effort source tag pulled from the release string itself (the API
     // doesn't return a separate structured field for this) — used for the
@@ -215,6 +223,28 @@ object OpenSubtitlesClient {
                 return@withContext SubtitleDownloadResult.Success(cached.uri, cached.language)
             }
 
+            val languagesToTry = languages.ifEmpty { listOf("en") }
+
+            // Hash-first: if these exact file bytes match a release someone
+            // already uploaded a subtitle against, that's strictly more
+            // reliable than any filename-based guess — no risk of a wrong
+            // season/episode, wrong cut, or coincidentally-similar title.
+            // Gracefully skipped (not an error) for content:// paths or
+            // files under OpenSubtitles' own 128KB minimum; falls through
+            // to the filename search below exactly as if this block wasn't
+            // here at all when no hash match is found.
+            val movieHash = MovieHash.compute(videoPath)
+            if (movieHash != null) {
+                for (lang in languagesToTry) {
+                    val hashResult = searchByHash(movieHash, lang)
+                    val bestHashMatch = (hashResult as? SubtitleSearchListResult.Success)?.results?.firstOrNull { it.hashMatch }
+                    if (bestHashMatch != null) {
+                        Log.d(TAG, "Hash match found for $videoPath ($lang)")
+                        return@withContext finishDownload(subtitleCacheFile(context, videoPath, lang), bestHashMatch.fileId, lang)
+                    }
+                }
+            }
+
             val cleanName = cleanMovieName(videoPath)
             Log.d(TAG, "Clean search name: $cleanName")
 
@@ -223,7 +253,6 @@ object OpenSubtitlesClient {
             }
 
             val attempts = buildSearchAttempts(cleanName)
-            val languagesToTry = languages.ifEmpty { listOf("en") }
             Log.d(TAG, "Search attempts (in order): $attempts across languages: $languagesToTry")
 
             var fileId: Int? = null
@@ -254,6 +283,54 @@ object OpenSubtitlesClient {
         } catch (e: Exception) {
             Log.e(TAG, "Subtitle error: ${e.message}", e)
             SubtitleDownloadResult.UnexpectedError(e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    // ── Hash-based search (moviehash) ────────────────────────────────────
+    // Sent WITHOUT a query/filename param, deliberately — OpenSubtitles'
+    // own API behavior (confirmed directly by their team on their forum)
+    // is that when BOTH query and moviehash are sent together, matching is
+    // done primarily on the query text, THEN filtered by hash — meaning a
+    // real hash match can be silently hidden if the filename doesn't also
+    // happen to satisfy the text search. Sending hash alone returns every
+    // file that matches those exact bytes, regardless of what it's named.
+    suspend fun searchByHash(hash: String, language: String = "en"): SubtitleSearchListResult = withContext(Dispatchers.IO) {
+        if (hash.isBlank()) return@withContext SubtitleSearchListResult.NoResults
+        try {
+            val searchUrl = "$BASE_URL/subtitles?moviehash=$hash&languages=$language&order_by=download_count&order_direction=desc"
+            val request = Request.Builder()
+                .url(searchUrl).get()
+                .addHeader("Api-Key", API_KEY)
+                .addHeader("User-Agent", USER_AGENT)
+                .addHeader("Accept", "application/json")
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful || body.isBlank()) {
+                    val detail = extractApiMessage(body) ?: "HTTP ${response.code}"
+                    return@withContext SubtitleSearchListResult.HttpError(response.code, detail)
+                }
+
+                val dataArray = JSONObject(body).optJSONArray("data") ?: return@withContext SubtitleSearchListResult.NoResults
+                val results = parseSearchResultsJson(dataArray, language)
+                if (results.isEmpty()) return@withContext SubtitleSearchListResult.NoResults
+
+                // Rank hash-confirmed matches first (should be everything,
+                // since we only asked for hash matches — but the API can
+                // still return a handful of near-misses on occasion), then
+                // by the same trust/quality signals the text search uses.
+                val ranked = results.sortedWith(
+                    compareByDescending<SubtitleSearchResult> { it.hashMatch }
+                        .thenByDescending { it.fromTrusted }
+                        .thenByDescending { !it.machineTranslated && !it.aiTranslated }
+                        .thenByDescending { it.downloadCount }
+                ).take(25)
+                SubtitleSearchListResult.Success(ranked)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Hash search error: ${e.message}", e)
+            SubtitleSearchListResult.HttpError(0, e.message ?: e.javaClass.simpleName)
         }
     }
 
@@ -294,41 +371,8 @@ object OpenSubtitlesClient {
                     return@withContext SubtitleSearchListResult.HttpError(response.code, detail)
                 }
 
-                val json = JSONObject(body)
-                val dataArray = json.optJSONArray("data") ?: return@withContext SubtitleSearchListResult.NoResults
-                val results = mutableListOf<SubtitleSearchResult>()
-
-                for (i in 0 until dataArray.length()) {
-                    val item = dataArray.optJSONObject(i) ?: continue
-                    val attrs = item.optJSONObject("attributes") ?: continue
-                    val files = attrs.optJSONArray("files") ?: continue
-                    if (files.length() == 0) continue
-                    val fileObj = files.optJSONObject(0) ?: continue
-                    val fileId = fileObj.optInt("file_id", -1)
-                    if (fileId <= 0) continue
-
-                    val ratingsObj = attrs.optJSONObject("ratings")
-                    val rating = attrs.optDouble("ratings", Double.NaN).let {
-                        if (!it.isNaN()) it else ratingsObj?.optDouble("value", 0.0) ?: 0.0
-                    }
-                    val fps = attrs.optDouble("fps", Double.NaN).takeIf { !it.isNaN() && it > 0.0 }
-
-                    results.add(
-                        SubtitleSearchResult(
-                            fileId = fileId,
-                            language = attrs.optString("language", language),
-                            release = attrs.optString("release", "").ifBlank { fileObj.optString("file_name", "Unknown release") },
-                            downloadCount = attrs.optInt("download_count", 0),
-                            rating = rating,
-                            hearingImpaired = attrs.optBoolean("hearing_impaired", false),
-                            forced = attrs.optBoolean("foreign_parts_only", false),
-                            aiTranslated = attrs.optBoolean("ai_translated", false),
-                            machineTranslated = attrs.optBoolean("machine_translated", false),
-                            fromTrusted = attrs.optBoolean("from_trusted", false),
-                            fps = fps
-                        )
-                    )
-                }
+                val dataArray = JSONObject(body).optJSONArray("data") ?: return@withContext SubtitleSearchListResult.NoResults
+                val results = parseSearchResultsJson(dataArray, language)
 
                 if (results.isEmpty()) return@withContext SubtitleSearchListResult.NoResults
 
@@ -354,6 +398,46 @@ object OpenSubtitlesClient {
             Log.e(TAG, "Search error: ${e.message}", e)
             SubtitleSearchListResult.HttpError(0, e.message ?: e.javaClass.simpleName)
         }
+    }
+
+    // Shared JSON->SubtitleSearchResult parsing used by both the hash and
+    // text search paths, so they can never silently diverge in what
+    // fields they extract.
+    private fun parseSearchResultsJson(dataArray: org.json.JSONArray, fallbackLanguage: String): List<SubtitleSearchResult> {
+        val results = mutableListOf<SubtitleSearchResult>()
+        for (i in 0 until dataArray.length()) {
+            val item = dataArray.optJSONObject(i) ?: continue
+            val attrs = item.optJSONObject("attributes") ?: continue
+            val files = attrs.optJSONArray("files") ?: continue
+            if (files.length() == 0) continue
+            val fileObj = files.optJSONObject(0) ?: continue
+            val fileId = fileObj.optInt("file_id", -1)
+            if (fileId <= 0) continue
+
+            val ratingsObj = attrs.optJSONObject("ratings")
+            val rating = attrs.optDouble("ratings", Double.NaN).let {
+                if (!it.isNaN()) it else ratingsObj?.optDouble("value", 0.0) ?: 0.0
+            }
+            val fps = attrs.optDouble("fps", Double.NaN).takeIf { !it.isNaN() && it > 0.0 }
+
+            results.add(
+                SubtitleSearchResult(
+                    fileId = fileId,
+                    language = attrs.optString("language", fallbackLanguage),
+                    release = attrs.optString("release", "").ifBlank { fileObj.optString("file_name", "Unknown release") },
+                    downloadCount = attrs.optInt("download_count", 0),
+                    rating = rating,
+                    hearingImpaired = attrs.optBoolean("hearing_impaired", false),
+                    forced = attrs.optBoolean("foreign_parts_only", false),
+                    aiTranslated = attrs.optBoolean("ai_translated", false),
+                    machineTranslated = attrs.optBoolean("machine_translated", false),
+                    fromTrusted = attrs.optBoolean("from_trusted", false),
+                    fps = fps,
+                    hashMatch = attrs.optBoolean("moviehash_match", false)
+                )
+            )
+        }
+        return results
     }
 
     // Downloads a specific, user-picked result by file_id — same
