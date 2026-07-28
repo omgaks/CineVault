@@ -1,8 +1,10 @@
 package com.sole.cinevault
 
+import android.content.Context
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import android.net.Uri
 import java.nio.ByteOrder
 
 // ── Auto-Sync: audio extraction ──────────────────────────────────────────
@@ -26,7 +28,16 @@ object AutoSyncAudioExtractor {
     // the person is actually listening to, not just "the first audio
     // track", since a subtitle can be correct for the main audio and wrong
     // for a commentary track (per the spec's audio-track-selection point).
+    //
+    // FIX: now takes Context and actually handles content:// URIs. This
+    // previously always called extractor.setDataSource(filePath) with the
+    // raw path string regardless of scheme — which silently fails (or
+    // throws) for SAF content:// URIs, since MediaExtractor needs an
+    // actual file descriptor for those, not a path string. The interface
+    // already implied content:// support (AutoSyncEngine.kt explicitly
+    // checked for it); this makes the implementation actually match.
     fun extractWindow(
+        context: Context,
         filePath: String,
         trackLanguage: String?,
         startMs: Long,
@@ -34,17 +45,19 @@ object AutoSyncAudioExtractor {
         targetSampleRate: Int = 16000
     ): ExtractedAudio? {
         val extractor = MediaExtractor()
+        var afd: android.content.res.AssetFileDescriptor? = null
         try {
-            extractor.setDataSource(filePath)
+            if (filePath.startsWith("content://", ignoreCase = true)) {
+                afd = context.contentResolver.openAssetFileDescriptor(Uri.parse(filePath), "r") ?: return null
+                extractor.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+            } else {
+                extractor.setDataSource(filePath)
+            }
 
             val audioTrackIndex = selectAudioTrackIndex(extractor, trackLanguage) ?: return null
             extractor.selectTrack(audioTrackIndex)
             val format = extractor.getTrackFormat(audioTrackIndex)
             val mime = format.getString(MediaFormat.KEY_MIME) ?: return null
-
-            val codec = MediaCodec.createDecoderByType(mime)
-            codec.configure(format, null, null, 0)
-            codec.start()
 
             val startUs = startMs * 1000L
             val endUs = startUs + durationMs * 1000L
@@ -52,69 +65,82 @@ object AutoSyncAudioExtractor {
 
             var sourceSampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE, 44100)
             var sourceChannelCount = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT, 2)
-
             val pcmChunks = mutableListOf<ShortArray>()
-            val bufferInfo = MediaCodec.BufferInfo()
-            var sawInputEOS = false
-            var sawOutputEOS = false
-            var lastPresentationUs = startUs
-            var iterationsWithoutProgress = 0
 
-            while (!sawOutputEOS && lastPresentationUs < endUs) {
-                if (!sawInputEOS) {
-                    val inIndex = codec.dequeueInputBuffer(10_000)
-                    if (inIndex >= 0) {
-                        val inputBuffer = codec.getInputBuffer(inIndex)
-                        val sampleSize = if (inputBuffer != null) extractor.readSampleData(inputBuffer, 0) else -1
-                        if (sampleSize < 0) {
-                            codec.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                            sawInputEOS = true
-                        } else {
-                            val pts = extractor.sampleTime
-                            codec.queueInputBuffer(inIndex, 0, sampleSize, pts, 0)
-                            extractor.advance()
+            // FIX: codec.stop()/release() previously only ran on the
+            // success path at the end of the decode loop — any exception
+            // thrown mid-decode (corrupt stream, codec error, etc.) skipped
+            // both calls entirely and leaked the native MediaCodec
+            // instance. Now in a finally scoped specifically to the
+            // codec's own lifetime, so every exit path releases it.
+            val codec = MediaCodec.createDecoderByType(mime)
+            try {
+                codec.configure(format, null, null, 0)
+                codec.start()
+
+                val bufferInfo = MediaCodec.BufferInfo()
+                var sawInputEOS = false
+                var sawOutputEOS = false
+                var lastPresentationUs = startUs
+                var iterationsWithoutProgress = 0
+
+                while (!sawOutputEOS && lastPresentationUs < endUs) {
+                    if (!sawInputEOS) {
+                        val inIndex = codec.dequeueInputBuffer(10_000)
+                        if (inIndex >= 0) {
+                            val inputBuffer = codec.getInputBuffer(inIndex)
+                            val sampleSize = if (inputBuffer != null) extractor.readSampleData(inputBuffer, 0) else -1
+                            if (sampleSize < 0) {
+                                codec.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                                sawInputEOS = true
+                            } else {
+                                val pts = extractor.sampleTime
+                                codec.queueInputBuffer(inIndex, 0, sampleSize, pts, 0)
+                                extractor.advance()
+                            }
+                        }
+                    }
+
+                    val outIndex = codec.dequeueOutputBuffer(bufferInfo, 10_000)
+                    when {
+                        outIndex >= 0 -> {
+                            iterationsWithoutProgress = 0
+                            lastPresentationUs = bufferInfo.presentationTimeUs
+                            val outputBuffer = codec.getOutputBuffer(outIndex)
+                            if (outputBuffer != null && bufferInfo.size > 0) {
+                                outputBuffer.order(ByteOrder.LITTLE_ENDIAN)
+                                outputBuffer.position(bufferInfo.offset)
+                                outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
+                                val shortBuf = outputBuffer.asShortBuffer()
+                                val chunk = ShortArray(shortBuf.remaining())
+                                shortBuf.get(chunk)
+                                pcmChunks.add(chunk)
+                            }
+                            codec.releaseOutputBuffer(outIndex, false)
+                            if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) sawOutputEOS = true
+                        }
+                        outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                            val newFormat = codec.outputFormat
+                            sourceSampleRate = newFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE, sourceSampleRate)
+                            sourceChannelCount = newFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT, sourceChannelCount)
+                        }
+                        else -> {
+                            // Neither an input nor output buffer was ready
+                            // this pass — normal occasionally, but if it
+                            // happens for too many consecutive iterations
+                            // something's stuck (corrupt/truncated stream)
+                            // rather than just slow, and this loop should
+                            // bail instead of spinning forever on a tablet
+                            // with no way to force-kill it.
+                            iterationsWithoutProgress++
+                            if (iterationsWithoutProgress > 500) { sawOutputEOS = true }
                         }
                     }
                 }
-
-                val outIndex = codec.dequeueOutputBuffer(bufferInfo, 10_000)
-                when {
-                    outIndex >= 0 -> {
-                        iterationsWithoutProgress = 0
-                        lastPresentationUs = bufferInfo.presentationTimeUs
-                        val outputBuffer = codec.getOutputBuffer(outIndex)
-                        if (outputBuffer != null && bufferInfo.size > 0) {
-                            outputBuffer.order(ByteOrder.LITTLE_ENDIAN)
-                            outputBuffer.position(bufferInfo.offset)
-                            outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
-                            val shortBuf = outputBuffer.asShortBuffer()
-                            val chunk = ShortArray(shortBuf.remaining())
-                            shortBuf.get(chunk)
-                            pcmChunks.add(chunk)
-                        }
-                        codec.releaseOutputBuffer(outIndex, false)
-                        if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) sawOutputEOS = true
-                    }
-                    outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                        val newFormat = codec.outputFormat
-                        sourceSampleRate = newFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE, sourceSampleRate)
-                        sourceChannelCount = newFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT, sourceChannelCount)
-                    }
-                    else -> {
-                        // Neither an input nor output buffer was ready this
-                        // pass — normal occasionally, but if it happens for
-                        // too many consecutive iterations something's stuck
-                        // (corrupt/truncated stream) rather than just slow,
-                        // and this loop should bail instead of spinning
-                        // forever on a tablet with no way to force-kill it.
-                        iterationsWithoutProgress++
-                        if (iterationsWithoutProgress > 500) { sawOutputEOS = true }
-                    }
-                }
+            } finally {
+                try { codec.stop() } catch (_: Exception) {}
+                codec.release()
             }
-
-            codec.stop()
-            codec.release()
 
             val mono = downmixToMono(pcmChunks, sourceChannelCount)
             val resampled = resampleLinear(mono, sourceSampleRate, targetSampleRate)
@@ -123,6 +149,7 @@ object AutoSyncAudioExtractor {
             return null
         } finally {
             extractor.release()
+            try { afd?.close() } catch (_: Exception) {}
         }
     }
 
