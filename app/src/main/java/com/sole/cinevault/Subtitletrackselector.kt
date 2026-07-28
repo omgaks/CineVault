@@ -234,20 +234,4 @@ private fun IconCircleSmall(icon: androidx.compose.ui.graphics.vector.ImageVecto
 // VideoPlayerScreen.kt's private friendlyLanguageName, since that one is
 // `private` to that file. Keeping this one small and local avoids exposing
 // a wider surface just for this.
-private fun friendlyLanguageDisplay(code: String?): String = when (code?.lowercase()?.trim()) {
-    null, "", "und", "unknown" -> "Unknown"
-    "en", "eng" -> "English"
-    "it", "ita" -> "Italian"
-    "ja", "jpn" -> "Japanese"
-    "hi", "hin" -> "Hindi"
-    "fr", "fre", "fra" -> "French"
-    "es", "spa" -> "Spanish"
-    "ko", "kor" -> "Korean"
-    "de", "ger", "deu" -> "German"
-    "pt", "por" -> "Portuguese"
-    "zh", "chi", "zho" -> "Chinese"
-    "ar", "ara" -> "Arabic"
-    "ru", "rus" -> "Russian"
-    "sm", "smo" -> "Samoan"
-    else -> code?.uppercase() ?: "Unknown"
-}
+private fun friendlyLanguageDisplay(code: String?): String = SubtitleLanguageRegistry.displayName(code)
