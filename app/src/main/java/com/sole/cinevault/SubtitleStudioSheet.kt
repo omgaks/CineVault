@@ -346,7 +346,7 @@ private fun StudioAdvancedTab(
     onDualSecondaryLanguageChange: (String) -> Unit,
     onDualGapLinesChange: (Int) -> Unit
 ) {
-    val languages = listOf("en" to "English", "hi" to "Hindi", "sm" to "Samoan", "fr" to "French", "es" to "Spanish")
+    val languages = SubtitleLanguageRegistry.allLanguages()
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         StudioSectionLabel("Preferred Languages (priority order)")
         Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
