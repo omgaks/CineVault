@@ -9,11 +9,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -33,29 +35,38 @@ import androidx.compose.ui.unit.sp
 import com.sole.cinevault.ui.theme.*
 import java.io.File
 
+// ── Studio tabs ───────────────────────────────────────────────────────────
+// FIX (UI redesign round): was TRACK/SYNC/STYLE/POSITION/ADVANCED (5 tabs,
+// with Position and Style artificially split even though the approved
+// mockup's own Style panel example shows Text Size and Vertical Offset
+// together in one place) — now 5 tabs matching the 6-tile Tools Grid minus
+// "Find" (which isn't a Studio tab at all; it closes Studio and opens the
+// separate Search sheet instead, same as it always has). Position's
+// controls now live inside Appearance; Dual Subtitles — previously buried
+// at the bottom of the old catch-all Advanced tab — is its own tool now.
 enum class SubtitleStudioTab(val label: String, val icon: ImageVector) {
-    TRACK("Track", Icons.Filled.ViewList),
-    SYNC("Sync", Icons.Filled.Sync),
-    STYLE("Style", Icons.Filled.Palette),
-    POSITION("Position", Icons.Filled.SwapVert),
-    ADVANCED("Advanced", Icons.Filled.Settings)
+    TRACK("Tracks", Icons.Filled.ViewList),
+    TIMING("Timing", Icons.Filled.Sync),
+    APPEARANCE("Appearance", Icons.Filled.Palette),
+    DUAL("Dual", Icons.Filled.SwapHoriz),
+    BEHAVIOUR("Behaviour", Icons.Filled.Settings)
 }
 
-// Vertical placement presets — approximated via bottom-padding-fraction
-// since that's the one positioning knob SubtitleView.setBottomPaddingFraction
-// actually exposes. There's no horizontal control or on-video drag yet
-// (that's gestures territory, #12 on the roadmap) — Position tab here only
-// covers vertical placement + the safe-area-aware presets from the spec.
 private val positionPresets = listOf(
     "Bottom" to 0.02f, "Above Controls" to 0.16f, "Centre" to 0.45f, "Top" to 0.85f
 )
+
+private sealed class StudioScreen {
+    object Grid : StudioScreen()
+    data class Tool(val tab: SubtitleStudioTab) : StudioScreen()
+}
 
 @Composable
 fun SubtitleStudioSheet(
     panelWidth: Dp,
     panelMaxHeight: Dp,
-    initialTab: SubtitleStudioTab,
-    // Track tab
+    initialTab: SubtitleStudioTab?,
+    onOpenSearch: () -> Unit,
     embeddedTracks: List<SubtitleTrackChoice.Embedded>,
     downloadedTrack: SubtitleTrackChoice.Downloaded?,
     localFiles: List<File>,
@@ -63,7 +74,6 @@ fun SubtitleStudioSheet(
     onSelectTrack: (SubtitleTrackChoice) -> Unit,
     onDeleteLocalTrack: (File) -> Unit,
     onOpenFilePicker: () -> Unit,
-    // Sync tab
     currentSyncOffset: Float,
     onSyncOffsetChange: (Float) -> Unit,
     onDialogueSyncClick: () -> Unit,
@@ -73,7 +83,6 @@ fun SubtitleStudioSheet(
     onAutoSyncClick: () -> Unit,
     onApplyAutoSync: (SubtitleSyncResult) -> Unit,
     onCancelAutoSync: () -> Unit,
-    // Style tab
     presetName: String,
     appearance: SubtitleAppearance,
     fontSizeSp: Float,
@@ -86,14 +95,8 @@ fun SubtitleStudioSheet(
     isAssOrSsaFormat: Boolean = false,
     preserveOriginalStyling: Boolean = false,
     onPreserveOriginalStylingChange: (Boolean) -> Unit = {},
-    // Position tab
     bottomPadding: Float,
     onBottomPaddingChange: (Float) -> Unit,
-    // Advanced tab
-    behaviorPrefs: SubtitleBehaviorPrefs,
-    onBehaviorPrefsChange: (SubtitleBehaviorPrefs) -> Unit,
-    cleaningOptions: SubtitleCleaningOptions,
-    onCleaningOptionsChange: (SubtitleCleaningOptions) -> Unit,
     dualSubtitlesEnabled: Boolean,
     dualCanEnable: Boolean,
     dualSecondaryLanguage: String,
@@ -102,9 +105,13 @@ fun SubtitleStudioSheet(
     onToggleDual: (Boolean) -> Unit,
     onDualSecondaryLanguageChange: (String) -> Unit,
     onDualGapLinesChange: (Int) -> Unit,
+    behaviorPrefs: SubtitleBehaviorPrefs,
+    onBehaviorPrefsChange: (SubtitleBehaviorPrefs) -> Unit,
+    cleaningOptions: SubtitleCleaningOptions,
+    onCleaningOptionsChange: (SubtitleCleaningOptions) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var selectedTab by remember { mutableStateOf(initialTab) }
+    var screen by remember { mutableStateOf<StudioScreen>(if (initialTab != null) StudioScreen.Tool(initialTab) else StudioScreen.Grid) }
     val haptics = LocalHapticFeedback.current
 
     Box(
@@ -114,37 +121,29 @@ fun SubtitleStudioSheet(
             .glassPanel(cornerRadius = 26.dp, fill = SpaceMid.copy(alpha = 0.98f))
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(14.dp)) {
+            val currentScreen = screen
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "Subtitle Studio", color = AmberCore, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                if (currentScreen is StudioScreen.Tool && initialTab == null) {
+                    Box(
+                        modifier = Modifier.size(26.dp).clip(CircleShape).background(GlassSurface).clickable {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            screen = StudioScreen.Grid
+                        },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back to tools", tint = TextBright, modifier = Modifier.size(14.dp))
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text(
+                    text = if (currentScreen is StudioScreen.Tool) currentScreen.tab.label else "Subtitle Studio",
+                    color = AmberCore, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)
+                )
                 Box(
                     modifier = Modifier.size(26.dp).clip(CircleShape).background(GlassSurface).clickable { onDismiss() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = TextBright, modifier = Modifier.size(14.dp))
-                }
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                SubtitleStudioTab.values().forEach { tab ->
-                    val selected = tab == selectedTab
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (selected) AmberGlow.copy(alpha = 0.18f) else Color.Transparent)
-                            .then(
-                                if (selected) Modifier.border(1.dp, Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.8f), AmberDeep.copy(alpha = 0.3f))), RoundedCornerShape(12.dp))
-                                else Modifier
-                            )
-                            .clickable { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); selectedTab = tab }
-                            .padding(vertical = 8.dp)
-                    ) {
-                        Icon(imageVector = tab.icon, contentDescription = tab.label, tint = if (selected) AmberCore else TextMuted, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.height(3.dp))
-                        Text(text = tab.label, color = if (selected) AmberCore else TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
                 }
             }
             Spacer(modifier = Modifier.height(12.dp))
@@ -155,66 +154,70 @@ fun SubtitleStudioSheet(
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                     val tabContentWidth = maxWidth
                     val tabContentHeight = maxHeight
-                    when (selectedTab) {
-                        SubtitleStudioTab.TRACK -> SubtitleTrackSelectorSheet(
-                            embeddedTracks = embeddedTracks,
-                            downloadedTrack = downloadedTrack,
-                            localFiles = localFiles,
-                            selectedKey = selectedTrackKey,
-                            popupWidth = tabContentWidth,
-                            popupMaxHeight = tabContentHeight,
-                            onSelect = onSelectTrack,
-                            onDeleteLocal = onDeleteLocalTrack,
-                            onOpenFilePicker = onOpenFilePicker,
-                            onDismiss = {}
+                    when (val s = currentScreen) {
+                        is StudioScreen.Grid -> SubtitleToolsGrid(
+                            onSelectTool = { tab -> haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); screen = StudioScreen.Tool(tab) },
+                            onOpenSearch = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); onOpenSearch() }
                         )
-                        SubtitleStudioTab.SYNC -> StudioSyncTab(
-                            currentSyncOffset = currentSyncOffset,
-                            onSyncOffsetChange = onSyncOffsetChange,
-                            onDialogueSyncClick = onDialogueSyncClick,
-                            onDriftFixClick = onDriftFixClick,
-                            autoSyncStatus = autoSyncStatus,
-                            autoSyncAvailable = autoSyncAvailable,
-                            onAutoSyncClick = onAutoSyncClick,
-                            onApplyAutoSync = onApplyAutoSync,
-                            onCancelAutoSync = onCancelAutoSync
-                        )
-                        SubtitleStudioTab.STYLE -> SubtitleAppearanceStudioSheet(
-                            presetName = presetName,
-                            appearance = appearance,
-                            fontSizeSp = fontSizeSp,
-                            popupWidth = tabContentWidth,
-                            popupMaxHeight = tabContentHeight,
-                            onApplyPreset = onApplyPreset,
-                            onForegroundChange = onForegroundChange,
-                            onEdgeTypeChange = onEdgeTypeChange,
-                            onEdgeColorChange = onEdgeColorChange,
-                            onBackgroundChange = onBackgroundChange,
-                            isAssOrSsaFormat = isAssOrSsaFormat,
-                            preserveOriginalStyling = preserveOriginalStyling,
-                            onPreserveOriginalStylingChange = onPreserveOriginalStylingChange,
-                            onDismiss = {}
-                        )
-                        SubtitleStudioTab.POSITION -> StudioPositionTab(
-                            fontSizeSp = fontSizeSp,
-                            onFontSizeChange = onFontSizeChange,
-                            bottomPadding = bottomPadding,
-                            onBottomPaddingChange = onBottomPaddingChange
-                        )
-                        SubtitleStudioTab.ADVANCED -> StudioAdvancedTab(
-                            prefs = behaviorPrefs,
-                            onChange = onBehaviorPrefsChange,
-                            cleaningOptions = cleaningOptions,
-                            onCleaningOptionsChange = onCleaningOptionsChange,
-                            dualEnabled = dualSubtitlesEnabled,
-                            dualCanEnable = dualCanEnable,
-                            dualSecondaryLanguage = dualSecondaryLanguage,
-                            dualGapLines = dualGapLines,
-                            dualStatusText = dualStatusText,
-                            onToggleDual = onToggleDual,
-                            onDualSecondaryLanguageChange = onDualSecondaryLanguageChange,
-                            onDualGapLinesChange = onDualGapLinesChange
-                        )
+                        is StudioScreen.Tool -> when (s.tab) {
+                            SubtitleStudioTab.TRACK -> SubtitleTrackSelectorSheet(
+                                embeddedTracks = embeddedTracks,
+                                downloadedTrack = downloadedTrack,
+                                localFiles = localFiles,
+                                selectedKey = selectedTrackKey,
+                                popupWidth = tabContentWidth,
+                                popupMaxHeight = tabContentHeight,
+                                onSelect = onSelectTrack,
+                                onDeleteLocal = onDeleteLocalTrack,
+                                onOpenFilePicker = onOpenFilePicker,
+                                onDismiss = {}
+                            )
+                            SubtitleStudioTab.TIMING -> StudioTimingTab(
+                                currentSyncOffset = currentSyncOffset,
+                                onSyncOffsetChange = onSyncOffsetChange,
+                                onDialogueSyncClick = onDialogueSyncClick,
+                                onDriftFixClick = onDriftFixClick,
+                                autoSyncStatus = autoSyncStatus,
+                                autoSyncAvailable = autoSyncAvailable,
+                                onAutoSyncClick = onAutoSyncClick,
+                                onApplyAutoSync = onApplyAutoSync,
+                                onCancelAutoSync = onCancelAutoSync
+                            )
+                            SubtitleStudioTab.APPEARANCE -> StudioAppearanceTab(
+                                presetName = presetName,
+                                appearance = appearance,
+                                fontSizeSp = fontSizeSp,
+                                onFontSizeChange = onFontSizeChange,
+                                popupWidth = tabContentWidth,
+                                popupMaxHeight = tabContentHeight,
+                                onApplyPreset = onApplyPreset,
+                                onForegroundChange = onForegroundChange,
+                                onEdgeTypeChange = onEdgeTypeChange,
+                                onEdgeColorChange = onEdgeColorChange,
+                                onBackgroundChange = onBackgroundChange,
+                                isAssOrSsaFormat = isAssOrSsaFormat,
+                                preserveOriginalStyling = preserveOriginalStyling,
+                                onPreserveOriginalStylingChange = onPreserveOriginalStylingChange,
+                                bottomPadding = bottomPadding,
+                                onBottomPaddingChange = onBottomPaddingChange
+                            )
+                            SubtitleStudioTab.DUAL -> StudioDualTab(
+                                dualEnabled = dualSubtitlesEnabled,
+                                dualCanEnable = dualCanEnable,
+                                dualSecondaryLanguage = dualSecondaryLanguage,
+                                dualGapLines = dualGapLines,
+                                dualStatusText = dualStatusText,
+                                onToggleDual = onToggleDual,
+                                onDualSecondaryLanguageChange = onDualSecondaryLanguageChange,
+                                onDualGapLinesChange = onDualGapLinesChange
+                            )
+                            SubtitleStudioTab.BEHAVIOUR -> StudioBehaviourTab(
+                                prefs = behaviorPrefs,
+                                onChange = onBehaviorPrefsChange,
+                                cleaningOptions = cleaningOptions,
+                                onCleaningOptionsChange = onCleaningOptionsChange
+                            )
+                        }
                     }
                 }
             }
@@ -223,7 +226,45 @@ fun SubtitleStudioSheet(
 }
 
 @Composable
-private fun StudioSyncTab(
+private fun SubtitleToolsGrid(onSelectTool: (SubtitleStudioTab) -> Unit, onOpenSearch: () -> Unit) {
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            ToolTile(icon = SubtitleStudioTab.TRACK.icon, label = SubtitleStudioTab.TRACK.label, modifier = Modifier.weight(1f)) { onSelectTool(SubtitleStudioTab.TRACK) }
+            ToolTile(icon = Icons.Filled.Search, label = "Find", modifier = Modifier.weight(1f)) { onOpenSearch() }
+            ToolTile(icon = SubtitleStudioTab.TIMING.icon, label = SubtitleStudioTab.TIMING.label, modifier = Modifier.weight(1f)) { onSelectTool(SubtitleStudioTab.TIMING) }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            ToolTile(icon = SubtitleStudioTab.APPEARANCE.icon, label = SubtitleStudioTab.APPEARANCE.label, modifier = Modifier.weight(1f)) { onSelectTool(SubtitleStudioTab.APPEARANCE) }
+            ToolTile(icon = SubtitleStudioTab.DUAL.icon, label = SubtitleStudioTab.DUAL.label, modifier = Modifier.weight(1f)) { onSelectTool(SubtitleStudioTab.DUAL) }
+            ToolTile(icon = SubtitleStudioTab.BEHAVIOUR.icon, label = SubtitleStudioTab.BEHAVIOUR.label, modifier = Modifier.weight(1f)) { onSelectTool(SubtitleStudioTab.BEHAVIOUR) }
+        }
+        Spacer(modifier = Modifier.height(14.dp))
+        Text(text = "Tap a tool for more options", color = TextMuted, fontSize = 10.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+@Composable
+private fun ToolTile(icon: ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Column(
+        modifier = modifier
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(16.dp))
+            .background(SpaceDeep.copy(alpha = 0.7f))
+            .border(1.dp, Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.5f), AmberDeep.copy(alpha = 0.2f))), RoundedCornerShape(16.dp))
+            .clickable { onClick() }
+            .padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(imageVector = icon, contentDescription = label, tint = AmberCore, modifier = Modifier.size(22.dp))
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(text = label, color = TextBright, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun StudioTimingTab(
     currentSyncOffset: Float,
     onSyncOffsetChange: (Float) -> Unit,
     onDialogueSyncClick: () -> Unit,
@@ -287,13 +328,46 @@ private fun StudioSyncTab(
 }
 
 @Composable
-private fun StudioPositionTab(
+private fun StudioAppearanceTab(
+    presetName: String,
+    appearance: SubtitleAppearance,
     fontSizeSp: Float,
     onFontSizeChange: (Float) -> Unit,
+    popupWidth: Dp,
+    popupMaxHeight: Dp,
+    onApplyPreset: (String, SubtitleAppearance) -> Unit,
+    onForegroundChange: (Int) -> Unit,
+    onEdgeTypeChange: (Int) -> Unit,
+    onEdgeColorChange: (Int) -> Unit,
+    onBackgroundChange: (Int) -> Unit,
+    isAssOrSsaFormat: Boolean,
+    preserveOriginalStyling: Boolean,
+    onPreserveOriginalStylingChange: (Boolean) -> Unit,
     bottomPadding: Float,
     onBottomPaddingChange: (Float) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        SubtitleAppearanceStudioSheet(
+            presetName = presetName,
+            appearance = appearance,
+            fontSizeSp = fontSizeSp,
+            popupWidth = popupWidth,
+            popupMaxHeight = popupMaxHeight,
+            onApplyPreset = onApplyPreset,
+            onForegroundChange = onForegroundChange,
+            onEdgeTypeChange = onEdgeTypeChange,
+            onEdgeColorChange = onEdgeColorChange,
+            onBackgroundChange = onBackgroundChange,
+            isAssOrSsaFormat = isAssOrSsaFormat,
+            preserveOriginalStyling = preserveOriginalStyling,
+            onPreserveOriginalStylingChange = onPreserveOriginalStylingChange,
+            onDismiss = {}
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
+        HorizontalDivider(color = GlassBorderBottom)
+        Spacer(modifier = Modifier.height(14.dp))
+
         StudioSectionLabel("Text Size")
         Text(text = "${fontSizeSp.toInt()}sp", color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         Slider(
@@ -332,11 +406,7 @@ private fun StudioPositionTab(
 }
 
 @Composable
-private fun StudioAdvancedTab(
-    prefs: SubtitleBehaviorPrefs,
-    onChange: (SubtitleBehaviorPrefs) -> Unit,
-    cleaningOptions: SubtitleCleaningOptions,
-    onCleaningOptionsChange: (SubtitleCleaningOptions) -> Unit,
+private fun StudioDualTab(
     dualEnabled: Boolean,
     dualCanEnable: Boolean,
     dualSecondaryLanguage: String,
@@ -345,6 +415,71 @@ private fun StudioAdvancedTab(
     onToggleDual: (Boolean) -> Unit,
     onDualSecondaryLanguageChange: (String) -> Unit,
     onDualGapLinesChange: (Int) -> Unit
+) {
+    val languages = SubtitleLanguageRegistry.allLanguages()
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        StudioSectionLabel("Dual Subtitles")
+        Text(
+            text = "Shows a second language underneath the primary one, using a real subtitle release for that language — not machine translation, which CineVault doesn't do. Only works when one exists.",
+            color = TextMuted, fontSize = 11.sp, lineHeight = 15.sp
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        if (!dualCanEnable) {
+            Text(
+                text = "Unavailable for the current track — dual mode needs a downloaded or local subtitle as the primary (not an embedded track).",
+                color = TextMuted, fontSize = 11.sp, lineHeight = 15.sp
+            )
+        } else {
+            StudioToggleRow(label = "Enable dual subtitles", checked = dualEnabled, onCheckedChange = onToggleDual)
+            if (dualEnabled) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(text = "Secondary language", color = Color(0xFFC9A765), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(5.dp))
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    languages.forEach { (code, label) ->
+                        val selected = dualSecondaryLanguage == code
+                        Text(
+                            text = label, color = if (selected) Color.Black else TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(if (selected) AmberCore else SpaceDeep.copy(alpha = 0.7f))
+                                .border(1.dp, if (selected) AmberCore else AmberCore.copy(alpha = 0.3f), RoundedCornerShape(50))
+                                .clickable { onDualSecondaryLanguageChange(code) }
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(text = "Gap between lines", color = Color(0xFFC9A765), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 5.dp)) {
+                    (0..2).forEach { n ->
+                        val selected = dualGapLines == n
+                        Text(
+                            text = if (n == 0) "None" else "$n line${if (n > 1) "s" else ""}", color = if (selected) Color.Black else TextBright,
+                            fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (selected) AmberCore else SpaceDeep.copy(alpha = 0.7f))
+                                .clickable { onDualGapLinesChange(n) }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+                if (dualStatusText.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(text = dualStatusText, color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudioBehaviourTab(
+    prefs: SubtitleBehaviorPrefs,
+    onChange: (SubtitleBehaviorPrefs) -> Unit,
+    cleaningOptions: SubtitleCleaningOptions,
+    onCleaningOptionsChange: (SubtitleCleaningOptions) -> Unit
 ) {
     val languages = SubtitleLanguageRegistry.allLanguages()
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -466,64 +601,6 @@ private fun StudioAdvancedTab(
                 color = AmberCore, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, lineHeight = 14.sp
             )
         }
-
-        Spacer(modifier = Modifier.height(20.dp))
-        HorizontalDivider(color = GlassBorderBottom)
-        Spacer(modifier = Modifier.height(14.dp))
-
-        StudioSectionLabel("Dual Subtitles")
-        Text(
-            text = "Shows a second language underneath the primary one, using a real subtitle release for that language — not machine translation, which CineVault doesn't do. Only works when one exists.",
-            color = TextMuted, fontSize = 10.sp, lineHeight = 14.sp
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        if (!dualCanEnable) {
-            Text(
-                text = "Unavailable for the current track — dual mode needs a downloaded or local subtitle as the primary (not an embedded track).",
-                color = TextMuted, fontSize = 10.sp, lineHeight = 14.sp
-            )
-        } else {
-            StudioToggleRow(label = "Enable dual subtitles", checked = dualEnabled, onCheckedChange = onToggleDual)
-            if (dualEnabled) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(text = "Secondary language", color = Color(0xFFC9A765), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(4.dp))
-                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    languages.forEach { (code, label) ->
-                        val selected = dualSecondaryLanguage == code
-                        Text(
-                            text = label, color = if (selected) Color.Black else TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(if (selected) AmberCore else SpaceDeep.copy(alpha = 0.7f))
-                                .border(1.dp, if (selected) AmberCore else AmberCore.copy(alpha = 0.3f), RoundedCornerShape(50))
-                                .clickable { onDualSecondaryLanguageChange(code) }
-                                .padding(horizontal = 14.dp, vertical = 8.dp)
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(text = "Gap between lines", color = Color(0xFFC9A765), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
-                    (0..2).forEach { n ->
-                        val selected = dualGapLines == n
-                        Text(
-                            text = if (n == 0) "None" else "$n line${if (n > 1) "s" else ""}", color = if (selected) Color.Black else TextBright,
-                            fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (selected) AmberCore else SpaceDeep.copy(alpha = 0.7f))
-                                .clickable { onDualGapLinesChange(n) }
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                        )
-                    }
-                }
-                if (dualStatusText.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = dualStatusText, color = AmberCore, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                }
-            }
-        }
     }
 }
 
@@ -556,11 +633,6 @@ private fun StudioActionButton(label: String, onClick: () -> Unit) {
     )
 }
 
-// Never shows "Perfect Sync" or any unconditional success claim — result
-// presentation is directly gated by the actual confidence score computed
-// in AutoSyncEngine.kt, matching the spec's three-tier (high/medium/low)
-// result design. Low confidence explicitly redirects to Dialogue Sync/
-// manual controls rather than offering to apply a guess.
 @Composable
 private fun AutoSyncSection(
     status: AutoSyncStatus,
