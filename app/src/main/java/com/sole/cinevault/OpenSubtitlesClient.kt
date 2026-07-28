@@ -70,7 +70,17 @@ data class SubtitleSearchResult(
     // than "Trusted"/"Best Match", which are both just filename/metadata
     // heuristics. Defaults false so this is non-breaking for every
     // existing call site that builds a result from a plain text search.
-    val hashMatch: Boolean = false
+    val hashMatch: Boolean = false,
+    // Which provider this result came from — defaults to OpenSubtitles so
+    // every existing call site is unaffected. SubDL results set this to
+    // "SubDL" and populate subDlDownloadPath below; OpenSubtitles results
+    // keep using fileId as they always have. Two different download
+    // mechanisms (OpenSubtitles: numeric file_id -> separate link-request
+    // step; SubDL: a ready-to-use relative URL straight from search) don't
+    // cleanly unify into one field, so both are carried and the download
+    // call site branches on `provider` to pick the right one.
+    val provider: String = "OpenSubtitles",
+    val subDlDownloadPath: String? = null
 ) {
     // Best-effort source tag pulled from the release string itself (the API
     // doesn't return a separate structured field for this) — used for the
@@ -273,6 +283,19 @@ object OpenSubtitlesClient {
             }
 
             if (fileId == null || succeededLanguage == null) {
+                // OpenSubtitles found nothing (or errored) across every
+                // language tried — try SubDL as a second provider before
+                // giving up entirely. Uses the same cleaned search name;
+                // SubDL's own search does its own internal matching.
+                for (lang in languagesToTry) {
+                    val subDlResult = SubDlClient.search(cleanName, null, null, lang)
+                    val best = (subDlResult as? SubtitleSearchListResult.Success)?.results?.firstOrNull()
+                    if (best?.subDlDownloadPath != null) {
+                        Log.d(TAG, "SubDL fallback match found for $videoPath ($lang)")
+                        return@withContext SubDlClient.downloadSubtitle(context, videoPath, best.subDlDownloadPath, lang)
+                    }
+                }
+
                 if (lastHttpError != null) {
                     return@withContext SubtitleDownloadResult.SearchHttpError(lastHttpError.first, lastHttpError.second)
                 }
