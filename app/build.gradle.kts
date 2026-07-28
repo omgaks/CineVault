@@ -41,6 +41,12 @@ android {
             "\"${localProperties.getProperty("OPENSUB_API_KEY", "")}\""
         )
 
+        buildConfigField(
+            "String",
+            "SUBDL_API_KEY",
+            "\"${localProperties.getProperty("SUBDL_API_KEY", "")}\""
+        )
+
         // sherpa-onnx (VAD, for Auto-Sync Phase 1) only ships jniLibs for
         // arm64-v8a in this project — that's the only ABI actually
         // committed under app/src/main/jniLibs/, matching both of Ash's
