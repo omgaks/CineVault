@@ -4,6 +4,9 @@ import android.content.Context
 import com.k2fsa.sherpa.onnx.SileroVadModelConfig
 import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -64,7 +67,11 @@ object AutoSyncEngine {
 
     private val TIMING_REGEX = Regex("(\\d{2}):(\\d{2}):(\\d{2}),(\\d{3})\\s*-->\\s*(\\d{2}):(\\d{2}):(\\d{2}),(\\d{3})")
 
-    fun run(
+    // FIX: now suspend — required since extractWindow() (called below) is
+    // now itself suspend/cancellation-aware, and this whole operation can
+    // run for real seconds of CPU work that should actually stop if the
+    // surrounding coroutine is cancelled (video changed, screen closed).
+    suspend fun run(
         context: Context,
         videoPath: String,
         audioTrackLanguage: String?,
@@ -92,6 +99,8 @@ object AutoSyncEngine {
 
         val vadTimeline = try {
             buildVadTimeline(context, extracted)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             return AutoSyncStatus.Failed("Speech detector failed to load: ${e.message ?: e.javaClass.simpleName}")
         }
@@ -121,7 +130,7 @@ object AutoSyncEngine {
         return if (confidence >= 0.6f) AutoSyncStatus.Success(result) else AutoSyncStatus.LowConfidence(result)
     }
 
-    private fun buildVadTimeline(context: Context, audio: AutoSyncAudioExtractor.ExtractedAudio): BooleanArray {
+    private suspend fun buildVadTimeline(context: Context, audio: AutoSyncAudioExtractor.ExtractedAudio): BooleanArray {
         val config = VadModelConfig(
             sileroVadModelConfig = SileroVadModelConfig(
                 model = "silero_vad.onnx",
@@ -151,6 +160,7 @@ object AutoSyncEngine {
             var samplesInCurrentStep = 0
 
             while (sampleIdx + windowSize <= audio.samples.size && stepIdx < totalSteps) {
+                currentCoroutineContext().ensureActive()
                 val chunk = audio.samples.copyOfRange(sampleIdx, sampleIdx + windowSize)
                 val prob = vad.compute(chunk)
                 if (prob >= config.sileroVadModelConfig.threshold) stepAccumulatorActive = true
