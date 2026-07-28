@@ -42,11 +42,24 @@ private val speakerLabelRegex = Regex("^\\s*[A-Z][A-Z0-9 .'\\-]{1,24}(\\s*\\([^)
 
 private val htmlTagRegex = Regex("</?[a-zA-Z][^>]*>")
 
-// Common mis-decoded UTF-8-as-Latin-1 sequences ("smart quotes" and similar
-// punctuation that got double-encoded somewhere in a subtitle's history).
+// Common mis-decoded UTF-8-as-Windows-1252 sequences ("smart quotes" and
+// dashes that got double-encoded somewhere in a subtitle's history). Each
+// entry is commented with the real UTF-8 byte sequence it corrects —
+// verified by direct computation, not assumption, since em-dash and
+// en-dash's mis-decoded forms differ ONLY in their third character
+// (U+201D vs U+201C) and are easy to conflate. Previously both dash
+// entries used a plain ASCII quote for that third character, making them
+// byte-for-byte identical strings — the second (en-dash) was silently
+// dead code, since .replace() calls are sequential and the first
+// matching entry always wins.
 private val encodingFixMap = listOf(
-    "â€™" to "'", "â€˜" to "'", "â€œ" to "\"", "â€\u009D" to "\"", "â€\"" to "—",
-    "â€\"" to "–", "Â " to " ", "Â°" to "°", "Ã©" to "é", "Ã¨" to "è", "Ã " to "à"
+    "\u00e2\u20ac\u2122" to "'",          // E2 80 99 -> right single quote
+    "\u00e2\u20ac\u2018" to "'",          // E2 80 98 -> left single quote
+    "\u00e2\u20ac\u0153" to "\"",         // E2 80 9C -> left double quote
+    "\u00e2\u20ac\u009D" to "\"",         // E2 80 9D -> right double quote, raw C1-passthrough variant
+    "\u00e2\u20ac\u201D" to "\u2014",     // E2 80 94 -> em dash — FIXED, was identical to the en-dash entry below
+    "\u00e2\u20ac\u201C" to "\u2013",     // E2 80 93 -> en dash — FIXED, was identical to the em-dash entry above
+    "\u00c2 " to " ", "\u00c2\u00b0" to "\u00b0", "\u00c3\u00a9" to "\u00e9", "\u00c3\u00a8" to "\u00e8", "\u00c3 " to "\u00e0"
 )
 
 internal fun parseSrtBlocks(text: String): List<SrtBlock> {
