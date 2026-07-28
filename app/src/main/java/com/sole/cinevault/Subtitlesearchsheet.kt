@@ -205,6 +205,7 @@ private fun SubtitleResultCard(
         )
 
         val badges = buildList {
+            if (result.hashMatch) add("Hash Match" to Color(0xFF6FCF97))
             if (isBestMatch) add("Best Match" to AmberCore)
             if (result.fromTrusted) add("Verified" to Color(0xFF6FCF97))
             result.sourceTag?.let { add(it to Color(0xFF56CCF2)) }
