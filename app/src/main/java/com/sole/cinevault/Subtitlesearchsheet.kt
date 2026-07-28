@@ -208,6 +208,7 @@ private fun SubtitleResultCard(
             if (result.hashMatch) add("Hash Match" to Color(0xFF6FCF97))
             if (isBestMatch) add("Best Match" to AmberCore)
             if (result.fromTrusted) add("Verified" to Color(0xFF6FCF97))
+            if (result.provider == "SubDL") add("SubDL" to Color(0xFFFFEE2A))
             result.sourceTag?.let { add(it to Color(0xFF56CCF2)) }
             if (result.hearingImpaired) add("SDH" to Color(0xFFBB86FC))
             if (result.forced) add("Forced" to Color(0xFFFF9800))
