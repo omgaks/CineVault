@@ -2314,7 +2314,16 @@ private fun findNearbySrtFiles(videoPath: String): List<java.io.File> {
     return results.toList()
 }
 
-private val SRT_TIME_REGEX = Regex("(\\d{2}):(\\d{2}):(\\d{2}),(\\d{3})")
+// FIX (tolerant parser round): accepts both comma (spec-correct SRT) and
+// dot (common in files converted from VTT, which uses dots) as the
+// milliseconds separator. Previously comma-only, so a dot-decimal file's
+// timestamps simply never matched this regex at all — sync/drift
+// adjustment silently did nothing rather than failing loudly. Output is
+// unaffected either way: shiftSrtTimestampMatch() below regenerates the
+// whole matched substring from scratch using comma, so a dot-decimal
+// input file gets normalized to spec-correct comma on its first shift,
+// which is a strict improvement, not a behavior change to guard against.
+private val SRT_TIME_REGEX = Regex("(\\d{2}):(\\d{2}):(\\d{2})[,.](\\d{3})")
 
 private fun readTextFromUri(context: Context, uri: Uri): String? {
     return try {
