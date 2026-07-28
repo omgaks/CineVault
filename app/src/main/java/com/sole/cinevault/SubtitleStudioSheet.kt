@@ -740,15 +740,31 @@ private fun AutoSyncResultCard(
             .border(1.dp, accentColor.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
             .padding(10.dp)
     ) {
+        // FIX: previously always labeled this "Offset:" and never showed
+        // timeScale at all — a drift correction (timeScale != 1.0) would
+        // apply correctly once tapped, but the person had no way to see
+        // that BEFORE applying it, since the card looked identical to a
+        // flat-offset result.
+        val isDrift = result.timeScale != 1.0
         Text(
-            text = if (highConfidence) "Auto-sync complete" else "Possible correction found",
+            text = if (highConfidence) {
+                if (isDrift) "Auto-sync complete (drift correction)" else "Auto-sync complete"
+            } else "Possible correction found",
             color = accentColor, fontSize = 12.sp, fontWeight = FontWeight.Bold
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = "Offset: ${if (offsetSeconds >= 0f) "+" else ""}${"%.2f".format(offsetSeconds)}s",
+            text = if (isDrift) "Starting offset: ${if (offsetSeconds >= 0f) "+" else ""}${"%.2f".format(offsetSeconds)}s"
+                else "Offset: ${if (offsetSeconds >= 0f) "+" else ""}${"%.2f".format(offsetSeconds)}s",
             color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.SemiBold
         )
+        if (isDrift) {
+            val driftPercent = (result.timeScale - 1.0) * 100.0
+            Text(
+                text = "Drift: ${if (driftPercent >= 0) "+" else ""}${"%.2f".format(driftPercent)}% — timing gradually shifts across the film, not just a fixed amount",
+                color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.SemiBold
+            )
+        }
         Text(
             text = "Confidence: ${(result.confidence * 100).toInt()}%",
             color = TextMuted, fontSize = 10.sp
