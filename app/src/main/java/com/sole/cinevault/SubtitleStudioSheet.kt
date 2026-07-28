@@ -68,6 +68,11 @@ fun SubtitleStudioSheet(
     onSyncOffsetChange: (Float) -> Unit,
     onDialogueSyncClick: () -> Unit,
     onDriftFixClick: () -> Unit,
+    autoSyncStatus: AutoSyncStatus,
+    autoSyncAvailable: Boolean,
+    onAutoSyncClick: () -> Unit,
+    onApplyAutoSync: (SubtitleSyncResult) -> Unit,
+    onCancelAutoSync: () -> Unit,
     // Style tab
     presetName: String,
     appearance: SubtitleAppearance,
@@ -167,7 +172,12 @@ fun SubtitleStudioSheet(
                             currentSyncOffset = currentSyncOffset,
                             onSyncOffsetChange = onSyncOffsetChange,
                             onDialogueSyncClick = onDialogueSyncClick,
-                            onDriftFixClick = onDriftFixClick
+                            onDriftFixClick = onDriftFixClick,
+                            autoSyncStatus = autoSyncStatus,
+                            autoSyncAvailable = autoSyncAvailable,
+                            onAutoSyncClick = onAutoSyncClick,
+                            onApplyAutoSync = onApplyAutoSync,
+                            onCancelAutoSync = onCancelAutoSync
                         )
                         SubtitleStudioTab.STYLE -> SubtitleAppearanceStudioSheet(
                             presetName = presetName,
@@ -217,9 +227,29 @@ private fun StudioSyncTab(
     currentSyncOffset: Float,
     onSyncOffsetChange: (Float) -> Unit,
     onDialogueSyncClick: () -> Unit,
-    onDriftFixClick: () -> Unit
+    onDriftFixClick: () -> Unit,
+    autoSyncStatus: AutoSyncStatus,
+    autoSyncAvailable: Boolean,
+    onAutoSyncClick: () -> Unit,
+    onApplyAutoSync: (SubtitleSyncResult) -> Unit,
+    onCancelAutoSync: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        StudioSectionLabel("Auto-Sync")
+        Text(
+            text = "Analyzes the actual audio's speech timing against the subtitle — offline, on-device, nothing leaves your phone.",
+            color = TextMuted, fontSize = 11.sp, lineHeight = 15.sp
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        AutoSyncSection(
+            status = autoSyncStatus,
+            available = autoSyncAvailable,
+            onStart = onAutoSyncClick,
+            onApply = onApplyAutoSync,
+            onCancel = onCancelAutoSync
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
         StudioSectionLabel("Delay")
         Text(
             text = if (currentSyncOffset >= 0f) "+${"%.1f".format(currentSyncOffset)}s (later)" else "${"%.1f".format(currentSyncOffset)}s (earlier)",
@@ -524,4 +554,108 @@ private fun StudioActionButton(label: String, onClick: () -> Unit) {
         text = label, color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Black,
         modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore).clickable { onClick() }.padding(horizontal = 16.dp, vertical = 9.dp)
     )
+}
+
+// Never shows "Perfect Sync" or any unconditional success claim — result
+// presentation is directly gated by the actual confidence score computed
+// in AutoSyncEngine.kt, matching the spec's three-tier (high/medium/low)
+// result design. Low confidence explicitly redirects to Dialogue Sync/
+// manual controls rather than offering to apply a guess.
+@Composable
+private fun AutoSyncSection(
+    status: AutoSyncStatus,
+    available: Boolean,
+    onStart: () -> Unit,
+    onApply: (SubtitleSyncResult) -> Unit,
+    onCancel: () -> Unit
+) {
+    when (status) {
+        is AutoSyncStatus.Idle -> {
+            if (!available) {
+                Text(
+                    text = "Not available for network shares yet, or no subtitle is loaded — try Dialogue Sync instead.",
+                    color = TextMuted, fontSize = 10.5.sp, lineHeight = 14.sp
+                )
+            } else {
+                StudioActionButton(label = "Start Auto-Sync") { onStart() }
+            }
+        }
+        is AutoSyncStatus.Analyzing -> {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(color = AmberCore, strokeWidth = 2.dp, modifier = Modifier.size(15.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = status.stage, color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        is AutoSyncStatus.Success -> AutoSyncResultCard(
+            result = status.result, highConfidence = true, onApply = { onApply(status.result) }, onCancel = onCancel
+        )
+        is AutoSyncStatus.LowConfidence -> AutoSyncResultCard(
+            result = status.result, highConfidence = false, onApply = { onApply(status.result) }, onCancel = onCancel
+        )
+        is AutoSyncStatus.Failed -> {
+            Column(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SpaceDeep.copy(alpha = 0.6f)).padding(10.dp)
+            ) {
+                Text(text = "Couldn't confidently sync this subtitle", color = TextBright, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = status.reason, color = TextMuted, fontSize = 10.5.sp, lineHeight = 14.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StudioActionButton(label = "Try Again") { onStart() }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AutoSyncResultCard(
+    result: SubtitleSyncResult,
+    highConfidence: Boolean,
+    onApply: () -> Unit,
+    onCancel: () -> Unit
+) {
+    val offsetSeconds = result.initialOffsetMs / 1000f
+    val accentColor = if (highConfidence) AmberCore else Color(0xFFFF9800)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(SpaceDeep.copy(alpha = 0.7f))
+            .border(1.dp, accentColor.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .padding(10.dp)
+    ) {
+        Text(
+            text = if (highConfidence) "Auto-sync complete" else "Possible correction found",
+            color = accentColor, fontSize = 12.sp, fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Offset: ${if (offsetSeconds >= 0f) "+" else ""}${"%.2f".format(offsetSeconds)}s",
+            color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = "Confidence: ${(result.confidence * 100).toInt()}%",
+            color = TextMuted, fontSize = 10.sp
+        )
+        if (!highConfidence) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Only a limited amount of matching dialogue was found — worth previewing before you commit, or try Dialogue Sync for a manually verified result.",
+                color = TextMuted, fontSize = 10.sp, lineHeight = 14.sp
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "Apply", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Black,
+                modifier = Modifier.clip(RoundedCornerShape(50)).background(accentColor).clickable { onApply() }.padding(horizontal = 14.dp, vertical = 7.dp)
+            )
+            Text(
+                text = "Cancel", color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.clip(RoundedCornerShape(50)).background(GlassSurface).clickable { onCancel() }.padding(horizontal = 14.dp, vertical = 7.dp)
+            )
+        }
+    }
 }
