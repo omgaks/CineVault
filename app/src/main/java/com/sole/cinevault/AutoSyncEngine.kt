@@ -65,7 +65,14 @@ object AutoSyncEngine {
     private const val SEARCH_STEP_MS = 40L
     private const val TIMELINE_STEP_MS = 20L
 
-    private val TIMING_REGEX = Regex("(\\d{2}):(\\d{2}):(\\d{2}),(\\d{3})\\s*-->\\s*(\\d{2}):(\\d{2}):(\\d{2}),(\\d{3})")
+    // FIX (tolerant parser round): accepts both comma and dot as the
+    // milliseconds separator — same gap as VideoPlayerScreen.kt's
+    // SRT_TIME_REGEX, fixed independently here since this file parses SRT
+    // timing on its own rather than sharing that regex. A dot-decimal
+    // subtitle (common from VTT conversions) previously produced zero
+    // matches here, meaning buildSubtitleTimeline() silently treated the
+    // entire subtitle as having no cues at all rather than failing loudly.
+    private val TIMING_REGEX = Regex("(\\d{2}):(\\d{2}):(\\d{2})[,.](\\d{3})\\s*-->\\s*(\\d{2}):(\\d{2}):(\\d{2})[,.](\\d{3})")
 
     // FIX: now suspend — required since extractWindow() (called below) is
     // now itself suspend/cancellation-aware, and this whole operation can
