@@ -3,6 +3,7 @@ package com.sole.cinevault
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -26,6 +27,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -122,7 +125,46 @@ fun SubtitleStudioSheet(
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(14.dp)) {
             val currentScreen = screen
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            val density = LocalDensity.current
+            // FIX: swipe-to-navigate-between-tools, scoped ONLY to this
+            // header strip — deliberately NOT applied to the tool content
+            // area below, which is full of sliders, toggles, and buttons
+            // (the Sync delay slider, Text Size slider, every toggle
+            // switch). A drag-gesture detector wrapping that whole area
+            // would intercept touches meant for those controls before
+            // they ever reached them, silently breaking every interactive
+            // element inside every tool. The header is small and mostly
+            // static (just the title + two icon buttons), so it's the
+            // only place this can safely live without that risk.
+            val swipeThresholdPx = with(density) { 56.dp.toPx() }
+            var headerDragAccumPx by remember { mutableStateOf(0f) }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .pointerInput(currentScreen) {
+                        detectHorizontalDragGestures(
+                            onDragStart = { headerDragAccumPx = 0f },
+                            onDragEnd = {
+                                val screenNow = screen
+                                if (screenNow is StudioScreen.Tool) {
+                                    val order = SubtitleStudioTab.values()
+                                    val idx = order.indexOf(screenNow.tab)
+                                    if (headerDragAccumPx <= -swipeThresholdPx && idx < order.lastIndex) {
+                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        screen = StudioScreen.Tool(order[idx + 1])
+                                    } else if (headerDragAccumPx >= swipeThresholdPx && idx > 0) {
+                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        screen = StudioScreen.Tool(order[idx - 1])
+                                    }
+                                }
+                            }
+                        ) { change, dragAmount ->
+                            change.consume()
+                            headerDragAccumPx += dragAmount
+                        }
+                    },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 if (currentScreen is StudioScreen.Tool && initialTab == null) {
                     Box(
                         modifier = Modifier.size(26.dp).clip(CircleShape).background(GlassSurface).clickable {
