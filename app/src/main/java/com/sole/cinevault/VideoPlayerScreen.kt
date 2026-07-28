@@ -118,6 +118,7 @@ import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import com.sole.cinevault.ui.theme.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -568,26 +569,52 @@ fun VideoPlayerScreen(
         subtitleSearchLoading = true
         subtitleSearchStatus = ""
         scope.launch {
-            val result = OpenSubtitlesClient.searchSubtitlesDetailed(
-                query = query,
-                season = seasonText.toIntOrNull(),
-                episode = episodeText.toIntOrNull(),
-                language = language,
-                preferForced = subtitleBehaviorPrefs.preferForced,
-                preferSdh = subtitleBehaviorPrefs.preferSdh
-            )
+            // Both providers queried concurrently rather than one after
+            // the other — they're independent network calls, no reason to
+            // make the person wait twice as long for a merged list.
+            val openSubsDeferred = async {
+                OpenSubtitlesClient.searchSubtitlesDetailed(
+                    query = query,
+                    season = seasonText.toIntOrNull(),
+                    episode = episodeText.toIntOrNull(),
+                    language = language,
+                    preferForced = subtitleBehaviorPrefs.preferForced,
+                    preferSdh = subtitleBehaviorPrefs.preferSdh
+                )
+            }
+            val subDlDeferred = async {
+                SubDlClient.search(query, seasonText.toIntOrNull(), episodeText.toIntOrNull(), language)
+            }
+            val openSubsResult = openSubsDeferred.await()
+            val subDlResult = subDlDeferred.await()
+
             subtitleSearchLoading = false
-            when (result) {
-                is SubtitleSearchListResult.Success -> { subtitleSearchResults = result.results; subtitleSearchStatus = "" }
-                is SubtitleSearchListResult.HttpError -> { subtitleSearchResults = emptyList(); subtitleSearchStatus = "Search error: ${result.detail}" }
-                SubtitleSearchListResult.NoResults -> { subtitleSearchResults = emptyList(); subtitleSearchStatus = "No subtitles found for this search" }
+            val openSubsList = (openSubsResult as? SubtitleSearchListResult.Success)?.results.orEmpty()
+            val subDlList = (subDlResult as? SubtitleSearchListResult.Success)?.results.orEmpty()
+            // OpenSubtitles first (already ranked by its own match-scoring
+            // above), SubDL appended after — the two providers' relevance
+            // scores aren't directly comparable, so concatenating rather
+            // than trying to cross-rank them is the honest choice here.
+            val merged = openSubsList + subDlList
+
+            when {
+                merged.isNotEmpty() -> { subtitleSearchResults = merged; subtitleSearchStatus = "" }
+                openSubsResult is SubtitleSearchListResult.HttpError -> { subtitleSearchResults = emptyList(); subtitleSearchStatus = "Search error: ${openSubsResult.detail}" }
+                else -> { subtitleSearchResults = emptyList(); subtitleSearchStatus = "No subtitles found for this search" }
             }
         }
     }
 
     fun applySearchResult(result: SubtitleSearchResult, alsoPlay: Boolean) {
         scope.launch {
-            val downloadResult = OpenSubtitlesClient.downloadSubtitleByFileId(context, currentVideo.path, result.fileId, result.language)
+            // Provider-specific download flow — OpenSubtitles uses a
+            // numeric file_id needing a separate link-request step, SubDL
+            // hands back a ready-to-use relative URL straight from search.
+            val downloadResult = if (result.provider == "SubDL" && result.subDlDownloadPath != null) {
+                SubDlClient.downloadSubtitle(context, currentVideo.path, result.subDlDownloadPath, result.language)
+            } else {
+                OpenSubtitlesClient.downloadSubtitleByFileId(context, currentVideo.path, result.fileId, result.language)
+            }
             when (downloadResult) {
                 is SubtitleDownloadResult.Success -> {
                     if (alsoPlay) {
