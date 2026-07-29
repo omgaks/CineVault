@@ -2081,8 +2081,14 @@ fun VideoPlayerScreen(
             // icon-anchored since the main controls are hidden behind it
             // now anyway (see hideControlsForLargeSheet), so there's no
             // need to dodge the subtitle icon's position anymore.
-            val searchWidth = if (isLandscape) (maxWidth.value * 0.56f).dp.coerceIn(320.dp, 480.dp)
-                else (maxWidth.value * 0.90f).dp.coerceAtMost(400.dp)
+            // FIX (D2): caps raised from the old single-column sizing
+            // (480dp landscape / 400dp portrait) — now holding two
+            // side-by-side columns, each needs enough room for a full
+            // result card (badges, Apply/Save buttons) without feeling
+            // cramped, especially on a tablet where there's real space to
+            // use.
+            val searchWidth = if (isLandscape) (maxWidth.value * 0.72f).dp.coerceIn(320.dp, 620.dp)
+                else (maxWidth.value * 0.94f).dp.coerceAtMost(480.dp)
             val searchMaxHeight = if (isCompactLandscape) (maxHeight.value * 0.76f).dp.coerceAtMost(280.dp)
                 else if (isLandscape) (maxHeight.value * 0.78f).dp.coerceAtMost(360.dp)
                 else (maxHeight.value * 0.65f).dp.coerceAtMost(580.dp)
