@@ -1972,6 +1972,9 @@ fun VideoPlayerScreen(
                 else (maxHeight.value * 0.65f).dp.coerceAtMost(580.dp)
             SubtitleSearchSheet(
                 initialQuery = remember(currentVideo.path) { OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path) },
+                containerWidth = maxWidth,
+                containerHeight = maxHeight,
+                onUserInteraction = { subtitleMenuTouchKey++ },
                 initialSeason = "",
                 initialEpisode = "",
                 results = subtitleSearchResults,
@@ -2181,7 +2184,8 @@ fun VideoPlayerScreen(
                     dualGapLines = gap
                     if (dualSubtitlesEnabled) fetchAndApplyDualSecondary()
                 },
-                onDismiss = { showSubtitleStudio = false; showControls = true }
+                onDismiss = { showSubtitleStudio = false; showControls = true },
+                onUserInteraction = { subtitleMenuTouchKey++ }
             )
         }
 
