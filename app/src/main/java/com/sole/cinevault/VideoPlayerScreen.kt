@@ -778,7 +778,15 @@ fun VideoPlayerScreen(
                         subtitlesEnabled = true
                         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                         selectedSubtitleTrackKey = "downloaded"
-                        selectedSubtitleTrackLabel = friendlyLanguageName(result.language); selectedSubtitleTrackSource = "OpenSubtitles"
+                        // FIX: was hardcoded to "OpenSubtitles" regardless
+                        // of which provider actually supplied this result
+                        // — meaning a successfully-applied SubDL subtitle
+                        // would show up in Track Selector mislabeled as
+                        // OpenSubtitles, with no SubDL entry ever visible.
+                        // From the outside that looks exactly like "SubDL
+                        // apply does nothing," when the download and apply
+                        // may have genuinely worked the whole time.
+                        selectedSubtitleTrackLabel = friendlyLanguageName(result.language); selectedSubtitleTrackSource = result.provider
                         if (subtitleBehaviorPrefs.rememberLastSelectedLanguage && result.language.isNotBlank()) {
                             subtitleBehaviorPrefs = promoteLanguageToFront(subtitleBehaviorPrefs, result.language.take(2).lowercase())
                             saveSubtitleBehaviorPrefs(context, subtitleBehaviorPrefs)
@@ -1743,12 +1751,20 @@ fun VideoPlayerScreen(
                                 val pan = event.calculatePan()
                                 if (zoom != 1f || pan != Offset.Zero) {
                                     event.changes.forEach { if (it.positionChanged()) it.consume() }
-                                    if (zoom != 1f) {
-                                        videoScale = (videoScale * zoom).coerceIn(1f, 3f)
-                                    } else {
-                                        videoOffsetX += pan.x
-                                        videoOffsetY += pan.y
-                                    }
+                                    // FIX: previously either/or (if zoom !=
+                                    // 1f, apply scale; ELSE apply pan) —
+                                    // but a real two-finger drag almost
+                                    // never produces an EXACTLY 1.0 zoom
+                                    // value even when the person's only
+                                    // intending to pan, so this kept
+                                    // routing into the scale-only branch
+                                    // and silently dropping pan entirely.
+                                    // Both apply together now, matching
+                                    // how a real pinch/pan gesture always
+                                    // carries some of each.
+                                    videoScale = (videoScale * zoom).coerceIn(1f, 3f)
+                                    videoOffsetX += pan.x
+                                    videoOffsetY += pan.y
                                     val maxOffsetX = (screenWidthPx * (videoScale - 1f) / 2f).coerceAtLeast(0f)
                                     val maxOffsetY = (screenHeightPx * (videoScale - 1f) / 2f).coerceAtLeast(0f)
                                     videoOffsetX = videoOffsetX.coerceIn(-maxOffsetX, maxOffsetX)
@@ -2584,22 +2600,23 @@ fun VideoPlayerScreen(
         }
         Box(
             modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(top = if (isLandscape) 10.dp else 14.dp, start = 14.dp)
-                .size(38.dp)
-                .clip(CircleShape)
-                .background(GlassSurface.copy(alpha = if (controlsLocked) 0.9f else 0.5f))
+                .align(Alignment.TopEnd)
+                .padding(top = if (isLandscape) 10.dp else 14.dp, end = 14.dp)
+                .height(46.dp)
+                .clip(RoundedCornerShape(50))
+                .background(AmberCore)
                 .clickable {
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     controlsLocked = !controlsLocked
-                },
+                }
+                .padding(horizontal = 12.dp),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = if (controlsLocked) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
                 contentDescription = if (controlsLocked) "Unlock controls" else "Lock controls",
-                tint = if (controlsLocked) AmberCore else TextMuted.copy(alpha = 0.7f),
-                modifier = Modifier.size(18.dp)
+                tint = Color.Black,
+                modifier = Modifier.size(22.dp)
             )
         }
     }
