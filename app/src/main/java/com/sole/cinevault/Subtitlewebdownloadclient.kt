@@ -95,6 +95,8 @@ object SubtitleWebDownloadClient {
                 connection.disconnect()
             }
         }
+        @Suppress("UNREACHABLE_CODE")
+        error("unreachable: every branch above returns from the loop")
     }
 
     private fun parseFileName(header: String?): String? {
