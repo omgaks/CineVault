@@ -182,57 +182,59 @@ private fun SubtitleResultCard(
     onDownloadAndApply: () -> Unit,
     onDownloadOnly: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(SpaceDeep.copy(alpha = 0.65f))
-            .border(
-                1.dp,
-                if (isBestMatch) Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.75f), AmberDeep.copy(alpha = 0.30f)))
-                else Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)),
-                RoundedCornerShape(14.dp)
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(SpaceDeep.copy(alpha = 0.65f))
+                .border(
+                    1.dp,
+                    if (isBestMatch) Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.75f), AmberDeep.copy(alpha = 0.30f)))
+                    else Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)),
+                    RoundedCornerShape(14.dp)
+                )
+                .padding(10.dp)
+        ) {
+            Text(
+                text = friendlyLanguageDisplay2(result.language),
+                color = TextBright, fontSize = 12.5.sp, fontWeight = FontWeight.Bold,
+                // Room reserved on the right so the title never runs
+                // under the corner badge below.
+                modifier = Modifier.padding(end = 56.dp)
             )
-            .padding(10.dp)
-    ) {
-        Text(
-            text = friendlyLanguageDisplay2(result.language),
-            color = TextBright, fontSize = 12.5.sp, fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = result.release, color = TextMuted, fontSize = 10.sp,
-            maxLines = 1, overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = buildString {
-                append("SRT")
-                if (result.downloadCount > 0) append(" · ${formatDownloadCount(result.downloadCount)} downloads")
-                if (result.rating > 0.0) append(" · ${String.format("%.1f", result.rating)}★")
-                result.fps?.let { append(" · ${it}fps") }
-            },
-            color = TextMuted, fontSize = 9.5.sp
-        )
+            Text(
+                text = result.release, color = TextMuted, fontSize = 10.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = buildString {
+                    append("SRT")
+                    if (result.downloadCount > 0) append(" · ${formatDownloadCount(result.downloadCount)} downloads")
+                    if (result.rating > 0.0) append(" · ${String.format("%.1f", result.rating)}★")
+                    result.fps?.let { append(" · ${it}fps") }
+                },
+                color = TextMuted, fontSize = 9.5.sp
+            )
 
-        val badges = buildList {
-            if (result.hashMatch) add("Hash Match" to Color(0xFF6FCF97))
-            if (isBestMatch) add("Best Match" to AmberCore)
-            if (result.fromTrusted) add("Verified" to Color(0xFF6FCF97))
-            if (result.provider == "SubDL") add("SubDL" to Color(0xFFFFEE2A))
-            result.sourceTag?.let { add(it to Color(0xFF56CCF2)) }
-            if (result.hearingImpaired) add("SDH" to Color(0xFFBB86FC))
-            if (result.forced) add("Forced" to Color(0xFFFF9800))
-            if (result.machineTranslated || result.aiTranslated) add("Machine translated" to TextMuted)
-        }
-        if (badges.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(5.dp))
-            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                badges.forEach { (label, color) ->
-                    Text(
-                        text = label, color = color, fontSize = 8.5.sp, fontWeight = FontWeight.Black,
-                        modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(color.copy(alpha = 0.16f)).padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
+            val badges = buildList {
+                if (isBestMatch) add("Best Match" to AmberCore)
+                if (result.fromTrusted) add("Verified" to Color(0xFF6FCF97))
+                result.sourceTag?.let { add(it to Color(0xFF56CCF2)) }
+                if (result.hearingImpaired) add("SDH" to Color(0xFFBB86FC))
+                if (result.forced) add("Forced" to Color(0xFFFF9800))
+                if (result.machineTranslated || result.aiTranslated) add("Machine translated" to TextMuted)
             }
+            if (badges.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(5.dp))
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    badges.forEach { (label, color) ->
+                        Text(
+                            text = label, color = color, fontSize = 8.5.sp, fontWeight = FontWeight.Black,
+                            modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(color.copy(alpha = 0.16f)).padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -266,6 +268,32 @@ private fun SubtitleResultCard(
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(text = "Save only", color = TextBright, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
+        }
+    }
+
+        // FIX (B4/B5): Hash Match and SubDL were previously mixed into
+        // the small generic badge row at the bottom (same tiny size as
+        // "Machine translated"), making them genuinely hard to spot in a
+        // list of 50 results. Both are now a single prominent corner
+        // badge, top-right, sized to actually stand out — Hash Match
+        // takes priority when both would apply, since it's the stronger
+        // confidence signal (exact file-byte match vs. "came from this
+        // provider").
+        val cornerBadge = when {
+            result.hashMatch -> "Hash Match" to Color(0xFF6FCF97)
+            result.provider == "SubDL" -> "SubDL" to Color(0xFFFFEE2A)
+            else -> null
+        }
+        cornerBadge?.let { (label, color) ->
+            Text(
+                text = label, color = Color.Black, fontSize = 9.5.sp, fontWeight = FontWeight.Black,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 8.dp, end = 8.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(color)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            )
         }
     }
 }
