@@ -4,6 +4,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import android.app.Activity
 import android.content.Context
+import android.os.Build
 import android.view.WindowManager
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -48,6 +49,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -365,6 +368,22 @@ fun ContinueWatchingSection(
                     val watchedPercent = getWatchedPercent(context, item)
 
                     Column(modifier = Modifier.width(250.dp).clickable { onItemClick(item) }) {
+                        // ── FIX: composite card instead of bare force-crop ──
+                        // Previously: val image = item.backdropUrl ?: item.episodeStill ?: item.posterUrl
+                        // then ONE AsyncImage with ContentScale.Crop over the
+                        // whole 250x140 landscape box. When there was no
+                        // backdrop/still, a portrait poster got crushed into
+                        // that landscape shape — title text and faces sliced
+                        // off. Now: real landscape art (backdrop/still) still
+                        // crops exactly as before (unchanged, no regression).
+                        // Only when falling back to a PORTRAIT poster do we
+                        // switch to a composite layout — poster shown in full
+                        // on the right, same poster blurred+scaled as ambient
+                        // fill on the left. No second network fetch; same
+                        // posterUrl used twice.
+                        val landscapeImage = item.backdropUrl ?: item.episodeStill
+                        val fallbackPoster = item.posterUrl
+
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -372,17 +391,57 @@ fun ContinueWatchingSection(
                                 .clip(RoundedCornerShape(20.dp))
                                 .background(SpaceMid)
                         ) {
-                            val image = item.backdropUrl ?: item.episodeStill ?: item.posterUrl
-                            if (!image.isNullOrBlank()) {
+                            if (!landscapeImage.isNullOrBlank()) {
                                 AsyncImage(
-                                    model = image,
+                                    model = landscapeImage,
                                     contentDescription = null,
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.fillMaxSize()
                                 )
+                            } else if (!fallbackPoster.isNullOrBlank()) {
+                                Row(modifier = Modifier.fillMaxSize()) {
+                                    // Left: ambient fill — same poster image,
+                                    // scaled + blurred (API 31+) or just
+                                    // scaled + darkened (below API 31).
+                                    Box(modifier = Modifier.weight(1.35f).fillMaxHeight()) {
+                                        AsyncImage(
+                                            model = fallbackPoster,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .graphicsLayer {
+                                                    scaleX = 1.4f; scaleY = 1.4f
+                                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                                        renderEffect = android.graphics.RenderEffect
+                                                            .createBlurEffect(
+                                                                40f, 40f,
+                                                                android.graphics.Shader.TileMode.CLAMP
+                                                            )
+                                                            .asComposeRenderEffect()
+                                                    }
+                                                }
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(Color.Black.copy(alpha = 0.35f))
+                                        )
+                                    }
+                                    // Right: the real poster, uncropped —
+                                    // title logo and face stay intact.
+                                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                                        AsyncImage(
+                                            model = fallbackPoster,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Fit,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                }
                             }
 
-                            // Scrim just behind the timestamps
+                            // Scrim just behind the timestamps — unchanged
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
@@ -404,7 +463,7 @@ fun ContinueWatchingSection(
                                 )
                             }
 
-                            // Thin progress line hugging the bottom edge
+                            // Thin progress line hugging the bottom edge — unchanged
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
