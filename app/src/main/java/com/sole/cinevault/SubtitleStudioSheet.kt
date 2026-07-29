@@ -3,6 +3,8 @@ package com.sole.cinevault
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -119,7 +121,8 @@ fun SubtitleStudioSheet(
     onBehaviorPrefsChange: (SubtitleBehaviorPrefs) -> Unit,
     cleaningOptions: SubtitleCleaningOptions,
     onCleaningOptionsChange: (SubtitleCleaningOptions) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onUserInteraction: () -> Unit = {}
 ) {
     var screen by remember { mutableStateOf<StudioScreen>(if (initialTab != null) StudioScreen.Tool(initialTab) else StudioScreen.Grid) }
     val haptics = LocalHapticFeedback.current
@@ -158,6 +161,19 @@ fun SubtitleStudioSheet(
             // child control, so a swallowed/ambiguous tap can no longer
             // closes the entire Studio as a side effect.
             .pointerInput(Unit) { detectTapGestures { } }
+            // FIX (C3): every touch-DOWN anywhere inside the Studio now
+            // pings onUserInteraction(), which resets the auto-close
+            // countdown in VideoPlayerScreen.kt. Uses requireUnconsumed =
+            // false specifically so this fires regardless of whether a
+            // child control (a slider, a toggle) goes on to consume the
+            // gesture for its own purpose — this only needs to know
+            // SOMETHING is happening in here, not what.
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    onUserInteraction()
+                }
+            }
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(14.dp)) {
             val currentScreen = screen
