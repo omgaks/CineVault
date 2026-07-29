@@ -206,15 +206,56 @@ fun SubtitleSearchSheet(
                     .padding(horizontal = 14.dp, vertical = 8.dp)
             )
         } else {
-            Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-                results.forEachIndexed { index, result ->
-                    SubtitleResultCard(
-                        result = result,
-                        isBestMatch = index == 0,
-                        onDownloadAndApply = { onDownloadAndApply(result) },
-                        onDownloadOnly = { onDownloadOnly(result) }
+            // FIX (D2): previously one merged, scrollable list (SubDL
+            // results sorted first per B6, but still visually mixed in
+            // with everything else). Now split into two side-by-side
+            // columns so each provider's results are immediately,
+            // visually distinct — no need to scan a long single list to
+            // tell which is which.
+            val subDlResults = results.filter { it.provider == "SubDL" }
+            val openSubsResults = results.filter { it.provider != "SubDL" }
+            Row(modifier = Modifier.weight(1f, fill = false).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "SubDL (${subDlResults.size})", color = Color(0xFFFFEE2A), fontSize = 10.5.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 6.dp)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    if (subDlResults.isEmpty()) {
+                        Text(text = "No SubDL results", color = TextMuted, fontSize = 10.sp)
+                    } else {
+                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                            subDlResults.forEachIndexed { index, result ->
+                                SubtitleResultCard(
+                                    result = result,
+                                    isBestMatch = index == 0,
+                                    onDownloadAndApply = { onDownloadAndApply(result) },
+                                    onDownloadOnly = { onDownloadOnly(result) }
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+                        }
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "OpenSubtitles (${openSubsResults.size})", color = Color(0xFF56CCF2), fontSize = 10.5.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                    if (openSubsResults.isEmpty()) {
+                        Text(text = "No OpenSubtitles results", color = TextMuted, fontSize = 10.sp)
+                    } else {
+                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                            openSubsResults.forEachIndexed { index, result ->
+                                SubtitleResultCard(
+                                    result = result,
+                                    isBestMatch = index == 0,
+                                    onDownloadAndApply = { onDownloadAndApply(result) },
+                                    onDownloadOnly = { onDownloadOnly(result) }
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+                        }
+                    }
                 }
             }
         }
