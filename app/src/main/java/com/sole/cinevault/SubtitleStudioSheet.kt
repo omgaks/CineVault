@@ -5,6 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -13,7 +15,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -145,79 +146,71 @@ fun SubtitleStudioSheet(
             .width(panelWidth)
             .heightIn(max = panelMaxHeight)
             .glassPanel(cornerRadius = 26.dp, fill = SpaceMid.copy(alpha = 0.98f))
+            // FIX: root containment. Whatever the exact internal cause of
+            // a touch on a small child control (back arrow, close button)
+            // occasionally not resolving cleanly — a hair of finger jitter
+            // during a "tap" getting picked up as a micro-drag by a parent
+            // gesture detector is the classic culprit — the Studio's own
+            // bounds must NEVER let an unconsumed touch fall through to
+            // whatever's rendered behind it, which in this app is the
+            // video surface's own "tap anywhere closes the open popup"
+            // handler. This absorbs anything not already claimed by a
+            // child control, so a swallowed/ambiguous tap can no longer
+            // closes the entire Studio as a side effect.
+            .pointerInput(Unit) { detectTapGestures { } }
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(14.dp)) {
             val currentScreen = screen
-            // FIX: swipe-to-navigate-between-tools, scoped ONLY to this
-            // header strip — deliberately NOT applied to the tool content
-            // area below, which is full of sliders, toggles, and buttons
-            // (the Sync delay slider, Text Size slider, every toggle
-            // switch). A drag-gesture detector wrapping that whole area
-            // would intercept touches meant for those controls before
-            // they ever reached them, silently breaking every interactive
-            // element inside every tool. The header is small and mostly
-            // static (just the title + two icon buttons), so it's the
-            // only place this can safely live without that risk.
-            val swipeThresholdPx = with(density) { 56.dp.toPx() }
-            var headerDragAccumPx by remember { mutableStateOf(0f) }
+            // FIX: whole-header long-press-then-drag replaces both the
+            // old swipe-to-switch-tabs gesture AND the small dedicated
+            // drag-handle icon. detectDragGesturesAfterLongPress is a
+            // standard Compose primitive built exactly for this: it only
+            // starts tracking movement after the platform's real long-
+            // press timeout elapses, so a normal quick tap anywhere on
+            // the header — including directly on the close/back buttons —
+            // never engages it at all, leaving those buttons' own
+            // clickable to handle the tap normally. No more competing
+            // gesture detectors on the same touch area.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .pointerInput(currentScreen) {
-                        detectHorizontalDragGestures(
-                            onDragStart = { headerDragAccumPx = 0f },
-                            onDragEnd = {
-                                val screenNow = screen
-                                if (screenNow is StudioScreen.Tool) {
-                                    val order = SubtitleStudioTab.values()
-                                    val idx = order.indexOf(screenNow.tab)
-                                    if (headerDragAccumPx <= -swipeThresholdPx && idx < order.lastIndex) {
-                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        screen = StudioScreen.Tool(order[idx + 1])
-                                    } else if (headerDragAccumPx >= swipeThresholdPx && idx > 0) {
-                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        screen = StudioScreen.Tool(order[idx - 1])
-                                    }
-                                }
-                            }
+                    .pointerInput(maxOffsetXPx, maxOffsetYPx) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
                         ) { change, dragAmount ->
                             change.consume()
-                            headerDragAccumPx += dragAmount
+                            dragOffsetX = (dragOffsetX + dragAmount.x).coerceIn(-maxOffsetXPx, maxOffsetXPx)
+                            dragOffsetY = (dragOffsetY + dragAmount.y).coerceIn(-maxOffsetYPx, maxOffsetYPx)
                         }
                     },
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // FIX (B3): moved to the far left per request, and
+                // enlarged (26dp -> 36dp) to be genuinely easy to hit
+                // rather than decorative-sized (B2).
                 Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .pointerInput(maxOffsetXPx, maxOffsetYPx) {
-                            detectDragGestures { change, dragAmount ->
-                                change.consume()
-                                dragOffsetX = (dragOffsetX + dragAmount.x).coerceIn(-maxOffsetXPx, maxOffsetXPx)
-                                dragOffsetY = (dragOffsetY + dragAmount.y).coerceIn(-maxOffsetYPx, maxOffsetYPx)
-                            }
-                        },
+                    modifier = Modifier.size(36.dp).clip(CircleShape).background(GlassSurface).clickable { onDismiss() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(imageVector = Icons.Default.DragIndicator, contentDescription = "Move window", tint = TextMuted, modifier = Modifier.size(16.dp))
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = TextBright, modifier = Modifier.size(18.dp))
                 }
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 // FIX: previously only shown when entered via long-press
                 // (initialTab == null) — quick-menu shortcuts (Sync/Style
                 // icons) jump straight into a tool with initialTab already
                 // set, which hid this arrow entirely and left the X (full
                 // close) as the ONLY visible option. Now always shown when
-                // inside a tool, so shortcuts stay a fast entry point
-                // without trapping you there with no way back to the grid.
+                // inside a tool (C4), and enlarged to match the close
+                // button (B2).
                 if (currentScreen is StudioScreen.Tool) {
                     Box(
-                        modifier = Modifier.size(26.dp).clip(CircleShape).background(GlassSurface).clickable {
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(GlassSurface).clickable {
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             screen = StudioScreen.Grid
                         },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back to tools", tint = TextBright, modifier = Modifier.size(14.dp))
+                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back to tools", tint = TextBright, modifier = Modifier.size(18.dp))
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                 }
@@ -225,12 +218,6 @@ fun SubtitleStudioSheet(
                     text = if (currentScreen is StudioScreen.Tool) currentScreen.tab.label else "Subtitle Studio",
                     color = AmberCore, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)
                 )
-                Box(
-                    modifier = Modifier.size(26.dp).clip(CircleShape).background(GlassSurface).clickable { onDismiss() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = TextBright, modifier = Modifier.size(14.dp))
-                }
             }
             Spacer(modifier = Modifier.height(12.dp))
             HorizontalDivider(color = GlassBorderBottom)
@@ -334,18 +321,18 @@ private fun SubtitleToolsGrid(onSelectTool: (SubtitleStudioTab) -> Unit, onOpenS
 private fun ToolTile(icon: ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Column(
         modifier = modifier
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(16.dp))
+            .height(64.dp)
+            .clip(RoundedCornerShape(14.dp))
             .background(SpaceDeep.copy(alpha = 0.7f))
-            .border(1.dp, Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.5f), AmberDeep.copy(alpha = 0.2f))), RoundedCornerShape(16.dp))
+            .border(1.dp, Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.5f), AmberDeep.copy(alpha = 0.2f))), RoundedCornerShape(14.dp))
             .clickable { onClick() }
-            .padding(8.dp),
+            .padding(6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(imageVector = icon, contentDescription = label, tint = AmberCore, modifier = Modifier.size(22.dp))
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(text = label, color = TextBright, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Icon(imageVector = icon, contentDescription = label, tint = AmberCore, modifier = Modifier.size(18.dp))
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(text = label, color = TextBright, fontSize = 9.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
