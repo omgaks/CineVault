@@ -2211,6 +2211,11 @@ fun VideoPlayerScreen(
                         performSubtitleSearch(OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path), "", "")
                     }
                 },
+                onOpenManualSearch = {
+                    showSubtitleStudio = false
+                    showSubtitleFallback = true
+                    showControls = true
+                },
                 embeddedTracks = embeddedTrackChoices,
                 downloadedTrack = downloadedTrackChoice,
                 localFiles = localFileChoices,
