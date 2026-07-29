@@ -695,8 +695,20 @@ fun VideoPlayerScreen(
                 "This file appears to be corrupted or incomplete."
             PlaybackException.ERROR_CODE_TIMEOUT ->
                 "Timed out trying to start playback."
-            PlaybackException.ERROR_CODE_IO_UNSPECIFIED ->
-                "Couldn't read this source (unspecified I/O error)."
+            PlaybackException.ERROR_CODE_IO_UNSPECIFIED -> {
+                // FIX: was a hardcoded generic string regardless of what
+                // ExoPlayer's actual cause chain contained — every OTHER
+                // error code in this function falls through to
+                // error.message when unhandled, but this specific one
+                // discarded real diagnostic detail. "Unspecified" is
+                // ExoPlayer's own catch-all bucket for I/O failures that
+                // don't fit a more specific code, meaning the REAL reason
+                // almost always lives one level down in the cause chain —
+                // now surfaced instead of thrown away.
+                val causeDetail = error.cause?.message?.takeIf { it.isNotBlank() }
+                if (causeDetail != null) "Couldn't read this source: $causeDetail"
+                else "Couldn't read this source (unspecified I/O error)."
+            }
             else -> error.message ?: "Playback error"
         }
         return "$detail (${error.errorCodeName})"
