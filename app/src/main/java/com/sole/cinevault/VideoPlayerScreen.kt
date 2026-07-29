@@ -38,6 +38,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.draw.graphicsLayer
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -48,6 +49,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.BrightnessHigh
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Audiotrack
 import androidx.compose.material.icons.rounded.ClosedCaption
@@ -256,6 +259,7 @@ fun VideoPlayerScreen(
     var currentVideo by remember { mutableStateOf(video) }
     var currentMediaType by remember { mutableStateOf(mediaType) }
     var showControls by remember { mutableStateOf(true) }
+    var controlsLocked by remember { mutableStateOf(false) }
     var showTopBar by remember { mutableStateOf(true) }
     var isDraggingSeekbar by remember { mutableStateOf(false) }
 
@@ -352,6 +356,14 @@ fun VideoPlayerScreen(
     var autoPlayEnabled by remember { mutableStateOf(true) }
 
     var isZoomMode by remember { mutableStateOf(false) }
+    // FIX (E2): pinch-to-zoom, separate from isZoomMode above — that's a
+    // binary FIT/CROP toggle (double-tap), this is continuous gesture-
+    // driven scale layered on top of whichever base mode is active, same
+    // as how a photo viewer lets you pinch-zoom regardless of its own
+    // fit setting.
+    var videoScale by remember { mutableStateOf(1f) }
+    var videoOffsetX by remember { mutableStateOf(0f) }
+    var videoOffsetY by remember { mutableStateOf(0f) }
     var showSeekPreview by remember { mutableStateOf(false) }
     var previewPosition by remember { mutableLongStateOf(0L) }
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -1526,6 +1538,7 @@ fun VideoPlayerScreen(
 
         val density = LocalDensity.current
         val screenWidthPx = with(density) { maxWidth.toPx() }
+        val screenHeightPx = with(density) { maxHeight.toPx() }
         fun anchoredX(iconCenterX: Float, popupWidth: Dp): Int {
             val pw = with(density) { popupWidth.toPx() }
             val pad = with(density) { 8.dp.toPx() }
@@ -1564,7 +1577,9 @@ fun VideoPlayerScreen(
         val hasNextVideo = episodeList.size > 1 && currentEpisodeIndex in 0 until episodeList.lastIndex
 
         AndroidView(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(scaleX = videoScale, scaleY = videoScale, translationX = videoOffsetX, translationY = videoOffsetY),
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     player = exoPlayer; useController = false
@@ -1692,6 +1707,37 @@ fun VideoPlayerScreen(
                             }
                         }
                     )
+                }
+                // FIX (E2): pinch-to-zoom. A separate pointerInput on the
+                // SAME Box as the tap detector above — Compose runs each
+                // pointerInput's gesture recognizer independently against
+                // the same touch stream, and detectTransformGestures only
+                // produces a meaningful zoom/pan value for genuine multi-
+                // touch input, so a normal single-finger tap never
+                // triggers it. Pan is clamped so the zoomed video can't be
+                // dragged to show empty space past its own edges.
+                .pointerInput(Unit) {
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        if (zoom != 1f) {
+                            videoScale = (videoScale * zoom).coerceIn(1f, 3f)
+                        } else {
+                            videoOffsetX += pan.x
+                            videoOffsetY += pan.y
+                        }
+                        val maxOffsetX = (screenWidthPx * (videoScale - 1f) / 2f).coerceAtLeast(0f)
+                        val maxOffsetY = (screenHeightPx * (videoScale - 1f) / 2f).coerceAtLeast(0f)
+                        videoOffsetX = videoOffsetX.coerceIn(-maxOffsetX, maxOffsetX)
+                        videoOffsetY = videoOffsetY.coerceIn(-maxOffsetY, maxOffsetY)
+                        // Snaps fully back to normal once zoomed out close
+                        // to 1x, rather than leaving a barely-perceptible
+                        // residual scale/offset from accumulated gesture
+                        // rounding.
+                        if (videoScale <= 1.02f) {
+                            videoScale = 1f
+                            videoOffsetX = 0f
+                            videoOffsetY = 0f
+                        }
+                    }
                 }
         )
 
@@ -2488,6 +2534,43 @@ fun VideoPlayerScreen(
                     )
                 }
             }
+        }
+
+        // FIX (E3): controls lock. Placed as the LAST child of the outer
+        // Box specifically — Compose renders later children on top, so
+        // this genuinely sits above every popup, menu, and the transport
+        // controls, not just visually but for touch priority too. When
+        // locked, a full-screen absorber (same containment pattern as the
+        // A1 fix) swallows every touch before it reaches anything else;
+        // the unlock button itself is a separate, later sibling so it
+        // stays reachable through the absorber rather than being blocked
+        // by its own lock.
+        if (controlsLocked) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) { detectTapGestures { } }
+            )
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(top = if (isLandscape) 10.dp else 14.dp, start = 14.dp)
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(GlassSurface.copy(alpha = if (controlsLocked) 0.9f else 0.5f))
+                .clickable {
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    controlsLocked = !controlsLocked
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (controlsLocked) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
+                contentDescription = if (controlsLocked) "Unlock controls" else "Lock controls",
+                tint = if (controlsLocked) AmberCore else TextMuted.copy(alpha = 0.7f),
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
