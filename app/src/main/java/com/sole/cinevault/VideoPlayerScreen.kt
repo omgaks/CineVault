@@ -35,6 +35,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -86,6 +88,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -1717,35 +1720,47 @@ fun VideoPlayerScreen(
                         }
                     )
                 }
-                // FIX (E2): pinch-to-zoom. A separate pointerInput on the
-                // SAME Box as the tap detector above — Compose runs each
-                // pointerInput's gesture recognizer independently against
-                // the same touch stream, and detectTransformGestures only
-                // produces a meaningful zoom/pan value for genuine multi-
-                // touch input, so a normal single-finger tap never
-                // triggers it. Pan is clamped so the zoomed video can't be
-                // dragged to show empty space past its own edges.
+                // FIX (E2, corrected): the original comment here claimed
+                // detectTransformGestures "only produces a meaningful
+                // zoom/pan value for genuine multi-touch input" — that
+                // was wrong, and it's what broke brightness/volume
+                // swipes. detectTransformGestures ALSO processes a single
+                // finger as a valid one-pointer pan, and consumes those
+                // touch events as part of doing so — silently starving
+                // the separate single-finger drag detector below that
+                // brightness/volume/seek gestures depend on. This now
+                // explicitly requires 2+ simultaneous pointers before it
+                // ever touches (or consumes) anything, using the same
+                // calculateZoom()/calculatePan() utilities
+                // detectTransformGestures itself is built on internally.
                 .pointerInput(Unit) {
-                    detectTransformGestures { _, pan, zoom, _ ->
-                        if (zoom != 1f) {
-                            videoScale = (videoScale * zoom).coerceIn(1f, 3f)
-                        } else {
-                            videoOffsetX += pan.x
-                            videoOffsetY += pan.y
-                        }
-                        val maxOffsetX = (screenWidthPx * (videoScale - 1f) / 2f).coerceAtLeast(0f)
-                        val maxOffsetY = (screenHeightPx * (videoScale - 1f) / 2f).coerceAtLeast(0f)
-                        videoOffsetX = videoOffsetX.coerceIn(-maxOffsetX, maxOffsetX)
-                        videoOffsetY = videoOffsetY.coerceIn(-maxOffsetY, maxOffsetY)
-                        // Snaps fully back to normal once zoomed out close
-                        // to 1x, rather than leaving a barely-perceptible
-                        // residual scale/offset from accumulated gesture
-                        // rounding.
-                        if (videoScale <= 1.02f) {
-                            videoScale = 1f
-                            videoOffsetX = 0f
-                            videoOffsetY = 0f
-                        }
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        do {
+                            val event = awaitPointerEvent()
+                            if (event.changes.size >= 2) {
+                                val zoom = event.calculateZoom()
+                                val pan = event.calculatePan()
+                                if (zoom != 1f || pan != Offset.Zero) {
+                                    event.changes.forEach { if (it.positionChanged()) it.consume() }
+                                    if (zoom != 1f) {
+                                        videoScale = (videoScale * zoom).coerceIn(1f, 3f)
+                                    } else {
+                                        videoOffsetX += pan.x
+                                        videoOffsetY += pan.y
+                                    }
+                                    val maxOffsetX = (screenWidthPx * (videoScale - 1f) / 2f).coerceAtLeast(0f)
+                                    val maxOffsetY = (screenHeightPx * (videoScale - 1f) / 2f).coerceAtLeast(0f)
+                                    videoOffsetX = videoOffsetX.coerceIn(-maxOffsetX, maxOffsetX)
+                                    videoOffsetY = videoOffsetY.coerceIn(-maxOffsetY, maxOffsetY)
+                                    if (videoScale <= 1.02f) {
+                                        videoScale = 1f
+                                        videoOffsetX = 0f
+                                        videoOffsetY = 0f
+                                    }
+                                }
+                            }
+                        } while (event.changes.any { it.pressed })
                     }
                 }
         )
