@@ -17,7 +17,13 @@ object SubtitleWebPolicy {
 
     fun searchUri(query: String): Uri {
         val cleaned = query.trim().replace(Regex("""\s+"""), " ")
-        return Uri.parse("https://www.opensubtitles.com/en/search-all/q-${Uri.encode(cleaned)}")
+        // FIX: was missing the /all/ segment between /en/ and
+        // /search-all/, which 404'd on every single load. Confirmed
+        // against a real, currently-indexed live search-results page
+        // rather than another guess — the trailing filter segments
+        // (hearing_impaired-include etc.) are part of that same
+        // confirmed URL, so kept as-is rather than assumed optional.
+        return Uri.parse("https://www.opensubtitles.com/en/all/search-all/q-${Uri.encode(cleaned)}/hearing_impaired-include/machine_translated-/trusted_sources-")
     }
 }
 
