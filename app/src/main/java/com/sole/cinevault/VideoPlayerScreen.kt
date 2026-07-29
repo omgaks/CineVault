@@ -2177,6 +2177,14 @@ fun VideoPlayerScreen(
                     showEmbeddedSubtitleBrowser = true
                 },
                 onImportFile = {
+                    // FIX: this was the only one of the three fallback
+                    // options that didn't pause first — onSecureBrowser
+                    // and onEmbeddedBrowser both do. Opening the system
+                    // file picker backgrounds the whole Activity, and
+                    // without an explicit pause here, ExoPlayer just kept
+                    // playing invisibly behind it since nothing told it to
+                    // stop for this specific transition.
+                    exoPlayer.pause()
                     srtPickerLauncher.launch(
                         arrayOf(
                             "application/x-subrip",
