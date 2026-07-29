@@ -3,6 +3,10 @@ package com.sole.cinevault
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -22,13 +26,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.ui.theme.*
+import kotlin.math.roundToInt
 
 // ── Subtitle Download Search sheet ──────────────────────────────────────
 // Two states in one composable: a manual-search header (query/season/
@@ -47,25 +57,61 @@ fun SubtitleSearchSheet(
     statusText: String,
     popupWidth: Dp,
     popupMaxHeight: Dp,
+    containerWidth: Dp,
+    containerHeight: Dp,
     onSearch: (query: String, season: String, episode: String) -> Unit,
     onDownloadAndApply: (SubtitleSearchResult) -> Unit,
     onDownloadOnly: (SubtitleSearchResult) -> Unit,
     onWebsiteFallback: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onUserInteraction: () -> Unit = {}
 ) {
     var query by remember { mutableStateOf(initialQuery) }
     var season by remember { mutableStateOf(initialSeason) }
     var episode by remember { mutableStateOf(initialEpisode) }
     var showManualFields by remember { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
+    val density = LocalDensity.current
+
+    // Same proven pattern as the Studio: bounded drag via long-press on
+    // the header, root touch-containment so nothing leaks through to the
+    // video underneath, and a catch-all activity ping so this popup's own
+    // auto-close timer (see VideoPlayerScreen.kt) resets on real use
+    // instead of ticking down regardless of what you're doing in here.
+    var dragOffsetX by remember { mutableStateOf(0f) }
+    var dragOffsetY by remember { mutableStateOf(0f) }
+    val maxOffsetXPx = with(density) { ((containerWidth - popupWidth) / 2).coerceAtLeast(0.dp).toPx() }
+    val maxOffsetYPx = with(density) { ((containerHeight - popupMaxHeight) / 2).coerceAtLeast(0.dp).toPx() }
 
     Column(
         modifier = Modifier
+            .offset { IntOffset(dragOffsetX.roundToInt(), dragOffsetY.roundToInt()) }
             .width(popupWidth)
             .heightIn(max = popupMaxHeight)
             .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.98f))
+            .pointerInput(Unit) { detectTapGestures { } }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    onUserInteraction()
+                }
+            }
             .padding(12.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .pointerInput(maxOffsetXPx, maxOffsetYPx) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
+                    ) { change, dragAmount ->
+                        change.consume()
+                        dragOffsetX = (dragOffsetX + dragAmount.x).coerceIn(-maxOffsetXPx, maxOffsetXPx)
+                        dragOffsetY = (dragOffsetY + dragAmount.y).coerceIn(-maxOffsetYPx, maxOffsetYPx)
+                    }
+                },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(text = "Download Subtitles", color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             IconCircleSmall2(icon = Icons.Default.Close, onClick = onDismiss)
         }
