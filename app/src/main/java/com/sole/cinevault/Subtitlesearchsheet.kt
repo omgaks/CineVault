@@ -387,11 +387,13 @@ private fun SubtitleResultCard(
 
 @Composable
 private fun IconCircleSmall2(icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+    // FIX: restyled as the same amber-filled pill used everywhere else
+    // now (Studio close/back, lock button) — was a plain glass circle.
     Box(
-        modifier = Modifier.size(22.dp).clip(CircleShape).background(GlassSurface).clickable { onClick() },
+        modifier = Modifier.height(34.dp).clip(RoundedCornerShape(50)).background(AmberCore).clickable { onClick() }.padding(horizontal = 9.dp),
         contentAlignment = Alignment.Center
     ) {
-        Icon(imageVector = icon, contentDescription = "Close", tint = TextBright, modifier = Modifier.size(12.dp))
+        Icon(imageVector = icon, contentDescription = "Close", tint = Color.Black, modifier = Modifier.size(15.dp))
     }
 }
 
