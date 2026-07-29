@@ -160,6 +160,13 @@ dependencies {
     // on some devices that this release fixed).
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
+    // Custom Tabs — used by the subtitle website fallback (SubtitleWebFallback.kt)
+    // to open OpenSubtitles as the recommended/default route: a real browser
+    // tab sharing the user's own login/cookie state, not a WebView CineVault
+    // has to maintain and secure itself. Partial-height presentation
+    // (setInitialActivityHeightPx) requires 1.6.0+; 1.10.0 is current stable.
+    implementation("androidx.browser:browser:1.10.0")
+
     // Restricted-folder scanning walks a SAF-picked folder tree via
     // DocumentFile — not transitively included by anything else here.
     implementation("androidx.documentfile:documentfile:1.0.1")
