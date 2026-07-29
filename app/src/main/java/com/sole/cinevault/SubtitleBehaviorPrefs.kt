@@ -25,7 +25,7 @@ data class SubtitleBehaviorPrefs(
     val preferSdh: Boolean = false,
     val autoEnableEmbeddedSubtitles: Boolean = true,
     val autoLoadMatchingLocalFile: Boolean = true,
-    val autoDownloadWhenMissing: Boolean = true,
+    val autoDownloadWhenMissing: Boolean = false,
     val rememberLastSelectedLanguage: Boolean = true,
     val disableWhenAudioMatchesPreferred: Boolean = false,
     // Off by default — see VideoPlayerScreen.kt's gesture-zone comment for
@@ -48,7 +48,7 @@ fun loadSubtitleBehaviorPrefs(context: Context): SubtitleBehaviorPrefs {
         preferSdh = prefs.getBoolean("preferSdh", false),
         autoEnableEmbeddedSubtitles = prefs.getBoolean("autoEnableEmbedded", true),
         autoLoadMatchingLocalFile = prefs.getBoolean("autoLoadLocalMatch", true),
-        autoDownloadWhenMissing = prefs.getBoolean("autoDownloadWhenMissing", true),
+        autoDownloadWhenMissing = prefs.getBoolean("autoDownloadWhenMissing", false),
         rememberLastSelectedLanguage = prefs.getBoolean("rememberLastLanguage", true),
         disableWhenAudioMatchesPreferred = prefs.getBoolean("disableWhenAudioMatches", false),
         enableSubtitleGestures = prefs.getBoolean("enableSubtitleGestures", false)
