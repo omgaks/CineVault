@@ -1,8 +1,11 @@
 package com.sole.cinevault
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -11,7 +14,6 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -321,7 +323,23 @@ fun SettingsScreen(
                         )
                     }
                     Spacer(modifier = Modifier.height(14.dp))
+                    // FIX: added Copy — the log text wasn't selectable, so
+                    // there was no way to get it out of the dialog other
+                    // than a screenshot (useless for a bug report someone
+                    // needs to read and paste elsewhere, e.g. into a chat
+                    // with Claude). Copies straight to the clipboard via
+                    // ClipboardManager, independent of whether in-app text
+                    // selection works at all. Placed first/leftmost since
+                    // it's the action this dialog gets opened for most.
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Copy", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore).clickable {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("CineVault Crash Log", logText.ifBlank { "No crashes logged yet." }))
+                                Toast.makeText(context, "Crash log copied", Toast.LENGTH_SHORT).show()
+                            }.padding(horizontal = 16.dp, vertical = 9.dp)
+                        )
                         Text(
                             text = "Close", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                             modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable { showCrashLog = false }.padding(horizontal = 16.dp, vertical = 9.dp)
