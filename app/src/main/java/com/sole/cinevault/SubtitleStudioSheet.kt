@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -12,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -33,10 +35,12 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.ui.theme.*
 import java.io.File
+import kotlin.math.roundToInt
 
 // ── Studio tabs ───────────────────────────────────────────────────────────
 // FIX (UI redesign round): was TRACK/SYNC/STYLE/POSITION/ADVANCED (5 tabs,
@@ -68,6 +72,8 @@ private sealed class StudioScreen {
 fun SubtitleStudioSheet(
     panelWidth: Dp,
     panelMaxHeight: Dp,
+    containerWidth: Dp,
+    containerHeight: Dp,
     initialTab: SubtitleStudioTab?,
     onOpenSearch: () -> Unit,
     embeddedTracks: List<SubtitleTrackChoice.Embedded>,
@@ -116,16 +122,32 @@ fun SubtitleStudioSheet(
 ) {
     var screen by remember { mutableStateOf<StudioScreen>(if (initialTab != null) StudioScreen.Tool(initialTab) else StudioScreen.Grid) }
     val haptics = LocalHapticFeedback.current
+    val density = LocalDensity.current
+
+    // FIX: Studio was fixed to screen-center with no way to move it — on
+    // a tablet especially, that can sit over exactly the part of the
+    // video you're trying to watch while adjusting something. Drag is
+    // scoped to a SEPARATE dedicated handle (not the header itself),
+    // since the header already has its own horizontal swipe-to-switch-
+    // tabs gesture — sharing one touch zone for two different gestures
+    // would mean one interpretation winning unpredictably over the other.
+    // Bounds are clamped against the actual container size (passed in
+    // from VideoPlayerScreen.kt) so the panel can never be dragged fully
+    // off-screen with no way to reach it again.
+    var dragOffsetX by remember { mutableStateOf(0f) }
+    var dragOffsetY by remember { mutableStateOf(0f) }
+    val maxOffsetXPx = with(density) { ((containerWidth - panelWidth) / 2).coerceAtLeast(0.dp).toPx() }
+    val maxOffsetYPx = with(density) { ((containerHeight - panelMaxHeight) / 2).coerceAtLeast(0.dp).toPx() }
 
     Box(
         modifier = Modifier
+            .offset { IntOffset(dragOffsetX.roundToInt(), dragOffsetY.roundToInt()) }
             .width(panelWidth)
             .heightIn(max = panelMaxHeight)
             .glassPanel(cornerRadius = 26.dp, fill = SpaceMid.copy(alpha = 0.98f))
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(14.dp)) {
             val currentScreen = screen
-            val density = LocalDensity.current
             // FIX: swipe-to-navigate-between-tools, scoped ONLY to this
             // header strip — deliberately NOT applied to the tool content
             // area below, which is full of sliders, toggles, and buttons
@@ -165,7 +187,29 @@ fun SubtitleStudioSheet(
                     },
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (currentScreen is StudioScreen.Tool && initialTab == null) {
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .pointerInput(maxOffsetXPx, maxOffsetYPx) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                dragOffsetX = (dragOffsetX + dragAmount.x).coerceIn(-maxOffsetXPx, maxOffsetXPx)
+                                dragOffsetY = (dragOffsetY + dragAmount.y).coerceIn(-maxOffsetYPx, maxOffsetYPx)
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(imageVector = Icons.Default.DragIndicator, contentDescription = "Move window", tint = TextMuted, modifier = Modifier.size(16.dp))
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+                // FIX: previously only shown when entered via long-press
+                // (initialTab == null) — quick-menu shortcuts (Sync/Style
+                // icons) jump straight into a tool with initialTab already
+                // set, which hid this arrow entirely and left the X (full
+                // close) as the ONLY visible option. Now always shown when
+                // inside a tool, so shortcuts stay a fast entry point
+                // without trapping you there with no way back to the grid.
+                if (currentScreen is StudioScreen.Tool) {
                     Box(
                         modifier = Modifier.size(26.dp).clip(CircleShape).background(GlassSurface).clickable {
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
