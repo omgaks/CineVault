@@ -203,39 +203,46 @@ fun SubtitleStudioSheet(
                     },
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // FIX (B3): moved to the far left per request, and
-                // enlarged (26dp -> 36dp) to be genuinely easy to hit
-                // rather than decorative-sized (B2).
+                // FIX: restyled as an amber-filled pill, matching the
+                // same style language now used for the lock button
+                // elsewhere in the player, instead of the previous plain
+                // glass-circle treatment — carried consistently across
+                // every window this round, not just here.
                 Box(
-                    modifier = Modifier.size(36.dp).clip(CircleShape).background(GlassSurface).clickable { onDismiss() },
+                    modifier = Modifier.height(40.dp).clip(RoundedCornerShape(50)).background(AmberCore).clickable { onDismiss() }.padding(horizontal = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = TextBright, modifier = Modifier.size(18.dp))
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = Color.Black, modifier = Modifier.size(18.dp))
                 }
-                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (currentScreen is StudioScreen.Tool) currentScreen.tab.label else "Subtitle Studio",
+                    color = AmberCore, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f).padding(horizontal = 8.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
                 // FIX: previously only shown when entered via long-press
                 // (initialTab == null) — quick-menu shortcuts (Sync/Style
                 // icons) jump straight into a tool with initialTab already
                 // set, which hid this arrow entirely and left the X (full
                 // close) as the ONLY visible option. Now always shown when
-                // inside a tool (C4), and enlarged to match the close
-                // button (B2).
+                // inside a tool (C4). Moved to the opposite end from
+                // Close per request — close on the left, back on the
+                // right — and restyled as the same amber-filled pill.
                 if (currentScreen is StudioScreen.Tool) {
                     Box(
-                        modifier = Modifier.size(36.dp).clip(CircleShape).background(GlassSurface).clickable {
+                        modifier = Modifier.height(40.dp).clip(RoundedCornerShape(50)).background(AmberCore).clickable {
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             screen = StudioScreen.Grid
-                        },
+                        }.padding(horizontal = 10.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back to tools", tint = TextBright, modifier = Modifier.size(18.dp))
+                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back to tools", tint = Color.Black, modifier = Modifier.size(18.dp))
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
+                } else {
+                    // Reserves the same width the pill would occupy when
+                    // on the Grid screen (no back arrow), so the title
+                    // doesn't visibly re-center/shift when navigating
+                    // between Grid and a Tool.
+                    Spacer(modifier = Modifier.width(40.dp))
                 }
-                Text(
-                    text = if (currentScreen is StudioScreen.Tool) currentScreen.tab.label else "Subtitle Studio",
-                    color = AmberCore, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)
-                )
             }
             Spacer(modifier = Modifier.height(12.dp))
             HorizontalDivider(color = GlassBorderBottom)
