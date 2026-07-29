@@ -663,7 +663,11 @@ fun VideoPlayerScreen(
             // above), SubDL appended after — the two providers' relevance
             // scores aren't directly comparable, so concatenating rather
             // than trying to cross-rank them is the honest choice here.
-            val merged = openSubsList + subDlList
+            // FIX (B6): SubDL results now sorted to the top of the
+            // combined list — previously appended after all of
+            // OpenSubtitles' (often 40-50) results, effectively burying
+            // them at the bottom where they were easy to miss entirely.
+            val merged = subDlList + openSubsList
 
             when {
                 merged.isNotEmpty() -> { subtitleSearchResults = merged; subtitleSearchStatus = "" }
