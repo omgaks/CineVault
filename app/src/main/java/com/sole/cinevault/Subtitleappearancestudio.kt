@@ -96,8 +96,10 @@ fun SubtitleAppearanceStudioSheet(
             Spacer(modifier = Modifier.width(6.dp))
             Text(text = "Subtitle Style", color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Icon(
-                imageVector = Icons.Default.Close, contentDescription = "Close", tint = TextBright,
-                modifier = Modifier.size(16.dp).clip(CircleShape).background(GlassSurface).padding(2.dp).clickable { onDismiss() }
+                // FIX: restyled as the same amber-filled pill used
+                // everywhere else now — was a plain glass circle.
+                imageVector = Icons.Default.Close, contentDescription = "Close", tint = Color.Black,
+                modifier = Modifier.size(30.dp).clip(RoundedCornerShape(50)).background(AmberCore).padding(6.dp).clickable { onDismiss() }
             )
         }
         Spacer(modifier = Modifier.height(10.dp))
