@@ -2115,6 +2115,8 @@ fun VideoPlayerScreen(
             SubtitleStudioSheet(
                 panelWidth = studioWidth,
                 panelMaxHeight = studioMaxHeight,
+                containerWidth = maxWidth,
+                containerHeight = maxHeight,
                 initialTab = subtitleStudioInitialTab,
                 onOpenSearch = {
                     showSubtitleStudio = false
