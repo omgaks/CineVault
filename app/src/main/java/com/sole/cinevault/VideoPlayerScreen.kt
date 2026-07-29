@@ -33,6 +33,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
@@ -136,6 +139,65 @@ fun loadDuration(context: Context, videoPath: String): Long {
 }
 
 @OptIn(UnstableApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+// Reusable floating-window wrapper for popups whose own composable body
+// can't be modified directly (SubtitleTrackSelectorSheet and
+// SubtitleAppearanceStudioSheet are both ALSO rendered as tabs embedded
+// inside Studio itself — adding drag logic straight into them would
+// double up with Studio's own dragging when used that way). This wraps
+// the popup at its STANDALONE call site only, layering a user-draggable
+// offset on top of whatever initial position the call site already
+// establishes (anchored-near-icon for Track Selector, centered for
+// Appearance Studio) — same proven long-press-then-drag + bounds-
+// clamping + activity-ping pattern already used for Studio and Search.
+@Composable
+private fun DraggableFloatingPopup(
+    containerWidth: Dp,
+    containerHeight: Dp,
+    popupWidth: Dp,
+    popupMaxHeight: Dp,
+    onUserInteraction: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
+    var dragOffsetX by remember { mutableStateOf(0f) }
+    var dragOffsetY by remember { mutableStateOf(0f) }
+    val maxOffsetXPx = with(density) { ((containerWidth - popupWidth) / 2).coerceAtLeast(0.dp).toPx() }
+    val maxOffsetYPx = with(density) { ((containerHeight - popupMaxHeight) / 2).coerceAtLeast(0.dp).toPx() }
+
+    Box(
+        modifier = Modifier
+            .offset { IntOffset(dragOffsetX.roundToInt(), dragOffsetY.roundToInt()) }
+            // Root containment — same A1 fix, applied here too: nothing
+            // inside this popup should ever be able to leak a touch
+            // through to the video surface behind it.
+            .pointerInput(Unit) { detectTapGestures { } }
+            // Any touch anywhere in the popup resets its auto-close timer.
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    onUserInteraction()
+                }
+            }
+            // Long-press ANYWHERE in the popup (not just a header, since
+            // this wrapper has no header of its own to isolate) starts a
+            // drag. Quick taps/scrolls inside the shared composable's own
+            // content resolve well before the long-press timeout elapses,
+            // so this doesn't compete with normal clicking or scrolling.
+            .pointerInput(maxOffsetXPx, maxOffsetYPx) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
+                ) { change, dragAmount ->
+                    change.consume()
+                    dragOffsetX = (dragOffsetX + dragAmount.x).coerceIn(-maxOffsetXPx, maxOffsetXPx)
+                    dragOffsetY = (dragOffsetY + dragAmount.y).coerceIn(-maxOffsetYPx, maxOffsetYPx)
+                }
+            }
+    ) {
+        content()
+    }
+}
+
 @Composable
 fun VideoPlayerScreen(
     video: VideoFile,
@@ -1930,24 +1992,32 @@ fun VideoPlayerScreen(
         // feel like a continuation of it, not a jump to a new location.
         AnimatedVisibility(visible = showTrackSelector, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)),
             modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, trackSelectorMaxHeight)).offset { IntOffset(anchoredX(subIconX, trackSelectorWidth), 0) }) {
-            SubtitleTrackSelectorSheet(
-                embeddedTracks = embeddedTrackChoices,
-                downloadedTrack = downloadedTrackChoice,
-                localFiles = localFileChoices,
-                selectedKey = selectedSubtitleTrackKey,
+            DraggableFloatingPopup(
+                containerWidth = maxWidth,
+                containerHeight = maxHeight,
                 popupWidth = trackSelectorWidth,
                 popupMaxHeight = trackSelectorMaxHeight,
-                onSelect = { choice ->
-                    selectSubtitleTrack(choice)
-                    showTrackSelector = false; showControls = true
-                },
-                onDeleteLocal = { file -> requestDeleteSubtitle(file) },
-                onOpenFilePicker = {
-                    showTrackSelector = false
-                    srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*"))
-                },
-                onDismiss = { showTrackSelector = false; showControls = true }
-            )
+                onUserInteraction = { subtitleMenuTouchKey++ }
+            ) {
+                SubtitleTrackSelectorSheet(
+                    embeddedTracks = embeddedTrackChoices,
+                    downloadedTrack = downloadedTrackChoice,
+                    localFiles = localFileChoices,
+                    selectedKey = selectedSubtitleTrackKey,
+                    popupWidth = trackSelectorWidth,
+                    popupMaxHeight = trackSelectorMaxHeight,
+                    onSelect = { choice ->
+                        selectSubtitleTrack(choice)
+                        showTrackSelector = false; showControls = true
+                    },
+                    onDeleteLocal = { file -> requestDeleteSubtitle(file) },
+                    onOpenFilePicker = {
+                        showTrackSelector = false
+                        srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*"))
+                    },
+                    onDismiss = { showTrackSelector = false; showControls = true }
+                )
+            }
         }
 
         // Subtitle Download Search sheet — same anchor as the quick menu/
@@ -2081,22 +2151,30 @@ fun VideoPlayerScreen(
 
         AnimatedVisibility(visible = showAppearanceStudio, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)),
             modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, trackSelectorMaxHeight)).offset { IntOffset(anchoredX(subIconX, trackSelectorWidth), 0) }) {
-            SubtitleAppearanceStudioSheet(
-                presetName = subtitleAppearancePreset,
-                appearance = subtitleAppearance,
-                fontSizeSp = subtitleTextSizeSp,
+            DraggableFloatingPopup(
+                containerWidth = maxWidth,
+                containerHeight = maxHeight,
                 popupWidth = trackSelectorWidth,
                 popupMaxHeight = trackSelectorMaxHeight,
-                onApplyPreset = { name, preset -> subtitleAppearancePreset = name; subtitleAppearance = preset },
-                onForegroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(foregroundColor = c) },
-                onEdgeTypeChange = { t -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeType = t) },
-                onEdgeColorChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeColor = c) },
-                onBackgroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(backgroundColor = c) },
-                isAssOrSsaFormat = isAssOrSsaFormat,
-                preserveOriginalStyling = subtitlePreserveOriginalStyling,
-                onPreserveOriginalStylingChange = { subtitlePreserveOriginalStyling = it },
-                onDismiss = { showAppearanceStudio = false; showControls = true }
-            )
+                onUserInteraction = { subtitleMenuTouchKey++ }
+            ) {
+                SubtitleAppearanceStudioSheet(
+                    presetName = subtitleAppearancePreset,
+                    appearance = subtitleAppearance,
+                    fontSizeSp = subtitleTextSizeSp,
+                    popupWidth = trackSelectorWidth,
+                    popupMaxHeight = trackSelectorMaxHeight,
+                    onApplyPreset = { name, preset -> subtitleAppearancePreset = name; subtitleAppearance = preset },
+                    onForegroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(foregroundColor = c) },
+                    onEdgeTypeChange = { t -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeType = t) },
+                    onEdgeColorChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeColor = c) },
+                    onBackgroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(backgroundColor = c) },
+                    isAssOrSsaFormat = isAssOrSsaFormat,
+                    preserveOriginalStyling = subtitlePreserveOriginalStyling,
+                    onPreserveOriginalStylingChange = { subtitlePreserveOriginalStyling = it },
+                    onDismiss = { showAppearanceStudio = false; showControls = true }
+                )
+            }
         }
 
         // Subtitle Studio — the "everything in one place" destination,
