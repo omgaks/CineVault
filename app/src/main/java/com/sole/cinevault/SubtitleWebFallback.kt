@@ -61,7 +61,15 @@ import kotlinx.coroutines.launch
 fun launchSubtitleCustomTab(context: Context, query: String) {
     val initialHeight = (context.resources.displayMetrics.heightPixels * 0.82f).toInt()
     val colors = CustomTabColorSchemeParams.Builder().setToolbarColor(0xFF161622.toInt()).build()
-    CustomTabsIntent.Builder().setShowTitle(true).setDefaultColorSchemeParams(colors).setInitialActivityHeightPx(initialHeight, CustomTabsIntent.ACTIVITY_HEIGHT_ADJUSTABLE).setToolbarCornerRadiusDp(20).setShareState(CustomTabsIntent.SHARE_STATE_OFF).build().launchUrl(context, SubtitleWebPolicy.searchUri(query))
+    // FIX: real crash confirmed via the in-app crash log —
+    // setToolbarCornerRadiusDp(20) threw IllegalArgumentException on-
+    // device. The stack trace includes com.xiaomi.mirror.MiuiMirrorImpl,
+    // suggesting this device's MIUI browser implementation validates the
+    // corner-radius bound more strictly (or differently) than stock
+    // Android — no documented valid range could be confirmed either way.
+    // This was purely a cosmetic touch; removed entirely rather than
+    // guessing at another number that might also fail on this device.
+    CustomTabsIntent.Builder().setShowTitle(true).setDefaultColorSchemeParams(colors).setInitialActivityHeightPx(initialHeight, CustomTabsIntent.ACTIVITY_HEIGHT_ADJUSTABLE).setShareState(CustomTabsIntent.SHARE_STATE_OFF).build().launchUrl(context, SubtitleWebPolicy.searchUri(query))
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
