@@ -211,6 +211,10 @@ fun VideoPlayerScreen(
     var subtitleSearchResults by remember { mutableStateOf<List<SubtitleSearchResult>>(emptyList()) }
     var subtitleSearchLoading by remember { mutableStateOf(false) }
     var subtitleSearchStatus by remember { mutableStateOf("") }
+    // Website fallback (last-resort manual search) — see SubtitleWebFallback.kt
+    var showSubtitleFallback by remember { mutableStateOf(false) }
+    var showEmbeddedSubtitleBrowser by remember { mutableStateOf(false) }
+    var pendingImportedCandidates by remember { mutableStateOf<SubtitleImportResult.Success?>(null) }
 
     var showSpeedMenu by remember { mutableStateOf(false) }
     var showSleepMenu by remember { mutableStateOf(false) }
@@ -385,15 +389,12 @@ fun VideoPlayerScreen(
         showSpeedMenu = false
         showSleepMenu = false
         showSrtBrowser = false
+        showSubtitleFallback = false
+        showEmbeddedSubtitleBrowser = false
+        pendingImportedCandidates = null
     }
 
     var pendingSrtUri by remember { mutableStateOf<Uri?>(null) }
-    val srtPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
-            pendingSrtUri = uri
-        }
-    }
 
     val deleteConsentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -503,6 +504,73 @@ fun VideoPlayerScreen(
             isVideoEnded = false
         } catch (e: Exception) {
             playerErrorMessage = "Couldn't start playback: ${e.message ?: e.javaClass.simpleName}"
+        }
+    }
+
+    // Validated handoff for both the website-fallback flow and the
+    // (now-validated) local file picker below — reuses the exact same
+    // cleaning + playback pipeline every other subtitle source already
+    // goes through, so this isn't a parallel/divergent code path.
+    fun applyImportedWebsiteSubtitle(imported: ImportedSubtitle) {
+        scope.launch {
+            val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+            val cleanedUri = withContext(Dispatchers.IO) {
+                if (supportsCustomTextPipeline(imported.format)) {
+                    buildCleanedSubtitleFile(context, imported.uri, subtitleCleaningOptions)
+                } else {
+                    null
+                }
+            } ?: imported.uri
+
+            subtitlesEnabled = true
+            trackSelector.parameters = trackSelector.buildUponParameters()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .build()
+            primarySubtitleUri = cleanedUri
+            primarySubtitleLanguage = imported.language
+            selectedSubtitleTrackKey = "downloaded"
+            selectedSubtitleTrackLabel = friendlyLanguageName(imported.language ?: "en")
+            selectedSubtitleTrackSource = "Website import"
+            playCurrentVideoWithSubtitle(cleanedUri, resumeAt)
+            showSubtitleFallback = false
+            showEmbeddedSubtitleBrowser = false
+            pendingImportedCandidates = null
+            showControls = true
+            Toast.makeText(context, "Subtitle loaded", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // FIX: fresh picks from the system file picker now go through
+    // SubtitleImportEngine's real content validation (rejects HTML/binary,
+    // ranks candidates inside a ZIP) instead of the old flow, which
+    // assumed any picked file was already a trustworthy subtitle. Re-
+    // selecting an ALREADY-KNOWN local file (nearby-discovered or
+    // previously imported) still goes through the simpler pendingSrtUri
+    // path elsewhere in this file — that file doesn't need re-validating.
+    val srtPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
+        scope.launch {
+            val result = context.contentResolver.openInputStream(uri)?.use { stream ->
+                SubtitleImportEngine.import(
+                    context = context,
+                    input = stream,
+                    suggestedName = uri.lastPathSegment,
+                    releaseHint = currentVideo.path,
+                    preferredLanguage = subtitleBehaviorPrefs.preferredLanguages.firstOrNull() ?: "en"
+                )
+            } ?: SubtitleImportResult.Failure("CineVault couldn't open that file.")
+
+            when (result) {
+                is SubtitleImportResult.Success -> {
+                    if (result.alternatives.isEmpty()) {
+                        applyImportedWebsiteSubtitle(result.selected)
+                    } else {
+                        pendingImportedCandidates = result
+                    }
+                }
+                is SubtitleImportResult.Failure -> Toast.makeText(context, result.userMessage, Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -658,6 +726,7 @@ fun VideoPlayerScreen(
         val savedPosition = if (isStreamMedia) 0L else loadPlaybackPosition(context, currentVideo.path)
         position = savedPosition; duration = 1L; showControls = true; showTopBar = true
         showAudioSelector = false; showSubtitleSettings = false; showTrackSelector = false; showSubtitleSearch = false; showSpeedMenu = false; showSleepMenu = false; showSrtBrowser = false
+        showSubtitleFallback = false; showEmbeddedSubtitleBrowser = false; pendingImportedCandidates = null
         subtitleSearchResults = emptyList(); subtitleSearchStatus = ""; subtitleSearchLoading = false
         pendingNextEpisode = null; nextEpisodeCountdown = 0; showNextEpisodeOverlay = false
         previewBitmap = null; previewFrames = emptyList(); isVideoEnded = false
@@ -1909,7 +1978,74 @@ fun VideoPlayerScreen(
                 onSearch = { q, s, e -> subtitleMenuTouchKey++; performSubtitleSearch(q, s, e) },
                 onDownloadAndApply = { result -> subtitleMenuTouchKey++; applySearchResult(result, alsoPlay = true) },
                 onDownloadOnly = { result -> subtitleMenuTouchKey++; applySearchResult(result, alsoPlay = false) },
+                onWebsiteFallback = {
+                    showSubtitleSearch = false
+                    showSubtitleFallback = true
+                    showControls = true
+                },
                 onDismiss = { showSubtitleSearch = false; showControls = true }
+            )
+        }
+
+        // Website fallback — last resort when automatic search/download
+        // fails, hits a daily quota, or just doesn't have the release.
+        // Custom Tab is the default/recommended route; embedded browser is
+        // clearly marked experimental. See SubtitleWebFallback.kt.
+        if (showSubtitleFallback) {
+            val webQuery = OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path)
+            SubtitleFallbackSheet(
+                searchQuery = webQuery,
+                statusText = subtitleSearchStatus,
+                onSecureBrowser = {
+                    exoPlayer.pause()
+                    launchSubtitleCustomTab(context, webQuery)
+                    showSubtitleFallback = false
+                    Toast.makeText(context, "After downloading, return and choose Import downloaded subtitle", Toast.LENGTH_LONG).show()
+                },
+                onEmbeddedBrowser = {
+                    exoPlayer.pause()
+                    showSubtitleFallback = false
+                    showEmbeddedSubtitleBrowser = true
+                },
+                onImportFile = {
+                    srtPickerLauncher.launch(
+                        arrayOf(
+                            "application/x-subrip",
+                            "text/vtt",
+                            "text/plain",
+                            "application/zip",
+                            "application/x-zip-compressed",
+                            "application/octet-stream"
+                        )
+                    )
+                },
+                onDismiss = { showSubtitleFallback = false }
+            )
+        }
+
+        if (showEmbeddedSubtitleBrowser) {
+            EmbeddedSubtitleBrowser(
+                query = OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path),
+                preferredLanguage = subtitleBehaviorPrefs.preferredLanguages.firstOrNull() ?: "en",
+                onImported = { result ->
+                    if (result.alternatives.isEmpty()) {
+                        applyImportedWebsiteSubtitle(result.selected)
+                    } else {
+                        pendingImportedCandidates = result
+                        showEmbeddedSubtitleBrowser = false
+                    }
+                },
+                onMessage = { Toast.makeText(context, it, Toast.LENGTH_LONG).show() },
+                onDismiss = { showEmbeddedSubtitleBrowser = false; showControls = true }
+            )
+        }
+
+        pendingImportedCandidates?.let { result ->
+            SubtitleCandidateSheet(
+                primary = result.selected,
+                alternatives = result.alternatives,
+                onSelected = { applyImportedWebsiteSubtitle(it) },
+                onDismiss = { pendingImportedCandidates = null }
             )
         }
 
