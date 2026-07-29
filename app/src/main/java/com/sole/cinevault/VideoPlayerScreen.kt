@@ -1143,10 +1143,15 @@ fun VideoPlayerScreen(
 
     LaunchedEffect(showAudioSelector, menuTouchKey) { if (showAudioSelector) { delay(9000); showAudioSelector = false } }
     LaunchedEffect(showSubtitleSettings, subtitleMenuTouchKey) { if (showSubtitleSettings) { delay(9000); showSubtitleSettings = false } }
+    // FIX: shortened idle timeouts — these only ever fire on genuine
+    // inactivity now that C3's activity-detection correctly resets them
+    // on every real interaction (verified: Appearance Studio does close,
+    // just felt slow at the old duration). Track Selector (12s) and SRT
+    // Browser (20s) weren't flagged as an issue, left unchanged.
     LaunchedEffect(showTrackSelector, subtitleMenuTouchKey) { if (showTrackSelector) { delay(12000); showTrackSelector = false } }
-    LaunchedEffect(showSubtitleSearch, subtitleMenuTouchKey) { if (showSubtitleSearch) { delay(25000); showSubtitleSearch = false } }
-    LaunchedEffect(showAppearanceStudio, subtitleMenuTouchKey) { if (showAppearanceStudio) { delay(25000); showAppearanceStudio = false } }
-    LaunchedEffect(showSubtitleStudio, subtitleMenuTouchKey) { if (showSubtitleStudio) { delay(60000); showSubtitleStudio = false } }
+    LaunchedEffect(showSubtitleSearch, subtitleMenuTouchKey) { if (showSubtitleSearch) { delay(18000); showSubtitleSearch = false } }
+    LaunchedEffect(showAppearanceStudio, subtitleMenuTouchKey) { if (showAppearanceStudio) { delay(15000); showAppearanceStudio = false } }
+    LaunchedEffect(showSubtitleStudio, subtitleMenuTouchKey) { if (showSubtitleStudio) { delay(30000); showSubtitleStudio = false } }
     LaunchedEffect(showSrtBrowser) { if (showSrtBrowser) { delay(20000); showSrtBrowser = false } }
     LaunchedEffect(showSpeedMenu) { if (showSpeedMenu) { delay(8000); showSpeedMenu = false } }
     LaunchedEffect(showSleepMenu) { if (showSleepMenu) { delay(8000); showSleepMenu = false } }
