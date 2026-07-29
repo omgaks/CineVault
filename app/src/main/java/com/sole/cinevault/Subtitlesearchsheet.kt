@@ -50,6 +50,7 @@ fun SubtitleSearchSheet(
     onSearch: (query: String, season: String, episode: String) -> Unit,
     onDownloadAndApply: (SubtitleSearchResult) -> Unit,
     onDownloadOnly: (SubtitleSearchResult) -> Unit,
+    onWebsiteFallback: () -> Unit,
     onDismiss: () -> Unit
 ) {
     var query by remember { mutableStateOf(initialQuery) }
@@ -149,6 +150,14 @@ fun SubtitleSearchSheet(
                 text = statusText.ifBlank { "No results yet — try Search" },
                 color = TextMuted, fontSize = 11.sp,
                 modifier = Modifier.padding(vertical = 10.dp)
+            )
+            Text(
+                text = "Search website", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .border(1.dp, AmberCore.copy(alpha = 0.4f), RoundedCornerShape(50))
+                    .clickable { onWebsiteFallback() }
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
             )
         } else {
             Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
