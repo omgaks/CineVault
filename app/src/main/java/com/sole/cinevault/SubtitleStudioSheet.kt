@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -79,6 +80,7 @@ fun SubtitleStudioSheet(
     containerHeight: Dp,
     initialTab: SubtitleStudioTab?,
     onOpenSearch: () -> Unit,
+    onOpenManualSearch: () -> Unit,
     embeddedTracks: List<SubtitleTrackChoice.Embedded>,
     downloadedTrack: SubtitleTrackChoice.Downloaded?,
     localFiles: List<File>,
@@ -246,7 +248,8 @@ fun SubtitleStudioSheet(
                     when (val s = currentScreen) {
                         is StudioScreen.Grid -> SubtitleToolsGrid(
                             onSelectTool = { tab -> haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); screen = StudioScreen.Tool(tab) },
-                            onOpenSearch = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); onOpenSearch() }
+                            onOpenSearch = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); onOpenSearch() },
+                            onOpenManualSearch = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); onOpenManualSearch() }
                         )
                         is StudioScreen.Tool -> when (s.tab) {
                             SubtitleStudioTab.TRACK -> SubtitleTrackSelectorSheet(
@@ -315,18 +318,31 @@ fun SubtitleStudioSheet(
 }
 
 @Composable
-private fun SubtitleToolsGrid(onSelectTool: (SubtitleStudioTab) -> Unit, onOpenSearch: () -> Unit) {
+private fun SubtitleToolsGrid(onSelectTool: (SubtitleStudioTab) -> Unit, onOpenSearch: () -> Unit, onOpenManualSearch: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             ToolTile(icon = SubtitleStudioTab.TRACK.icon, label = SubtitleStudioTab.TRACK.label, modifier = Modifier.weight(1f)) { onSelectTool(SubtitleStudioTab.TRACK) }
-            ToolTile(icon = Icons.Filled.Search, label = "Find", modifier = Modifier.weight(1f)) { onOpenSearch() }
-            ToolTile(icon = SubtitleStudioTab.TIMING.icon, label = SubtitleStudioTab.TIMING.label, modifier = Modifier.weight(1f)) { onSelectTool(SubtitleStudioTab.TIMING) }
+            // FIX (D1): "Find" -> "Auto Search" — same underlying action
+            // (the API-based OpenSubtitles + SubDL search), just relabeled
+            // to sit clearly alongside the new Manual Search tile below.
+            ToolTile(icon = Icons.Filled.Search, label = "Auto Search", modifier = Modifier.weight(1f)) { onOpenSearch() }
+            // FIX (D1): NEW — previously the website fallback only ever
+            // appeared as a small link inside the empty-results state of
+            // Auto Search, which is exactly why it went unnoticed. Now a
+            // permanent, always-reachable tool in its own right.
+            ToolTile(icon = Icons.Filled.Language, label = "Manual Search", modifier = Modifier.weight(1f)) { onOpenManualSearch() }
         }
         Spacer(modifier = Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            ToolTile(icon = SubtitleStudioTab.TIMING.icon, label = SubtitleStudioTab.TIMING.label, modifier = Modifier.weight(1f)) { onSelectTool(SubtitleStudioTab.TIMING) }
             ToolTile(icon = SubtitleStudioTab.APPEARANCE.icon, label = SubtitleStudioTab.APPEARANCE.label, modifier = Modifier.weight(1f)) { onSelectTool(SubtitleStudioTab.APPEARANCE) }
             ToolTile(icon = SubtitleStudioTab.DUAL.icon, label = SubtitleStudioTab.DUAL.label, modifier = Modifier.weight(1f)) { onSelectTool(SubtitleStudioTab.DUAL) }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             ToolTile(icon = SubtitleStudioTab.BEHAVIOUR.icon, label = SubtitleStudioTab.BEHAVIOUR.label, modifier = Modifier.weight(1f)) { onSelectTool(SubtitleStudioTab.BEHAVIOUR) }
+            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.weight(1f))
         }
         Spacer(modifier = Modifier.height(14.dp))
         Text(text = "Tap a tool for more options", color = TextMuted, fontSize = 10.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth())
