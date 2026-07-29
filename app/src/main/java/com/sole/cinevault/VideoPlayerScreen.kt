@@ -1433,8 +1433,17 @@ fun VideoPlayerScreen(
             val audioLang = exoPlayer.currentTracks.groups
                 .firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
                 ?.let { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { idx -> g.getTrackFormat(idx).language } }
+            // FIX: real crash — "Player is accessed on the wrong thread."
+            // exoPlayer.duration was previously read INSIDE the
+            // withContext(Dispatchers.Default) block below, as part of
+            // the argument expression — meaning it evaluated on that
+            // background thread when the lambda actually ran, not before.
+            // ExoPlayer requires every access, even a simple property
+            // read, to happen on the thread it was created on. Read here,
+            // on the main thread, before switching dispatchers.
+            val videoDurationMs = exoPlayer.duration.coerceAtLeast(0L)
             val result = withContext(Dispatchers.Default) {
-                AutoSyncEngine.run(context, currentVideo.path, exoPlayer.duration.coerceAtLeast(0L), audioLang, srtText)
+                AutoSyncEngine.run(context, currentVideo.path, videoDurationMs, audioLang, srtText)
             }
             autoSyncStatus = result
         }
