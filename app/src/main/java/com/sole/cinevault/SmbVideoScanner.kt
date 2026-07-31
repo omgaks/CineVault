@@ -40,6 +40,21 @@ fun buildCifsContext(share: SmbShare): CIFSContext {
         // forcing a single specific version.
         setProperty("jcifs.smb.client.minVersion", "SMB202")
         setProperty("jcifs.smb.client.maxVersion", "SMB311")
+        // Require the server to sign every SMB message — stops a
+        // man-in-the-middle on the local network from tampering with
+        // traffic in transit. Virtually every SMB2+ server (Samba,
+        // Windows, any modern NAS) supports signing, so this is a safe
+        // default with no real compatibility downside.
+        setProperty("jcifs.smb.client.signing.enforced", "true")
+        // NOTE: jcifs.smb.client.encryption.enforced="true" was
+        // considered here too, but deliberately left out — encryption
+        // requires SMB 3.1.1 support on the SERVER side, and a fair
+        // number of NAS boxes / older Samba setups don't support it.
+        // Enforcing it would silently break scanning for anyone whose
+        // share doesn't support SMB3 encryption, trading a real feature
+        // (playback working) for a security property most home networks
+        // don't need. Ash: say the word and I'll add it as an
+        // opt-in per-share toggle instead of a global enforce.
     }
     val baseContext: CIFSContext = BaseContext(PropertyConfiguration(props))
     return if (share.username.isBlank()) {
