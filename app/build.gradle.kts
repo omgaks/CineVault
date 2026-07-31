@@ -178,10 +178,9 @@ dependencies {
     // fine in players like MX Player that bundle their own decoders.
     // Prebuilt by the Jellyfin project — no native/NDK build step needed
     // here, unlike building FFmpeg from source ourselves would require.
-    // LICENSE NOTE: this artifact is GPL-3.0. A deliberate call — flagged
-    // and accepted for this personal build; NOT license-compatible with
-    // distributing the app under the existing MIT LICENSE without
-    // addressing that conflict first.
+    // LICENSE NOTE: this artifact is GPL-3.0. CineVault itself is licensed
+    // GPL-3.0-only (see LICENSE) specifically so this dependency and the
+    // rest of the app are license-compatible — no conflict to flag.
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.9.0+1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
