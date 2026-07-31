@@ -72,6 +72,10 @@ import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -473,22 +477,74 @@ fun VideoPlayerScreen(
 
     var pendingSrtUri by remember { mutableStateOf<Uri?>(null) }
 
+    // ── Delete confirmation + undo (Security & Privacy checklist item 3) ──
+    // pendingDeletePaths holds files that have been "deleted" from the
+    // person's point of view (removed from every list immediately) but
+    // whose actual disk/MediaStore deletion is still delayed behind the
+    // undo window below. pendingDeleteConfirmFile drives the CineVault-
+    // styled warning dialog that always appears BEFORE that window starts
+    // — this is a full replacement for the plain white system AlertDialog
+    // that used to front this flow. Note the OS-level consent prompt on
+    // API 30+ for files the app doesn't own is a system dialog Android
+    // itself renders — that one can't be reskinned, only pre-empted with
+    // our own warning first, which is what this does.
+    val pendingDeletePaths = remember { mutableStateListOf<String>() }
+    var pendingDeleteConfirmFile by remember { mutableStateOf<java.io.File?>(null) }
+    var pendingConsentFile by remember { mutableStateOf<java.io.File?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
     val deleteConsentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            Toast.makeText(context, "File deleted", Toast.LENGTH_SHORT).show()
-        } else {
+        val consentedFile = pendingConsentFile
+        if (result.resultCode != Activity.RESULT_OK) {
+            // Person backed out of the OS consent prompt — the file was
+            // never actually deleted, so bring it back into every list
+            // instead of leaving it permanently hidden.
+            if (consentedFile != null) pendingDeletePaths.remove(consentedFile.absolutePath)
             Toast.makeText(context, "Delete cancelled", Toast.LENGTH_SHORT).show()
         }
+        pendingConsentFile = null
     }
 
-    fun requestDeleteSubtitle(file: java.io.File) {
+    // Performs the actual deletion — only ever called once the undo window
+    // (deleteWithUndo, below) has expired without the person tapping Undo.
+    fun finalizeSubtitleDeletion(file: java.io.File) {
+        pendingConsentFile = file
         FileManagementHelper.deleteFile(
             context = context,
             file = file,
             onNeedsConsent = { intentSender -> deleteConsentLauncher.launch(IntentSenderRequest.Builder(intentSender).build()) },
-            onDeleted = { Toast.makeText(context, "File deleted", Toast.LENGTH_SHORT).show() },
-            onFailed = { e -> Toast.makeText(context, "Couldn't delete: ${e.message}", Toast.LENGTH_SHORT).show() }
+            onDeleted = { pendingConsentFile = null },
+            onFailed = { e ->
+                pendingDeletePaths.remove(file.absolutePath)
+                pendingConsentFile = null
+                Toast.makeText(context, "Couldn't delete: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         )
+    }
+
+    // Hides the file immediately and shows the amber Undo snackbar. Real
+    // deletion only happens if the snackbar times out or is dismissed
+    // without the person tapping Undo.
+    fun deleteWithUndo(file: java.io.File) {
+        pendingDeletePaths.add(file.absolutePath)
+        scope.launch {
+            val result = snackbarHostState.showSnackbar(
+                message = "Subtitle deleted",
+                actionLabel = "UNDO",
+                duration = SnackbarDuration.Short
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                pendingDeletePaths.remove(file.absolutePath)
+            } else {
+                finalizeSubtitleDeletion(file)
+            }
+        }
+    }
+
+    // Entry point every delete button in this screen now calls — opens the
+    // styled warning dialog rather than deleting immediately.
+    fun requestDeleteSubtitle(file: java.io.File) {
+        pendingDeleteConfirmFile = file
     }
 
     LaunchedEffect(sleepTimerActive, sleepTimerRemainingMs) {
@@ -1979,6 +2035,7 @@ fun VideoPlayerScreen(
 
         AnimatedVisibility(visible = showSrtBrowser, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, srtPopupMaxHeight)).offset { IntOffset(anchoredX(subIconX, srtPopupWidth), 0) }) {
             val srtFiles = remember(currentVideo.path, showSrtBrowser) { findNearbySrtFiles(currentVideo.path) }
+                .filter { it.absolutePath !in pendingDeletePaths }
             SrtBrowserPopup(
                 files = srtFiles,
                 modifier = Modifier,
@@ -2049,6 +2106,7 @@ fun VideoPlayerScreen(
             }
         }
         val localFileChoices = remember(currentVideo.path, showTrackSelector) { findNearbySrtFiles(currentVideo.path) }
+            .filter { it.absolutePath !in pendingDeletePaths }
 
         AnimatedVisibility(visible = showSubtitleSettings, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)),
             modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, subtitlePopupHeightEstimate)).offset { IntOffset(anchoredX(subIconX, subtitlePopupWidth), 0) }) {
@@ -2643,6 +2701,72 @@ fun VideoPlayerScreen(
                 tint = Color.Black,
                 modifier = Modifier.size(22.dp)
             )
+        }
+
+        // ── Delete confirmation dialog (styled to match the app, not the
+        // plain white Android AlertDialog) ─────────────────────────────
+        pendingDeleteConfirmFile?.let { file ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .pointerInput(Unit) { detectTapGestures { pendingDeleteConfirmFile = null } },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 320.dp)
+                        .glassPanel(cornerRadius = 24.dp, fill = GlassSurfaceStrong)
+                        .pointerInput(Unit) { detectTapGestures { } }
+                        .padding(horizontal = 22.dp, vertical = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(imageVector = Icons.Rounded.Delete, contentDescription = null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(32.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(text = "Delete subtitle file?", color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(text = file.name, color = TextMuted, fontSize = 12.sp, textAlign = TextAlign.Center, maxLines = 2)
+                    Spacer(modifier = Modifier.height(18.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Cancel", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f))
+                                .clickable { pendingDeleteConfirmFile = null }.padding(horizontal = 20.dp, vertical = 10.dp)
+                        )
+                        Text(
+                            text = "Delete", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore)
+                                .clickable {
+                                    pendingDeleteConfirmFile = null
+                                    deleteWithUndo(file)
+                                }.padding(horizontal = 20.dp, vertical = 10.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Undo snackbar — styled the same as the app's other floating
+        // pills (glassPanel + amber action text) rather than Material's
+        // default snackbar look. Positioned above the transport dock so
+        // it never fights the dock for touch space.
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = bottomDockPadding + playButton + 26.dp)
+        ) { data ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 18.dp, vertical = 12.dp)
+            ) {
+                Text(text = data.visuals.message, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                data.visuals.actionLabel?.let { label ->
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = label, color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Black,
+                        modifier = Modifier.clickable { data.performAction() }
+                    )
+                }
+            }
         }
     }
 }
