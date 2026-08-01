@@ -96,6 +96,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.sole.cinevault.ui.theme.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
@@ -180,6 +183,81 @@ fun EmptyStateBlock(
         Text(text = subtitle, color = TextMuted, fontSize = 13.sp, textAlign = TextAlign.Center, lineHeight = 18.sp, modifier = Modifier.widthIn(max = 260.dp))
         Spacer(modifier = Modifier.height(18.dp))
         actions()
+    }
+}
+
+// Runs the actual library scan on a scope that outlives any single
+// composable — HomeScreen.kt's big "Scan Library" button calls start()
+// and navigates away immediately, so the coroutine driving the scan
+// can't live inside LocalVideoLibraryScreen's own rememberCoroutineScope()
+// (that scope is cancelled the moment the screen isn't composed, which
+// would kill the scan mid-flight the instant Library isn't the visible
+// screen). isScanning/status/lastError are plain mutableStateOf so both
+// Home and Library recompose live off the exact same in-progress scan,
+// however it got started, instead of each screen keeping an independent
+// local copy that goes stale the moment the other screen updates it.
+object LibraryScanController {
+    var isScanning by mutableStateOf(false)
+    var status by mutableStateOf("")
+    var lastError by mutableStateOf<ErrorBannerState?>(null)
+    private val controllerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    fun start(context: Context, onVideosLoaded: (List<VideoWithMetadata>) -> Unit) {
+        if (isScanning) return
+        controllerScope.launch {
+            isScanning = true; status = "Scanning device videos..."; lastError = null
+            val deviceVideos = try { scanDeviceVideos(context) } catch (e: Exception) {
+                e.printStackTrace()
+                status = ""; isScanning = false
+                lastError = ErrorBannerState("Scan failed: ${e.message ?: "Unknown error"}") { start(context, onVideosLoaded) }
+                return@launch
+            }
+
+            val smbShares = loadSmbShares(context)
+            val smbVideos = mutableListOf<VideoWithMetadata>()
+            for (share in smbShares) {
+                status = "Scanning network share: ${share.displayName}..."
+                when (val result = scanSmbShare(share)) {
+                    is SmbScanResult.Success -> smbVideos.addAll(result.videos)
+                    is SmbScanResult.Failure -> lastError = ErrorBannerState(result.reason) { start(context, onVideosLoaded) }
+                }
+            }
+
+            status = "Scanning restricted folders..."
+            val restrictedVideos = try { scanAllRestrictedFolders(context) } catch (e: Exception) { emptyList() }
+
+            val scannedVideos = deviceVideos + smbVideos + restrictedVideos
+            status = "Found ${scannedVideos.size} videos. Loading cached posters..."
+            val instantList = scannedVideos.map { applyCachedMetadataIfAvailable(context, it) }
+            onVideosLoaded(instantList); saveLibraryCache(context, instantList)
+
+            val toEnrich = instantList.withIndex().filter { (_, item) ->
+                !isRestrictedFolderItem(item) && (!hasUsefulOnlineMetadata(item) || needsRatingsUpgrade(item) || needsGenreUpgrade(item))
+            }
+            status = "Loaded ${instantList.size} videos. Updating missing posters & ratings..."
+
+            val workingList = instantList.toMutableList()
+            var completedCount = 0
+            val semaphore = Semaphore(6)
+            coroutineScope {
+                toEnrich.map { (index, item) ->
+                    async {
+                        semaphore.withPermit {
+                            val enriched = try { enrichVideoWithOnlineMetadata(context, item) } catch (e: Exception) { item }
+                            completedCount++
+                            status = "Metadata $completedCount/${toEnrich.size}: ${item.video.name.take(28)}"
+                            if (enriched != item) {
+                                workingList[index] = enriched
+                                if (completedCount % 8 == 0) { val p = workingList.toList(); onVideosLoaded(p); saveLibraryCache(context, p) }
+                            }
+                        }
+                    }
+                }.awaitAll()
+            }
+
+            val finalList = workingList.toList(); onVideosLoaded(finalList); saveLibraryCache(context, finalList)
+            status = "Library updated: ${finalList.size} videos"; delay(500); status = ""; isScanning = false
+        }
     }
 }
 
@@ -317,8 +395,6 @@ fun LocalVideoLibraryScreen(
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
 
-    var isLoading by remember { mutableStateOf(false) }
-    var scanStatus by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf(LibraryScrollState.category) }
     var isGridMode by remember { mutableStateOf(LibraryScrollState.gridMode) }
     var sortOption by remember { mutableStateOf(LibraryScrollState.sort) }
@@ -522,80 +598,9 @@ fun LocalVideoLibraryScreen(
 
     val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE
 
-    // Pulled out of permissionLauncher's callback so the scan-failure and
-    // SMB-failure retry banners below can call this directly. They used to
-    // call permissionLauncher.launch(permission) instead — which failed to
-    // compile, since that reference lived INSIDE permissionLauncher's own
-    // initializer lambda (a val can't resolve a reference to itself from
-    // within the expression that constructs it). Retrying by re-running the
-    // scan body directly is also simpler: permission is already granted by
-    // the time any of these failures can happen, so there's no need to
-    // re-request it.
-    fun runLibraryScan() {
-        scope.launch {
-            isLoading = true; scanStatus = "Scanning device videos..."; activeError = null
-            val deviceVideos = try { scanDeviceVideos(context) } catch (e: Exception) {
-                e.printStackTrace()
-                scanStatus = ""; isLoading = false
-                activeError = ErrorBannerState("Scan failed: ${e.message ?: "Unknown error"}") { runLibraryScan() }
-                return@launch
-            }
-
-            val smbShares = loadSmbShares(context)
-            val smbVideos = mutableListOf<VideoWithMetadata>()
-            for (share in smbShares) {
-                scanStatus = "Scanning network share: ${share.displayName}..."
-                when (val result = scanSmbShare(share)) {
-                    is SmbScanResult.Success -> smbVideos.addAll(result.videos)
-                    // Persistent banner instead of a toast — scanning can run
-                    // for a while, and a share failure flashing by mid-scan
-                    // was easy to miss entirely. Retry re-runs the whole scan
-                    // rather than just this one share, since that's the only
-                    // entry point available here.
-                    is SmbScanResult.Failure -> activeError = ErrorBannerState(result.reason) { runLibraryScan() }
-                }
-            }
-
-            scanStatus = "Scanning restricted folders..."
-            val restrictedVideos = try { scanAllRestrictedFolders(context) } catch (e: Exception) { emptyList() }
-
-            val scannedVideos = deviceVideos + smbVideos + restrictedVideos
-            scanStatus = "Found ${scannedVideos.size} videos. Loading cached posters..."
-            val instantList = scannedVideos.map { applyCachedMetadataIfAvailable(context, it) }
-            onVideosLoaded(instantList); saveLibraryCache(context, instantList)
-
-            val toEnrich = instantList.withIndex().filter { (_, item) ->
-                !isRestrictedFolderItem(item) && (!hasUsefulOnlineMetadata(item) || needsRatingsUpgrade(item) || needsGenreUpgrade(item))
-            }
-            scanStatus = "Loaded ${instantList.size} videos. Updating missing posters & ratings..."
-
-            val workingList = instantList.toMutableList()
-            var completedCount = 0
-            val semaphore = Semaphore(6)
-            coroutineScope {
-                toEnrich.map { (index, item) ->
-                    async {
-                        semaphore.withPermit {
-                            val enriched = try { enrichVideoWithOnlineMetadata(context, item) } catch (e: Exception) { item }
-                            completedCount++
-                            scanStatus = "Metadata $completedCount/${toEnrich.size}: ${item.video.name.take(28)}"
-                            if (enriched != item) {
-                                workingList[index] = enriched
-                                if (completedCount % 8 == 0) { val p = workingList.toList(); onVideosLoaded(p); saveLibraryCache(context, p) }
-                            }
-                        }
-                    }
-                }.awaitAll()
-            }
-
-            val finalList = workingList.toList(); onVideosLoaded(finalList); saveLibraryCache(context, finalList)
-            scanStatus = "Library updated: ${finalList.size} videos"; delay(500); scanStatus = ""; isLoading = false
-        }
-    }
-
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-        if (!isGranted) { scanStatus = "Storage permission denied"; return@rememberLauncherForActivityResult }
-        runLibraryScan()
+        if (!isGranted) { LibraryScanController.status = "Storage permission denied"; return@rememberLauncherForActivityResult }
+        LibraryScanController.start(context, onVideosLoaded)
     }
 
     val categories = listOf("All", "Continue Watching", "Movies", "TV Shows", "Folders", "Downloads", "Favorites", "Duplicates", "Secret")
@@ -742,15 +747,15 @@ fun LocalVideoLibraryScreen(
                     // bars instead of the generic sort glyph, so all four
                     // silhouettes are easy to tell apart at a glance even
                     // before reading color.
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                        if (scanStatus.isNotBlank()) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.Top) {
+                        if (LibraryScanController.status.isNotBlank()) {
                             Text(
-                                text = scanStatus,
+                                text = LibraryScanController.status,
                                 color = TextMuted,
                                 fontSize = 11.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f).padding(top = 10.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                         } else {
@@ -762,6 +767,7 @@ fun LocalVideoLibraryScreen(
                                 icon = Icons.Filled.SwapVert,
                                 tint = Color(0xFF56CCF2),
                                 contentDescription = "Sort by: ${sortOption.label}",
+                                label = "Sort",
                                 onClick = { sortMenuExpanded = true }
                             )
                             DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }, modifier = Modifier.background(SpaceMid)) {
@@ -778,6 +784,7 @@ fun LocalVideoLibraryScreen(
                             icon = if (isGridMode) Icons.Filled.ViewAgenda else Icons.Filled.GridView,
                             tint = Color(0xFFBB86FC),
                             contentDescription = if (isGridMode) "Switch to List" else "Switch to Grid",
+                            label = if (isGridMode) "List" else "Grid",
                             onClick = { isGridMode = !isGridMode }
                         )
                         Spacer(modifier = Modifier.width(10.dp))
@@ -785,15 +792,17 @@ fun LocalVideoLibraryScreen(
                             icon = Icons.Filled.Refresh,
                             tint = Color(0xFF6FCF97),
                             contentDescription = "Refresh / Clear Cache",
-                            enabled = !isLoading,
-                            onClick = { clearLibraryCache(context); onVideosLoaded(emptyList()); scanStatus = "Cache cleared. Scan again." }
+                            label = "Refresh",
+                            enabled = !LibraryScanController.isScanning,
+                            onClick = { clearLibraryCache(context); onVideosLoaded(emptyList()); LibraryScanController.status = "Cache cleared. Scan again." }
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         LibraryToolIconButton(
                             icon = Icons.Filled.TrackChanges,
                             tint = AmberCore,
                             contentDescription = "Scan Device Videos",
-                            enabled = !isLoading,
+                            label = "Scan",
+                            enabled = !LibraryScanController.isScanning,
                             onClick = { permissionLauncher.launch(permission) }
                         )
                     }
@@ -1122,7 +1131,7 @@ fun LocalVideoLibraryScreen(
                 }
             }
 
-            if (selectedCategory != "Folders" && selectedCategory != "Duplicates" && !isLoading && filteredVideos.isEmpty() && tvGroups.isEmpty() && !(selectedCategory == "Secret" && !secretUnlocked)) {
+            if (selectedCategory != "Folders" && selectedCategory != "Duplicates" && !LibraryScanController.isScanning && filteredVideos.isEmpty() && tvGroups.isEmpty() && !(selectedCategory == "Secret" && !secretUnlocked)) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     if (videos.isEmpty()) {
                         EmptyStateBlock(
@@ -1200,14 +1209,18 @@ fun LocalVideoLibraryScreen(
         // ── Persistent error banner — slides down from the top rather than
         // just fading, since it's an alert that should feel like it's
         // dropping in to demand attention, distinct from the bottom-sheet
-        // slide-up used for the context menus below.
+        // slide-up used for the context menus below. Shows a local delete
+        // failure if there is one, otherwise a scan/SMB failure surfaced by
+        // LibraryScanController — which may have started from Home, not
+        // this screen, so this can't just be local state.
+        val bannerError = activeError ?: LibraryScanController.lastError
         AnimatedVisibility(
-            visible = activeError != null,
+            visible = bannerError != null,
             enter = slideInVertically(initialOffsetY = { -it }, animationSpec = tween(280, easing = FastOutSlowInEasing)) + fadeIn(tween(220)),
             exit = slideOutVertically(targetOffsetY = { -it }, animationSpec = tween(200)) + fadeOut(tween(150)),
             modifier = Modifier.align(Alignment.TopCenter).padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            activeError?.let { err -> ErrorBanner(state = err, onDismiss = { activeError = null }) }
+            bannerError?.let { err -> ErrorBanner(state = err, onDismiss = { activeError = null; LibraryScanController.lastError = null }) }
         }
 
         AnimatedVisibility(visible = contextSheetItem != null, enter = fadeIn(animationSpec = tween(160)), exit = fadeOut(animationSpec = tween(180))) {
@@ -1390,20 +1403,25 @@ private fun LibraryToolIconButton(
     icon: ImageVector,
     tint: Color,
     contentDescription: String,
+    label: String,
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .size(42.dp)
-            .clip(CircleShape)
-            .background(GlassSurfaceStrong)
-            .background(Brush.radialGradient(listOf(tint.copy(alpha = if (enabled) 0.30f else 0.10f), Color.Transparent), radius = 80f))
-            .border(1.2.dp, tint.copy(alpha = if (enabled) 0.60f else 0.20f), CircleShape)
-            .clickable(enabled = enabled) { onClick() },
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(imageVector = icon, contentDescription = contentDescription, tint = if (enabled) tint else tint.copy(alpha = 0.35f), modifier = Modifier.size(19.dp))
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .clip(CircleShape)
+                .background(GlassSurfaceStrong)
+                .background(Brush.radialGradient(listOf(tint.copy(alpha = if (enabled) 0.30f else 0.10f), Color.Transparent), radius = 80f))
+                .border(1.2.dp, tint.copy(alpha = if (enabled) 0.60f else 0.20f), CircleShape)
+                .clickable(enabled = enabled) { onClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(imageVector = icon, contentDescription = contentDescription, tint = if (enabled) tint else tint.copy(alpha = 0.35f), modifier = Modifier.size(19.dp))
+        }
+        Spacer(modifier = Modifier.height(3.dp))
+        Text(text = label, color = if (enabled) tint else tint.copy(alpha = 0.35f), fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
