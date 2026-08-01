@@ -235,7 +235,7 @@ fun TvShowDetailScreen(
             .show()
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF080808))) {
+    Box(modifier = Modifier.fillMaxSize().background(SpaceBlack)) {
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -262,7 +262,7 @@ fun TvShowDetailScreen(
                                 colors = listOf(
                                     Color.Transparent,
                                     Color.Black.copy(alpha = 0.60f),
-                                    Color(0xFF080808)
+                                    SpaceBlack
                                 )
                             )
                         )
