@@ -32,7 +32,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.ui.theme.CineVaultTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 object CineVaultPlayerHolder {
     var currentPlayer: ExoPlayer? = null
@@ -388,8 +390,17 @@ fun CineVaultApp() {
         if (cached != null) libraryVideos = cached.videos
     }
 
+    // FIX: loadLibraryCache() was previously called directly inside this
+    // LaunchedEffect, which runs on the main-safe dispatcher by default —
+    // meaning a synchronous SharedPreferences/file read of a large cached
+    // library (hundreds of videos with full metadata) could cause a brief
+    // main-thread hitch right at cold start, exactly the kind of startup
+    // jank a cache-first strategy is supposed to avoid. Wrapped in
+    // Dispatchers.IO so the read itself happens off the main thread; only
+    // the resulting state assignment (libraryVideos = ...) touches Compose,
+    // which is safe since withContext resumes back on the calling context.
     LaunchedEffect(Unit) {
-        val cached = loadLibraryCache(context)
+        val cached = withContext(Dispatchers.IO) { loadLibraryCache(context) }
         if (cached != null && cached.videos.isNotEmpty()) {
             libraryVideos = cached.videos
         }
