@@ -19,7 +19,10 @@ import java.util.concurrent.TimeUnit
 // failure reason (HTTP code + the API's own error message) all the way back
 // to the player screen so it can be shown directly on-screen instead.
 sealed class SubtitleDownloadResult {
-    data class Success(val uri: Uri, val language: String) : SubtitleDownloadResult()
+    // Provider now carried through too — needed so a cache hit and a fresh
+    // download both know (and can display) which provider a subtitle
+    // actually came from, not just its language.
+    data class Success(val uri: Uri, val language: String, val provider: String = "OpenSubtitles") : SubtitleDownloadResult()
     data class SearchHttpError(val code: Int, val detail: String) : SubtitleDownloadResult()
     data class NoResults(val triedTerms: List<String>) : SubtitleDownloadResult()
     data class DownloadHttpError(val code: Int, val detail: String) : SubtitleDownloadResult()
@@ -73,7 +76,7 @@ sealed class SubtitleSearchListResult {
     object NoResults : SubtitleSearchListResult()
 }
 
-data class CachedSubtitle(val uri: Uri, val language: String)
+data class CachedSubtitle(val uri: Uri, val language: String, val provider: String = "OpenSubtitles")
 
 object OpenSubtitlesClient {
 
@@ -92,17 +95,45 @@ object OpenSubtitlesClient {
         return (result as? SubtitleDownloadResult.Success)?.uri
     }
 
+    // FIX: filenames now carry the provider (see subtitleCacheFile below),
+    // so a straight path construction can't be used for lookups anymore —
+    // this scans for whichever provider-tagged file exists for this
+    // language, PLUS the old no-provider filename for anything cached
+    // before this change shipped (real users have real files on disk
+    // under the old scheme; those must keep resolving as cache hits, not
+    // suddenly look like cache misses after an update).
     fun findCachedSubtitle(context: Context, videoPath: String, preferredLanguages: List<String>): CachedSubtitle? {
         for (lang in preferredLanguages.ifEmpty { listOf("en") }) {
-            val file = subtitleCacheFile(context, videoPath, lang)
-            if (file.exists() && file.length() > 0) return CachedSubtitle(Uri.fromFile(file), lang)
+            findCachedSubtitleForLanguage(context, videoPath, lang)?.let { return it }
         }
         return null
     }
 
-    fun findCachedSubtitle(context: Context, videoPath: String, language: String): CachedSubtitle? {
-        val file = subtitleCacheFile(context, videoPath, language)
-        return if (file.exists() && file.length() > 0) CachedSubtitle(Uri.fromFile(file), language) else null
+    fun findCachedSubtitle(context: Context, videoPath: String, language: String): CachedSubtitle? =
+        findCachedSubtitleForLanguage(context, videoPath, language)
+
+    private fun findCachedSubtitleForLanguage(context: Context, videoPath: String, language: String): CachedSubtitle? {
+        val normalizedLang = SubtitleLanguageRegistry.normalize(language) ?: language.take(2).lowercase().ifBlank { "en" }
+        val key = subtitleCacheKey(videoPath)
+        val prefix = "$key.$normalizedLang."
+        val legacyFile = File(subtitleCacheDir(context), "$key.$normalizedLang.srt")
+
+        // New scheme: <hash>.<lang>.<providerSlug>.srt
+        val match = subtitleCacheDir(context).listFiles { f ->
+            f.isFile && f.name.startsWith(prefix) && f.name.endsWith(".srt") && f.length() > 0
+        }?.firstOrNull()
+        if (match != null) {
+            val slug = match.name.removePrefix(prefix).removeSuffix(".srt")
+            return CachedSubtitle(Uri.fromFile(match), language, providerFromSlug(slug))
+        }
+
+        // Legacy scheme: <hash>.<lang>.srt (no provider segment) — always
+        // meant OpenSubtitles, since SubDL support didn't exist yet when
+        // files were written this way.
+        if (legacyFile.exists() && legacyFile.length() > 0) {
+            return CachedSubtitle(Uri.fromFile(legacyFile), language, "OpenSubtitles")
+        }
+        return null
     }
 
     // ── Subtitle Manager support ─────────────────────────────────────────
@@ -125,18 +156,44 @@ object OpenSubtitlesClient {
             f.isFile && f.name.startsWith(prefix) && f.name.endsWith(".srt") && f.length() > 0
         } ?: return emptyList()
         return files.mapNotNull { file ->
-            val lang = file.name.removePrefix(prefix).removeSuffix(".srt")
-            if (lang.isBlank()) null else CachedSubtitle(Uri.fromFile(file), lang)
+            // Two possible shapes now: "<lang>.<providerSlug>.srt" (new) or
+            // just "<lang>.srt" (legacy, pre-provider-tracking — always
+            // OpenSubtitles).
+            val remainder = file.name.removePrefix(prefix).removeSuffix(".srt")
+            val parts = remainder.split(".")
+            val lang = parts.getOrNull(0)?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val provider = parts.getOrNull(1)?.let { providerFromSlug(it) } ?: "OpenSubtitles"
+            CachedSubtitle(Uri.fromFile(file), lang, provider)
         }.sortedBy { SubtitleLanguageRegistry.displayName(it.language) }
     }
 
-    // Deletes one specific cached language for this video. Returns true if
-    // a file actually existed and was removed, false otherwise (already
-    // gone, or a delete failure) — callers can use this to decide whether
-    // to show an error.
-    fun deleteCachedSubtitle(context: Context, videoPath: String, language: String): Boolean {
-        val file = subtitleCacheFile(context, videoPath, language)
+    // Deletes directly off the CachedSubtitle's own file — the Manager UI
+    // already has the exact CachedSubtitle it's showing, so there's no
+    // need to reconstruct a filename (and risk getting the provider slug
+    // wrong) just to find the file again.
+    fun deleteCachedSubtitle(context: Context, cached: CachedSubtitle): Boolean {
+        val path = cached.uri.path ?: return false
+        val file = File(path)
         return file.exists() && file.delete()
+    }
+
+    // Kept for any older call site still passing language alone — deletes
+    // whichever provider's file is currently cached for that language.
+    fun deleteCachedSubtitle(context: Context, videoPath: String, language: String): Boolean {
+        val cached = findCachedSubtitleForLanguage(context, videoPath, language) ?: return false
+        return deleteCachedSubtitle(context, cached)
+    }
+
+    // "OpenSubtitles" -> "opensubtitles", "SubDL" -> "subdl" — the only two
+    // providers CineVault has today. Anything unrecognized (a slug from a
+    // future provider this code doesn't know about yet) falls back to
+    // showing the raw slug rather than silently mislabeling it.
+    private fun providerSlug(provider: String): String = provider.lowercase().replace(Regex("[^a-z0-9]"), "")
+
+    private fun providerFromSlug(slug: String): String = when (slug) {
+        "opensubtitles" -> "OpenSubtitles"
+        "subdl" -> "SubDL"
+        else -> slug.ifBlank { "OpenSubtitles" }
     }
 
     private fun subtitleCacheDir(context: Context): File {
@@ -164,9 +221,16 @@ object OpenSubtitlesClient {
         }
     }
 
-    fun subtitleCacheFile(context: Context, videoPath: String, language: String): File {
+    // FIX: filename now includes the provider (<hash>.<lang>.<providerSlug>.srt,
+    // was <hash>.<lang>.srt) so a language downloaded from both OpenSubtitles
+    // and SubDL gets two distinct cache entries instead of the second
+    // silently overwriting the first — and so the Subtitle Manager can show
+    // which provider each cached file actually came from. Provider defaults
+    // to OpenSubtitles so every pre-existing call site that doesn't know
+    // about providers still compiles and behaves the same as before.
+    fun subtitleCacheFile(context: Context, videoPath: String, language: String, provider: String = "OpenSubtitles"): File {
         val normalizedLang = SubtitleLanguageRegistry.normalize(language) ?: language.take(2).lowercase().ifBlank { "en" }
-        return File(subtitleCacheDir(context), "${subtitleCacheKey(videoPath)}.$normalizedLang.srt")
+        return File(subtitleCacheDir(context), "${subtitleCacheKey(videoPath)}.$normalizedLang.${providerSlug(provider)}.srt")
     }
 
     suspend fun downloadBestEnglishSubtitleDetailed(
@@ -182,7 +246,7 @@ object OpenSubtitlesClient {
         try {
             findCachedSubtitle(context, videoPath, languages)?.let { cached ->
                 Log.d(TAG, "Subtitle cache hit for $videoPath (${cached.language})")
-                return@withContext SubtitleDownloadResult.Success(cached.uri, cached.language)
+                return@withContext SubtitleDownloadResult.Success(cached.uri, cached.language, cached.provider)
             }
 
             val languagesToTry = languages.ifEmpty { listOf("en") }
@@ -380,26 +444,27 @@ object OpenSubtitlesClient {
         context: Context,
         videoPath: String,
         fileId: Int,
-        language: String
+        language: String,
+        provider: String = "OpenSubtitles"
     ): SubtitleDownloadResult = withContext(Dispatchers.IO) {
         try {
-            finishDownload(subtitleCacheFile(context, videoPath, language), fileId, language)
+            finishDownload(subtitleCacheFile(context, videoPath, language, provider), fileId, language, provider)
         } catch (e: Exception) {
             Log.e(TAG, "Download-by-id error: ${e.message}", e)
             SubtitleDownloadResult.UnexpectedError(e.message ?: e.javaClass.simpleName)
         }
     }
 
-    suspend fun downloadSubtitleToFile(targetFile: File, fileId: Int, language: String): SubtitleDownloadResult = withContext(Dispatchers.IO) {
+    suspend fun downloadSubtitleToFile(targetFile: File, fileId: Int, language: String, provider: String = "OpenSubtitles"): SubtitleDownloadResult = withContext(Dispatchers.IO) {
         try {
-            finishDownload(targetFile, fileId, language)
+            finishDownload(targetFile, fileId, language, provider)
         } catch (e: Exception) {
             Log.e(TAG, "Download-to-file error: ${e.message}", e)
             SubtitleDownloadResult.UnexpectedError(e.message ?: e.javaClass.simpleName)
         }
     }
 
-    private fun finishDownload(targetFile: File, fileId: Int, language: String): SubtitleDownloadResult {
+    private fun finishDownload(targetFile: File, fileId: Int, language: String, provider: String = "OpenSubtitles"): SubtitleDownloadResult {
         val linkResult = getDownloadLink(fileId)
         val subtitleLink = when (linkResult) {
             is DownloadLinkResult.Found -> linkResult.link
@@ -417,7 +482,7 @@ object OpenSubtitlesClient {
         targetFile.parentFile?.mkdirs()
         targetFile.writeText(srtText, Charsets.UTF_8)
         Log.d(TAG, "Subtitle saved: ${targetFile.absolutePath}")
-        return SubtitleDownloadResult.Success(Uri.fromFile(targetFile), language)
+        return SubtitleDownloadResult.Success(Uri.fromFile(targetFile), language, provider)
     }
 
     private fun buildSearchAttempts(cleanName: String): List<String> {
