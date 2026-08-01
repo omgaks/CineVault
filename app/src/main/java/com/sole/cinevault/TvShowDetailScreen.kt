@@ -30,6 +30,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Delete
@@ -86,7 +88,35 @@ fun TvShowDetailScreen(
     // why this is a banner rather than a toast.
     var activeError by remember { mutableStateOf<ErrorBannerState?>(null) }
 
+    var expandedSeasons by remember { mutableStateOf<Set<Int>>(emptySet()) }
+
     val visibleEpisodes = episodes.filter { !hiddenPaths.contains(it.video.path) && !videoIsInsideSecretFolder(it, hiddenFolders) }
+
+    // Grouped by season using the same extractEpisodeInfo() parser the rest
+    // of the app uses for S/E detection — falls back to season 1 for any
+    // episode it can't parse (e.g. a file with no S00E00-style marker)
+    // rather than dropping it. Sorted within each season by episode number,
+    // not by whatever order they happened to scan in.
+    data class SeasonGroup(val season: Int, val eps: List<VideoWithMetadata>)
+    val seasonGroups = remember(visibleEpisodes) {
+        visibleEpisodes
+            .groupBy { extractEpisodeInfo(it.video.name)?.season ?: 1 }
+            .toSortedMap()
+            .map { (season, eps) ->
+                SeasonGroup(season, eps.sortedBy { extractEpisodeInfo(it.video.name)?.episode ?: 0 })
+            }
+    }
+    // Season 1 (or whichever is first) starts expanded so the screen isn't
+    // just a wall of collapsed headers on first open; the rest start
+    // collapsed. Only actually shown as grouped UI when there's more than
+    // one season — a single-season show renders as a flat list exactly like
+    // before, since headers would just be visual noise for it.
+    LaunchedEffect(seasonGroups.map { it.season }) {
+        if (expandedSeasons.isEmpty() && seasonGroups.isNotEmpty()) {
+            expandedSeasons = setOf(seasonGroups.first().season)
+        }
+    }
+    val hasMultipleSeasons = seasonGroups.size > 1
 
     fun openContextSheet(item: VideoWithMetadata) {
         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -277,7 +307,11 @@ fun TvShowDetailScreen(
                 }
             }
 
-            // ── Full episode list ─────────────────────────────────────────
+            // ── Full episode list — grouped by season when there's more
+            // than one, same collapsible-header pattern already used for
+            // Library's Folders tab, so it's a familiar interaction rather
+            // than a new UI language. Single-season shows render exactly
+            // as before (flat list, no headers).
             item {
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
@@ -290,15 +324,62 @@ fun TvShowDetailScreen(
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
-            itemsIndexed(visibleEpisodes) { index, episode ->
-                EpisodeListRow(
-                    episode = episode,
-                    episodeNumber = index + 1,
-                    context = context,
-                    onClick = { onEpisodeClick(episode) },
-                    onLongPress = { openContextSheet(episode) }
-                )
-                Spacer(modifier = Modifier.height(2.dp))
+            if (hasMultipleSeasons) {
+                seasonGroups.forEach { group ->
+                    val isExpanded = expandedSeasons.contains(group.season)
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 22.dp, vertical = 4.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White.copy(alpha = 0.06f))
+                                .clickable {
+                                    expandedSeasons = if (isExpanded) expandedSeasons - group.season else expandedSeasons + group.season
+                                }
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Season ${group.season}",
+                                color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                text = "${group.eps.size} episode${if (group.eps.size != 1) "s" else ""}",
+                                color = Color(0xFFAAAAAA), fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                                contentDescription = null, tint = Color(0xFFAAAAAA), modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    if (isExpanded) {
+                        itemsIndexed(group.eps) { index, episode ->
+                            EpisodeListRow(
+                                episode = episode,
+                                episodeNumber = index + 1,
+                                context = context,
+                                onClick = { onEpisodeClick(episode) },
+                                onLongPress = { openContextSheet(episode) }
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                        }
+                    }
+                }
+            } else {
+                itemsIndexed(visibleEpisodes) { index, episode ->
+                    EpisodeListRow(
+                        episode = episode,
+                        episodeNumber = index + 1,
+                        context = context,
+                        onClick = { onEpisodeClick(episode) },
+                        onLongPress = { openContextSheet(episode) }
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                }
             }
 
             item { Spacer(modifier = Modifier.height(100.dp)) }
