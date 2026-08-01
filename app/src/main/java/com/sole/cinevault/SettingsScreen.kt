@@ -39,8 +39,11 @@ import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -71,6 +74,7 @@ private val AccentNetwork = Color(0xFF6FC3FF)
 private val AccentStream = Color(0xFFC792FF)
 private val AccentSupport = Color(0xFFFF6E8C)
 private val AccentAbout = Color(0xFFE8C77A)
+private val AccentPrivacy = Color(0xFF8FD9A8)
 
 // Distinct color per folder pill — cycled by position so every added folder
 // reads as visually its own thing rather than a uniform list.
@@ -230,6 +234,38 @@ fun SettingsScreen(
                     }
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(text = "Touch and hold a folder to remove it. After adding a folder, go to Library and rescan to pull its files in.", color = TextFaint, fontSize = 12.sp, lineHeight = 17.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Privacy — metadata fetch toggle. Off means no more TMDB/OMDB
+            // network calls from here on (search, ratings, or the upgrade
+            // path that runs even on a cache hit if some fields are
+            // missing) — whatever's already cached keeps showing, nothing
+            // new gets looked up. Read fresh from prefs on entry, saved
+            // immediately on toggle — no separate Save button, matching
+            // every other setting on this screen.
+            GlassSectionCard(title = "Privacy", subtitle = "Control what CineVault sends over the network.", icon = Icons.Rounded.Lock, accent = AccentPrivacy) {
+                var metadataFetchEnabled by remember { mutableStateOf(loadMetadataFetchEnabled(context)) }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "Fetch online metadata", color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Posters, ratings, cast, and genres from TMDB/OMDB. Turning this off uses only what's already cached for each video — nothing new is looked up.",
+                            color = TextMuted, fontSize = 12.sp, lineHeight = 17.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Switch(
+                        checked = metadataFetchEnabled,
+                        onCheckedChange = {
+                            metadataFetchEnabled = it
+                            saveMetadataFetchEnabled(context, it)
+                        },
+                        colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
+                    )
                 }
             }
 
