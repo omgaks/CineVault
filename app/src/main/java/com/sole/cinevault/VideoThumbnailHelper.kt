@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
+import android.util.LruCache
 import android.util.Size
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -18,8 +19,21 @@ object VideoThumbnailHelper {
         val bitmap: Bitmap
     )
 
-    private val previewMemoryCache = linkedMapOf<String, List<PreviewFrame>>()
-    private val localThumbnailCache = linkedMapOf<String, Bitmap>()
+    // FIX: was a plain linkedMapOf with manual "evict oldest INSERTED key"
+    // logic — that's FIFO, not LRU. Re-hitting an already-cached key never
+    // moved it back to the front, so replaying the same video repeatedly in
+    // one session didn't protect it from eviction once 3 other videos got
+    // cached after it. android.util.LruCache tracks real access order
+    // (get() counts as a "use"), so a video you keep coming back to now
+    // correctly outlives ones you only opened once. Bumped 3 -> 5 entries
+    // per the suggested cap.
+    private val previewMemoryCache = LruCache<String, List<PreviewFrame>>(5)
+
+    // Same FIFO -> LRU fix as above. Cap kept at 80 (unchanged) — each
+    // entry is a poster-sized (640x900) bitmap, so 80 is already a
+    // reasonable ceiling; only the eviction POLICY changed here, not the
+    // size.
+    private val localThumbnailCache = LruCache<String, Bitmap>(80)
 
     suspend fun generatePreviewCache(
         context: Context,
@@ -32,7 +46,7 @@ object VideoThumbnailHelper {
         val safeCount = frameCount.coerceIn(12, 120)
         val cacheKey = "${videoPath}_${durationMs}_${safeCount}"
 
-        previewMemoryCache[cacheKey]?.let {
+        previewMemoryCache.get(cacheKey)?.let {
             return@withContext it
         }
 
@@ -85,16 +99,7 @@ object VideoThumbnailHelper {
         }
 
         if (frames.isNotEmpty()) {
-            previewMemoryCache[cacheKey] = frames
-
-            while (previewMemoryCache.size > 3) {
-                val firstKey = previewMemoryCache.keys.firstOrNull()
-                if (firstKey != null) {
-                    previewMemoryCache.remove(firstKey)
-                } else {
-                    break
-                }
-            }
+            previewMemoryCache.put(cacheKey, frames)
         }
 
         frames
@@ -115,7 +120,7 @@ object VideoThumbnailHelper {
         val safeCount = frameCount.coerceIn(12, 120)
         val cacheKey = "${file.absolutePath}_${file.lastModified()}_${file.length()}_${durationMs}_${safeCount}"
 
-        previewMemoryCache[cacheKey]?.let {
+        previewMemoryCache.get(cacheKey)?.let {
             return@withContext it
         }
 
@@ -162,16 +167,7 @@ object VideoThumbnailHelper {
         }
 
         if (frames.isNotEmpty()) {
-            previewMemoryCache[cacheKey] = frames
-
-            while (previewMemoryCache.size > 3) {
-                val firstKey = previewMemoryCache.keys.firstOrNull()
-                if (firstKey != null) {
-                    previewMemoryCache.remove(firstKey)
-                } else {
-                    break
-                }
-            }
+            previewMemoryCache.put(cacheKey, frames)
         }
 
         frames
@@ -260,7 +256,7 @@ object VideoThumbnailHelper {
     ): Bitmap? = withContext(Dispatchers.IO) {
         val cacheKey = videoPath
 
-        localThumbnailCache[cacheKey]?.let {
+        localThumbnailCache.get(cacheKey)?.let {
             return@withContext it
         }
 
@@ -280,8 +276,7 @@ object VideoThumbnailHelper {
                         null
                     )
 
-                localThumbnailCache[cacheKey] = bitmap
-                trimLocalCache()
+                localThumbnailCache.put(cacheKey, bitmap)
                 return@withContext bitmap
             } catch (_: Exception) {
             }
@@ -313,8 +308,7 @@ object VideoThumbnailHelper {
                 )?.scalePosterThumbnail()
 
             if (bitmap != null) {
-                localThumbnailCache[cacheKey] = bitmap
-                trimLocalCache()
+                localThumbnailCache.put(cacheKey, bitmap)
             }
 
             bitmap
@@ -324,17 +318,6 @@ object VideoThumbnailHelper {
             try {
                 retriever.release()
             } catch (_: Exception) {
-            }
-        }
-    }
-
-    private fun trimLocalCache() {
-        while (localThumbnailCache.size > 80) {
-            val firstKey = localThumbnailCache.keys.firstOrNull()
-            if (firstKey != null) {
-                localThumbnailCache.remove(firstKey)
-            } else {
-                break
             }
         }
     }
