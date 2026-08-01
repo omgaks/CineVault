@@ -149,7 +149,46 @@ fun ErrorBanner(state: ErrorBannerState, onDismiss: () -> Unit) {
     }
 }
 
-private object LibraryScrollState {
+// Shared empty-state block — icon + heading + subtext + optional action
+// slot, used wherever a screen has nothing to show (empty library, no
+// search results, etc.) instead of a single line of plain text.
+@Composable
+fun EmptyStateBlock(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    actions: @Composable ColumnScope.() -> Unit = {}
+) {
+    Column(
+        modifier = modifier.fillMaxWidth().padding(vertical = 40.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .clip(CircleShape)
+                .background(GlassSurfaceStrong)
+                .border(1.dp, AmberGlow.copy(alpha = 0.30f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(imageVector = icon, contentDescription = null, tint = AmberCore, modifier = Modifier.size(32.dp))
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(text = title, color = TextBright, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(text = subtitle, color = TextMuted, fontSize = 13.sp, textAlign = TextAlign.Center, lineHeight = 18.sp, modifier = Modifier.widthIn(max = 260.dp))
+        Spacer(modifier = Modifier.height(18.dp))
+        actions()
+    }
+}
+
+// Not private — HomeScreen.kt's "See All" button on Continue Watching sets
+// LibraryScrollState.category directly before navigating here, so Library
+// opens straight into the right filter instead of landing on "All" and
+// making the person tap again. Same file-private-vs-package-visible
+// reasoning as ForceCineVaultBrightness() in Screens.kt.
+object LibraryScrollState {
     var index: Int = 0
     var offset: Int = 0
     var category: String = "All"
@@ -546,7 +585,7 @@ fun LocalVideoLibraryScreen(
         }
     }
 
-    val categories = listOf("All", "Movies", "TV Shows", "Folders", "Downloads", "Favorites", "Duplicates", "Secret")
+    val categories = listOf("All", "Continue Watching", "Movies", "TV Shows", "Folders", "Downloads", "Favorites", "Duplicates", "Secret")
 
     val sortedVideos = remember(videos, sortOption) {
         when (sortOption) {
@@ -590,6 +629,10 @@ fun LocalVideoLibraryScreen(
     val filteredVideos = when (selectedCategory) {
         "Secret" -> if (secretUnlocked) secretVideos.filter { it.video.path !in secretGroupedPaths } else emptyList()
         "Favorites" -> favoriteVideos
+        // Same 15-second threshold Home's own Continue Watching row uses —
+        // kept identical on purpose so "See All" from Home shows exactly
+        // the same set, just not capped to 12.
+        "Continue Watching" -> visibleSortedVideos.filter { loadPlaybackPosition(context, it.video.path) > 15_000L }
         "TV Shows" -> emptyList()
         "Folders" -> emptyList()
         "Duplicates" -> emptyList()
@@ -1068,8 +1111,31 @@ fun LocalVideoLibraryScreen(
 
             if (selectedCategory != "Folders" && selectedCategory != "Duplicates" && !isLoading && filteredVideos.isEmpty() && tvGroups.isEmpty() && !(selectedCategory == "Secret" && !secretUnlocked)) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Box(modifier = Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) {
-                        Text(text = "No videos found. Tap Scan Device Videos.", color = TextMuted, fontSize = 15.sp)
+                    if (videos.isEmpty()) {
+                        EmptyStateBlock(
+                            icon = Icons.Filled.LocalMovies,
+                            title = "Your library is empty",
+                            subtitle = "Scan your device or add a network share to get started."
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text(
+                                    text = "Scan Device Videos", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberGlow.copy(alpha = 0.90f))
+                                        .clickable { permissionLauncher.launch(permission) }
+                                        .padding(horizontal = 18.dp, vertical = 10.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        EmptyStateBlock(
+                            icon = Icons.Filled.LocalMovies,
+                            title = "Nothing here yet",
+                            subtitle = when (selectedCategory) {
+                                "Continue Watching" -> "Videos you've started watching will show up here."
+                                "Favorites" -> "Tap the heart on anything to add it here."
+                                else -> "Try a different category, or rescan your library."
+                            }
+                        )
                     }
                 }
             }
@@ -1101,7 +1167,7 @@ fun LocalVideoLibraryScreen(
             if (filteredVideos.isNotEmpty() && selectedCategory != "Folders") {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Text(
-                        text = when (selectedCategory) { "Movies" -> "Movies"; "Downloads" -> "Downloads"; "Favorites" -> "Favorites"; "Secret" -> "Secret Folder"; else -> "Movies & Downloads" },
+                        text = when (selectedCategory) { "Movies" -> "Movies"; "Downloads" -> "Downloads"; "Favorites" -> "Favorites"; "Secret" -> "Secret Folder"; "Continue Watching" -> "Continue Watching"; else -> "Movies & Downloads" },
                         color = TextBright, fontSize = 22.sp, fontWeight = FontWeight.Bold
                     )
                 }
