@@ -17,10 +17,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.ViewList
@@ -34,6 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -55,11 +58,17 @@ import kotlin.math.roundToInt
 // separate Search sheet instead, same as it always has). Position's
 // controls now live inside Appearance; Dual Subtitles — previously buried
 // at the bottom of the old catch-all Advanced tab — is its own tool now.
+// MANAGE added this round — lists every language already downloaded for
+// THIS video (via OpenSubtitlesClient.listCachedSubtitlesForVideo) with a
+// delete action per language, addressing "no way to manage downloaded
+// subtitles" directly instead of leaving cached files to just accumulate
+// silently.
 enum class SubtitleStudioTab(val label: String, val icon: ImageVector) {
     TRACK("Tracks", Icons.Filled.ViewList),
     TIMING("Timing", Icons.Filled.Sync),
     APPEARANCE("Appearance", Icons.Filled.Palette),
     DUAL("Dual", Icons.Filled.SwapHoriz),
+    MANAGE("Manage", Icons.Filled.Storage),
     BEHAVIOUR("Behaviour", Icons.Filled.Settings)
 }
 
@@ -79,6 +88,12 @@ fun SubtitleStudioSheet(
     containerWidth: Dp,
     containerHeight: Dp,
     initialTab: SubtitleStudioTab?,
+    // Needed by the new Manage tab to look up which languages are cached
+    // for THIS specific video (OpenSubtitlesClient keys its cache by video
+    // path). Every other tab already gets everything it needs passed in
+    // explicitly rather than reaching for global state, so this follows
+    // the same pattern instead of Manage being the one tab that's special.
+    videoPath: String,
     onOpenSearch: () -> Unit,
     onOpenManualSearch: () -> Unit,
     embeddedTracks: List<SubtitleTrackChoice.Embedded>,
@@ -310,6 +325,10 @@ fun SubtitleStudioSheet(
                                 onDualSecondaryLanguageChange = onDualSecondaryLanguageChange,
                                 onDualGapLinesChange = onDualGapLinesChange
                             )
+                            SubtitleStudioTab.MANAGE -> StudioManagerTab(
+                                videoPath = videoPath,
+                                onSelectTrack = onSelectTrack
+                            )
                             SubtitleStudioTab.BEHAVIOUR -> StudioBehaviourTab(
                                 prefs = behaviorPrefs,
                                 onChange = onBehaviorPrefsChange,
@@ -348,7 +367,9 @@ private fun SubtitleToolsGrid(onSelectTool: (SubtitleStudioTab) -> Unit, onOpenS
         Spacer(modifier = Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             ToolTile(icon = SubtitleStudioTab.BEHAVIOUR.icon, label = SubtitleStudioTab.BEHAVIOUR.label, modifier = Modifier.weight(1f)) { onSelectTool(SubtitleStudioTab.BEHAVIOUR) }
-            Spacer(modifier = Modifier.weight(1f))
+            // NEW — Subtitle Manager, filling one of the two previously-
+            // empty spacer slots in this row rather than adding a new row.
+            ToolTile(icon = SubtitleStudioTab.MANAGE.icon, label = SubtitleStudioTab.MANAGE.label, modifier = Modifier.weight(1f)) { onSelectTool(SubtitleStudioTab.MANAGE) }
             Spacer(modifier = Modifier.weight(1f))
         }
         Spacer(modifier = Modifier.height(14.dp))
@@ -580,6 +601,105 @@ private fun StudioDualTab(
                 if (dualStatusText.isNotBlank()) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(text = dualStatusText, color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
+}
+
+// ── Subtitle Manager ──────────────────────────────────────────────────────
+// NEW this round. Lists every language currently cached for THIS video
+// (OpenSubtitlesClient.listCachedSubtitlesForVideo scans the shared cache
+// dir for files sharing this video's hash prefix — there's no separate
+// index, the filenames on disk are the source of truth). Each row can be
+// applied directly (routes through the existing SubtitleTrackChoice.
+// Downloaded selection path — same cleaning/playback pipeline every other
+// subtitle source already goes through) or deleted, with a lightweight
+// inline confirm rather than a separate dialog since this is a low-stakes,
+// easily-undone-by-redownloading action.
+// NOTE: this only knows LANGUAGE, not which provider (OpenSubtitles vs
+// SubDL) supplied it — that isn't tracked per-file anywhere today, so rows
+// show language only. Flagged rather than faked.
+@Composable
+private fun StudioManagerTab(
+    videoPath: String,
+    onSelectTrack: (SubtitleTrackChoice) -> Unit
+) {
+    val context = LocalContext.current
+    var cached by remember(videoPath) { mutableStateOf(OpenSubtitlesClient.listCachedSubtitlesForVideo(context, videoPath)) }
+    var pendingDelete by remember { mutableStateOf<CachedSubtitle?>(null) }
+
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        StudioSectionLabel("Downloaded Subtitles")
+        Text(
+            text = "Every language already downloaded for this video. Shows language only — the provider (OpenSubtitles/SubDL) isn't tracked per file.",
+            color = TextMuted, fontSize = 11.sp, lineHeight = 15.sp
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+
+        if (cached.isEmpty()) {
+            Text(text = "No downloaded subtitles for this video yet.", color = TextFaint, fontSize = 12.sp)
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                cached.forEach { sub ->
+                    val label = SubtitleLanguageRegistry.displayName(sub.language)
+                    val file = sub.uri.path?.let { File(it) }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(SpaceDeep.copy(alpha = 0.6f))
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                    ) {
+                        Text(text = label, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        if (file != null) {
+                            Text(
+                                text = "Use", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(AmberCore)
+                                    .clickable { onSelectTrack(SubtitleTrackChoice.Downloaded(file = file, language = sub.language)) }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                        }
+                        Icon(
+                            imageVector = Icons.Filled.Delete,
+                            contentDescription = "Delete $label subtitle",
+                            tint = Color(0xFFFF5252),
+                            modifier = Modifier.size(20.dp).clickable { pendingDelete = sub }
+                        )
+                    }
+                }
+            }
+        }
+
+        pendingDelete?.let { toDelete ->
+            Spacer(modifier = Modifier.height(14.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(SpaceDeep.copy(alpha = 0.85f))
+                    .border(1.dp, Color(0xFFFF5252).copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                    .padding(12.dp)
+            ) {
+                Text(text = "Delete ${SubtitleLanguageRegistry.displayName(toDelete.language)} subtitle?", color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Cancel", color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clip(RoundedCornerShape(50)).background(GlassSurface).clickable { pendingDelete = null }.padding(horizontal = 14.dp, vertical = 7.dp)
+                    )
+                    Text(
+                        text = "Delete", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Black,
+                        modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFFFF5252)).clickable {
+                            OpenSubtitlesClient.deleteCachedSubtitle(context, videoPath, toDelete.language)
+                            cached = OpenSubtitlesClient.listCachedSubtitlesForVideo(context, videoPath)
+                            pendingDelete = null
+                        }.padding(horizontal = 14.dp, vertical = 7.dp)
+                    )
                 }
             }
         }
