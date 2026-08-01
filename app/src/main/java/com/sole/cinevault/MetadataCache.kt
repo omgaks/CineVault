@@ -11,6 +11,28 @@ import java.net.URLEncoder
 
 private const val METADATA_PREFS_NAME = "cinevault_metadata_cache"
 
+// ── Privacy: disable-metadata toggle ──────────────────────────────────────
+// Separate SharedPreferences file from the metadata CACHE above on purpose
+// — this is a person's setting, not cached data, and shouldn't ever get
+// wiped by a "clear metadata cache" action elsewhere in the app. Defaults
+// to enabled (true) so nothing changes for anyone who's never touched this
+// setting — this is an off switch someone opts into, not a behavior change
+// forced on existing installs.
+private const val METADATA_SETTINGS_PREFS_NAME = "cinevault_metadata_settings"
+private const val METADATA_FETCH_ENABLED_KEY = "metadata_fetch_enabled"
+
+fun loadMetadataFetchEnabled(context: Context): Boolean {
+    return context.getSharedPreferences(METADATA_SETTINGS_PREFS_NAME, Context.MODE_PRIVATE)
+        .getBoolean(METADATA_FETCH_ENABLED_KEY, true)
+}
+
+fun saveMetadataFetchEnabled(context: Context, enabled: Boolean) {
+    context.getSharedPreferences(METADATA_SETTINGS_PREFS_NAME, Context.MODE_PRIVATE)
+        .edit()
+        .putBoolean(METADATA_FETCH_ENABLED_KEY, enabled)
+        .apply()
+}
+
 data class CachedVideoMetadata(
     val title: String,
     val subtitle: String,
@@ -286,6 +308,19 @@ suspend fun enrichVideoWithOnlineMetadata(
     context: Context,
     item: VideoWithMetadata
 ): VideoWithMetadata {
+
+    // Privacy: when off, this function makes NO network calls at all —
+    // not the initial search, not the OMDB ratings lookup, and not the
+    // "upgrade" path below either (which also calls out live even on a
+    // cache hit, if some fields are missing). Only whatever's already
+    // cached gets applied; a video with nothing cached yet just keeps its
+    // bare filename-derived title. This is a deliberate off switch someone
+    // opts into, not the feature being removed — CineVault's poster/rating
+    // enrichment is core to the app, but the choice to use it belongs to
+    // the person, not something forced.
+    if (!loadMetadataFetchEnabled(context)) {
+        return applyCachedMetadataIfAvailable(context, item)
+    }
 
     loadCachedVideoMetadata(context, item.video.path)?.let { cached ->
         var applied = applyCachedVideoMetadata(item, cached)
