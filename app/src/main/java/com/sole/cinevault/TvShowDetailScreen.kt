@@ -11,9 +11,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -76,6 +79,12 @@ fun TvShowDetailScreen(
     var hiddenFolders by remember { mutableStateOf<Set<String>>(loadSecretFolderPaths(context)) }
     var favoritePaths by remember { mutableStateOf(loadFavoriteVideoPaths(context)) }
     var contextSheetItem by remember { mutableStateOf<VideoWithMetadata?>(null) }
+
+    // Persistent, retryable error banner for delete failures — reuses the
+    // same ErrorBannerState/ErrorBanner defined in LocalVideoLibraryScreen.kt
+    // (same package, no import needed). See that file for the reasoning on
+    // why this is a banner rather than a toast.
+    var activeError by remember { mutableStateOf<ErrorBannerState?>(null) }
 
     val visibleEpisodes = episodes.filter { !hiddenPaths.contains(it.video.path) && !videoIsInsideSecretFolder(it, hiddenFolders) }
 
@@ -166,7 +175,7 @@ fun TvShowDetailScreen(
                         deleteConsentLauncher.launch(IntentSenderRequest.Builder(pi.intentSender).build())
                     } catch (e: Exception) {
                         pendingDeleteResult = null
-                        Toast.makeText(context, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        activeError = ErrorBannerState("Delete failed: ${e.message}") { deleteVideoFile(item) }
                     }
                 } else {
                     try {
@@ -174,7 +183,7 @@ fun TvShowDetailScreen(
                         when {
                             deletedRows > 0 -> finishDeleteSuccess(item)
                             f.exists() && f.delete() -> finishDeleteSuccess(item)
-                            else -> Toast.makeText(context, "Could not delete file", Toast.LENGTH_SHORT).show()
+                            else -> activeError = ErrorBannerState("Could not delete \"${item.title}\"") { deleteVideoFile(item) }
                         }
                     } catch (e: SecurityException) {
                         val recoverable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) e as? android.app.RecoverableSecurityException else null
@@ -185,10 +194,10 @@ fun TvShowDetailScreen(
                             }
                             deleteConsentLauncher.launch(IntentSenderRequest.Builder(recoverable.userAction.actionIntent.intentSender).build())
                         } else {
-                            Toast.makeText(context, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                            activeError = ErrorBannerState("Delete failed: ${e.message}") { deleteVideoFile(item) }
                         }
                     } catch (e: Exception) {
-                        Toast.makeText(context, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        activeError = ErrorBannerState("Delete failed: ${e.message}") { deleteVideoFile(item) }
                     }
                 }
             }
@@ -306,6 +315,17 @@ fun TvShowDetailScreen(
             Icon(imageVector = Icons.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(22.dp))
         }
 
+        // ── Persistent error banner — same slide-down-from-top treatment
+        // as the Library screen's banner, positioned below the back button.
+        AnimatedVisibility(
+            visible = activeError != null,
+            enter = slideInVertically(initialOffsetY = { -it }, animationSpec = tween(280, easing = FastOutSlowInEasing)) + fadeIn(tween(220)),
+            exit = slideOutVertically(targetOffsetY = { -it }, animationSpec = tween(200)) + fadeOut(tween(150)),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 68.dp, start = 16.dp, end = 16.dp)
+        ) {
+            activeError?.let { err -> ErrorBanner(state = err, onDismiss = { activeError = null }) }
+        }
+
         // ── Long-press context sheet — same pattern as the Library screen ──
         AnimatedVisibility(visible = contextSheetItem != null, enter = fadeIn(animationSpec = tween(160)), exit = fadeOut(animationSpec = tween(180))) {
             val selectedItem = contextSheetItem
@@ -321,6 +341,14 @@ fun TvShowDetailScreen(
                     val isHidden = hiddenPaths.contains(selectedItem.video.path)
                     val isInSecretFolder = videoIsInsideSecretFolder(selectedItem, hiddenFolders)
 
+                    // Sheet slides up + fades in on top of the scrim's plain
+                    // fade — same "bottom sheet arriving" language used on
+                    // the Library screen's context sheet.
+                    AnimatedVisibility(
+                        visible = contextSheetItem != null,
+                        enter = slideInVertically(initialOffsetY = { it / 3 }, animationSpec = tween(260, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
+                        exit = slideOutVertically(targetOffsetY = { it / 3 }, animationSpec = tween(180)) + fadeOut(tween(140))
+                    ) {
                     Column(
                         modifier = Modifier
                             .width(300.dp)
@@ -390,6 +418,7 @@ fun TvShowDetailScreen(
                             contextSheetItem = null
                             deleteVideoFile(selectedItem)
                         }
+                    }
                     }
                 }
             }
