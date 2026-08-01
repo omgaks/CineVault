@@ -18,6 +18,9 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -109,6 +112,41 @@ enum class LibrarySortOption(val label: String) {
     OLDEST("Oldest"),
     SIZE_BIG("Size ↓"),
     SIZE_SMALL("Size ↑")
+}
+
+// Shared by any screen in this package that needs a persistent, retryable
+// error banner instead of a toast that flashes by. Not exposed as a toast
+// replacement everywhere — only for consequential failures (scan, delete,
+// network share) where a Retry action is meaningful.
+data class ErrorBannerState(val message: String, val onRetry: (() -> Unit)? = null)
+
+@Composable
+fun ErrorBanner(state: ErrorBannerState, onDismiss: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFF2A0A0A))
+            .border(1.dp, Color(0xFFFF5252).copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Icon(imageVector = Icons.Filled.Warning, contentDescription = null, tint = Color(0xFFFF5252), modifier = Modifier.size(20.dp))
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(text = state.message, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 3, overflow = TextOverflow.Ellipsis)
+        if (state.onRetry != null) {
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = "RETRY", color = AmberCore, fontSize = 12.sp, fontWeight = FontWeight.Black,
+                modifier = Modifier.clickable { state.onRetry.invoke(); onDismiss() }
+            )
+        }
+        Spacer(modifier = Modifier.width(10.dp))
+        Icon(
+            imageVector = Icons.Filled.Close, contentDescription = "Dismiss", tint = TextMuted,
+            modifier = Modifier.size(18.dp).clickable { onDismiss() }
+        )
+    }
 }
 
 private object LibraryScrollState {
@@ -259,6 +297,13 @@ fun LocalVideoLibraryScreen(
 
     var expandedFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
 
+    // Persistent error banner — for consequential failures (scan failure,
+    // SMB share failure, delete failure) that need a Retry action and
+    // shouldn't just flash by as a toast during a long-running operation.
+    // Lightweight confirmations ("Added to Favorites" etc.) stay as toasts
+    // on purpose — a banner would be overkill for those.
+    var activeError by remember { mutableStateOf<ErrorBannerState?>(null) }
+
     val keyguardManager = remember { context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager }
 
     val gridState = rememberLazyGridState(
@@ -406,7 +451,7 @@ fun LocalVideoLibraryScreen(
                         deleteConsentLauncher.launch(IntentSenderRequest.Builder(pi.intentSender).build())
                     } catch (e: Exception) {
                         pendingDeleteResult = null
-                        Toast.makeText(context, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        activeError = ErrorBannerState("Delete failed: ${e.message}") { deleteVideoFile(item) }
                     }
                 } else {
                     try {
@@ -414,7 +459,7 @@ fun LocalVideoLibraryScreen(
                         when {
                             deletedRows > 0 -> finishDeleteSuccess(item)
                             f.exists() && f.delete() -> finishDeleteSuccess(item)
-                            else -> Toast.makeText(context, "Could not delete file", Toast.LENGTH_SHORT).show()
+                            else -> activeError = ErrorBannerState("Could not delete \"${item.title}\"") { deleteVideoFile(item) }
                         }
                     } catch (e: SecurityException) {
                         val recoverable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) e as? android.app.RecoverableSecurityException else null
@@ -425,10 +470,10 @@ fun LocalVideoLibraryScreen(
                             }
                             deleteConsentLauncher.launch(IntentSenderRequest.Builder(recoverable.userAction.actionIntent.intentSender).build())
                         } else {
-                            Toast.makeText(context, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                            activeError = ErrorBannerState("Delete failed: ${e.message}") { deleteVideoFile(item) }
                         }
                     } catch (e: Exception) {
-                        Toast.makeText(context, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        activeError = ErrorBannerState("Delete failed: ${e.message}") { deleteVideoFile(item) }
                     }
                 }
             }
@@ -441,8 +486,13 @@ fun LocalVideoLibraryScreen(
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
         if (!isGranted) { scanStatus = "Storage permission denied"; return@rememberLauncherForActivityResult }
         scope.launch {
-            isLoading = true; scanStatus = "Scanning device videos..."
-            val deviceVideos = try { scanDeviceVideos(context) } catch (e: Exception) { e.printStackTrace(); scanStatus = "Scan failed: ${e.message ?: "Unknown error"}"; isLoading = false; return@launch }
+            isLoading = true; scanStatus = "Scanning device videos..."; activeError = null
+            val deviceVideos = try { scanDeviceVideos(context) } catch (e: Exception) {
+                e.printStackTrace()
+                scanStatus = ""; isLoading = false
+                activeError = ErrorBannerState("Scan failed: ${e.message ?: "Unknown error"}") { permissionLauncher.launch(permission) }
+                return@launch
+            }
 
             val smbShares = loadSmbShares(context)
             val smbVideos = mutableListOf<VideoWithMetadata>()
@@ -450,7 +500,12 @@ fun LocalVideoLibraryScreen(
                 scanStatus = "Scanning network share: ${share.displayName}..."
                 when (val result = scanSmbShare(share)) {
                     is SmbScanResult.Success -> smbVideos.addAll(result.videos)
-                    is SmbScanResult.Failure -> Toast.makeText(context, result.reason, Toast.LENGTH_LONG).show()
+                    // Persistent banner instead of a toast — scanning can run
+                    // for a while, and a share failure flashing by mid-scan
+                    // was easy to miss entirely. Retry re-runs the whole scan
+                    // rather than just this one share, since that's the only
+                    // entry point available here.
+                    is SmbScanResult.Failure -> activeError = ErrorBannerState(result.reason) { permissionLauncher.launch(permission) }
                 }
             }
 
@@ -1063,6 +1118,19 @@ fun LocalVideoLibraryScreen(
             }
         }
 
+        // ── Persistent error banner — slides down from the top rather than
+        // just fading, since it's an alert that should feel like it's
+        // dropping in to demand attention, distinct from the bottom-sheet
+        // slide-up used for the context menus below.
+        AnimatedVisibility(
+            visible = activeError != null,
+            enter = slideInVertically(initialOffsetY = { -it }, animationSpec = tween(280, easing = FastOutSlowInEasing)) + fadeIn(tween(220)),
+            exit = slideOutVertically(targetOffsetY = { -it }, animationSpec = tween(200)) + fadeOut(tween(150)),
+            modifier = Modifier.align(Alignment.TopCenter).padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            activeError?.let { err -> ErrorBanner(state = err, onDismiss = { activeError = null }) }
+        }
+
         AnimatedVisibility(visible = contextSheetItem != null, enter = fadeIn(animationSpec = tween(160)), exit = fadeOut(animationSpec = tween(180))) {
             val selectedItem = contextSheetItem
             Box(
@@ -1077,6 +1145,14 @@ fun LocalVideoLibraryScreen(
                     val isHidden = hiddenPaths.contains(selectedItem.video.path)
                     val isInSecretFolder = videoIsInsideSecretFolder(selectedItem, hiddenFolders)
 
+                    // Sheet slides up + fades in, distinct from the scrim's
+                    // plain fade above — gives this the "bottom sheet
+                    // arriving" feel instead of just materializing in place.
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = contextSheetItem != null,
+                        enter = slideInVertically(initialOffsetY = { it / 3 }, animationSpec = tween(260, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
+                        exit = slideOutVertically(targetOffsetY = { it / 3 }, animationSpec = tween(180)) + fadeOut(tween(140))
+                    ) {
                     Column(
                         modifier = Modifier
                             .width(180.dp)
@@ -1157,6 +1233,7 @@ fun LocalVideoLibraryScreen(
                             }
                         }
                     }
+                    }
                 }
             }
         }
@@ -1173,6 +1250,11 @@ fun LocalVideoLibraryScreen(
                 modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f)).clickable { folderSecretConfirm = null },
                 contentAlignment = Alignment.Center
             ) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = folderSecretConfirm != null,
+                    enter = slideInVertically(initialOffsetY = { it / 3 }, animationSpec = tween(260, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
+                    exit = slideOutVertically(targetOffsetY = { it / 3 }, animationSpec = tween(180)) + fadeOut(tween(140))
+                ) {
                 Column(
                     modifier = Modifier
                         .width(220.dp)
@@ -1217,6 +1299,7 @@ fun LocalVideoLibraryScreen(
                             folderSecretConfirm = null
                         }
                     }
+                }
                 }
             }
         }
