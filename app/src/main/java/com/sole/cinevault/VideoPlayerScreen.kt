@@ -2380,6 +2380,7 @@ fun VideoPlayerScreen(
                 containerWidth = maxWidth,
                 containerHeight = maxHeight,
                 initialTab = subtitleStudioInitialTab,
+                videoPath = currentVideo.path,
                 onOpenSearch = {
                     showSubtitleStudio = false
                     showSubtitleSearch = true
