@@ -624,7 +624,16 @@ fun CineVaultApp() {
                             videos = homeVisibleVideos,
                             onScanRequest = { switchTab(1) },
                             onItemClick = { item -> push(Destination.Detail(item)) },
-                            onPlayClick = { item -> push(Destination.Player(item.video, item.type, libraryVideos)) }
+                            onPlayClick = { item -> push(Destination.Player(item.video, item.type, libraryVideos)) },
+                            // Same lambda as LocalVideoLibraryScreen's own
+                            // onVideosLoaded above — Home's big Scan Library
+                            // button needs this too, so a scan started from
+                            // Home actually populates libraryVideos instead
+                            // of just navigating to an empty Library screen.
+                            onVideosLoaded = { loadedVideos ->
+                                libraryVideos = loadedVideos
+                                saveLibraryCache(context = context, videos = loadedVideos)
+                            }
                         )
                     }
                 }
