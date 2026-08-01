@@ -29,6 +29,29 @@ data class SubtitleCleaningOptions(
 
 internal data class SrtBlock(val index: String, val timing: String, val lines: List<String>)
 
+// Normalizes a raw timing line to spec-correct comma-separated SRT
+// ("00:00:01,000 --> 00:00:04,000"), regardless of whether the source used
+// comma (SRT) or dot (VTT) — needed because cleanSrtText/mergeDualSubtitles
+// both re-emit block.timing essentially verbatim otherwise, and elsewhere
+// in this codebase every file this pipeline produces is documented and
+// relied upon as "always genuine comma-SRT" (see VideoPlayerScreen.kt's
+// playCurrentVideoWithSubtitle, which picks the SubRip MIME type on that
+// assumption). A VTT file's dot-separated timestamps passing through
+// unchanged would silently break that assumption — the output would be
+// labeled/served as SubRip but not actually be valid SubRip, which a
+// strict decoder could simply fail to parse, rendering NO subtitles at
+// all with no visible error. Also strips any trailing VTT-only cue
+// settings (e.g. "align:start line:90%") that can follow the end
+// timestamp — CineVault's own subtitle positioning is handled separately
+// via SubtitleAppearance, so this text has no use here and isn't
+// guaranteed safe for a strict SRT parser to see.
+private val TIMING_LINE_REGEX = Regex("(\\d{2}:\\d{2}:\\d{2})[,.](\\d{3})\\s*-->\\s*(\\d{2}:\\d{2}:\\d{2})[,.](\\d{3})")
+internal fun normalizeTimingLine(timing: String): String {
+    val match = TIMING_LINE_REGEX.find(timing) ?: return timing
+    val (startTime, startMs, endTime, endMs) = match.destructured
+    return "$startTime,$startMs --> $endTime,$endMs"
+}
+
 // Sound-cue / music notation: [MUSIC PLAYING], (door opens), ♪ lines, etc.
 // Matches a line that's ENTIRELY bracketed content, not just contains
 // brackets somewhere (so "I saw him [pause] leave" — a real mid-sentence
@@ -182,7 +205,7 @@ fun cleanSrtText(original: String, options: SubtitleCleaningOptions): String {
         val cleanedLines = cleanBlockLines(block.lines, options)
         if (cleanedLines.isEmpty()) continue // whole cue was e.g. just a sound cue — drop it entirely
         output.append(newIndex).append("\n")
-        output.append(block.timing).append("\n")
+        output.append(normalizeTimingLine(block.timing)).append("\n")
         cleanedLines.forEach { output.append(it).append("\n") }
         output.append("\n")
         newIndex++
