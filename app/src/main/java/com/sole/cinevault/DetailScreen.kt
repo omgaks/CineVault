@@ -367,7 +367,7 @@ fun DetailScreen(
                 SectionTitle("Cast & Crew")
                 Spacer(modifier = Modifier.height(12.dp))
                 when {
-                    castLoading && castList.isEmpty() -> Text(text = "Loading cast...", color = TextFaint, fontSize = 14.sp)
+                    castLoading && castList.isEmpty() -> CastRowShimmer()
                     castList.isEmpty() -> Text(text = "Cast info not available.", color = TextFaint, fontSize = 14.sp)
                     else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) { items(castList) { cast -> CastCard(cast = cast, movieName = item.title, onActorClick = onActorClick) } }
                 }
@@ -539,6 +539,32 @@ private fun GenreChip(text: String, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(text = text, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+// ── Cast row shimmer — replaces the old plain "Loading cast..." text with
+// a row of pulsing circle+line placeholders shaped like the real CastCard
+// layout below, so the loading state reads as "cast is arriving" rather
+// than a blank line of text for however long the network call takes.
+@Composable
+private fun CastRowShimmer() {
+    val infinite = rememberInfiniteTransition(label = "castShimmer")
+    val alpha by infinite.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.75f,
+        animationSpec = infiniteRepeatable(animation = tween(750, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
+        label = "castShimmerAlpha"
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        repeat(6) {
+            Column(modifier = Modifier.width(82.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(modifier = Modifier.size(76.dp).clip(CircleShape).background(GlassSurfaceStrong.copy(alpha = alpha)))
+                Spacer(modifier = Modifier.height(6.dp))
+                Box(modifier = Modifier.width(56.dp).height(9.dp).clip(RoundedCornerShape(4.dp)).background(GlassSurface.copy(alpha = alpha)))
+                Spacer(modifier = Modifier.height(4.dp))
+                Box(modifier = Modifier.width(40.dp).height(7.dp).clip(RoundedCornerShape(4.dp)).background(GlassSurface.copy(alpha = alpha * 0.8f)))
+            }
+        }
     }
 }
 
