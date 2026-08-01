@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.app.KeyguardManager
 import android.provider.MediaStore
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -544,10 +545,46 @@ fun LocalVideoLibraryScreen(
 
     val tvGroups = groupTvShows(sortedVideos.filter { it.type.equals("tv", ignoreCase = true) && !hiddenPaths.contains(it.video.path) && !videoIsInsideSecretFolder(it, hiddenFolders) })
 
-    Box(modifier = Modifier.fillMaxSize().background(SpaceBlack)) {
+    // ── Secret folder screenshot/recording protection ───────────────────
+    // FLAG_SECURE is a window-level flag — CineVault is single-Activity, and
+    // "Secret" isn't its own screen, it's a category filter within THIS
+    // screen, so the effect keys off (selectedCategory == "Secret" &&
+    // secretUnlocked) rather than a separate screen's lifecycle. Blocks
+    // screenshots, screen recording, AND the Recents-tray thumbnail while
+    // unlocked Secret content is actually on screen; clears automatically
+    // the instant the person switches to any other category or leaves this
+    // screen, so it never lingers and affects some other part of the app.
+    val activity = context.findCineActivity()
+    val isViewingSecret = selectedCategory == "Secret" && secretUnlocked
+    DisposableEffect(isViewingSecret) {
+        if (isViewingSecret) {
+            activity?.window?.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        }
+        onDispose {
+            if (isViewingSecret) {
+                activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            }
+        }
+    }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(SpaceBlack)) {
+        // ── Adaptive grid columns ─────────────────────────────────────────
+        // Was a hardcoded GridCells.Fixed(3) regardless of device or
+        // orientation — meaning the Xiaomi Pad 7 in landscape got the exact
+        // same column count as a phone, wasting real screen space. Floor is
+        // kept at 3 (never regresses below the original phone behavior);
+        // only bumps UP as more width becomes available. Width-based rather
+        // than strictly landscape-gated, since a tablet in PORTRAIT (e.g.
+        // ~820dp) still has plenty of room to deserve more than 3 too.
+        val gridColumns = when {
+            maxWidth >= 900.dp -> 5   // large tablet landscape
+            maxWidth >= 700.dp -> 4   // tablet portrait / smaller tablet landscape
+            else -> 3                 // phone — unchanged from before
+        }
+
         LazyVerticalGrid(
             state = gridState,
-            columns = GridCells.Fixed(3),
+            columns = GridCells.Fixed(gridColumns),
             modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -892,9 +929,9 @@ fun LocalVideoLibraryScreen(
                                 items(items = folder.videos, key = { it.video.path }) { item ->
                                     LibraryGridCard(item = item, onClick = { onItemClick(item) }, onPlayClick = onPlayClick, onLongPress = { openContextSheet(it) })
                                 }
-                                val remainder = folder.videos.size % 3
+                                val remainder = folder.videos.size % gridColumns
                                 if (remainder != 0) {
-                                    repeat(3 - remainder) {
+                                    repeat(gridColumns - remainder) {
                                         item { Spacer(modifier = Modifier.fillMaxWidth()) }
                                     }
                                 }
