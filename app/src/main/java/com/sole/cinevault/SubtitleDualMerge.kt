@@ -16,7 +16,14 @@ package com.sole.cinevault
 // perfect one — most professionally-timed subtitle pairs for the same
 // release line up close enough for this to read naturally; poorly-timed
 // or wildly different releases may show slight mismatches.
-private val TIMING_REGEX = Regex("(\\d{2}):(\\d{2}):(\\d{2}),(\\d{3})\\s*-->\\s*(\\d{2}):(\\d{2}):(\\d{2}),(\\d{3})")
+// FIX: was comma-only ("(\\d{2}):(\\d{2}):(\\d{2}),(\\d{3})..."), which
+// meant a VTT track's dot-separated timestamps ("00:00:01.000") never
+// matched this regex at all — parseTimingRangeMs() would return null for
+// every single cue, so EVERY primary cue would show zero overlapping
+// secondary cues. Not a crash, just dual mode silently merging in nothing,
+// which looks identical to "dual subtitles isn't working" with no error
+// to explain why. Now accepts either separator.
+private val TIMING_REGEX = Regex("(\\d{2}):(\\d{2}):(\\d{2})[,.](\\d{3})\\s*-->\\s*(\\d{2}):(\\d{2}):(\\d{2})[,.](\\d{3})")
 
 private fun parseTimingRangeMs(timing: String): Pair<Long, Long>? {
     val m = TIMING_REGEX.find(timing) ?: return null
@@ -43,7 +50,7 @@ fun mergeDualSubtitles(primaryText: String, secondaryText: String, secondaryColo
         val overlapping = if (range != null) secondaryTimed.filter { (secRange, _) -> rangesOverlap(range, secRange) } else emptyList()
 
         output.append(newIndex).append("\n")
-        output.append(block.timing).append("\n")
+        output.append(normalizeTimingLine(block.timing)).append("\n")
         block.lines.forEach { output.append(it).append("\n") }
 
         if (overlapping.isNotEmpty()) {
