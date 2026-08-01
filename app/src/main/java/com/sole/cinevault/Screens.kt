@@ -65,6 +65,7 @@ import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -84,60 +85,44 @@ import com.sole.cinevault.ui.theme.*
 // meant and I'll take another pass at it.
 @Composable
 private fun BigScanLibraryButton(onClick: () -> Unit) {
-    val infinite = rememberInfiniteTransition(label = "scanPulse")
-    val scale by infinite.animateFloat(
-        initialValue = 1f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 1600
-                1f at 0
-                1.07f at 130
-                1f at 260
-                1.09f at 400
-                1f at 560
-                1f at 1600
-            }
-        ), label = "scanScale"
+    // Same breathing-glow treatment as FrostedPlayButton in the player
+    // screen (VideoPlayerScreen.kt) — alpha pulse only, no scale/heartbeat,
+    // so the two amber glowing circles in the app feel like one consistent
+    // visual language rather than two different effects.
+    val infinite = rememberInfiniteTransition(label = "scanGlow")
+    val glowAlpha by infinite.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(animation = tween(1400, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
+        label = "scanGlowAlpha"
     )
-    val glow by infinite.animateFloat(
-        initialValue = 0.45f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(animation = tween(750, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse), label = "scanGlow"
-    )
-    val underlineProgress by infinite.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(animation = tween(1700, easing = LinearEasing), repeatMode = RepeatMode.Restart), label = "scanUnderline"
-    )
+    val size = 240.dp
+    val density = LocalDensity.current
+    val glowRadiusPx = with(density) { (size / 2f * 1.05f).toPx() }.coerceAtLeast(1f)
 
     Box(
         modifier = Modifier
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .amberGlow(radius = 90.dp, alpha = glow)
-            .clip(RoundedCornerShape(50))
-            .background(Brush.verticalGradient(listOf(AmberGlow, AmberCore)))
-            .border(1.5.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.55f), Color.Transparent)), RoundedCornerShape(50))
-            .clickable { onClick() }
-            .padding(horizontal = 40.dp, vertical = 22.dp)
+            .size(size)
+            .clip(CircleShape)
+            .background(GlassSurfaceStrong)
+            .background(Brush.verticalGradient(0f to GlassHighlight, 0.45f to Color.Transparent, 1f to Color.Transparent))
+            .background(Brush.radialGradient(colors = listOf(AmberGlow.copy(alpha = glowAlpha * 0.55f), Color.Transparent), radius = glowRadiusPx))
+            .border(
+                width = 1.6.dp,
+                brush = Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.75f + 0.2f * glowAlpha), AmberDeep.copy(alpha = 0.30f))),
+                shape = CircleShape
+            )
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(imageVector = Icons.Filled.Search, contentDescription = null, tint = Color.Black, modifier = Modifier.size(24.dp))
-                Spacer(modifier = Modifier.width(10.dp))
-                Text("Scan Library", color = Color.Black, fontSize = 21.sp, fontWeight = FontWeight.Black)
-            }
-            Spacer(modifier = Modifier.height(7.dp))
-            BoxWithConstraints(
-                modifier = Modifier.width(150.dp).height(3.dp).clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.22f))
-            ) {
-                val sweepWidth = maxWidth * 0.4f
-                Box(
-                    modifier = Modifier
-                        .width(sweepWidth)
-                        .fillMaxHeight()
-                        .offset(x = (maxWidth + sweepWidth) * underlineProgress - sweepWidth)
-                        .background(Brush.horizontalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f), Color.Transparent)))
-                )
-            }
-        }
+        Text(
+            text = "Scan\nLibrary",
+            color = AmberCore,
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Black,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            lineHeight = 30.sp
+        )
     }
 }
 
