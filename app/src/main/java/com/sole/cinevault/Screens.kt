@@ -973,12 +973,18 @@ fun SearchScreen(
             value = query,
             onValueChange = onQueryChange,
             modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(50),
+            singleLine = true,
+            leadingIcon = { Icon(imageVector = Icons.Filled.Search, contentDescription = null, tint = TextMuted) },
             placeholder = { Text("Search title, genre, director, year...", color = TextFaint) },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedTextColor = TextBright,
                 unfocusedTextColor = TextBright,
-                focusedBorderColor = AmberGlow,
-                unfocusedBorderColor = GlassBorderTop
+                focusedContainerColor = GlassSurfaceStrong,
+                unfocusedContainerColor = GlassSurface,
+                focusedBorderColor = AmberGlow.copy(alpha = 0.65f),
+                unfocusedBorderColor = GlassBorderTop,
+                cursorColor = AmberGlow
             )
         )
 
