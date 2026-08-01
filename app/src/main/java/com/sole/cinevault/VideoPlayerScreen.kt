@@ -832,7 +832,7 @@ fun VideoPlayerScreen(
             val downloadResult = if (result.provider == "SubDL" && result.subDlDownloadPath != null) {
                 SubDlClient.downloadSubtitle(context, currentVideo.path, result.subDlDownloadPath, result.language)
             } else {
-                OpenSubtitlesClient.downloadSubtitleByFileId(context, currentVideo.path, result.fileId, result.language)
+                OpenSubtitlesClient.downloadSubtitleByFileId(context, currentVideo.path, result.fileId, result.language, result.provider)
             }
             when (downloadResult) {
                 is SubtitleDownloadResult.Success -> {
