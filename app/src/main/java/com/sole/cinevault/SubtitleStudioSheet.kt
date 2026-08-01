@@ -617,9 +617,16 @@ private fun StudioDualTab(
 // subtitle source already goes through) or deleted, with a lightweight
 // inline confirm rather than a separate dialog since this is a low-stakes,
 // easily-undone-by-redownloading action.
-// NOTE: this only knows LANGUAGE, not which provider (OpenSubtitles vs
-// SubDL) supplied it — that isn't tracked per-file anywhere today, so rows
-// show language only. Flagged rather than faked.
+// NOTE: provider is now embedded in the filename itself
+// (<hash>.<lang>.<providerSlug>.srt — see OpenSubtitlesClient.
+// subtitleCacheFile), with a fallback for anything cached before this
+// existed (legacy <hash>.<lang>.srt files are treated as OpenSubtitles,
+// since that's the only provider that existed when those were written).
+// One real gap left: subtitles downloaded through SubDL's OWN direct
+// download path (SubDlClient.downloadSubtitle) aren't confirmed to write
+// through this same scheme — that file wasn't available to verify against,
+// so a SubDL download via that specific path might still land in the
+// legacy/default slot until SubDlClient.kt is checked.
 @Composable
 private fun StudioManagerTab(
     videoPath: String,
@@ -632,7 +639,7 @@ private fun StudioManagerTab(
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         StudioSectionLabel("Downloaded Subtitles")
         Text(
-            text = "Every language already downloaded for this video. Shows language only — the provider (OpenSubtitles/SubDL) isn't tracked per file.",
+            text = "Every language already downloaded for this video, with which provider it came from.",
             color = TextMuted, fontSize = 11.sp, lineHeight = 15.sp
         )
         Spacer(modifier = Modifier.height(10.dp))
@@ -652,7 +659,10 @@ private fun StudioManagerTab(
                             .background(SpaceDeep.copy(alpha = 0.6f))
                             .padding(horizontal = 12.dp, vertical = 10.dp)
                     ) {
-                        Text(text = label, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = label, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Text(text = sub.provider, color = TextMuted, fontSize = 10.sp)
+                        }
                         if (file != null) {
                             Text(
                                 text = "Use", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold,
@@ -685,7 +695,7 @@ private fun StudioManagerTab(
                     .border(1.dp, Color(0xFFFF5252).copy(alpha = 0.45f), RoundedCornerShape(12.dp))
                     .padding(12.dp)
             ) {
-                Text(text = "Delete ${SubtitleLanguageRegistry.displayName(toDelete.language)} subtitle?", color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text(text = "Delete ${SubtitleLanguageRegistry.displayName(toDelete.language)} (${toDelete.provider}) subtitle?", color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
@@ -695,7 +705,7 @@ private fun StudioManagerTab(
                     Text(
                         text = "Delete", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Black,
                         modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFFFF5252)).clickable {
-                            OpenSubtitlesClient.deleteCachedSubtitle(context, videoPath, toDelete.language)
+                            OpenSubtitlesClient.deleteCachedSubtitle(context, toDelete)
                             cached = OpenSubtitlesClient.listCachedSubtitlesForVideo(context, videoPath)
                             pendingDelete = null
                         }.padding(horizontal = 14.dp, vertical = 7.dp)
