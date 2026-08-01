@@ -522,14 +522,22 @@ fun LocalVideoLibraryScreen(
 
     val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE
 
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-        if (!isGranted) { scanStatus = "Storage permission denied"; return@rememberLauncherForActivityResult }
+    // Pulled out of permissionLauncher's callback so the scan-failure and
+    // SMB-failure retry banners below can call this directly. They used to
+    // call permissionLauncher.launch(permission) instead — which failed to
+    // compile, since that reference lived INSIDE permissionLauncher's own
+    // initializer lambda (a val can't resolve a reference to itself from
+    // within the expression that constructs it). Retrying by re-running the
+    // scan body directly is also simpler: permission is already granted by
+    // the time any of these failures can happen, so there's no need to
+    // re-request it.
+    fun runLibraryScan() {
         scope.launch {
             isLoading = true; scanStatus = "Scanning device videos..."; activeError = null
             val deviceVideos = try { scanDeviceVideos(context) } catch (e: Exception) {
                 e.printStackTrace()
                 scanStatus = ""; isLoading = false
-                activeError = ErrorBannerState("Scan failed: ${e.message ?: "Unknown error"}") { permissionLauncher.launch(permission) }
+                activeError = ErrorBannerState("Scan failed: ${e.message ?: "Unknown error"}") { runLibraryScan() }
                 return@launch
             }
 
@@ -544,7 +552,7 @@ fun LocalVideoLibraryScreen(
                     // was easy to miss entirely. Retry re-runs the whole scan
                     // rather than just this one share, since that's the only
                     // entry point available here.
-                    is SmbScanResult.Failure -> activeError = ErrorBannerState(result.reason) { permissionLauncher.launch(permission) }
+                    is SmbScanResult.Failure -> activeError = ErrorBannerState(result.reason) { runLibraryScan() }
                 }
             }
 
@@ -583,6 +591,11 @@ fun LocalVideoLibraryScreen(
             val finalList = workingList.toList(); onVideosLoaded(finalList); saveLibraryCache(context, finalList)
             scanStatus = "Library updated: ${finalList.size} videos"; delay(500); scanStatus = ""; isLoading = false
         }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+        if (!isGranted) { scanStatus = "Storage permission denied"; return@rememberLauncherForActivityResult }
+        runLibraryScan()
     }
 
     val categories = listOf("All", "Continue Watching", "Movies", "TV Shows", "Folders", "Downloads", "Favorites", "Duplicates", "Secret")
