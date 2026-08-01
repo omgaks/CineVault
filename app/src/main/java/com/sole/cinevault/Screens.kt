@@ -1,5 +1,16 @@
 package com.sole.cinevault
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import android.app.Activity
@@ -56,13 +67,81 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.sole.cinevault.ui.theme.*
 
-// Single shared findCineActivity() for the whole app
+// The prominent, only-shown-when-empty Scan Library call to action —
+// roughly double the footprint of the old small hero pill, with a
+// heartbeat-style double-pulse scale and a breathing amber glow so it
+// reads as "tap me" the instant the app opens on an empty library. The
+// "spiral" underline was interpreted as a continuously sweeping shimmer
+// rather than a literal circular motion, since a circular spiral doesn't
+// read as an underline under straight text — flag if that's not what was
+// meant and I'll take another pass at it.
+@Composable
+private fun BigScanLibraryButton(onClick: () -> Unit) {
+    val infinite = rememberInfiniteTransition(label = "scanPulse")
+    val scale by infinite.animateFloat(
+        initialValue = 1f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 1600
+                1f at 0
+                1.07f at 130
+                1f at 260
+                1.09f at 400
+                1f at 560
+                1f at 1600
+            }
+        ), label = "scanScale"
+    )
+    val glow by infinite.animateFloat(
+        initialValue = 0.45f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(750, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse), label = "scanGlow"
+    )
+    val underlineProgress by infinite.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(1700, easing = LinearEasing), repeatMode = RepeatMode.Restart), label = "scanUnderline"
+    )
+
+    Box(
+        modifier = Modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .amberGlow(radius = 90.dp, alpha = glow)
+            .clip(RoundedCornerShape(50))
+            .background(Brush.verticalGradient(listOf(AmberGlow, AmberCore)))
+            .border(1.5.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.55f), Color.Transparent)), RoundedCornerShape(50))
+            .clickable { onClick() }
+            .padding(horizontal = 40.dp, vertical = 22.dp)
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(imageVector = Icons.Filled.Search, contentDescription = null, tint = Color.Black, modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(10.dp))
+                Text("Scan Library", color = Color.Black, fontSize = 21.sp, fontWeight = FontWeight.Black)
+            }
+            Spacer(modifier = Modifier.height(7.dp))
+            BoxWithConstraints(
+                modifier = Modifier.width(150.dp).height(3.dp).clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.22f))
+            ) {
+                val sweepWidth = maxWidth * 0.4f
+                Box(
+                    modifier = Modifier
+                        .width(sweepWidth)
+                        .fillMaxHeight()
+                        .offset(x = (maxWidth + sweepWidth) * underlineProgress - sweepWidth)
+                        .background(Brush.horizontalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f), Color.Transparent)))
+                )
+            }
+        }
+    }
+}
+
+
 fun Context.findCineActivity(): Activity? {
     var ctx = this
     while (ctx is android.content.ContextWrapper) {
@@ -170,13 +249,30 @@ fun HomeScreen(
     videos: List<VideoWithMetadata>,
     onScanRequest: () -> Unit,
     onItemClick: (VideoWithMetadata) -> Unit,
-    onPlayClick: (VideoWithMetadata) -> Unit = {}
+    onPlayClick: (VideoWithMetadata) -> Unit = {},
+    // Same callback MainActivity.kt already threads into
+    // LocalVideoLibraryScreen — needed here too so the big "Scan Library"
+    // button can start a REAL scan (via LibraryScanController) instead of
+    // just navigating to Library and leaving the person to tap Scan again
+    // once they get there.
+    onVideosLoaded: (List<VideoWithMetadata>) -> Unit = {}
 ) {
     ForceCineVaultBrightness()
 
     val context = LocalContext.current
     var continueMode by remember { mutableStateOf("List") }
     var featuredMode by remember { mutableStateOf("Grid") }
+
+    // Storage permission for the big Scan Library button below — starts the
+    // real scan via LibraryScanController on grant, then navigates to
+    // Library either way (denied permission still lands on Library, which
+    // already has its own "Storage permission denied" messaging and its
+    // own Scan button to retry from).
+    val scanPermission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE
+    val scanPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) LibraryScanController.start(context, onVideosLoaded)
+        onScanRequest()
+    }
 
     val continueWatching =
         videos.filter {
@@ -274,17 +370,19 @@ fun HomeScreen(
                         fontSize = 14.sp
                     )
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                    if (videos.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(14.dp))
 
-                    Button(
-                        onClick = onScanRequest,
-                        shape = RoundedCornerShape(40.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = AmberGlow.copy(alpha = 0.90f),
-                            contentColor = Color.Black
-                        )
-                    ) {
-                        Text(if (videos.isEmpty()) "Scan Library" else "Open Library", fontWeight = FontWeight.Bold)
+                        Button(
+                            onClick = onScanRequest,
+                            shape = RoundedCornerShape(40.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = AmberGlow.copy(alpha = 0.90f),
+                                contentColor = Color.Black
+                            )
+                        ) {
+                            Text("Open Library", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -323,20 +421,19 @@ fun HomeScreen(
             }
         } else {
             item {
-                EmptyStateBlock(
-                    icon = Icons.Filled.VideoLibrary,
-                    title = "Your library is empty",
-                    subtitle = "Scan your device or add a network share to get started."
+                Box(
+                    modifier = Modifier.fillParentMaxHeight(0.55f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = if (videos.isEmpty()) "Scan Library" else "Open Library",
-                        color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(40.dp))
-                            .background(AmberGlow.copy(alpha = 0.90f))
-                            .clickable { onScanRequest() }
-                            .padding(horizontal = 20.dp, vertical = 11.dp)
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        BigScanLibraryButton(onClick = { scanPermissionLauncher.launch(scanPermission) })
+                        Spacer(modifier = Modifier.height(18.dp))
+                        Text(
+                            text = "Scan your device or add a network share to get started.",
+                            color = TextMuted, fontSize = 13.sp, textAlign = TextAlign.Center,
+                            modifier = Modifier.widthIn(max = 260.dp)
+                        )
+                    }
                 }
             }
         }
@@ -582,6 +679,8 @@ private fun ResumePosterBox(
             ) {
                 Box(modifier = Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(AmberGlow))
             }
+
+            RatingBadgeStack(item = item, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
         }
         Spacer(modifier = Modifier.height(5.dp))
         Text(text = item.title, color = TextBright, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -659,6 +758,63 @@ private fun ImdbCornerChip(value: String, modifier: Modifier = Modifier) {
         }
         Spacer(modifier = Modifier.width(3.dp))
         Text(text = value, color = TextBright, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun TmdbCornerChip(value: String, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black.copy(alpha = 0.62f))
+            .padding(horizontal = 5.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Image(painter = painterResource(R.drawable.ic_tmdb), contentDescription = "TMDB", modifier = Modifier.height(8.dp), contentScale = ContentScale.Fit)
+        Spacer(modifier = Modifier.width(3.dp))
+        Text(text = value, color = TextBright, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun RottenTomatoesCornerChip(value: String, modifier: Modifier = Modifier) {
+    val percent = value.replace("%", "").trim().toIntOrNull() ?: 0
+    val isFresh = percent >= 60
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black.copy(alpha = 0.62f))
+            .padding(horizontal = 5.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Image(
+            painter = painterResource(R.drawable.ic_rotten_tomatoes),
+            contentDescription = "Rotten Tomatoes",
+            modifier = Modifier.height(9.dp),
+            contentScale = ContentScale.Fit,
+            colorFilter = if (!isFresh) androidx.compose.ui.graphics.ColorFilter.tint(Color(0xFF8BC34A)) else null
+        )
+        Spacer(modifier = Modifier.width(3.dp))
+        Text(text = value, color = TextBright, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+// Shared vertical stack of whichever rating badges the item actually has —
+// IMDb, Rotten Tomatoes, TMDB. Used by every poster-forward card (Library
+// grid, Home Featured, Continue Watching grid mode, Search results) so
+// ratings show up consistently everywhere a poster is the primary visual,
+// not just on the Detail screen. Renders nothing if the item has no ratings
+// at all (e.g. Select-Folder items, which never go through TMDB enrichment).
+@Composable
+private fun RatingBadgeStack(item: VideoWithMetadata, modifier: Modifier = Modifier) {
+    val imdb = item.imdbRating?.takeIf { it.isNotBlank() && it != "N/A" }
+    val rt = item.rottenTomatoesRating?.takeIf { it.isNotBlank() && it != "N/A" }
+    val tmdb = item.rating?.takeIf { it > 0.0 }
+    if (imdb == null && rt == null && tmdb == null) return
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        if (imdb != null) ImdbCornerChip(value = imdb)
+        if (rt != null) RottenTomatoesCornerChip(value = rt)
+        if (tmdb != null) TmdbCornerChip(value = String.format("%.1f", tmdb))
     }
 }
 
@@ -753,15 +909,18 @@ fun HomeRow(
                 Column(
                     modifier = Modifier.width(145.dp).clickable { onItemClick(item) }
                 ) {
-                    PosterBox(
-                        posterUrl = item.posterUrl,
-                        modifier = Modifier.fillMaxWidth().height(180.dp),
-                        progress = watchedPercent,
-                        videoPath = item.video.path,
-                        episodeStill = item.episodeStill,
-                        backdropUrl = item.backdropUrl,
-                        type = item.type
-                    )
+                    Box {
+                        PosterBox(
+                            posterUrl = item.posterUrl,
+                            modifier = Modifier.fillMaxWidth().height(180.dp),
+                            progress = watchedPercent,
+                            videoPath = item.video.path,
+                            episodeStill = item.episodeStill,
+                            backdropUrl = item.backdropUrl,
+                            type = item.type
+                        )
+                        RatingBadgeStack(item = item, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(text = item.title, color = TextBright, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                     if (item.subtitle.isNotBlank()) {
@@ -848,14 +1007,17 @@ fun SearchScreen(
 @Composable
 private fun SearchPosterCard(item: VideoWithMetadata, onClick: () -> Unit) {
     Column(modifier = Modifier.fillMaxWidth().clickable { onClick() }) {
-        PosterBox(
-            posterUrl = item.posterUrl,
-            modifier = Modifier.fillMaxWidth().height(210.dp),
-            videoPath = item.video.path,
-            episodeStill = item.episodeStill,
-            backdropUrl = item.backdropUrl,
-            type = item.type
-        )
+        Box {
+            PosterBox(
+                posterUrl = item.posterUrl,
+                modifier = Modifier.fillMaxWidth().height(210.dp),
+                videoPath = item.video.path,
+                episodeStill = item.episodeStill,
+                backdropUrl = item.backdropUrl,
+                type = item.type
+            )
+            RatingBadgeStack(item = item, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
+        }
         Spacer(modifier = Modifier.height(8.dp))
         Text(text = item.title, color = TextBright, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
         if (item.subtitle.isNotBlank()) {
@@ -941,7 +1103,6 @@ fun LibraryGridCard(
     val context = LocalContext.current
     val badges = mediaBadgesFromName(item.video.name)
     val watchedPercent = getWatchedPercent(context, item)
-    val imdbChip = item.imdbRating?.takeIf { it.isNotBlank() && it != "N/A" }
     val qualityChip = listOfNotNull(
         badges.firstOrNull { it == "4K" || it == "1080p" || it == "720p" },
         badges.firstOrNull { it == "HDR" }
@@ -964,9 +1125,7 @@ fun LibraryGridCard(
                 type = item.type
             )
 
-            if (imdbChip != null) {
-                ImdbCornerChip(value = imdbChip, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
-            }
+            RatingBadgeStack(item = item, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
             if (qualityChip.isNotBlank()) {
                 CornerChip(text = qualityChip, modifier = Modifier.align(Alignment.TopEnd).padding(6.dp))
             }
