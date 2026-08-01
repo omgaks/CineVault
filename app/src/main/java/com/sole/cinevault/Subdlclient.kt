@@ -131,6 +131,11 @@ object SubDlClient {
     // Downloads and caches a SubDL result. Handles both the documented ZIP
     // case and a defensive raw-text fallback, since the docs don't fully
     // guarantee every download path is zipped.
+    // FIX: was calling OpenSubtitlesClient.subtitleCacheFile() and building
+    // the Success result WITHOUT passing provider — both silently defaulted
+    // to "OpenSubtitles", so every SubDL download through this path was
+    // being cached under the wrong provider slug and mislabeled in the
+    // Subtitle Manager. Now explicitly tagged "SubDL" in both places.
     suspend fun downloadSubtitle(context: Context, videoPath: String, downloadPath: String, language: String): SubtitleDownloadResult = withContext(Dispatchers.IO) {
         try {
             val downloadUrl = if (downloadPath.startsWith("http", ignoreCase = true)) downloadPath else "$DOWNLOAD_BASE$downloadPath"
@@ -152,11 +157,11 @@ object SubDlClient {
                 val srtText = extractSubtitleText(bytes)
                     ?: return@withContext SubtitleDownloadResult.UnexpectedError("Couldn't find a subtitle file in the SubDL download")
 
-                val targetFile = OpenSubtitlesClient.subtitleCacheFile(context, videoPath, language)
+                val targetFile = OpenSubtitlesClient.subtitleCacheFile(context, videoPath, language, provider = "SubDL")
                 targetFile.parentFile?.mkdirs()
                 targetFile.writeText(srtText, Charsets.UTF_8)
                 Log.d(TAG, "SubDL subtitle saved: ${targetFile.absolutePath}")
-                SubtitleDownloadResult.Success(Uri.fromFile(targetFile), language)
+                SubtitleDownloadResult.Success(Uri.fromFile(targetFile), language, provider = "SubDL")
             }
         } catch (e: Exception) {
             Log.e(TAG, "SubDL download error: ${e.message}", e)
