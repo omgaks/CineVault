@@ -2493,7 +2493,18 @@ fun VideoPlayerScreen(
                                     activity?.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).setActions(actions).build())
                                 }
                             },
-                            modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)
+                            // FIX: extra end padding reserves space for the
+                            // always-on-top lock button (TopEnd, last child
+                            // in the outer Box so it draws above everything
+                            // including this cluster) — without this, the
+                            // Speed icon's position could sit directly under
+                            // the lock button's touch/paint area in
+                            // landscape, since Compose doesn't auto-avoid
+                            // overlap between independently-aligned
+                            // siblings. Portrait doesn't need this: the
+                            // title pill + spacer above already push this
+                            // Column well clear of the lock button's corner.
+                            modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding + 62.dp)
                                 .onGloballyPositioned { clusterHeightPx = it.size.height.toFloat() }
                         )
                     }
@@ -2807,14 +2818,44 @@ private fun TopIconCluster(
     modifier: Modifier = Modifier
 ) {
     val content: @Composable () -> Unit = {
-        IconCircle(icon = Icons.Rounded.Tv, size = iconSize, tint = TextBright, onClick = onPipClick)
-        IconCircle(icon = Icons.Rounded.Timer, size = iconSize, tint = if (sleepTimerActive || showSleepMenu) AmberCore else TextBright, onClick = onSleepClick)
-        IconCircle(icon = Icons.Rounded.Speed, size = iconSize, tint = if (playbackSpeed != 1f || showSpeedMenu) AmberCore else TextBright, onClick = onSpeedClick)
+        LabeledGlowIcon(icon = Icons.Rounded.Tv, label = "PiP", size = iconSize, tint = TextBright, onClick = onPipClick)
+        LabeledGlowIcon(icon = Icons.Rounded.Timer, label = "Sleep", size = iconSize, tint = if (sleepTimerActive || showSleepMenu) AmberCore else TextBright, active = sleepTimerActive || showSleepMenu, onClick = onSleepClick)
+        LabeledGlowIcon(icon = Icons.Rounded.Speed, label = "Speed", size = iconSize, tint = if (playbackSpeed != 1f || showSpeedMenu) AmberCore else TextBright, active = playbackSpeed != 1f || showSpeedMenu, onClick = onSpeedClick)
     }
     if (isLandscape) {
-        Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) { content() }
+        Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) { content() }
     } else {
-        Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
+        Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) { content() }
+    }
+}
+
+// Icon + text label, with a persistent amber-glass glow border (same
+// visual language as the always-visible lock button, just a border/glow
+// treatment rather than a solid fill so active/inactive state — e.g.
+// playback speed != 1x, sleep timer running — still reads clearly through
+// tint and glow intensity). Labels sit below the icon so PiP/Sleep/Speed
+// don't need to be guessed from silhouette alone.
+@Composable
+private fun LabeledGlowIcon(icon: ImageVector, label: String, size: Dp, tint: Color = TextBright, active: Boolean = false, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(RoundedCornerShape(20.dp))
+                .background(GlassSurface)
+                .background(Brush.radialGradient(listOf(AmberGlow.copy(alpha = if (active) 0.38f else 0.20f), Color.Transparent)))
+                .border(
+                    width = 1.2.dp,
+                    brush = Brush.verticalGradient(listOf(AmberGlow.copy(alpha = if (active) 0.90f else 0.55f), AmberDeep.copy(alpha = if (active) 0.55f else 0.25f))),
+                    shape = RoundedCornerShape(20.dp)
+                )
+                .clickable { onClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(size * 0.44f))
+        }
+        Spacer(modifier = Modifier.height(3.dp))
+        Text(text = label, color = if (active) AmberCore else TextMuted, fontSize = 8.5.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
