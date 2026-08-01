@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -295,7 +296,17 @@ fun HomeScreen(
                     items = continueWatching,
                     mode = continueMode,
                     onModeChange = { continueMode = it },
-                    onItemClick = onItemClick
+                    onItemClick = onItemClick,
+                    // "See All" — sets Library's remembered category to
+                    // Continue Watching (LocalVideoLibraryScreen.kt reads
+                    // this on init) then reuses the same nav action the
+                    // hero card's own "Open Library" button already calls,
+                    // rather than threading a brand new navigation callback
+                    // through MainActivity.kt for this alone.
+                    onSeeAll = {
+                        LibraryScrollState.category = "Continue Watching"
+                        onScanRequest()
+                    }
                 )
             }
         }
@@ -312,11 +323,21 @@ fun HomeScreen(
             }
         } else {
             item {
-                Text(
-                    text = "Scan your library to see posters and Continue Watching here.",
-                    color = TextMuted,
-                    fontSize = 15.sp
-                )
+                EmptyStateBlock(
+                    icon = Icons.Filled.VideoLibrary,
+                    title = "Your library is empty",
+                    subtitle = "Scan your device or add a network share to get started."
+                ) {
+                    Text(
+                        text = if (videos.isEmpty()) "Scan Library" else "Open Library",
+                        color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(40.dp))
+                            .background(AmberGlow.copy(alpha = 0.90f))
+                            .clickable { onScanRequest() }
+                            .padding(horizontal = 20.dp, vertical = 11.dp)
+                    )
+                }
             }
         }
     }
@@ -329,7 +350,8 @@ fun ContinueWatchingSection(
     items: List<VideoWithMetadata>,
     mode: String,
     onModeChange: (String) -> Unit,
-    onItemClick: (VideoWithMetadata) -> Unit
+    onItemClick: (VideoWithMetadata) -> Unit,
+    onSeeAll: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -345,6 +367,19 @@ fun ContinueWatchingSection(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f)
             )
+
+            // Only worth showing when there's actually more to see than the
+            // 12-item cap this row already renders — a "See All" that takes
+            // you somewhere with nothing new is worse than no button.
+            if (items.size >= 12) {
+                Text(
+                    text = "See All",
+                    color = AmberCore,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable { onSeeAll() }.padding(horizontal = 6.dp, vertical = 4.dp)
+                )
+            }
 
             Row(
                 modifier = Modifier
@@ -738,6 +773,12 @@ fun HomeRow(
     }
 }
 
+// Best-effort year extraction straight from the filename — same pattern
+// already used elsewhere (cleanScannedTitle etc.), not a new field on the
+// model. Returns null rather than guessing when nothing matches.
+private fun extractYearFromFileName(fileName: String): String? =
+    Regex("\\b(19|20)\\d{2}\\b").find(fileName)?.value
+
 @Composable
 fun SearchScreen(
     videos: List<VideoWithMetadata>,
@@ -747,9 +788,20 @@ fun SearchScreen(
 ) {
     ForceCineVaultBrightness()
 
-    val filteredVideos = videos.filter {
-        it.title.contains(query, ignoreCase = true) ||
-                it.video.name.contains(query, ignoreCase = true)
+    // Expanded beyond title/filename to also match genre, director, and
+    // year — e.g. "horror" or "nolan" or "2010" now actually finds
+    // something instead of only exact title/filename substrings.
+    // Deliberately NOT fuzzy/typo-tolerant matching (that's real edit-
+    // distance scoring, a separate feature on its own merits) — this is
+    // still exact substring matching, just against more fields.
+    val filteredVideos = remember(videos, query) {
+        if (query.isBlank()) videos else videos.filter { v ->
+            v.title.contains(query, ignoreCase = true) ||
+                v.video.name.contains(query, ignoreCase = true) ||
+                v.genres.any { it.contains(query, ignoreCase = true) } ||
+                v.director?.contains(query, ignoreCase = true) == true ||
+                extractYearFromFileName(v.video.name)?.contains(query) == true
+        }
     }
 
     Column(
@@ -762,7 +814,7 @@ fun SearchScreen(
             value = query,
             onValueChange = onQueryChange,
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Search movies or shows...", color = TextFaint) },
+            placeholder = { Text("Search title, genre, director, year...", color = TextFaint) },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedTextColor = TextBright,
                 unfocusedTextColor = TextBright,
@@ -773,13 +825,21 @@ fun SearchScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(filteredVideos) { videoItem ->
-                SearchPosterCard(item = videoItem, onClick = { onVideoClick(videoItem) })
+        if (query.isNotBlank() && filteredVideos.isEmpty()) {
+            EmptyStateBlock(
+                icon = Icons.Filled.Search,
+                title = "No results",
+                subtitle = "Nothing matches \"$query\" in title, genre, director, or year."
+            )
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(4),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(filteredVideos) { videoItem ->
+                    SearchPosterCard(item = videoItem, onClick = { onVideoClick(videoItem) })
+                }
             }
         }
     }
