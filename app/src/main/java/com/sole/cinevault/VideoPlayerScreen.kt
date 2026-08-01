@@ -26,6 +26,8 @@ import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
@@ -2559,7 +2561,12 @@ fun VideoPlayerScreen(
                     Text(text = "⛶  Fill", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 12.dp, vertical = 6.dp))
                 }
 
-                AnimatedVisibility(visible = !showSeekPreview && !isDraggingSeekbar, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(90)), modifier = Modifier.align(Alignment.BottomCenter)) {
+                AnimatedVisibility(
+                    visible = !showSeekPreview && !isDraggingSeekbar,
+                    enter = slideInVertically(initialOffsetY = { it / 2 }, animationSpec = tween(260, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(200)),
+                    exit = slideOutVertically(targetOffsetY = { it / 2 }, animationSpec = tween(180)) + fadeOut(animationSpec = tween(140)),
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                ) {
                     Row(
                         modifier = Modifier.padding(bottom = bottomDockPadding, start = sidePadding, end = sidePadding)
                             .glassPanel(cornerRadius = 42.dp, fill = GlassSurfaceStrong)
@@ -2705,6 +2712,11 @@ fun VideoPlayerScreen(
 
         // ── Delete confirmation dialog (styled to match the app, not the
         // plain white Android AlertDialog) ─────────────────────────────
+        AnimatedVisibility(
+            visible = pendingDeleteConfirmFile != null,
+            enter = fadeIn(animationSpec = tween(150)),
+            exit = fadeOut(animationSpec = tween(180))
+        ) {
         pendingDeleteConfirmFile?.let { file ->
             Box(
                 modifier = Modifier
@@ -2713,6 +2725,14 @@ fun VideoPlayerScreen(
                     .pointerInput(Unit) { detectTapGestures { pendingDeleteConfirmFile = null } },
                 contentAlignment = Alignment.Center
             ) {
+                // Sheet slides up + fades in on top of the scrim's plain
+                // fade — same "arriving from below" language as the
+                // context sheets on the Library/TV Show screens.
+                AnimatedVisibility(
+                    visible = pendingDeleteConfirmFile != null,
+                    enter = slideInVertically(initialOffsetY = { it / 3 }, animationSpec = tween(260, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
+                    exit = slideOutVertically(targetOffsetY = { it / 3 }, animationSpec = tween(180)) + fadeOut(tween(140))
+                ) {
                 Column(
                     modifier = Modifier
                         .widthIn(max = 320.dp)
@@ -2743,7 +2763,9 @@ fun VideoPlayerScreen(
                         )
                     }
                 }
+                }
             }
+        }
         }
 
         // ── Undo snackbar — styled the same as the app's other floating
