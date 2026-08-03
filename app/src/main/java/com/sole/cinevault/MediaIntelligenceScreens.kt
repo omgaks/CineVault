@@ -1,5 +1,7 @@
 package com.sole.cinevault
 
+import com.sole.cinevault.library.*
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
