@@ -2,6 +2,7 @@ package com.sole.cinevault
 
 import com.sole.cinevault.metadata.*
 import com.sole.cinevault.library.*
+import com.sole.cinevault.smb.*
 
 import android.Manifest
 import android.app.Activity
