@@ -1,5 +1,7 @@
 package com.sole.cinevault
 
+import com.sole.cinevault.library.*
+
 // All subtitle-system files (search, import, sync, appearance, dual-merge,
 // providers) moved to their own package on this pass. Single wildcard
 // import used deliberately instead of ~45 explicit ones, since the
