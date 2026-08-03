@@ -1,5 +1,7 @@
 package com.sole.cinevault
 
+import com.sole.cinevault.metadata.*
+
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
