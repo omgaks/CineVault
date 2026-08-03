@@ -1,5 +1,6 @@
 package com.sole.cinevault.subtitles
 
+import com.sole.cinevault.BuildConfig
 import android.content.Context
 import android.net.Uri
 import android.util.Log
