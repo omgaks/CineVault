@@ -1,6 +1,7 @@
 package com.sole.cinevault.metadata
 
 import com.sole.cinevault.BuildConfig
+import com.sole.cinevault.VideoWithMetadata
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
