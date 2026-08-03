@@ -1,5 +1,7 @@
 package com.sole.cinevault
 
+import com.sole.cinevault.library.*
+
 import android.os.Build
 import android.os.Bundle
 import android.app.Activity
