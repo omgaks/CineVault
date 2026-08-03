@@ -1,5 +1,7 @@
 package com.sole.cinevault.metadata
 
+import com.sole.cinevault.VideoWithMetadata
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
