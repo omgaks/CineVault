@@ -1,6 +1,7 @@
 package com.sole.cinevault
 
 import com.sole.cinevault.metadata.*
+import com.sole.cinevault.library.*
 
 import android.content.ClipData
 import android.content.ClipboardManager
