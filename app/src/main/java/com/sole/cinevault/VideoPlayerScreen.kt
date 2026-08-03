@@ -1,5 +1,12 @@
 package com.sole.cinevault
 
+// All subtitle-system files (search, import, sync, appearance, dual-merge,
+// providers) moved to their own package on this pass. Single wildcard
+// import used deliberately instead of ~45 explicit ones, since the
+// cross-reference check confirmed this file is the ONLY outside caller
+// into that package.
+import com.sole.cinevault.subtitles.*
+
 import androidx.compose.ui.graphics.Brush
 import android.app.Activity
 import android.app.PendingIntent
