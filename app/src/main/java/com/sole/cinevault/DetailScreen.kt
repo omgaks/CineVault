@@ -1,5 +1,7 @@
 package com.sole.cinevault
 
+import com.sole.cinevault.metadata.*
+
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
