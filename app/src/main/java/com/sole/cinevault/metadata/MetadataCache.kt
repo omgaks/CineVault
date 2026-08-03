@@ -2,6 +2,8 @@ package com.sole.cinevault.metadata
 
 import com.sole.cinevault.BuildConfig
 import com.sole.cinevault.extractEpisodeInfo
+import com.sole.cinevault.VideoWithMetadata
+import com.sole.cinevault.CastEntry
 
 import android.content.Context
 import com.google.gson.Gson
