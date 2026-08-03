@@ -37,11 +37,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.calculatePan
-import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -94,7 +91,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -1703,157 +1699,71 @@ fun VideoPlayerScreen(
 
         Box(
             modifier = Modifier.fillMaxSize()
-                // Reserves ONLY the right-edge strip from Android's system
-                // back gesture — that's the zone the custom Next-swipe below
-                // needs, since without this a right-edge swipe gets
-                // intercepted by the OS's predictive-back gesture first and
-                // our own drag detector never sees it.
-                //
-                // The LEFT edge is deliberately NOT excluded (previously the
-                // whole screen was, and this Box also explicitly called
-                // onBack() on a left-edge swipe) — some OEM gesture overlays
-                // (HyperOS included) don't fully respect
-                // systemGestureExclusionRects, so the system's own back
-                // gesture was firing on the same touch our onBack() call
-                // handled, and getting a double back-navigation on a shallow
-                // screen stack closes the app entirely instead of just
-                // popping one level. Leaving the left edge to native Android
-                // back-gesture handling (same BackHandler already used
-                // everywhere else in the app) is the actually-correct fix,
-                // not something to work around.
-                .onGloballyPositioned { coordinates ->
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        val bounds = coordinates.boundsInWindow()
-                        val rightEdgeStart = bounds.left + (bounds.width * 0.85f)
-                        view.systemGestureExclusionRects = listOf(
-                            android.graphics.Rect(
-                                rightEdgeStart.roundToInt(),
-                                bounds.top.roundToInt(),
-                                bounds.right.roundToInt(),
-                                bounds.bottom.roundToInt()
-                            )
-                        )
-                    }
-                }
-                .pointerInput(currentVideo.path) {
-                    detectTapGestures(
-                        onTap = {
-                            when {
-                                showAudioSelector -> showAudioSelector = false
-                                showSubtitleSettings -> showSubtitleSettings = false
-                                showTrackSelector -> showTrackSelector = false
-                                showSubtitleSearch -> showSubtitleSearch = false
-                                showDriftDialog -> showDriftDialog = false
-                                showAppearanceStudio -> showAppearanceStudio = false
-                                showSubtitleStudio -> showSubtitleStudio = false
-                                dialogueSyncArmed -> {}
-                                showSpeedMenu -> showSpeedMenu = false
-                                showSleepMenu -> showSleepMenu = false
-                                showSrtBrowser -> showSrtBrowser = false
-                                else -> { val v = !showControls; showControls = v; showTopBar = v }
-                            }
-                        },
-                        onDoubleTap = { offset ->
-                            val w = size.width
-                            when {
-                                offset.x < w * 0.45f -> { exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0)); position = exoPlayer.currentPosition; showControls = true; showTopBar = true }
-                                offset.x > w * 0.55f -> { exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration.coerceAtLeast(0))); position = exoPlayer.currentPosition; showControls = true; showTopBar = true }
-                                else -> { isZoomMode = !isZoomMode; showControls = true; showTopBar = true }
-                            }
+                .videoPlaybackGestures(
+                    view = view,
+                    videoPathKey = currentVideo.path,
+                    episodeListKey = episodeList,
+                    edgeSwipeNextEnabled = { showPrevNextButtons },
+                    onTap = {
+                        when {
+                            showAudioSelector -> showAudioSelector = false
+                            showSubtitleSettings -> showSubtitleSettings = false
+                            showTrackSelector -> showTrackSelector = false
+                            showSubtitleSearch -> showSubtitleSearch = false
+                            showDriftDialog -> showDriftDialog = false
+                            showAppearanceStudio -> showAppearanceStudio = false
+                            showSubtitleStudio -> showSubtitleStudio = false
+                            dialogueSyncArmed -> {}
+                            showSpeedMenu -> showSpeedMenu = false
+                            showSleepMenu -> showSleepMenu = false
+                            showSrtBrowser -> showSrtBrowser = false
+                            else -> { val v = !showControls; showControls = v; showTopBar = v }
                         }
-                    )
-                }
-                .pointerInput(currentVideo.path, episodeList) {
-                    var dragStartX = 0f
-                    var dragTotalX = 0f
-                    var dragTotalY = 0f
-                    detectDragGestures(
-                        onDragStart = { offset ->
-                            dragStartX = offset.x; dragTotalX = 0f; dragTotalY = 0f
-                        },
-                        onDragEnd = {
-                            brightnessGestureKey++; volumeGestureKey++
-                            val w = size.width.toFloat()
-                            val isHorizontal = kotlin.math.abs(dragTotalX) > kotlin.math.abs(dragTotalY) * 1.5f &&
-                                    kotlin.math.abs(dragTotalX) > 48.dp.toPx()
-                            // Left edge intentionally NOT handled here anymore
-                            // — see the exclusion-rect comment above.
-                            if (isHorizontal && dragStartX > w * 0.88f && dragTotalX < 0f) {
-                                if (showPrevNextButtons) playNext()
-                            }
-                        },
-                        onDragCancel = { brightnessGestureKey++; volumeGestureKey++ },
-                        onDrag = { change, dragAmount ->
-                            dragTotalX += dragAmount.x; dragTotalY += dragAmount.y
-                            val x = change.position.x; val w = size.width
-                            val absX = kotlin.math.abs(dragAmount.x); val absY = kotlin.math.abs(dragAmount.y)
-                            val gestureIsVertical = kotlin.math.abs(dragTotalY) >= kotlin.math.abs(dragTotalX)
-                            if (gestureIsVertical && absY > absX) {
-                                if (x < w * 0.50f) {
-                                    brightnessPercent = (brightnessPercent - dragAmount.y.toInt() / 8).coerceIn(5, 100)
-                                    activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = brightnessPercent / 100f }
-                                    showBrightnessCircle = true
-                                } else {
-                                    volumePercent = (volumePercent - dragAmount.y.toInt() / 8).coerceIn(0, 150)
-                                    val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, ((volumePercent.coerceAtMost(100) / 100f) * maxVol).toInt(), 0)
-                                    showVolumeCircle = true
-                                }
-                            }
+                    },
+                    onSeekBack = {
+                        exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0))
+                        position = exoPlayer.currentPosition
+                        showControls = true; showTopBar = true
+                    },
+                    onSeekForward = {
+                        exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration.coerceAtLeast(0)))
+                        position = exoPlayer.currentPosition
+                        showControls = true; showTopBar = true
+                    },
+                    onToggleZoomMode = {
+                        isZoomMode = !isZoomMode; showControls = true; showTopBar = true
+                    },
+                    onDragSettled = { brightnessGestureKey++; volumeGestureKey++ },
+                    onEdgeSwipeNext = { playNext() },
+                    onBrightnessDrag = { deltaY ->
+                        brightnessPercent = (brightnessPercent - deltaY.toInt() / 8).coerceIn(5, 100)
+                        activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = brightnessPercent / 100f }
+                        showBrightnessCircle = true
+                    },
+                    onVolumeDrag = { deltaY ->
+                        volumePercent = (volumePercent - deltaY.toInt() / 8).coerceIn(0, 150)
+                        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, ((volumePercent.coerceAtMost(100) / 100f) * maxVol).toInt(), 0)
+                        showVolumeCircle = true
+                    },
+                    onPinchZoomPan = { zoom, pan ->
+                        // Both zoom and pan applied together, matching how
+                        // a real pinch/pan gesture always carries some of
+                        // each — see PlayerGestureModifiers.kt for why.
+                        videoScale = (videoScale * zoom).coerceIn(1f, 3f)
+                        videoOffsetX += pan.x
+                        videoOffsetY += pan.y
+                        val maxOffsetX = (screenWidthPx * (videoScale - 1f) / 2f).coerceAtLeast(0f)
+                        val maxOffsetY = (screenHeightPx * (videoScale - 1f) / 2f).coerceAtLeast(0f)
+                        videoOffsetX = videoOffsetX.coerceIn(-maxOffsetX, maxOffsetX)
+                        videoOffsetY = videoOffsetY.coerceIn(-maxOffsetY, maxOffsetY)
+                        if (videoScale <= 1.02f) {
+                            videoScale = 1f
+                            videoOffsetX = 0f
+                            videoOffsetY = 0f
                         }
-                    )
-                }
-                // FIX (E2, corrected): the original comment here claimed
-                // detectTransformGestures "only produces a meaningful
-                // zoom/pan value for genuine multi-touch input" — that
-                // was wrong, and it's what broke brightness/volume
-                // swipes. detectTransformGestures ALSO processes a single
-                // finger as a valid one-pointer pan, and consumes those
-                // touch events as part of doing so — silently starving
-                // the separate single-finger drag detector below that
-                // brightness/volume/seek gestures depend on. This now
-                // explicitly requires 2+ simultaneous pointers before it
-                // ever touches (or consumes) anything, using the same
-                // calculateZoom()/calculatePan() utilities
-                // detectTransformGestures itself is built on internally.
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
-                        do {
-                            val event = awaitPointerEvent()
-                            if (event.changes.size >= 2) {
-                                val zoom = event.calculateZoom()
-                                val pan = event.calculatePan()
-                                if (zoom != 1f || pan != Offset.Zero) {
-                                    event.changes.forEach { if (it.positionChanged()) it.consume() }
-                                    // FIX: previously either/or (if zoom !=
-                                    // 1f, apply scale; ELSE apply pan) —
-                                    // but a real two-finger drag almost
-                                    // never produces an EXACTLY 1.0 zoom
-                                    // value even when the person's only
-                                    // intending to pan, so this kept
-                                    // routing into the scale-only branch
-                                    // and silently dropping pan entirely.
-                                    // Both apply together now, matching
-                                    // how a real pinch/pan gesture always
-                                    // carries some of each.
-                                    videoScale = (videoScale * zoom).coerceIn(1f, 3f)
-                                    videoOffsetX += pan.x
-                                    videoOffsetY += pan.y
-                                    val maxOffsetX = (screenWidthPx * (videoScale - 1f) / 2f).coerceAtLeast(0f)
-                                    val maxOffsetY = (screenHeightPx * (videoScale - 1f) / 2f).coerceAtLeast(0f)
-                                    videoOffsetX = videoOffsetX.coerceIn(-maxOffsetX, maxOffsetX)
-                                    videoOffsetY = videoOffsetY.coerceIn(-maxOffsetY, maxOffsetY)
-                                    if (videoScale <= 1.02f) {
-                                        videoScale = 1f
-                                        videoOffsetX = 0f
-                                        videoOffsetY = 0f
-                                    }
-                                }
-                            }
-                        } while (event.changes.any { it.pressed })
-                    }
-                }
+                    },
+                )
         )
 
         LaunchedEffect(subtitleGestureFeedback) {
@@ -1882,43 +1792,37 @@ fun VideoPlayerScreen(
                     .padding(bottom = gestureZoneBottomOffset, start = 48.dp, end = 48.dp)
                     .fillMaxWidth()
                     .height(gestureZoneHeight)
-                    .pointerInput(subtitleBehaviorPrefs.enableSubtitleGestures) {
-                        detectTransformGestures { _, pan, zoom, _ ->
-                            if (zoom != 1f) {
-                                subtitleTextSizeSp = (subtitleTextSizeSp * zoom).coerceIn(12f, 32f)
-                                subtitleGestureFeedback = "${subtitleTextSizeSp.toInt()}sp"
-                            } else if (kotlin.math.abs(pan.x) > kotlin.math.abs(pan.y)) {
-                                // Horizontal drag — sync offset. Positive
-                                // (rightward) delay matches the same sign
-                                // convention as the Sync slider elsewhere.
-                                val deltaSeconds = pan.x / 60f
-                                subtitleSyncOffset = (subtitleSyncOffset + deltaSeconds).coerceIn(-10f, 10f)
-                                val formattedOffset = String.format("%.1f", subtitleSyncOffset)
-                                subtitleGestureFeedback = if (subtitleSyncOffset >= 0f) "+${formattedOffset}s" else "${formattedOffset}s"
-                            } else {
-                                // Vertical drag — position. Dragging UP
-                                // (negative pan.y) raises the subtitle,
-                                // which is a DECREASE in bottom-padding
-                                // fraction, hence the sign flip.
-                                val deltaFraction = -pan.y / size.height.toFloat() * 0.6f
-                                subtitleBottomPadding = (subtitleBottomPadding + deltaFraction).coerceIn(0.02f, 0.90f)
-                                subtitleGestureFeedback = "Position"
-                            }
-                        }
-                    }
-                    .pointerInput(subtitleBehaviorPrefs.enableSubtitleGestures) {
-                        detectTapGestures(
-                            onDoubleTap = {
-                                subtitleSyncOffset = 0f
-                                subtitleGestureFeedback = "Sync reset"
-                            },
-                            onLongPress = {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
-                                showControls = true
-                            }
-                        )
-                    }
+                    .subtitleGestureZone(
+                        enabledKey = subtitleBehaviorPrefs.enableSubtitleGestures,
+                        onPinchTextSize = { zoom ->
+                            subtitleTextSizeSp = (subtitleTextSizeSp * zoom).coerceIn(12f, 32f)
+                            subtitleGestureFeedback = "${subtitleTextSizeSp.toInt()}sp"
+                        },
+                        onHorizontalSyncDrag = { deltaX ->
+                            // Positive (rightward) delay matches the same
+                            // sign convention as the Sync slider elsewhere.
+                            val deltaSeconds = deltaX / 60f
+                            subtitleSyncOffset = (subtitleSyncOffset + deltaSeconds).coerceIn(-10f, 10f)
+                            val formattedOffset = String.format("%.1f", subtitleSyncOffset)
+                            subtitleGestureFeedback = if (subtitleSyncOffset >= 0f) "+${formattedOffset}s" else "${formattedOffset}s"
+                        },
+                        onVerticalPositionDrag = { deltaFraction ->
+                            // Dragging UP raises the subtitle, which is a
+                            // DECREASE in bottom-padding fraction — sign
+                            // flip already applied by the caller.
+                            subtitleBottomPadding = (subtitleBottomPadding + deltaFraction).coerceIn(0.02f, 0.90f)
+                            subtitleGestureFeedback = "Position"
+                        },
+                        onDoubleTapResetSync = {
+                            subtitleSyncOffset = 0f
+                            subtitleGestureFeedback = "Sync reset"
+                        },
+                        onLongPressTogglePlayback = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                            showControls = true
+                        },
+                    )
             )
             AnimatedVisibility(
                 visible = subtitleGestureFeedback.isNotBlank(),
