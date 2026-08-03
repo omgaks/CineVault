@@ -1,5 +1,7 @@
 package com.sole.cinevault
 
+import com.sole.cinevault.library.VideoFile
+
 import androidx.compose.runtime.Immutable
 
 // Lightweight cast entry stored per video so Actor pages can filter the
