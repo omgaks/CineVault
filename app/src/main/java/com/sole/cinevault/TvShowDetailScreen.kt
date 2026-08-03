@@ -1,5 +1,7 @@
 package com.sole.cinevault
 
+import com.sole.cinevault.library.*
+
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.ContentUris
