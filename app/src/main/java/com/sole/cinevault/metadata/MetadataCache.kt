@@ -1,7 +1,7 @@
 package com.sole.cinevault.metadata
 
 import com.sole.cinevault.BuildConfig
-import com.sole.cinevault.extractEpisodeInfo
+import com.sole.cinevault.library.extractEpisodeInfo
 import com.sole.cinevault.VideoWithMetadata
 import com.sole.cinevault.CastEntry
 
