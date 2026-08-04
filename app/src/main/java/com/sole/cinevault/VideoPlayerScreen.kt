@@ -168,7 +168,7 @@ fun loadDuration(context: Context, videoPath: String): Long {
 // Appearance Studio) — same proven long-press-then-drag + bounds-
 // clamping + activity-ping pattern already used for Studio and Search.
 @Composable
-private fun DraggableFloatingPopup(
+fun DraggableFloatingPopup(
     containerWidth: Dp,
     containerHeight: Dp,
     popupWidth: Dp,
@@ -2012,18 +2012,21 @@ fun VideoPlayerScreen(
         val localFileChoices = remember(currentVideo.path, showTrackSelector) { findNearbySrtFiles(currentVideo.path) }
             .filter { it.absolutePath !in pendingDeletePaths }
 
-        AnimatedVisibility(visible = showSubtitleSettings, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)),
-            modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, subtitlePopupHeightEstimate)).offset { IntOffset(anchoredX(subIconX, subtitlePopupWidth), 0) }) {
-            val statusText = when {
-                !subtitlesEnabled -> "Subtitles off"
-                selectedSubtitleTrackLabel.isNotBlank() -> "$selectedSubtitleTrackLabel · $selectedSubtitleTrackSource"
-                hasInternalSubtitles -> "Embedded track active"
-                else -> "No subtitle selected"
-            }
-            SubtitleSettingsMenu(
-                isVisible = true,
-                subtitlesEnabled = subtitlesEnabled,
-                activeTrackStatusText = statusText,
+        val subtitleQuickMenuStatusText = when {
+            !subtitlesEnabled -> "Subtitles off"
+            selectedSubtitleTrackLabel.isNotBlank() -> "$selectedSubtitleTrackLabel · $selectedSubtitleTrackSource"
+            hasInternalSubtitles -> "Embedded track active"
+            else -> "No subtitle selected"
+        }
+        SubtitleQuickMenuAndTrackSelector(
+            showSubtitleSettings = showSubtitleSettings,
+            showTrackSelector = showTrackSelector,
+            subtitlesEnabled = subtitlesEnabled,
+            activeTrackStatusText = subtitleQuickMenuStatusText,
+            quickMenuBottomPadding = anchoredY(popupBottomPadding, subtitlePopupHeightEstimate),
+            quickMenuOffsetX = anchoredX(subIconX, subtitlePopupWidth),
+            subtitleTextSizeSp = subtitleTextSizeSp,
+            subtitleBottomPadding = subtitleBottomPadding,
             onFindClick = {
                 subtitleMenuTouchKey++
                 showSubtitleSettings = false
@@ -2040,317 +2043,214 @@ fun VideoPlayerScreen(
                 if (!subtitlesEnabled) { selectedSubtitleTrackKey = "off"; selectedSubtitleTrackLabel = ""; selectedSubtitleTrackSource = "" }
                 showControls = true; subtitleMenuTouchKey++
             },
-            onDismiss = { showSubtitleSettings = false; showControls = true },
-            currentFontSize = subtitleTextSizeSp, onFontSizeChange = { subtitleTextSizeSp = it; showControls = true; subtitleMenuTouchKey++ },
-            currentVerticalPosition = subtitleBottomPadding, onVerticalPositionChange = { subtitleBottomPadding = it; showControls = true; subtitleMenuTouchKey++ },
-            // New quick shortcut — jumps straight into the Studio's Timing
-            // tool (no standalone equivalent exists for this one, unlike
-            // Tracks/Style which reuse their existing standalone popups).
+            onDismissSettings = { showSubtitleSettings = false; showControls = true },
+            onFontSizeChange = { subtitleTextSizeSp = it; showControls = true; subtitleMenuTouchKey++ },
+            onVerticalPositionChange = { subtitleBottomPadding = it; showControls = true; subtitleMenuTouchKey++ },
             onSyncClick = { showSubtitleSettings = false; subtitleStudioInitialTab = SubtitleStudioTab.TIMING; showSubtitleStudio = true; showControls = true },
             onStyleClick = { showSubtitleSettings = false; showAppearanceStudio = true; showControls = true },
-            onUserInteraction = { subtitleMenuTouchKey++; showControls = true }
+            onSettingsUserInteraction = { subtitleMenuTouchKey++; showControls = true },
+            trackSelectorBottomPadding = anchoredY(popupBottomPadding, trackSelectorMaxHeight),
+            trackSelectorOffsetX = anchoredX(subIconX, trackSelectorWidth),
+            trackSelectorWidth = trackSelectorWidth,
+            trackSelectorMaxHeight = trackSelectorMaxHeight,
+            containerWidth = maxWidth,
+            containerHeight = maxHeight,
+            embeddedTrackChoices = embeddedTrackChoices,
+            downloadedTrackChoice = downloadedTrackChoice,
+            localFileChoices = localFileChoices,
+            selectedTrackKey = selectedSubtitleTrackKey,
+            onSelectTrack = { choice -> selectSubtitleTrack(choice); showTrackSelector = false; showControls = true },
+            onDeleteLocalTrack = { file -> requestDeleteSubtitle(file) },
+            onOpenFilePickerFromTrackSelector = { showTrackSelector = false; srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
+            onDismissTrackSelector = { showTrackSelector = false; showControls = true },
+            onTrackSelectorUserInteraction = { subtitleMenuTouchKey++ },
         )
-        }
 
-        // Track Selector sheet — anchored at the same spot the quick menu
-        // uses, since it's opened from that menu's "Tracks" pill and should
-        // feel like a continuation of it, not a jump to a new location.
-        AnimatedVisibility(visible = showTrackSelector, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)),
-            modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, trackSelectorMaxHeight)).offset { IntOffset(anchoredX(subIconX, trackSelectorWidth), 0) }) {
-            DraggableFloatingPopup(
-                containerWidth = maxWidth,
-                containerHeight = maxHeight,
-                popupWidth = trackSelectorWidth,
-                popupMaxHeight = trackSelectorMaxHeight,
-                onUserInteraction = { subtitleMenuTouchKey++ }
-            ) {
-                SubtitleTrackSelectorSheet(
-                    embeddedTracks = embeddedTrackChoices,
-                    downloadedTrack = downloadedTrackChoice,
-                    localFiles = localFileChoices,
-                    selectedKey = selectedSubtitleTrackKey,
-                    popupWidth = trackSelectorWidth,
-                    popupMaxHeight = trackSelectorMaxHeight,
-                    onSelect = { choice ->
-                        selectSubtitleTrack(choice)
-                        showTrackSelector = false; showControls = true
-                    },
-                    onDeleteLocal = { file -> requestDeleteSubtitle(file) },
-                    onOpenFilePicker = {
-                        showTrackSelector = false
-                        srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*"))
-                    },
-                    onDismiss = { showTrackSelector = false; showControls = true }
-                )
-            }
-        }
-
-        // Subtitle Download Search sheet — same anchor as the quick menu/
-        // track selector since it's opened from the quick menu's Download
-        // pill. Search results/loading state are owned by VideoPlayerScreen
-        // (not the sheet itself) so a re-search after editing the query
-        // doesn't lose state if the sheet briefly recomposes.
-        AnimatedVisibility(visible = showSubtitleSearch, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)),
-            modifier = Modifier.align(Alignment.Center)) {
-            // Previously reused trackSelectorWidth/Height (sized for a
-            // simple list), which is why it looked cramped — Search has
-            // meaningfully more content (query field, season/episode,
-            // full result cards) so it gets its own larger sizing, same
-            // adaptive approach as Studio above. Centered rather than
-            // icon-anchored since the main controls are hidden behind it
-            // now anyway (see hideControlsForLargeSheet), so there's no
-            // need to dodge the subtitle icon's position anymore.
-            // FIX (D2): caps raised from the old single-column sizing
-            // (480dp landscape / 400dp portrait) — now holding two
-            // side-by-side columns, each needs enough room for a full
-            // result card (badges, Apply/Save buttons) without feeling
-            // cramped, especially on a tablet where there's real space to
-            // use.
-            val searchWidth = if (isLandscape) (maxWidth.value * 0.72f).dp.coerceIn(320.dp, 620.dp)
-                else (maxWidth.value * 0.94f).dp.coerceAtMost(480.dp)
-            val searchMaxHeight = if (isCompactLandscape) (maxHeight.value * 0.76f).dp.coerceAtMost(280.dp)
-                else if (isLandscape) (maxHeight.value * 0.78f).dp.coerceAtMost(360.dp)
-                else (maxHeight.value * 0.65f).dp.coerceAtMost(580.dp)
-            SubtitleSearchSheet(
-                initialQuery = remember(currentVideo.path) { OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path) },
-                containerWidth = maxWidth,
-                containerHeight = maxHeight,
-                onUserInteraction = { subtitleMenuTouchKey++ },
-                initialSeason = "",
-                initialEpisode = "",
-                results = subtitleSearchResults,
-                isSearching = subtitleSearchLoading,
-                statusText = subtitleSearchStatus,
-                popupWidth = searchWidth,
-                popupMaxHeight = searchMaxHeight,
-                onSearch = { q, s, e -> subtitleMenuTouchKey++; performSubtitleSearch(q, s, e) },
-                onDownloadAndApply = { result -> subtitleMenuTouchKey++; applySearchResult(result, alsoPlay = true) },
-                onDownloadOnly = { result -> subtitleMenuTouchKey++; applySearchResult(result, alsoPlay = false) },
-                onWebsiteFallback = {
-                    showSubtitleSearch = false
-                    showSubtitleFallback = true
-                    showControls = true
-                },
-                onDismiss = { showSubtitleSearch = false; showControls = true }
-            )
-        }
-
-        // Website fallback — last resort when automatic search/download
-        // fails, hits a daily quota, or just doesn't have the release.
-        // Custom Tab is the default/recommended route; embedded browser is
-        // clearly marked experimental. See SubtitleWebFallback.kt.
-        if (showSubtitleFallback) {
-            val webQuery = OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path)
-            SubtitleFallbackSheet(
-                searchQuery = webQuery,
-                statusText = subtitleSearchStatus,
-                onSecureBrowser = {
-                    exoPlayer.pause()
-                    launchSubtitleCustomTab(context, webQuery)
-                    showSubtitleFallback = false
-                    Toast.makeText(context, "After downloading, return and choose Import downloaded subtitle", Toast.LENGTH_LONG).show()
-                },
-                onEmbeddedBrowser = {
-                    exoPlayer.pause()
-                    showSubtitleFallback = false
-                    showEmbeddedSubtitleBrowser = true
-                },
-                onImportFile = {
-                    // FIX: this was the only one of the three fallback
-                    // options that didn't pause first — onSecureBrowser
-                    // and onEmbeddedBrowser both do. Opening the system
-                    // file picker backgrounds the whole Activity, and
-                    // without an explicit pause here, ExoPlayer just kept
-                    // playing invisibly behind it since nothing told it to
-                    // stop for this specific transition.
-                    exoPlayer.pause()
-                    srtPickerLauncher.launch(
-                        arrayOf(
-                            "application/x-subrip",
-                            "text/vtt",
-                            "text/plain",
-                            "application/zip",
-                            "application/x-zip-compressed",
-                            "application/octet-stream"
-                        )
+        val searchWidth = if (isLandscape) (maxWidth.value * 0.72f).dp.coerceIn(320.dp, 620.dp)
+            else (maxWidth.value * 0.94f).dp.coerceAtMost(480.dp)
+        val searchMaxHeight = if (isCompactLandscape) (maxHeight.value * 0.76f).dp.coerceAtMost(280.dp)
+            else if (isLandscape) (maxHeight.value * 0.78f).dp.coerceAtMost(360.dp)
+            else (maxHeight.value * 0.65f).dp.coerceAtMost(580.dp)
+        val subtitleWebQuery = OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path)
+        SubtitleAcquisitionFlow(
+            showSubtitleSearch = showSubtitleSearch,
+            searchWidth = searchWidth,
+            searchMaxHeight = searchMaxHeight,
+            containerWidth = maxWidth,
+            containerHeight = maxHeight,
+            initialSearchQuery = remember(currentVideo.path) { OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path) },
+            searchResults = subtitleSearchResults,
+            isSearching = subtitleSearchLoading,
+            searchStatusText = subtitleSearchStatus,
+            onSearchUserInteraction = { subtitleMenuTouchKey++ },
+            onSearch = { q, s, e -> subtitleMenuTouchKey++; performSubtitleSearch(q, s, e) },
+            onDownloadAndApply = { result -> subtitleMenuTouchKey++; applySearchResult(result, alsoPlay = true) },
+            onDownloadOnly = { result -> subtitleMenuTouchKey++; applySearchResult(result, alsoPlay = false) },
+            onWebsiteFallbackFromSearch = { showSubtitleSearch = false; showSubtitleFallback = true; showControls = true },
+            onDismissSearch = { showSubtitleSearch = false; showControls = true },
+            showSubtitleFallback = showSubtitleFallback,
+            fallbackSearchQuery = subtitleWebQuery,
+            fallbackStatusText = subtitleSearchStatus,
+            onSecureBrowser = {
+                exoPlayer.pause()
+                launchSubtitleCustomTab(context, subtitleWebQuery)
+                showSubtitleFallback = false
+                Toast.makeText(context, "After downloading, return and choose Import downloaded subtitle", Toast.LENGTH_LONG).show()
+            },
+            onEmbeddedBrowser = {
+                exoPlayer.pause()
+                showSubtitleFallback = false
+                showEmbeddedSubtitleBrowser = true
+            },
+            onImportFile = {
+                exoPlayer.pause()
+                srtPickerLauncher.launch(
+                    arrayOf(
+                        "application/x-subrip",
+                        "text/vtt",
+                        "text/plain",
+                        "application/zip",
+                        "application/x-zip-compressed",
+                        "application/octet-stream"
                     )
-                },
-                onDismiss = { showSubtitleFallback = false }
-            )
-        }
-
-        if (showEmbeddedSubtitleBrowser) {
-            EmbeddedSubtitleBrowser(
-                query = OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path),
-                preferredLanguage = subtitleBehaviorPrefs.preferredLanguages.firstOrNull() ?: "en",
-                onImported = { result ->
-                    if (result.alternatives.isEmpty()) {
-                        applyImportedWebsiteSubtitle(result.selected)
-                    } else {
-                        pendingImportedCandidates = result
-                        showEmbeddedSubtitleBrowser = false
-                    }
-                },
-                onMessage = { Toast.makeText(context, it, Toast.LENGTH_LONG).show() },
-                onDismiss = { showEmbeddedSubtitleBrowser = false; showControls = true }
-            )
-        }
-
-        pendingImportedCandidates?.let { result ->
-            SubtitleCandidateSheet(
-                primary = result.selected,
-                alternatives = result.alternatives,
-                onSelected = { applyImportedWebsiteSubtitle(it) },
-                onDismiss = { pendingImportedCandidates = null }
-            )
-        }
-
-        // Dialogue Tap Sync — floating pill, visible over the video (not
-        // anchored to the subtitle icon like the menus, since the whole
-        // point is the person is watching the scene play out while this is
-        // up) armed via the Sync section's "Tap Sync" button.
-        AnimatedVisibility(visible = dialogueSyncArmed, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(150)),
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = if (isLandscape) 54.dp else 90.dp)) {
-            DialogueTapSyncBar(isLandscape = isLandscape, onTap = { confirmDialogueSyncTap() }, onCancel = { cancelDialogueSync() })
-        }
-
-        AnimatedVisibility(visible = showDriftDialog, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.Center)) {
-            DriftCorrectionSheet(
-                videoDurationMs = duration,
-                currentPositionMs = position,
-                pointA = driftPointA,
-                pointB = driftPointB,
-                popupWidth = trackSelectorWidth.coerceAtLeast(220.dp),
-                onMarkPointA = { correction -> markDriftPointA(correction) },
-                onMarkPointB = { correction -> markDriftPointB(correction) },
-                onApply = { applyDriftFix() },
-                onDismiss = { showDriftDialog = false; showControls = true }
-            )
-        }
-
-        AnimatedVisibility(visible = showAppearanceStudio, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)),
-            modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, trackSelectorMaxHeight)).offset { IntOffset(anchoredX(subIconX, trackSelectorWidth), 0) }) {
-            DraggableFloatingPopup(
-                containerWidth = maxWidth,
-                containerHeight = maxHeight,
-                popupWidth = trackSelectorWidth,
-                popupMaxHeight = trackSelectorMaxHeight,
-                onUserInteraction = { subtitleMenuTouchKey++ }
-            ) {
-                SubtitleAppearanceStudioSheet(
-                    presetName = subtitleAppearancePreset,
-                    appearance = subtitleAppearance,
-                    fontSizeSp = subtitleTextSizeSp,
-                    popupWidth = trackSelectorWidth,
-                    popupMaxHeight = trackSelectorMaxHeight,
-                    onApplyPreset = { name, preset -> subtitleAppearancePreset = name; subtitleAppearance = preset },
-                    onForegroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(foregroundColor = c) },
-                    onEdgeTypeChange = { t -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeType = t) },
-                    onEdgeColorChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeColor = c) },
-                    onBackgroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(backgroundColor = c) },
-                    isAssOrSsaFormat = isAssOrSsaFormat,
-                    preserveOriginalStyling = subtitlePreserveOriginalStyling,
-                    onPreserveOriginalStylingChange = { subtitlePreserveOriginalStyling = it },
-                    onDismiss = { showAppearanceStudio = false; showControls = true }
                 )
-            }
-        }
+            },
+            onDismissFallback = { showSubtitleFallback = false },
+            showEmbeddedSubtitleBrowser = showEmbeddedSubtitleBrowser,
+            embeddedBrowserQuery = OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path),
+            embeddedBrowserPreferredLanguage = subtitleBehaviorPrefs.preferredLanguages.firstOrNull() ?: "en",
+            onImported = { result ->
+                if (result.alternatives.isEmpty()) {
+                    applyImportedWebsiteSubtitle(result.selected)
+                } else {
+                    pendingImportedCandidates = result
+                    showEmbeddedSubtitleBrowser = false
+                }
+            },
+            onMessage = { Toast.makeText(context, it, Toast.LENGTH_LONG).show() },
+            onDismissEmbeddedBrowser = { showEmbeddedSubtitleBrowser = false; showControls = true },
+            pendingImportedCandidates = pendingImportedCandidates,
+            onCandidateSelected = { applyImportedWebsiteSubtitle(it) },
+            onDismissCandidateSheet = { pendingImportedCandidates = null },
+        )
 
-        // Subtitle Studio — the "everything in one place" destination,
-        // reachable via long-press on the subtitle icon (opens the Tools
-        // Grid) or a quick-menu shortcut icon (jumps straight into a
-        // specific tool). Centered and much larger than the anchored
-        // popups above since it's a genuine destination, not a quick
-        // action. Reuses the exact same track/style tab content as the
-        // standalone sheets (see SubtitleStudioSheet.kt) so there's no
-        // parallel implementation to drift out of sync.
-        AnimatedVisibility(visible = showSubtitleStudio, enter = fadeIn(animationSpec = tween(180)), exit = fadeOut(animationSpec = tween(200)), modifier = Modifier.align(Alignment.Center)) {
-            // Device-adaptive sizing — previously fillMaxWidth(0.94f)/
-            // fillMaxHeight(0.82f), which is near-fullscreen on any phone
-            // regardless of actual screen size. Uses the same
-            // isLandscape/isCompactLandscape/uiScale signals every other
-            // popup on this screen already computes, so Studio scales down
-            // properly on a phone instead of covering nearly everything.
-            val studioWidth = if (isLandscape) (maxWidth.value * 0.58f).dp.coerceIn(340.dp, 520.dp)
-                else (maxWidth.value * 0.90f).dp.coerceAtMost(420.dp)
-            val studioMaxHeight = if (isCompactLandscape) (maxHeight.value * 0.76f).dp.coerceAtMost(280.dp)
-                else if (isLandscape) (maxHeight.value * 0.78f).dp.coerceAtMost(360.dp)
-                else (maxHeight.value * 0.60f).dp.coerceAtMost(560.dp)
-            SubtitleStudioSheet(
-                panelWidth = studioWidth,
-                panelMaxHeight = studioMaxHeight,
-                containerWidth = maxWidth,
-                containerHeight = maxHeight,
-                initialTab = subtitleStudioInitialTab,
-                videoPath = currentVideo.path,
-                onOpenSearch = {
-                    showSubtitleStudio = false
-                    showSubtitleSearch = true
-                    showControls = true
-                    if (subtitleSearchResults.isEmpty() && !subtitleSearchLoading) {
-                        performSubtitleSearch(OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path), "", "")
-                    }
-                },
-                onOpenManualSearch = {
-                    showSubtitleStudio = false
-                    showSubtitleFallback = true
-                    showControls = true
-                },
-                embeddedTracks = embeddedTrackChoices,
-                downloadedTrack = downloadedTrackChoice,
-                localFiles = localFileChoices,
-                selectedTrackKey = selectedSubtitleTrackKey,
-                onSelectTrack = { choice -> selectSubtitleTrack(choice) },
-                onDeleteLocalTrack = { file -> requestDeleteSubtitle(file) },
-                onOpenFilePicker = { srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
-                currentSyncOffset = subtitleSyncOffset,
-                onSyncOffsetChange = { subtitleSyncOffset = it; subtitleMenuTouchKey++ },
-                onDialogueSyncClick = { armDialogueSync() },
-                onDriftFixClick = { showSubtitleStudio = false; showDriftDialog = true },
-                autoSyncStatus = autoSyncStatus,
-                autoSyncAvailable = autoSyncAvailable,
-                onAutoSyncClick = { runAutoSync() },
-                onApplyAutoSync = { result -> applyAutoSyncResult(result) },
-                onCancelAutoSync = { autoSyncStatus = AutoSyncStatus.Idle },
-                presetName = subtitleAppearancePreset,
-                appearance = subtitleAppearance,
-                fontSizeSp = subtitleTextSizeSp,
-                onFontSizeChange = { subtitleTextSizeSp = it },
-                onApplyPreset = { name, preset -> subtitleAppearancePreset = name; subtitleAppearance = preset },
-                onForegroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(foregroundColor = c) },
-                onEdgeTypeChange = { t -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeType = t) },
-                onEdgeColorChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeColor = c) },
-                onBackgroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(backgroundColor = c) },
-                isAssOrSsaFormat = isAssOrSsaFormat,
-                preserveOriginalStyling = subtitlePreserveOriginalStyling,
-                onPreserveOriginalStylingChange = { subtitlePreserveOriginalStyling = it },
-                bottomPadding = subtitleBottomPadding,
-                onBottomPaddingChange = { subtitleBottomPadding = it },
-                behaviorPrefs = subtitleBehaviorPrefs,
-                onBehaviorPrefsChange = { subtitleBehaviorPrefs = it; saveSubtitleBehaviorPrefs(context, it) },
-                cleaningOptions = subtitleCleaningOptions,
-                onCleaningOptionsChange = { subtitleCleaningOptions = it; saveSubtitleCleaningOptions(context, it) },
-                dualSubtitlesEnabled = dualSubtitlesEnabled,
-                dualCanEnable = primarySubtitleUri != null,
-                dualSecondaryLanguage = dualSecondaryLanguage,
-                dualGapLines = dualGapLines,
-                dualStatusText = dualStatusText,
-                onToggleDual = { enabled ->
-                    dualSubtitlesEnabled = enabled
-                    if (enabled) fetchAndApplyDualSecondary() else disableDualSubtitles()
-                },
-                onDualSecondaryLanguageChange = { lang ->
-                    dualSecondaryLanguage = lang
-                    if (dualSubtitlesEnabled) fetchAndApplyDualSecondary()
-                },
-                onDualGapLinesChange = { gap ->
-                    dualGapLines = gap
-                    if (dualSubtitlesEnabled) fetchAndApplyDualSecondary()
-                },
-                onDismiss = { showSubtitleStudio = false; showControls = true },
-                onUserInteraction = { subtitleMenuTouchKey++ }
-            )
-        }
+        SubtitleSyncAndAppearancePopups(
+            dialogueSyncArmed = dialogueSyncArmed,
+            isLandscape = isLandscape,
+            onDialogueSyncTap = { confirmDialogueSyncTap() },
+            onDialogueSyncCancel = { cancelDialogueSync() },
+            showDriftDialog = showDriftDialog,
+            driftPopupWidth = trackSelectorWidth.coerceAtLeast(220.dp),
+            videoDurationMs = duration,
+            currentPositionMs = position,
+            driftPointA = driftPointA,
+            driftPointB = driftPointB,
+            onMarkPointA = { correction -> markDriftPointA(correction) },
+            onMarkPointB = { correction -> markDriftPointB(correction) },
+            onApplyDrift = { applyDriftFix() },
+            onDismissDrift = { showDriftDialog = false; showControls = true },
+            showAppearanceStudio = showAppearanceStudio,
+            appearanceBottomPadding = anchoredY(popupBottomPadding, trackSelectorMaxHeight),
+            appearanceOffsetX = anchoredX(subIconX, trackSelectorWidth),
+            appearancePopupWidth = trackSelectorWidth,
+            appearancePopupMaxHeight = trackSelectorMaxHeight,
+            containerWidth = maxWidth,
+            containerHeight = maxHeight,
+            appearancePresetName = subtitleAppearancePreset,
+            appearance = subtitleAppearance,
+            appearanceFontSizeSp = subtitleTextSizeSp,
+            onApplyPreset = { name, preset -> subtitleAppearancePreset = name; subtitleAppearance = preset },
+            onForegroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(foregroundColor = c) },
+            onEdgeTypeChange = { t -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeType = t) },
+            onEdgeColorChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeColor = c) },
+            onBackgroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(backgroundColor = c) },
+            isAssOrSsaFormat = isAssOrSsaFormat,
+            preserveOriginalStyling = subtitlePreserveOriginalStyling,
+            onPreserveOriginalStylingChange = { subtitlePreserveOriginalStyling = it },
+            onDismissAppearanceStudio = { showAppearanceStudio = false; showControls = true },
+            onAppearanceUserInteraction = { subtitleMenuTouchKey++ },
+        )
+
+        val studioWidth = if (isLandscape) (maxWidth.value * 0.58f).dp.coerceIn(340.dp, 520.dp)
+            else (maxWidth.value * 0.90f).dp.coerceAtMost(420.dp)
+        val studioMaxHeight = if (isCompactLandscape) (maxHeight.value * 0.76f).dp.coerceAtMost(280.dp)
+            else if (isLandscape) (maxHeight.value * 0.78f).dp.coerceAtMost(360.dp)
+            else (maxHeight.value * 0.60f).dp.coerceAtMost(560.dp)
+        SubtitleStudioOverlay(
+            showSubtitleStudio = showSubtitleStudio,
+            studioWidth = studioWidth,
+            studioMaxHeight = studioMaxHeight,
+            containerWidth = maxWidth,
+            containerHeight = maxHeight,
+            initialTab = subtitleStudioInitialTab,
+            videoPath = currentVideo.path,
+            onOpenSearch = {
+                showSubtitleStudio = false
+                showSubtitleSearch = true
+                showControls = true
+                if (subtitleSearchResults.isEmpty() && !subtitleSearchLoading) {
+                    performSubtitleSearch(OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path), "", "")
+                }
+            },
+            onOpenManualSearch = {
+                showSubtitleStudio = false
+                showSubtitleFallback = true
+                showControls = true
+            },
+            embeddedTracks = embeddedTrackChoices,
+            downloadedTrack = downloadedTrackChoice,
+            localFiles = localFileChoices,
+            selectedTrackKey = selectedSubtitleTrackKey,
+            onSelectTrack = { choice -> selectSubtitleTrack(choice) },
+            onDeleteLocalTrack = { file -> requestDeleteSubtitle(file) },
+            onOpenFilePicker = { srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
+            currentSyncOffset = subtitleSyncOffset,
+            onSyncOffsetChange = { subtitleSyncOffset = it; subtitleMenuTouchKey++ },
+            onDialogueSyncClick = { armDialogueSync() },
+            onDriftFixClick = { showSubtitleStudio = false; showDriftDialog = true },
+            autoSyncStatus = autoSyncStatus,
+            autoSyncAvailable = autoSyncAvailable,
+            onAutoSyncClick = { runAutoSync() },
+            onApplyAutoSync = { result -> applyAutoSyncResult(result) },
+            onCancelAutoSync = { autoSyncStatus = AutoSyncStatus.Idle },
+            presetName = subtitleAppearancePreset,
+            appearance = subtitleAppearance,
+            fontSizeSp = subtitleTextSizeSp,
+            onFontSizeChange = { subtitleTextSizeSp = it },
+            onApplyPreset = { name, preset -> subtitleAppearancePreset = name; subtitleAppearance = preset },
+            onForegroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(foregroundColor = c) },
+            onEdgeTypeChange = { t -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeType = t) },
+            onEdgeColorChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeColor = c) },
+            onBackgroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(backgroundColor = c) },
+            isAssOrSsaFormat = isAssOrSsaFormat,
+            preserveOriginalStyling = subtitlePreserveOriginalStyling,
+            onPreserveOriginalStylingChange = { subtitlePreserveOriginalStyling = it },
+            bottomPadding = subtitleBottomPadding,
+            onBottomPaddingChange = { subtitleBottomPadding = it },
+            behaviorPrefs = subtitleBehaviorPrefs,
+            onBehaviorPrefsChange = { subtitleBehaviorPrefs = it; saveSubtitleBehaviorPrefs(context, it) },
+            cleaningOptions = subtitleCleaningOptions,
+            onCleaningOptionsChange = { subtitleCleaningOptions = it; saveSubtitleCleaningOptions(context, it) },
+            dualSubtitlesEnabled = dualSubtitlesEnabled,
+            dualCanEnable = primarySubtitleUri != null,
+            dualSecondaryLanguage = dualSecondaryLanguage,
+            dualGapLines = dualGapLines,
+            dualStatusText = dualStatusText,
+            onToggleDual = { enabled ->
+                dualSubtitlesEnabled = enabled
+                if (enabled) fetchAndApplyDualSecondary() else disableDualSubtitles()
+            },
+            onDualSecondaryLanguageChange = { lang ->
+                dualSecondaryLanguage = lang
+                if (dualSubtitlesEnabled) fetchAndApplyDualSecondary()
+            },
+            onDualGapLinesChange = { gap ->
+                dualGapLines = gap
+                if (dualSubtitlesEnabled) fetchAndApplyDualSecondary()
+            },
+            onDismiss = { showSubtitleStudio = false; showControls = true },
+            onUserInteraction = { subtitleMenuTouchKey++ },
+        )
 
         // Studio and Search are large, self-contained sheets that cover
         // most of the screen — showing the transport dock/seek bar/top
