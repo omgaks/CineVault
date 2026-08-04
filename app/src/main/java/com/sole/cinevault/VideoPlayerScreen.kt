@@ -1946,47 +1946,38 @@ fun VideoPlayerScreen(
             onDismissSleepMenu = { showSleepMenu = false },
         )
 
-        AnimatedVisibility(visible = showSrtBrowser, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, srtPopupMaxHeight)).offset { IntOffset(anchoredX(subIconX, srtPopupWidth), 0) }) {
-            val srtFiles = remember(currentVideo.path, showSrtBrowser) { findNearbySrtFiles(currentVideo.path) }
-                .filter { it.absolutePath !in pendingDeletePaths }
-            SrtBrowserPopup(
-                files = srtFiles,
-                modifier = Modifier,
-                popupWidth = srtPopupWidth,
-                popupMaxHeight = srtPopupMaxHeight,
-                onPick = { file ->
-                    showSrtBrowser = false
-                    pendingSrtUri = Uri.fromFile(file)
-                },
-                onDelete = { file -> requestDeleteSubtitle(file) },
-                onSystemPicker = {
-                    showSrtBrowser = false
-                    srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*"))
-                },
-                onClose = { showSrtBrowser = false; showControls = true }
-            )
+        val srtFiles = remember(currentVideo.path, showSrtBrowser) { findNearbySrtFiles(currentVideo.path) }
+            .filter { it.absolutePath !in pendingDeletePaths }
+        val audioTracksForPopup = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }.flatMap { group ->
+            List(group.length) { i ->
+                val fmt = group.getTrackFormat(i); val lang = friendlyLanguageName(fmt.language)
+                TrackPopupRowData(title = if (lang == "Unknown" || lang == "UND") "Default Audio" else lang, subtitle = "Track ${i+1}", onClick = {
+                    trackSelector.parameters = trackSelector.buildUponParameters().setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, listOf(i))).build()
+                    showAudioSelector = false; showControls = true
+                })
+            }
         }
-
-        AnimatedVisibility(visible = showAudioSelector, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.BottomStart).padding(bottom = popupBottomPadding).offset { IntOffset(anchoredX(audioIconX, audioPopupWidth), 0) }) {
-            val audioTracks = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
-            FloatingTrackPopup(
-                title = "Audio",
-                modifier = Modifier.width(audioPopupWidth),
-                audioSyncMs = audioSyncMs,
-                onAudioSyncChange = { audioSyncMs = it; menuTouchKey++ },
-                rows = audioTracks.flatMap { group ->
-                    List(group.length) { i ->
-                        val fmt = group.getTrackFormat(i); val lang = friendlyLanguageName(fmt.language)
-                        TrackPopupRowData(title = if (lang == "Unknown" || lang == "UND") "Default Audio" else lang, subtitle = "Track ${i+1}", onClick = {
-                            trackSelector.parameters = trackSelector.buildUponParameters().setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, listOf(i))).build()
-                            showAudioSelector = false; showControls = true
-                        })
-                    }
-                },
-                onAnyClick = { menuTouchKey++ },
-                onClose = { showAudioSelector = false; showControls = true }
-            )
-        }
+        SrtAndAudioTrackPopups(
+            showSrtBrowser = showSrtBrowser,
+            srtFiles = srtFiles,
+            srtPopupWidth = srtPopupWidth,
+            srtPopupMaxHeight = srtPopupMaxHeight,
+            srtBottomPadding = anchoredY(popupBottomPadding, srtPopupMaxHeight),
+            srtOffsetX = anchoredX(subIconX, srtPopupWidth),
+            onPickSrt = { file -> showSrtBrowser = false; pendingSrtUri = Uri.fromFile(file) },
+            onDeleteSrt = { file -> requestDeleteSubtitle(file) },
+            onSystemPicker = { showSrtBrowser = false; srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
+            onCloseSrtBrowser = { showSrtBrowser = false; showControls = true },
+            showAudioSelector = showAudioSelector,
+            audioTracks = audioTracksForPopup,
+            audioPopupWidth = audioPopupWidth,
+            audioBottomPadding = popupBottomPadding,
+            audioOffsetX = anchoredX(audioIconX, audioPopupWidth),
+            audioSyncMs = audioSyncMs,
+            onAudioSyncChange = { audioSyncMs = it; menuTouchKey++ },
+            onAudioMenuInteraction = { menuTouchKey++ },
+            onCloseAudioSelector = { showAudioSelector = false; showControls = true },
+        )
 
         val hasInternalSubtitles = exoPlayer.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.length > 0 }
 
@@ -2924,7 +2915,7 @@ private fun computeDriftTransform(pointA: DriftPoint, pointB: DriftPoint): Pair<
 }
 
 @Composable
-private fun SrtBrowserPopup(
+fun SrtBrowserPopup(
     files: List<java.io.File>,
     modifier: Modifier,
     popupWidth: Dp,
@@ -3383,7 +3374,7 @@ private fun FilledCircleHud(value: Int, maxValue: Int, color: Color, size: Dp) {
     }
 }
 
-private data class TrackPopupRowData(val title: String, val subtitle: String, val onClick: () -> Unit)
+data class TrackPopupRowData(val title: String, val subtitle: String, val onClick: () -> Unit)
 
 private fun friendlyLanguageName(code: String?): String = SubtitleLanguageRegistry.displayName(code)
 
@@ -3431,7 +3422,7 @@ private fun NextEpisodeCountdownOverlay(nextEpisode: VideoWithMetadata?, countdo
 }
 
 @Composable
-private fun FloatingTrackPopup(title: String, modifier: Modifier, rows: List<TrackPopupRowData>, audioSyncMs: Int = 0, onAudioSyncChange: (Int) -> Unit = {}, onAnyClick: () -> Unit = {}, onClose: () -> Unit) {
+fun FloatingTrackPopup(title: String, modifier: Modifier, rows: List<TrackPopupRowData>, audioSyncMs: Int = 0, onAudioSyncChange: (Int) -> Unit = {}, onAnyClick: () -> Unit = {}, onClose: () -> Unit) {
     Column(modifier = modifier.glassPanel(cornerRadius = 16.dp, fill = SpaceMid.copy(alpha = 0.97f)).padding(6.dp)) {
         Text(text = title, color = AmberCore, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
         rows.forEach { row ->
