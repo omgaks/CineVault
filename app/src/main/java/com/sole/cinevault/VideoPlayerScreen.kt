@@ -1929,25 +1929,22 @@ fun VideoPlayerScreen(
 
         val clusterHeightDp = with(density) { clusterHeightPx.toDp() }
         val titleRowOffset = if (isLandscape) 0.dp else 46.dp
-        AnimatedVisibility(visible = showSpeedMenu, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.TopEnd).padding(top = topClusterPaddingTop + titleRowOffset + clusterHeightDp + 8.dp, end = sidePadding)) {
-            SpeedMenuPopup(
-                currentSpeed = playbackSpeed,
-                popupWidth = smallMenuWidth,
-                popupMaxHeight = smallMenuMaxHeight,
-                onSpeedSelected = { setPlaybackSpeed(it) },
-                onDismiss = { showSpeedMenu = false }
-            )
-        }
-
-        AnimatedVisibility(visible = showSleepMenu, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.TopEnd).padding(top = topClusterPaddingTop + titleRowOffset + clusterHeightDp + 8.dp, end = sidePadding)) {
-            SleepMenuPopup(
-                currentMinutes = sleepTimerMinutes,
-                popupWidth = smallMenuWidth,
-                popupMaxHeight = smallMenuMaxHeight,
-                onSelected = { setSleepTimer(it) },
-                onDismiss = { showSleepMenu = false }
-            )
-        }
+        SpeedAndSleepMenuPopups(
+            showSpeedMenu = showSpeedMenu,
+            showSleepMenu = showSleepMenu,
+            playbackSpeed = playbackSpeed,
+            sleepTimerMinutes = sleepTimerMinutes,
+            topClusterPaddingTop = topClusterPaddingTop,
+            titleRowOffset = titleRowOffset,
+            clusterHeightDp = clusterHeightDp,
+            sidePadding = sidePadding,
+            smallMenuWidth = smallMenuWidth,
+            smallMenuMaxHeight = smallMenuMaxHeight,
+            onSpeedSelected = { setPlaybackSpeed(it) },
+            onDismissSpeedMenu = { showSpeedMenu = false },
+            onSleepSelected = { setSleepTimer(it) },
+            onDismissSleepMenu = { showSleepMenu = false },
+        )
 
         AnimatedVisibility(visible = showSrtBrowser, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(180)), modifier = Modifier.align(Alignment.BottomStart).padding(bottom = anchoredY(popupBottomPadding, srtPopupMaxHeight)).offset { IntOffset(anchoredX(subIconX, srtPopupWidth), 0) }) {
             val srtFiles = remember(currentVideo.path, showSrtBrowser) { findNearbySrtFiles(currentVideo.path) }
