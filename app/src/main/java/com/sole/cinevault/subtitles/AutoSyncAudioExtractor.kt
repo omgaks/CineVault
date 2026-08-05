@@ -153,6 +153,17 @@ object AutoSyncAudioExtractor {
             }
 
             val mono = downmixToMono(pcmChunks, sourceChannelCount)
+            // FIX: pcmChunks (the raw decoded PCM — often the single
+            // biggest buffer here, since it's still full stereo/full
+            // sample-rate before downmixing) was staying reachable for the
+            // rest of this function purely because the variable was still
+            // in scope, even though nothing after this point reads it
+            // again. On a long window that's the difference between 2 and
+            // 3 large buffers alive at once during resampleLinear() below
+            // — clearing it here lets the GC reclaim it before that next
+            // allocation instead of after, which is what was pushing this
+            // over the heap ceiling during longer Auto-Sync windows.
+            pcmChunks.clear()
             val resampled = resampleLinear(mono, sourceSampleRate, targetSampleRate)
             return ExtractedAudio(resampled, targetSampleRate)
         } catch (e: CancellationException) {
