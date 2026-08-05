@@ -2204,11 +2204,35 @@ fun VideoPlayerScreen(
             onAppearanceUserInteraction = { subtitleMenuTouchKey++ },
         )
 
-        val studioWidth = if (isLandscape) (maxWidth.value * 0.58f).dp.coerceIn(340.dp, 520.dp)
-            else (maxWidth.value * 0.90f).dp.coerceAtMost(420.dp)
-        val studioMaxHeight = if (isCompactLandscape) (maxHeight.value * 0.76f).dp.coerceAtMost(280.dp)
-            else if (isLandscape) (maxHeight.value * 0.78f).dp.coerceAtMost(360.dp)
-            else (maxHeight.value * 0.60f).dp.coerceAtMost(560.dp)
+        // FIX: sizing only ever reacted to ORIENTATION (isLandscape/
+        // isCompactLandscape), never to actual physical screen size — so a
+        // phone in landscape got the exact same width/height caps as a
+        // tablet in landscape, even though the phone has far less real
+        // estate. isTabletSized uses the SMALLER of the two dimensions
+        // (Android's own sw600dp convention for "this is a 7"+ tablet"),
+        // which stays correct regardless of which way the device is held
+        // — unlike maxWidth alone, which would misclassify a phone turned
+        // sideways as tablet-sized. Phones now get meaningfully smaller
+        // caps in every orientation; tablets get meaningfully bigger ones.
+        // Safe to shrink on phones specifically because Studio already
+        // scrolls internally (every tab's content is in a
+        // verticalScroll'd Column) and is already independently
+        // draggable (its own long-press-drag handle, not this sizing) —
+        // nothing gets cut off, it just needs to scroll a bit more.
+        val isTabletSized = minOf(maxWidth, maxHeight) >= 600.dp
+        val studioWidth = when {
+            isTabletSized && isLandscape -> (maxWidth.value * 0.50f).dp.coerceIn(420.dp, 640.dp)
+            isTabletSized -> (maxWidth.value * 0.75f).dp.coerceIn(420.dp, 560.dp)
+            isLandscape -> (maxWidth.value * 0.60f).dp.coerceIn(300.dp, 420.dp)
+            else -> (maxWidth.value * 0.92f).dp.coerceAtMost(380.dp)
+        }
+        val studioMaxHeight = when {
+            isTabletSized && isLandscape -> (maxHeight.value * 0.80f).dp.coerceAtMost(560.dp)
+            isTabletSized -> (maxHeight.value * 0.65f).dp.coerceAtMost(680.dp)
+            isCompactLandscape -> (maxHeight.value * 0.80f).dp.coerceAtMost(260.dp)
+            isLandscape -> (maxHeight.value * 0.82f).dp.coerceAtMost(320.dp)
+            else -> (maxHeight.value * 0.58f).dp.coerceAtMost(480.dp)
+        }
         SubtitleStudioOverlay(
             showSubtitleStudio = showSubtitleStudio,
             studioWidth = studioWidth,
