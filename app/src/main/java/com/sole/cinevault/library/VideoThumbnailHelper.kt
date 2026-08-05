@@ -19,21 +19,38 @@ object VideoThumbnailHelper {
         val bitmap: Bitmap
     )
 
-    // FIX: was a plain linkedMapOf with manual "evict oldest INSERTED key"
-    // logic — that's FIFO, not LRU. Re-hitting an already-cached key never
-    // moved it back to the front, so replaying the same video repeatedly in
-    // one session didn't protect it from eviction once 3 other videos got
-    // cached after it. android.util.LruCache tracks real access order
-    // (get() counts as a "use"), so a video you keep coming back to now
-    // correctly outlives ones you only opened once. Bumped 3 -> 5 entries
-    // per the suggested cap.
-    private val previewMemoryCache = LruCache<String, List<PreviewFrame>>(5)
+    // FIX: LruCache's default sizeOf() returns 1 per entry regardless of
+    // what that entry actually is — so LruCache<_, _>(5) meant "keep 5
+    // entries" with zero regard for the fact that each entry here is a
+    // list of up to 120 real bitmaps. Same problem for the thumbnail
+    // cache at 80 entries of full poster-sized bitmaps. Together these
+    // could legitimately approach the app's entire heap ceiling before
+    // Auto-Sync even starts. Both now size themselves by actual bitmap
+    // memory (KB, via Bitmap.allocationByteCount) instead of entry count.
+    private const val PREVIEW_CACHE_LIMIT_KB = 20 * 1024   // ~20MB
+    private const val THUMBNAIL_CACHE_LIMIT_KB = 28 * 1024 // ~28MB
 
-    // Same FIFO -> LRU fix as above. Cap kept at 80 (unchanged) — each
-    // entry is a poster-sized (640x900) bitmap, so 80 is already a
-    // reasonable ceiling; only the eviction POLICY changed here, not the
-    // size.
-    private val localThumbnailCache = LruCache<String, Bitmap>(80)
+    private val previewMemoryCache = object : LruCache<String, List<PreviewFrame>>(PREVIEW_CACHE_LIMIT_KB) {
+        override fun sizeOf(key: String, value: List<PreviewFrame>): Int =
+            value.sumOf { it.bitmap.allocationByteCount / 1024 }.coerceAtLeast(1)
+    }
+
+    // Lets a memory-hungry one-off operation (Auto-Sync analysis) ask for
+    // its headroom back before it starts, rather than competing with
+    // whatever preview frames happen to already be cached from seeking.
+    // Regenerates on demand afterward — nothing here is lost permanently,
+    // just freed early.
+    fun clearPreviewCache() {
+        previewMemoryCache.evictAll()
+    }
+
+    // FIX: same entry-count-vs-actual-memory problem as previewMemoryCache
+    // above — 80 entries of full poster-sized bitmaps had no ceiling on
+    // actual bytes. Now sized by real bitmap memory (KB) instead.
+    private val localThumbnailCache = object : LruCache<String, Bitmap>(THUMBNAIL_CACHE_LIMIT_KB) {
+        override fun sizeOf(key: String, value: Bitmap): Int =
+            (value.allocationByteCount / 1024).coerceAtLeast(1)
+    }
 
     suspend fun generatePreviewCache(
         context: Context,
