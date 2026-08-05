@@ -1509,12 +1509,32 @@ fun VideoPlayerScreen(
         (currentVideo.path.startsWith("content://", ignoreCase = true) || java.io.File(currentVideo.path).exists())
 
     fun runAutoSync() {
+        // FIX: SubtitleStudioSheet.kt already swaps the "Start Auto-Sync"
+        // button out for a progress spinner the instant autoSyncStatus
+        // becomes Analyzing, so a normal double-tap can't reach onClick
+        // twice — but that swap happens on the NEXT recomposition, not
+        // synchronously, leaving a narrow window where two taps landing
+        // before that frame renders could both call this function. Two
+        // concurrent analyses would each hold their own extraction
+        // buffers at once, which is exactly the kind of avoidable memory
+        // pressure Auto-Sync can't afford on a 256MB heap. Checked first,
+        // before even reading primarySubtitleUri, to close that window as
+        // tightly as possible.
+        if (autoSyncStatus is AutoSyncStatus.Analyzing) return
         val primary = primarySubtitleUri
         if (primary == null) {
             Toast.makeText(context, "Auto-Sync needs a downloaded or local subtitle loaded first", Toast.LENGTH_LONG).show()
             return
         }
         autoSyncStatus = AutoSyncStatus.Analyzing("Extracting audio…")
+        // FIX: seek-preview frames (up to 120 bitmaps, now capped by
+        // actual memory rather than entry count — see
+        // VideoThumbnailHelper.kt) were competing with Auto-Sync's own
+        // extraction buffers for the same heap. They regenerate on demand
+        // the next time the person seeks, so there's nothing lost by
+        // freeing them proactively right before a memory-hungry analysis
+        // pass starts.
+        VideoThumbnailHelper.clearPreviewCache()
         scope.launch {
             val srtText = withContext(Dispatchers.IO) { readTextFromUri(context, primary) }
             if (srtText == null) {
@@ -1534,8 +1554,21 @@ fun VideoPlayerScreen(
             // read, to happen on the thread it was created on. Read here,
             // on the main thread, before switching dispatchers.
             val videoDurationMs = exoPlayer.duration.coerceAtLeast(0L)
-            val result = withContext(Dispatchers.Default) {
-                AutoSyncEngine.run(context, currentVideo.path, videoDurationMs, audioLang, srtText)
+            // FIX: OutOfMemoryError is an Error, not an Exception — the
+            // extraction/VAD path below only ever caught Exception, so a
+            // genuine OOM (a real risk on a 256MB heap doing audio
+            // decode + ONNX inference) skipped every catch block and hit
+            // the app's uncaught-exception handler, crashing the whole
+            // player screen instead of just failing this one analysis.
+            // This is a safety net for whatever memory pressure the
+            // window-size/cache fixes don't fully rule out — not a
+            // substitute for those fixes.
+            val result = try {
+                withContext(Dispatchers.Default) {
+                    AutoSyncEngine.run(context, currentVideo.path, videoDurationMs, audioLang, srtText)
+                }
+            } catch (oom: OutOfMemoryError) {
+                AutoSyncStatus.Failed("Not enough available memory for Auto-Sync right now. Close other apps and try again.")
             }
             autoSyncStatus = result
         }
