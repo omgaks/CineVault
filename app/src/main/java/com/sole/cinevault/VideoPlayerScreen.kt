@@ -339,10 +339,7 @@ fun VideoPlayerScreen(
     var primarySubtitleUri by remember { mutableStateOf<Uri?>(null) }
     var primarySubtitleLanguage by remember { mutableStateOf<String?>(null) }
     var audioLanguageCheckedForPath by remember { mutableStateOf<String?>(null) }
-    var dualSubtitlesEnabled by remember { mutableStateOf(false) }
-    var dualSecondaryLanguage by remember { mutableStateOf("hi") }
-    var dualGapLines by remember { mutableStateOf(1) }
-    var dualStatusText by remember { mutableStateOf("") }
+    val dualUi = remember { DualSubtitleState() }
     val dualSecondaryColorHex = "#7FDBFF"
 
     // Which subtitle source/track is actually active right now — the single
@@ -893,7 +890,7 @@ fun VideoPlayerScreen(
         originalSubtitleUri = null; appliedSubtitleOffsetMs = 0L; subtitleSyncOffset = 0.0f
         driftUi.scale = 1.0f; driftUi.appliedScale = 1.0f; driftUi.pointA = null; driftUi.pointB = null
         dialogueSyncArmed = false; dialogueSyncReferenceMs = null; driftUi.showDialog = false
-        dualSubtitlesEnabled = false; dualStatusText = ""; primarySubtitleUri = null; primarySubtitleLanguage = null; audioLanguageCheckedForPath = null
+        dualUi.enabled = false; dualUi.statusText = ""; primarySubtitleUri = null; primarySubtitleLanguage = null; audioLanguageCheckedForPath = null
         subtitlePreserveOriginalStyling = false
         subtitleGestureFeedback = ""
         autoSyncStatus = AutoSyncStatus.Idle
@@ -1308,14 +1305,14 @@ fun VideoPlayerScreen(
     val activeSubtitleFormat = remember(originalSubtitleUri) { originalSubtitleUri?.let { detectSubtitleFormat(it) } ?: SubtitleFormat.UNKNOWN }
     val isAssOrSsaFormat = activeSubtitleFormat == SubtitleFormat.ASS || activeSubtitleFormat == SubtitleFormat.SSA
 
-    LaunchedEffect(playerViewForSubtitleStyle, subtitleTextSizeSp, subtitleBottomPadding, subtitleAppearance, dualSubtitlesEnabled, subtitlePreserveOriginalStyling, isAssOrSsaFormat) {
+    LaunchedEffect(playerViewForSubtitleStyle, subtitleTextSizeSp, subtitleBottomPadding, subtitleAppearance, dualUi.enabled, subtitlePreserveOriginalStyling, isAssOrSsaFormat) {
         val sv = playerViewForSubtitleStyle?.subtitleView
         sv?.setUserDefaultStyle()
         // Embedded styling is enabled in TWO cases: dual mode (needs the
         // injected <font color> tag to render) or the person explicitly
         // asked to preserve an ASS/SSA file's own styling. Off otherwise,
         // so CineVault's own styling stays authoritative for plain SRT/VTT.
-        val useEmbeddedStyles = dualSubtitlesEnabled || (subtitlePreserveOriginalStyling && isAssOrSsaFormat)
+        val useEmbeddedStyles = dualUi.enabled || (subtitlePreserveOriginalStyling && isAssOrSsaFormat)
         sv?.setApplyEmbeddedStyles(useEmbeddedStyles); sv?.setApplyEmbeddedFontSizes(false)
         sv?.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleTextSizeSp)
         sv?.setBottomPaddingFraction(subtitleBottomPadding)
@@ -1399,12 +1396,12 @@ fun VideoPlayerScreen(
         val primary = primarySubtitleUri
         if (primary == null) {
             Toast.makeText(context, "Dual subtitles need a downloaded or local subtitle as the primary track", Toast.LENGTH_LONG).show()
-            dualSubtitlesEnabled = false
+            dualUi.enabled = false
             return
         }
         if (!supportsCustomTextPipeline(detectSubtitleFormat(primary))) {
             Toast.makeText(context, "Dual subtitles currently only work with .srt as the primary track", Toast.LENGTH_LONG).show()
-            dualSubtitlesEnabled = false
+            dualUi.enabled = false
             return
         }
         // FIX: previously nothing stopped the secondary language from
@@ -1412,41 +1409,41 @@ fun VideoPlayerScreen(
         // would silently "merge" a subtitle with itself. Now blocked with
         // a clear message, using the real tracked primary language rather
         // than guessing from preferences.
-        val normalizedSecondary = SubtitleLanguageRegistry.normalize(dualSecondaryLanguage)
+        val normalizedSecondary = SubtitleLanguageRegistry.normalize(dualUi.secondaryLanguage)
         if (primarySubtitleLanguage != null && normalizedSecondary != null && primarySubtitleLanguage == normalizedSecondary) {
             Toast.makeText(context, "Secondary language can't be the same as the primary (${friendlyLanguageName(primarySubtitleLanguage)}) — pick a different one", Toast.LENGTH_LONG).show()
-            dualSubtitlesEnabled = false
+            dualUi.enabled = false
             return
         }
-        dualStatusText = "Searching ${friendlyLanguageName(dualSecondaryLanguage)} subtitles..."
+        dualUi.statusText = "Searching ${friendlyLanguageName(dualUi.secondaryLanguage)} subtitles..."
         scope.launch {
             val searchQuery = OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path)
-            val searchResult = OpenSubtitlesClient.searchSubtitlesDetailed(searchQuery, language = dualSecondaryLanguage)
+            val searchResult = OpenSubtitlesClient.searchSubtitlesDetailed(searchQuery, language = dualUi.secondaryLanguage)
             val bestFileId = (searchResult as? SubtitleSearchListResult.Success)?.results?.firstOrNull()?.fileId
             if (bestFileId == null) {
-                dualStatusText = "No ${friendlyLanguageName(dualSecondaryLanguage)} subtitle found for this video"
-                Toast.makeText(context, dualStatusText, Toast.LENGTH_LONG).show()
-                dualSubtitlesEnabled = false
+                dualUi.statusText = "No ${friendlyLanguageName(dualUi.secondaryLanguage)} subtitle found for this video"
+                Toast.makeText(context, dualUi.statusText, Toast.LENGTH_LONG).show()
+                dualUi.enabled = false
                 return@launch
             }
-            dualStatusText = "Downloading ${friendlyLanguageName(dualSecondaryLanguage)} subtitle..."
+            dualUi.statusText = "Downloading ${friendlyLanguageName(dualUi.secondaryLanguage)} subtitle..."
             // FIX: secondaryLanguageCacheFile() no longer exists — the main
             // subtitleCacheFile() is itself language-aware now, so every
             // language (primary or secondary) gets its own slot by
             // construction and there's nothing special-case needed here
             // anymore to avoid a collision.
-            val targetFile = OpenSubtitlesClient.subtitleCacheFile(context, currentVideo.path, dualSecondaryLanguage)
-            val downloadResult = OpenSubtitlesClient.downloadSubtitleToFile(targetFile, bestFileId, dualSecondaryLanguage)
+            val targetFile = OpenSubtitlesClient.subtitleCacheFile(context, currentVideo.path, dualUi.secondaryLanguage)
+            val downloadResult = OpenSubtitlesClient.downloadSubtitleToFile(targetFile, bestFileId, dualUi.secondaryLanguage)
             if (downloadResult !is SubtitleDownloadResult.Success) {
-                dualStatusText = downloadResult.summary()
-                Toast.makeText(context, dualStatusText, Toast.LENGTH_LONG).show()
-                dualSubtitlesEnabled = false
+                dualUi.statusText = downloadResult.summary()
+                Toast.makeText(context, dualUi.statusText, Toast.LENGTH_LONG).show()
+                dualUi.enabled = false
                 return@launch
             }
             val merged = withContext(Dispatchers.IO) {
                 val primaryText = readTextFromUri(context, primary) ?: return@withContext null
                 val secondaryText = readTextFromUri(context, downloadResult.uri) ?: return@withContext null
-                val mergedText = mergeDualSubtitles(primaryText, secondaryText, dualSecondaryColorHex, dualGapLines)
+                val mergedText = mergeDualSubtitles(primaryText, secondaryText, dualSecondaryColorHex, dualUi.gapLines)
                 try {
                     // FIX: was a single fixed filename shared by every video
                     // and every dual-merge request ("cinevault_dual_merged.
@@ -1462,22 +1459,22 @@ fun VideoPlayerScreen(
                 } catch (e: Exception) { null }
             }
             if (merged == null) {
-                dualStatusText = "Couldn't merge subtitles"
-                Toast.makeText(context, dualStatusText, Toast.LENGTH_LONG).show()
-                dualSubtitlesEnabled = false
+                dualUi.statusText = "Couldn't merge subtitles"
+                Toast.makeText(context, dualUi.statusText, Toast.LENGTH_LONG).show()
+                dualUi.enabled = false
                 return@launch
             }
             val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
             playCurrentVideoWithSubtitle(subtitleUri = merged, resumePosition = resumeAt, isOriginalSubtitle = false)
             originalSubtitleUri = merged
             appliedSubtitleOffsetMs = (subtitleSyncOffset * 1000f).toLong()
-            dualStatusText = "Dual subtitles: ${if (primarySubtitleLanguage != null) friendlyLanguageName(primarySubtitleLanguage) else "Primary"} + ${friendlyLanguageName(dualSecondaryLanguage)}"
+            dualUi.statusText = "Dual subtitles: ${if (primarySubtitleLanguage != null) friendlyLanguageName(primarySubtitleLanguage) else "Primary"} + ${friendlyLanguageName(dualUi.secondaryLanguage)}"
         }
     }
 
     fun disableDualSubtitles() {
-        dualSubtitlesEnabled = false
-        dualStatusText = ""
+        dualUi.enabled = false
+        dualUi.statusText = ""
         val primary = primarySubtitleUri ?: return
         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
         playCurrentVideoWithSubtitle(subtitleUri = primary, resumePosition = resumeAt)
@@ -2282,22 +2279,22 @@ fun VideoPlayerScreen(
             onBehaviorPrefsChange = { subtitleBehaviorPrefs = it; saveSubtitleBehaviorPrefs(context, it) },
             cleaningOptions = subtitleCleaningOptions,
             onCleaningOptionsChange = { subtitleCleaningOptions = it; saveSubtitleCleaningOptions(context, it) },
-            dualSubtitlesEnabled = dualSubtitlesEnabled,
+            dualSubtitlesEnabled = dualUi.enabled,
             dualCanEnable = primarySubtitleUri != null,
-            dualSecondaryLanguage = dualSecondaryLanguage,
-            dualGapLines = dualGapLines,
-            dualStatusText = dualStatusText,
+            dualSecondaryLanguage = dualUi.secondaryLanguage,
+            dualGapLines = dualUi.gapLines,
+            dualStatusText = dualUi.statusText,
             onToggleDual = { enabled ->
-                dualSubtitlesEnabled = enabled
+                dualUi.enabled = enabled
                 if (enabled) fetchAndApplyDualSecondary() else disableDualSubtitles()
             },
             onDualSecondaryLanguageChange = { lang ->
-                dualSecondaryLanguage = lang
-                if (dualSubtitlesEnabled) fetchAndApplyDualSecondary()
+                dualUi.secondaryLanguage = lang
+                if (dualUi.enabled) fetchAndApplyDualSecondary()
             },
             onDualGapLinesChange = { gap ->
-                dualGapLines = gap
-                if (dualSubtitlesEnabled) fetchAndApplyDualSecondary()
+                dualUi.gapLines = gap
+                if (dualUi.enabled) fetchAndApplyDualSecondary()
             },
             onDismiss = { showSubtitleStudio = false; showControls = true },
             onUserInteraction = { subtitleMenuTouchKey++ },
