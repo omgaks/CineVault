@@ -61,18 +61,21 @@ sealed class AutoSyncStatus {
 
 object AutoSyncEngine {
 
-    // FIX: was 6 minutes per window (up to 3 windows) — a 6-minute window
-    // of source audio, held as raw stereo PCM + downmixed mono + resampled
-    // copies simultaneously during extraction, could peak well over 100MB
-    // on its own, which combined with the app's other in-memory caches
-    // (thumbnail/preview LruCaches, ExoPlayer's own buffers) was enough to
-    // blow a 256MB heap. Dropped to 45s/30s — small enough that even the
-    // least memory-conscious path through the extractor stays well clear
-    // of the ceiling, while still giving speech-timing correlation enough
-    // material to work with (a 45s window still spans many lines of
-    // dialogue in virtually all content).
-    private const val WINDOW_DURATION_MS = 45_000L
-    private const val MIN_WINDOW_DURATION_MS = 30_000L
+    // FIX: 2 minutes (the second attempt) worked but gives noticeably less
+    // speech data per window than the original 6 minutes. Turns out the
+    // 6-minute window itself was never THE problem in isolation — with
+    // pcmChunks now released right after downmixing (see
+    // AutoSyncAudioExtractor.kt), a 6-minute window alone only peaks
+    // around ~121MB. What actually caused the original crash was that
+    // number stacking on top of the OTHER two issues fixed alongside it:
+    // fully unbounded LruCaches (previously could reach ~250MB on their
+    // own) and pcmChunks never being released early. With all three fixes
+    // in place together, 5 minutes leaves real margin under the 256MB
+    // ceiling even accounting for ExoPlayer's own buffers — close to the
+    // original's amount of speech data, without sitting right at the
+    // exact value already proven to crash once.
+    private const val WINDOW_DURATION_MS = 5 * 60_000L
+    private const val MIN_WINDOW_DURATION_MS = 3 * 60_000L
 
     // Matches the manual Sync slider's own -10s..+10s range — Auto-Sync
     // can't produce a flat offset the manual controls couldn't represent.
