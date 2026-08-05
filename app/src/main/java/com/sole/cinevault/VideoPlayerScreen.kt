@@ -309,13 +309,9 @@ fun VideoPlayerScreen(
     var subtitleTextSizeSp by remember { mutableFloatStateOf(22f) }
     var subtitleBottomPadding by remember { mutableFloatStateOf(0.02f) }
     var subtitleSyncOffset by remember { mutableFloatStateOf(0.0f) }
-    var subtitleDriftScale by remember { mutableFloatStateOf(1.0f) }
-    var appliedSubtitleDriftScale by remember { mutableFloatStateOf(1.0f) }
+    val driftUi = remember { DriftCorrectionState() }
     var dialogueSyncArmed by remember { mutableStateOf(false) }
     var dialogueSyncReferenceMs by remember { mutableStateOf<Long?>(null) }
-    var showDriftDialog by remember { mutableStateOf(false) }
-    var driftPointA by remember { mutableStateOf<DriftPoint?>(null) }
-    var driftPointB by remember { mutableStateOf<DriftPoint?>(null) }
     var showAppearanceStudio by remember { mutableStateOf(false) }
     var subtitleAppearancePreset by remember { mutableStateOf("CineVault") }
     var subtitleAppearance by remember { mutableStateOf(SubtitlePresets.CineVault) }
@@ -470,7 +466,7 @@ fun VideoPlayerScreen(
         showSubtitleSettings = false
         showTrackSelector = false
         showSubtitleSearch = false
-        showDriftDialog = false
+        driftUi.showDialog = false
         showAppearanceStudio = false
         showSubtitleStudio = false
         showSpeedMenu = false
@@ -895,8 +891,8 @@ fun VideoPlayerScreen(
         previewBitmap = null; previewFrames = emptyList(); isVideoEnded = false
         playerErrorMessage = null; errorRetryCount = 0; stuckBufferingHint = false
         originalSubtitleUri = null; appliedSubtitleOffsetMs = 0L; subtitleSyncOffset = 0.0f
-        subtitleDriftScale = 1.0f; appliedSubtitleDriftScale = 1.0f; driftPointA = null; driftPointB = null
-        dialogueSyncArmed = false; dialogueSyncReferenceMs = null; showDriftDialog = false
+        driftUi.scale = 1.0f; driftUi.appliedScale = 1.0f; driftUi.pointA = null; driftUi.pointB = null
+        dialogueSyncArmed = false; dialogueSyncReferenceMs = null; driftUi.showDialog = false
         dualSubtitlesEnabled = false; dualStatusText = ""; primarySubtitleUri = null; primarySubtitleLanguage = null; audioLanguageCheckedForPath = null
         subtitlePreserveOriginalStyling = false
         subtitleGestureFeedback = ""
@@ -1200,7 +1196,7 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(showControls, showAudioSelector, showSubtitleSettings, showTrackSelector, showSubtitleSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || showDriftDialog || showAppearanceStudio || showSubtitleStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
+        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || showSubtitleStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
         if (showControls && !anyMenuOpen && !isDraggingSeekbar) {
             delay(4500)
             if (!isDraggingSeekbar && !anyMenuOpen) showControls = false
@@ -1208,7 +1204,7 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(showTopBar, showAudioSelector, showSubtitleSettings, showTrackSelector, showSubtitleSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || showDriftDialog || showAppearanceStudio || showSubtitleStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
+        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || showSubtitleStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
         if (showTopBar && !anyMenuOpen && !isDraggingSeekbar) {
             delay(2800)
             if (!isDraggingSeekbar && !anyMenuOpen) showTopBar = false
@@ -1335,17 +1331,17 @@ fun VideoPlayerScreen(
         )
     }
 
-    LaunchedEffect(subtitleSyncOffset, subtitleDriftScale, originalSubtitleUri) {
+    LaunchedEffect(subtitleSyncOffset, driftUi.scale, originalSubtitleUri) {
         val baseUri = originalSubtitleUri ?: return@LaunchedEffect
         if (!subtitlesEnabled) return@LaunchedEffect
         val offsetMs = (subtitleSyncOffset * 1000f).toLong()
-        if (offsetMs == appliedSubtitleOffsetMs && subtitleDriftScale == appliedSubtitleDriftScale) return@LaunchedEffect
+        if (offsetMs == appliedSubtitleOffsetMs && driftUi.scale == driftUi.appliedScale) return@LaunchedEffect
         delay(350)
         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
-        val shiftedUri = withContext(Dispatchers.IO) { buildShiftedSubtitleFile(context, baseUri, offsetMs, subtitleDriftScale) }
+        val shiftedUri = withContext(Dispatchers.IO) { buildShiftedSubtitleFile(context, baseUri, offsetMs, driftUi.scale) }
         if (shiftedUri != null) {
             appliedSubtitleOffsetMs = offsetMs
-            appliedSubtitleDriftScale = subtitleDriftScale
+            driftUi.appliedScale = driftUi.scale
             playCurrentVideoWithSubtitle(subtitleUri = shiftedUri, resumePosition = resumeAt, isOriginalSubtitle = false)
         }
     }
@@ -1380,15 +1376,15 @@ fun VideoPlayerScreen(
     }
 
     // ── Progressive Drift Correction ─────────────────────────────────
-    fun markDriftPointA(correctionSeconds: Float) { driftPointA = DriftPoint(exoPlayer.currentPosition.coerceAtLeast(0L), correctionSeconds) }
-    fun markDriftPointB(correctionSeconds: Float) { driftPointB = DriftPoint(exoPlayer.currentPosition.coerceAtLeast(0L), correctionSeconds) }
+    fun markDriftPointA(correctionSeconds: Float) { driftUi.pointA = DriftPoint(exoPlayer.currentPosition.coerceAtLeast(0L), correctionSeconds) }
+    fun markDriftPointB(correctionSeconds: Float) { driftUi.pointB = DriftPoint(exoPlayer.currentPosition.coerceAtLeast(0L), correctionSeconds) }
     fun applyDriftFix() {
-        val a = driftPointA; val b = driftPointB
+        val a = driftUi.pointA; val b = driftUi.pointB
         if (a == null || b == null || a.positionMs == b.positionMs) return
         val (scale, shiftMs) = computeDriftTransform(a, b)
-        subtitleDriftScale = scale
+        driftUi.scale = scale
         subtitleSyncOffset = (shiftMs / 1000f).coerceIn(-30f, 30f)
-        showDriftDialog = false
+        driftUi.showDialog = false
         Toast.makeText(context, "Drift correction applied", Toast.LENGTH_SHORT).show()
     }
 
@@ -1577,11 +1573,11 @@ fun VideoPlayerScreen(
         // result (timeScale != 1.0) would compute correctly but then
         // silently have its scale discarded on Apply, leaving only the
         // flat-offset portion in effect. Now applies both, through the
-        // exact same subtitleDriftScale state the manual "Fix Gradual
+        // exact same driftUi.scale state the manual "Fix Gradual
         // Drift" tool already uses, so it goes through the identical
         // reactive rebuild path.
         subtitleSyncOffset = (result.initialOffsetMs / 1000f).coerceIn(-10f, 10f)
-        subtitleDriftScale = result.timeScale.toFloat()
+        driftUi.scale = result.timeScale.toFloat()
         autoSyncStatus = AutoSyncStatus.Idle
         subtitleMenuTouchKey++
         Toast.makeText(context, if (result.timeScale != 1.0) "Auto-Sync applied (drift correction)" else "Auto-Sync applied", Toast.LENGTH_SHORT).show()
@@ -1751,7 +1747,7 @@ fun VideoPlayerScreen(
                             showSubtitleSettings -> showSubtitleSettings = false
                             showTrackSelector -> showTrackSelector = false
                             showSubtitleSearch -> showSubtitleSearch = false
-                            showDriftDialog -> showDriftDialog = false
+                            driftUi.showDialog -> driftUi.showDialog = false
                             showAppearanceStudio -> showAppearanceStudio = false
                             showSubtitleStudio -> showSubtitleStudio = false
                             dialogueSyncArmed -> {}
@@ -2170,16 +2166,16 @@ fun VideoPlayerScreen(
             isLandscape = isLandscape,
             onDialogueSyncTap = { confirmDialogueSyncTap() },
             onDialogueSyncCancel = { cancelDialogueSync() },
-            showDriftDialog = showDriftDialog,
+            driftUi.showDialog = driftUi.showDialog,
             driftPopupWidth = trackSelectorWidth.coerceAtLeast(220.dp),
             videoDurationMs = duration,
             currentPositionMs = position,
-            driftPointA = driftPointA,
-            driftPointB = driftPointB,
+            driftUi.pointA = driftUi.pointA,
+            driftUi.pointB = driftUi.pointB,
             onMarkPointA = { correction -> markDriftPointA(correction) },
             onMarkPointB = { correction -> markDriftPointB(correction) },
             onApplyDrift = { applyDriftFix() },
-            onDismissDrift = { showDriftDialog = false; showControls = true },
+            onDismissDrift = { driftUi.showDialog = false; showControls = true },
             showAppearanceStudio = showAppearanceStudio,
             appearanceBottomPadding = anchoredY(popupBottomPadding, trackSelectorMaxHeight),
             appearanceOffsetX = anchoredX(subIconX, trackSelectorWidth),
@@ -2262,7 +2258,7 @@ fun VideoPlayerScreen(
             currentSyncOffset = subtitleSyncOffset,
             onSyncOffsetChange = { subtitleSyncOffset = it; subtitleMenuTouchKey++ },
             onDialogueSyncClick = { armDialogueSync() },
-            onDriftFixClick = { showSubtitleStudio = false; showDriftDialog = true },
+            onDriftFixClick = { showSubtitleStudio = false; driftUi.showDialog = true },
             autoSyncStatus = autoSyncStatus,
             autoSyncAvailable = autoSyncAvailable,
             onAutoSyncClick = { runAutoSync() },
@@ -2317,7 +2313,7 @@ fun VideoPlayerScreen(
         // popups (Track Selector, Drift, Appearance, quick menu) which
         // were designed to sit alongside visible controls and still do.
         val hideControlsForLargeSheet = showSubtitleStudio || showSubtitleSearch
-        AnimatedVisibility(visible = (showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showTrackSelector || showDriftDialog || showAppearanceStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu) && !hideControlsForLargeSheet, enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(visible = (showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showTrackSelector || driftUi.showDialog || showAppearanceStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu) && !hideControlsForLargeSheet, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize()) {
 
                 val topRowVisible = !showSeekPreview
@@ -2421,7 +2417,7 @@ fun VideoPlayerScreen(
                     )
                 }
 
-                val anyMenuOpenForIntroSkip = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || showDriftDialog || showAppearanceStudio || showSubtitleStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
+                val anyMenuOpenForIntroSkip = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || showSubtitleStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
                 AnimatedVisibility(visible = showIntroSkip && !showSeekPreview && !isDraggingSeekbar && !anyMenuOpenForIntroSkip, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
                     SkipIntroButton(isLandscape = isLandscape) { val t = 95_000L.coerceAtMost(duration.coerceAtLeast(1L)); exoPlayer.seekTo(t); position = t; showControls = true }
                 }
@@ -2492,7 +2488,7 @@ fun VideoPlayerScreen(
                                     .onGloballyPositioned { subIconX = it.positionInRoot().x + it.size.width / 2f }
                                     .combinedClickable(
                                         onClick = {
-                                            val wasOpen = showSubtitleSettings || showTrackSelector || showSubtitleSearch || showDriftDialog || showAppearanceStudio || showSubtitleStudio
+                                            val wasOpen = showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || showSubtitleStudio
                                             closeAllMenus(); showSubtitleSettings = !wasOpen; showControls = true; menuTouchKey++
                                         },
                                         onLongClick = {
@@ -2504,7 +2500,7 @@ fun VideoPlayerScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.ClosedCaption, contentDescription = null,
-                                    tint = if (showSubtitleSettings || showTrackSelector || showSubtitleSearch || showDriftDialog || showAppearanceStudio || showSubtitleStudio) AmberCore else TextBright,
+                                    tint = if (showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || showSubtitleStudio) AmberCore else TextBright,
                                     modifier = Modifier.size(smallButton * 0.44f)
                                 )
                             }
