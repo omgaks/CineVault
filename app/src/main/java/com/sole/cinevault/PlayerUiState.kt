@@ -1,8 +1,10 @@
 package com.sole.cinevault
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.sole.cinevault.subtitles.DriftPoint
 
 /*
  * PlayerUiState.kt
@@ -29,4 +31,16 @@ class AutoSubtitleFetchState {
     var attemptedForPath by mutableStateOf<String?>(null)
     var status by mutableStateOf("")
     var downloadInProgress by mutableStateOf(false)
+}
+
+// Second slice: drift correction (the "mark two points, compute a linear
+// timescale fix" flow). scale/appliedScale are compared against each
+// other in the shift-rebuild LaunchedEffect, so they stay together here
+// rather than splitting further.
+class DriftCorrectionState {
+    var showDialog by mutableStateOf(false)
+    var pointA by mutableStateOf<DriftPoint?>(null)
+    var pointB by mutableStateOf<DriftPoint?>(null)
+    var scale by mutableFloatStateOf(1.0f)
+    var appliedScale by mutableFloatStateOf(1.0f)
 }
