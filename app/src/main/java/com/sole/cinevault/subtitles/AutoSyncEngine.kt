@@ -61,8 +61,18 @@ sealed class AutoSyncStatus {
 
 object AutoSyncEngine {
 
-    private const val WINDOW_DURATION_MS = 6 * 60_000L
-    private const val MIN_WINDOW_DURATION_MS = 90_000L
+    // FIX: was 6 minutes per window (up to 3 windows) — a 6-minute window
+    // of source audio, held as raw stereo PCM + downmixed mono + resampled
+    // copies simultaneously during extraction, could peak well over 100MB
+    // on its own, which combined with the app's other in-memory caches
+    // (thumbnail/preview LruCaches, ExoPlayer's own buffers) was enough to
+    // blow a 256MB heap. Dropped to 45s/30s — small enough that even the
+    // least memory-conscious path through the extractor stays well clear
+    // of the ceiling, while still giving speech-timing correlation enough
+    // material to work with (a 45s window still spans many lines of
+    // dialogue in virtually all content).
+    private const val WINDOW_DURATION_MS = 45_000L
+    private const val MIN_WINDOW_DURATION_MS = 30_000L
 
     // Matches the manual Sync slider's own -10s..+10s range — Auto-Sync
     // can't produce a flat offset the manual controls couldn't represent.
