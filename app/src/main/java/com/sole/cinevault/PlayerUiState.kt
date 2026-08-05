@@ -44,3 +44,14 @@ class DriftCorrectionState {
     var scale by mutableFloatStateOf(1.0f)
     var appliedScale by mutableFloatStateOf(1.0f)
 }
+
+// Third slice: dual subtitles (primary + secondary language merged into
+// one track). All four genuinely only make sense together — enabling
+// without a language, or a status message with nothing driving it, isn't
+// a meaningful state on its own.
+class DualSubtitleState {
+    var enabled by mutableStateOf(false)
+    var secondaryLanguage by mutableStateOf("hi")
+    var gapLines by mutableStateOf(1)
+    var statusText by mutableStateOf("")
+}
