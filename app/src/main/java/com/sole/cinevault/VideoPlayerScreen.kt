@@ -278,6 +278,10 @@ fun VideoPlayerScreen(
     var currentMediaType by remember { mutableStateOf(mediaType) }
     var showControls by remember { mutableStateOf(true) }
     var controlsLocked by remember { mutableStateOf(false) }
+    // Separate from showControls specifically for the locked case — see
+    // the AnimatedVisibility/absorber wiring near the lock button below
+    // for the full reasoning.
+    var lockButtonVisibleWhileLocked by remember { mutableStateOf(true) }
     var showTopBar by remember { mutableStateOf(true) }
     var isDraggingSeekbar by remember { mutableStateOf(false) }
 
@@ -1177,6 +1181,23 @@ fun VideoPlayerScreen(
         if (showControls && !anyMenuOpen && !isDraggingSeekbar) {
             delay(4500)
             if (!isDraggingSeekbar && !anyMenuOpen) showControls = false
+        }
+    }
+
+    // FIX: was a full-screen touch absorber that swallowed every tap
+    // while locked, with the lock button always visible — meaning it was
+    // reachable, but never actually hid the way the rest of the controls
+    // do. Now the lock button follows the same auto-hide behavior as
+    // everything else, and this timer specifically handles its own
+    // reappear-then-hide-again cycle while locked: the absorber below
+    // sets lockButtonVisibleWhileLocked = true on tap (revealing ONLY the
+    // lock button, not the other — still genuinely locked — controls),
+    // and this effect hides it again after the same idle window used
+    // elsewhere, so it doesn't linger forever once revealed.
+    LaunchedEffect(controlsLocked, lockButtonVisibleWhileLocked) {
+        if (controlsLocked && lockButtonVisibleWhileLocked) {
+            delay(4500)
+            lockButtonVisibleWhileLocked = false
         }
     }
 
@@ -2562,44 +2583,63 @@ fun VideoPlayerScreen(
         // this genuinely sits above every popup, menu, and the transport
         // controls, not just visually but for touch priority too. When
         // locked, a full-screen absorber (same containment pattern as the
-        // A1 fix) swallows every touch before it reaches anything else;
-        // the unlock button itself is a separate, later sibling so it
-        // stays reachable through the absorber rather than being blocked
-        // by its own lock.
+        // A1 fix) swallows every touch before it reaches anything else —
+        // except now a tap while locked specifically reveals the lock
+        // button (see lockButtonVisibleWhileLocked above), rather than
+        // doing nothing. Only the lock button reappears, not the other
+        // controls behind it — those stay genuinely locked and hidden,
+        // tapping here isn't a way to peek at them, only a way to find
+        // Unlock again.
         if (controlsLocked) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(Unit) { detectTapGestures { } }
+                    .pointerInput(Unit) { detectTapGestures { lockButtonVisibleWhileLocked = true } }
             )
         }
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = if (isLandscape) 10.dp else 14.dp, end = 14.dp)
-                .height(46.dp)
-                .clip(RoundedCornerShape(50))
-                .background(AmberCore)
-                .clickable {
-                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    controlsLocked = !controlsLocked
-                }
-                .padding(horizontal = 12.dp),
-            contentAlignment = Alignment.Center
+        // FIX: was unconditionally visible always — now follows the same
+        // show/hide behavior as the rest of the transport controls when
+        // unlocked. While actually locked, visibility comes from the
+        // separate lockButtonVisibleWhileLocked flag instead of
+        // showControls directly — that flag starts true, auto-hides on
+        // the same timer as everything else, and gets set back to true
+        // by a tap on the absorber above, giving a way back to Unlock
+        // without ever showing (or unblocking) the other, still-locked
+        // controls behind it.
+        AnimatedVisibility(
+            visible = if (controlsLocked) lockButtonVisibleWhileLocked else showControls,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopEnd)
         ) {
-            Icon(
-                imageVector = if (controlsLocked) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
-                contentDescription = if (controlsLocked) "Unlock controls" else "Lock controls",
-                tint = Color.Black,
-                modifier = Modifier.size(22.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .padding(top = if (isLandscape) 10.dp else 14.dp, end = 14.dp)
+                    .height(46.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(AmberCore)
+                    .clickable {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        controlsLocked = !controlsLocked
+                        lockButtonVisibleWhileLocked = true
+                    }
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (controlsLocked) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
+                    contentDescription = if (controlsLocked) "Unlock controls" else "Lock controls",
+                    tint = Color.Black,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
         }
 
         if (!studioUi.showStudio) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = if (isLandscape) 62.dp else 66.dp, end = 14.dp)
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 14.dp)
             ) {
                 DraggableFloatingPopup(
                     containerWidth = playerMaxWidth,
