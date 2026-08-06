@@ -145,8 +145,17 @@ fun RematchDialog(
                     onValueChange = { query = it },
                     placeholder = { Text("Search TMDB title…", color = Color.Gray) },
                     singleLine = true,
-                    leadingIcon = {
-                        Icon(Icons.Default.Search, contentDescription = null, tint = PlaceholderAmberCore)
+                    // FIX: was leadingIcon (left side, purely decorative —
+                    // no click handler at all), so the ONLY way to
+                    // actually trigger a search was the keyboard's own
+                    // Search/Enter key. Moved to trailingIcon (right side
+                    // of the field, next to the movie name text as
+                    // requested) and wrapped in a real IconButton that
+                    // calls runSearch() directly.
+                    trailingIcon = {
+                        IconButton(onClick = { runSearch() }) {
+                            Icon(Icons.Default.Search, contentDescription = "Search", tint = PlaceholderAmberCore)
+                        }
                     },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { runSearch() }),
