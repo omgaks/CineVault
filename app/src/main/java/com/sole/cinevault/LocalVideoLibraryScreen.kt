@@ -553,10 +553,33 @@ fun LocalVideoLibraryScreen(
     }
 
     fun deleteVideoFile(item: VideoWithMetadata) {
+        val path = item.video.path
         AlertDialog.Builder(context)
             .setTitle("Delete File")
             .setMessage("Delete \"${item.title}\"?\n\nThis cannot be undone.")
             .setPositiveButton("Delete") { _, _ ->
+                // FIX: this used to unconditionally do File(item.video.path)
+                // and a MediaStore DATA-column lookup, both of which only
+                // make sense for a real local filesystem path — a
+                // content:// (restricted-folder/SAF) or smb:// (network
+                // share) path would never match either one, silently
+                // failing with a generic "Could not delete" error. Real,
+                // live bug for both categories, not hypothetical.
+                if (path.startsWith("smb://", ignoreCase = true)) {
+                    Toast.makeText(context, "Can't delete files on a network share from CineVault — delete it from the source device instead", Toast.LENGTH_LONG).show()
+                } else if (path.startsWith("content://")) {
+                    // SAF-based (restricted folder) — the app already holds
+                    // a persisted permission from when the folder was
+                    // picked. Same pattern already proven working in
+                    // MediaIntelligenceScreens.kt's deleteGridVideo.
+                    try {
+                        val deleted = androidx.documentfile.provider.DocumentFile.fromSingleUri(context, Uri.parse(path))?.delete() == true
+                        if (deleted) finishDeleteSuccess(item)
+                        else activeError = ErrorBannerState("Could not delete \"${item.title}\"") { deleteVideoFile(item) }
+                    } catch (e: Exception) {
+                        activeError = ErrorBannerState("Delete failed: ${e.message}") { deleteVideoFile(item) }
+                    }
+                } else {
                 val f = File(item.video.path)
                 val mediaUri = findMediaStoreUri(item.video.path)
 
@@ -594,6 +617,7 @@ fun LocalVideoLibraryScreen(
                     } catch (e: Exception) {
                         activeError = ErrorBannerState("Delete failed: ${e.message}") { deleteVideoFile(item) }
                     }
+                }
                 }
             }
             .setNegativeButton("Cancel", null)
