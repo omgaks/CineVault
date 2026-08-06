@@ -1,9 +1,10 @@
-package com.sole.cinevault
+package com.sole.cinevault.library
 
 import android.content.ContentUris
 import android.content.Context
 import android.provider.MediaStore
 import android.util.Log
+import com.sole.cinevault.VideoWithMetadata
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
