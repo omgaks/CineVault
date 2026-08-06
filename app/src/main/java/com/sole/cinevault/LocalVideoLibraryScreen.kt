@@ -480,13 +480,20 @@ fun LocalVideoLibraryScreen(
                 Toast.makeText(context, "Secret folder unlocked", Toast.LENGTH_SHORT).show()
             }
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                // FIX: was trying to distinguish "user cancelled" from
+                // "genuine error" by excluding a specific denylist of error
+                // codes (ERROR_USER_CANCELED/NEGATIVE_BUTTON/CANCELED) —
+                // but backing out of the DEVICE_CREDENTIAL fallback screen
+                // (PIN/pattern, as opposed to the fingerprint dialog)
+                // apparently returns a different code than expected on at
+                // least one real device, since a cancel was still showing
+                // this toast. Rather than keep guessing at BiometricPrompt's
+                // full error-code enum one device-report at a time, just
+                // don't show a toast on any error — staying on the same
+                // screen, still locked, is self-evident feedback on its
+                // own, and there was never a strong need to distinguish
+                // "you cancelled" from "something went wrong" here anyway.
                 secretUnlocked = false
-                // User-initiated cancel (backed out, or tapped the device
-                // credential fallback's own cancel) isn't a failure worth
-                // a toast — anything else genuinely is.
-                if (errorCode != BiometricPrompt.ERROR_USER_CANCELED && errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON && errorCode != BiometricPrompt.ERROR_CANCELED) {
-                    Toast.makeText(context, "Secret folder locked", Toast.LENGTH_SHORT).show()
-                }
             }
             // A single failed attempt (e.g. one bad fingerprint read) keeps
             // the prompt open for retry — no state change here, matching
