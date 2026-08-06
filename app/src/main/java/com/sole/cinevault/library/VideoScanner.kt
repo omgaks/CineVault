@@ -1,7 +1,6 @@
-package com.sole.cinevault.library
+package com.sole.cinevault
 
-import com.sole.cinevault.VideoWithMetadata
-
+import android.content.ContentUris
 import android.content.Context
 import android.provider.MediaStore
 import android.util.Log
@@ -39,14 +38,40 @@ suspend fun scanDeviceVideos(context: Context): List<VideoWithMetadata> =
                 selectionArgs,
                 sortOrder
             )?.use { cursor ->
+                val idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
                 val dataCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA)
                 val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
 
                 while (cursor.moveToNext()) {
-                    val path = cursor.getString(dataCol) ?: continue
                     val name = cursor.getString(nameCol) ?: continue
 
-                    if (!File(path).exists()) continue
+                    // FIX: MediaStore.Video.Media.DATA is deprecated since
+                    // API 29 and can return null under scoped storage on
+                    // some devices/permission states (a real, reported
+                    // Android 14 issue), which previously meant `?: continue`
+                    // silently skipped that video — on an affected device,
+                    // every single row could get skipped this way, making
+                    // the whole scan return zero videos with no error at
+                    // all. DATA is kept as the PRIMARY path (it still works
+                    // for the overwhelming majority of real devices, and a
+                    // lot of downstream code — thumbnails, subtitle-file
+                    // lookup, SMB-path checks — assumes .path is a real
+                    // filesystem path), with a content:// URI built from
+                    // the row's _ID as a fallback ONLY when DATA is
+                    // actually null, rather than rewriting every video's
+                    // path unconditionally. content:// as a VideoFile.path
+                    // value is already a proven pattern elsewhere in this
+                    // app (see RestrictedFolderScanner.kt).
+                    val rawDataPath = cursor.getString(dataCol)
+                    val path = rawDataPath ?: run {
+                        val id = cursor.getLong(idCol)
+                        ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id).toString()
+                    }
+                    // The exists() check only makes sense for a real
+                    // filesystem path — a content:// URI string isn't one,
+                    // and doesn't need this check anyway since MediaStore
+                    // already confirmed the row exists by returning it.
+                    if (rawDataPath != null && !File(rawDataPath).exists()) continue
                     if (isPersonalVideo(name)) continue
                     if (!isVideoAllowedByScanSources(context, path)) continue
 
