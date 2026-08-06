@@ -1,8 +1,10 @@
 package com.sole.cinevault
 
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.media3.ui.PlayerView
@@ -90,4 +92,20 @@ class SubtitleAcquisitionUiState {
     var showFallback by mutableStateOf(false)
     var showEmbeddedBrowser by mutableStateOf(false)
     var pendingImportCandidates by mutableStateOf<SubtitleImportResult.Success?>(null)
+}
+
+// Sixth slice: which subtitle track is currently active, and the offset/
+// scale it's been shifted by. originalUri/appliedOffsetMs stay together
+// with primaryUri/selectedKey-label-source rather than splitting further,
+// since the shift-rebuild LaunchedEffect and every "a subtitle just got
+// applied" call site touch several of these at once as one unit.
+class SubtitleTrackSelectionState {
+    var showSelector by mutableStateOf(false)
+    var primaryUri by mutableStateOf<Uri?>(null)
+    var primaryLanguage by mutableStateOf<String?>(null)
+    var originalUri by mutableStateOf<Uri?>(null)
+    var appliedOffsetMs by mutableLongStateOf(0L)
+    var selectedKey by mutableStateOf<String?>(null)
+    var selectedLabel by mutableStateOf("")
+    var selectedSource by mutableStateOf("")
 }
