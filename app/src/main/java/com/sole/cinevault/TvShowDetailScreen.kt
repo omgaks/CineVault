@@ -2,506 +2,625 @@ package com.sole.cinevault
 
 import com.sole.cinevault.library.*
 
-import android.app.Activity
-import android.app.AlertDialog
-import android.content.ContentUris
-import android.net.Uri
-import android.os.Build
-import android.provider.MediaStore
-import android.widget.Toast
+import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.asImageBitmap
+import android.app.Activity
+import android.content.Context
+import android.os.Build
+import android.view.WindowManager
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.FavoriteBorder
-import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.LockOpen
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.sole.cinevault.ui.theme.*
-import java.io.File
 
+// The prominent, only-shown-when-empty Scan Library call to action —
+// roughly double the footprint of the old small hero pill, with a
+// heartbeat-style double-pulse scale and a breathing amber glow so it
+// reads as "tap me" the instant the app opens on an empty library. The
+// "spiral" underline was interpreted as a continuously sweeping shimmer
+// rather than a literal circular motion, since a circular spiral doesn't
+// read as an underline under straight text — flag if that's not what was
+// meant and I'll take another pass at it.
 @Composable
-fun TvShowDetailScreen(
-    group: TvGroup,
-    onBack: () -> Unit,
-    onEpisodeClick: (VideoWithMetadata) -> Unit,
-    onEpisodesChanged: (List<VideoWithMetadata>) -> Unit = {},
-    onSecretChanged: () -> Unit = {}
-) {
-    val context = LocalContext.current
-    val haptics = LocalHapticFeedback.current
-    val heroImage = group.backdropUrl ?: group.posterUrl
+private fun BigScanLibraryButton(onClick: () -> Unit) {
+    // Same breathing-glow treatment as FrostedPlayButton in the player
+    // screen (VideoPlayerScreen.kt) — alpha pulse only, no scale/heartbeat,
+    // so the two amber glowing circles in the app feel like one consistent
+    // visual language rather than two different effects.
+    val infinite = rememberInfiniteTransition(label = "scanGlow")
+    val glowAlpha by infinite.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(animation = tween(1400, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
+        label = "scanGlowAlpha"
+    )
+    val size = 240.dp
+    val density = LocalDensity.current
+    val glowRadiusPx = with(density) { (size / 2f * 1.05f).toPx() }.coerceAtLeast(1f)
 
-    // Local copy so delete/hide can update the visible list immediately;
-    // onEpisodesChanged lets the caller sync its own master list too.
-    var episodes by remember(group) { mutableStateOf(group.episodes) }
-    var hiddenPaths by remember { mutableStateOf<Set<String>>(loadSecretVideoPaths(context)) }
-    var hiddenFolders by remember { mutableStateOf<Set<String>>(loadSecretFolderPaths(context)) }
-    var favoritePaths by remember { mutableStateOf(loadFavoriteVideoPaths(context)) }
-    var contextSheetItem by remember { mutableStateOf<VideoWithMetadata?>(null) }
-
-    // Persistent, retryable error banner for delete failures — reuses the
-    // same ErrorBannerState/ErrorBanner defined in LocalVideoLibraryScreen.kt
-    // (same package, no import needed). See that file for the reasoning on
-    // why this is a banner rather than a toast.
-    var activeError by remember { mutableStateOf<ErrorBannerState?>(null) }
-
-    var expandedSeasons by remember { mutableStateOf<Set<Int>>(emptySet()) }
-
-    val visibleEpisodes = episodes.filter { !hiddenPaths.contains(it.video.path) && !videoIsInsideSecretFolder(it, hiddenFolders) }
-
-    // Grouped by season using the same extractEpisodeInfo() parser the rest
-    // of the app uses for S/E detection — falls back to season 1 for any
-    // episode it can't parse (e.g. a file with no S00E00-style marker)
-    // rather than dropping it. Sorted within each season by episode number,
-    // not by whatever order they happened to scan in.
-    data class SeasonGroup(val season: Int, val eps: List<VideoWithMetadata>)
-    val seasonGroups = remember(visibleEpisodes) {
-        visibleEpisodes
-            .groupBy { extractEpisodeInfo(it.video.name)?.season ?: 1 }
-            .toSortedMap()
-            .map { (season, eps) ->
-                SeasonGroup(season, eps.sortedBy { extractEpisodeInfo(it.video.name)?.episode ?: 0 })
-            }
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(GlassSurfaceStrong)
+            .background(Brush.verticalGradient(0f to GlassHighlight, 0.45f to Color.Transparent, 1f to Color.Transparent))
+            .background(Brush.radialGradient(colors = listOf(AmberGlow.copy(alpha = glowAlpha * 0.55f), Color.Transparent), radius = glowRadiusPx))
+            .border(
+                width = 1.6.dp,
+                brush = Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.75f + 0.2f * glowAlpha), AmberDeep.copy(alpha = 0.30f))),
+                shape = CircleShape
+            )
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "Scan\nLibrary",
+            color = AmberCore,
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Black,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            lineHeight = 30.sp
+        )
     }
-    // Season 1 (or whichever is first) starts expanded so the screen isn't
-    // just a wall of collapsed headers on first open; the rest start
-    // collapsed. Only actually shown as grouped UI when there's more than
-    // one season — a single-season show renders as a flat list exactly like
-    // before, since headers would just be visual noise for it.
-    LaunchedEffect(seasonGroups.map { it.season }) {
-        if (expandedSeasons.isEmpty() && seasonGroups.isNotEmpty()) {
-            expandedSeasons = setOf(seasonGroups.first().season)
+}
+
+
+fun Context.findCineActivity(): Activity? {
+    var ctx = this
+    while (ctx is android.content.ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
+}
+
+// Persists the Home screen's scroll position across navigation — same pattern
+// as LibraryScrollState in LocalVideoLibraryScreen.kt. A plain object survives
+// composable disposal since it isn't tied to the composition.
+private object HomeScrollState {
+    var index: Int = 0
+    var offset: Int = 0
+}
+
+// Forces max screen brightness while any non-player screen is on-screen —
+// a deliberate design choice (poster art and glass UI read better bright,
+// especially on a small phone screen), NOT the same thing as the bug fixed
+// in VideoPlayerScreen.kt/MainActivity.kt. The actual bug there was forcing
+// brightness INCONSISTENTLY (only Home/Search had it, so leaving them for
+// Library or Settings looked like "dimming"); the fix is applying it
+// uniformly across every browsing screen, not removing it. The player is
+// the one deliberate exception — video content should respect the real
+// screen brightness (plus the manual swipe gesture), since forcing 100%
+// there was actively harmful for night viewing and battery during long
+// playback sessions. Short screens (browsing) vs. long screens (watching)
+// genuinely warrant different defaults.
+@Composable
+// Not private — called from LocalVideoLibraryScreen.kt too, and Kotlin's
+// `private` on a top-level function means file-private, not just
+// package-private, so it had to be opened up to be callable across files.
+fun ForceCineVaultBrightness() {
+    val context = LocalContext.current
+    val activity = context.findCineActivity()
+
+    DisposableEffect(Unit) {
+        activity?.window?.attributes = activity?.window?.attributes?.apply {
+            screenBrightness = 1.0f
+        }
+        onDispose {
+            activity?.window?.attributes = activity?.window?.attributes?.apply {
+                screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            }
         }
     }
-    val hasMultipleSeasons = seasonGroups.size > 1
+}
 
-    fun openContextSheet(item: VideoWithMetadata) {
-        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-        contextSheetItem = item
-    }
+@Composable
+fun CineBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
+    val tabs = listOf(
+        Triple(Icons.Filled.Home, "Home", 0),
+        Triple(Icons.Filled.List, "Library", 1),
+        Triple(Icons.Filled.Search, "Search", 2),
+        Triple(Icons.Filled.Settings, "Settings", 3)
+    )
 
-    fun addFavorite(item: VideoWithMetadata) {
-        val updated = favoritePaths + item.video.path; favoritePaths = updated
-        saveFavoriteVideoPaths(context, updated); Toast.makeText(context, "Added to Favorites", Toast.LENGTH_SHORT).show()
-    }
-    fun removeFavorite(item: VideoWithMetadata) {
-        val updated = favoritePaths - item.video.path; favoritePaths = updated
-        saveFavoriteVideoPaths(context, updated); Toast.makeText(context, "Removed from Favorites", Toast.LENGTH_SHORT).show()
-    }
-    fun hideVideo(item: VideoWithMetadata) {
-        val updated = hiddenPaths + item.video.path; hiddenPaths = updated
-        saveSecretVideoPaths(context, updated); clearPlaybackPosition(context, item.video.path)
-        onSecretChanged(); Toast.makeText(context, "Moved to Secret folder", Toast.LENGTH_SHORT).show()
-    }
-    fun unhideVideo(item: VideoWithMetadata) {
-        val updated = hiddenPaths - item.video.path; hiddenPaths = updated
-        saveSecretVideoPaths(context, updated); Toast.makeText(context, "Removed from Secret folder", Toast.LENGTH_SHORT).show()
-    }
-    fun hideEntireFolder(item: VideoWithMetadata) {
-        val folderPath = getVideoFolderKey(item); if (folderPath.isBlank()) return
-        val updatedFolders = hiddenFolders + folderPath; hiddenFolders = updatedFolders
-        saveSecretFolderPaths(context, updatedFolders); clearPlaybackFolderPositions(context, folderPath)
-        createNoMediaFileForFolder(folderPath); onSecretChanged()
-        Toast.makeText(context, "Folder hidden in CineVault. Gallery hide is not guaranteed on all Android versions.", Toast.LENGTH_LONG).show()
-    }
-    fun unhideEntireFolder(item: VideoWithMetadata) {
-        val folderPath = hiddenFolders.firstOrNull { item.video.path.startsWith(it) } ?: File(item.video.path).parent ?: return
-        val updatedFolders = hiddenFolders - folderPath; hiddenFolders = updatedFolders
-        saveSecretFolderPaths(context, updatedFolders)
-        Toast.makeText(context, "Folder removed from Secret", Toast.LENGTH_SHORT).show()
-    }
-
-    // Delete — same direct MediaStore flow as the Library screen (Android 11+
-    // consent request, Android 10 RecoverableSecurityException, plain delete
-    // fallback). Not routed through FileManagementHelper, which turned out to
-    // only ever handle the app's own subtitle files, not MediaStore-scanned videos.
-    var pendingDeleteResult by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
-    val deleteConsentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
-        pendingDeleteResult?.invoke(result.resultCode == Activity.RESULT_OK)
-        pendingDeleteResult = null
-    }
-
-    fun finishDeleteSuccess(item: VideoWithMetadata) {
-        clearPlaybackPosition(context, item.video.path)
-        val updated = episodes.filter { it.video.path != item.video.path }
-        episodes = updated
-        onEpisodesChanged(updated)
-        Toast.makeText(context, "File deleted", Toast.LENGTH_SHORT).show()
-    }
-
-    fun findMediaStoreUri(path: String): Uri? {
-        val projection = arrayOf(MediaStore.Video.Media._ID)
-        return try {
-            context.contentResolver.query(
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI, projection,
-                "${MediaStore.Video.Media.DATA} = ?", arrayOf(path), null
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID))
-                    ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
-                } else null
-            }
-        } catch (_: Exception) { null }
-    }
-
-    fun deleteVideoFile(item: VideoWithMetadata) {
-        AlertDialog.Builder(context)
-            .setTitle("Delete File")
-            .setMessage("Delete \"${item.title}\"?\n\nThis cannot be undone.")
-            .setPositiveButton("Delete") { _, _ ->
-                val f = File(item.video.path)
-                val mediaUri = findMediaStoreUri(item.video.path)
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && mediaUri != null) {
-                    try {
-                        pendingDeleteResult = { granted ->
-                            if (granted) finishDeleteSuccess(item)
-                            else Toast.makeText(context, "Delete cancelled", Toast.LENGTH_SHORT).show()
-                        }
-                        val pi = MediaStore.createDeleteRequest(context.contentResolver, listOf(mediaUri))
-                        deleteConsentLauncher.launch(IntentSenderRequest.Builder(pi.intentSender).build())
-                    } catch (e: Exception) {
-                        pendingDeleteResult = null
-                        activeError = ErrorBannerState("Delete failed: ${e.message}") { deleteVideoFile(item) }
-                    }
-                } else {
-                    try {
-                        val deletedRows = if (mediaUri != null) context.contentResolver.delete(mediaUri, null, null) else 0
-                        when {
-                            deletedRows > 0 -> finishDeleteSuccess(item)
-                            f.exists() && f.delete() -> finishDeleteSuccess(item)
-                            else -> activeError = ErrorBannerState("Could not delete \"${item.title}\"") { deleteVideoFile(item) }
-                        }
-                    } catch (e: SecurityException) {
-                        val recoverable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) e as? android.app.RecoverableSecurityException else null
-                        if (recoverable != null) {
-                            pendingDeleteResult = { granted ->
-                                if (granted) finishDeleteSuccess(item)
-                                else Toast.makeText(context, "Delete cancelled", Toast.LENGTH_SHORT).show()
-                            }
-                            deleteConsentLauncher.launch(IntentSenderRequest.Builder(recoverable.userAction.actionIntent.intentSender).build())
-                        } else {
-                            activeError = ErrorBannerState("Delete failed: ${e.message}") { deleteVideoFile(item) }
-                        }
-                    } catch (e: Exception) {
-                        activeError = ErrorBannerState("Delete failed: ${e.message}") { deleteVideoFile(item) }
-                    }
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    Box(modifier = Modifier.fillMaxSize().background(SpaceBlack)) {
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
-        ) {
-            // ── Hero backdrop ─────────────────────────────────────────────
-            item {
-                Box(modifier = Modifier.fillMaxWidth().height(340.dp)) {
-                    if (!heroImage.isNullOrBlank()) {
-                        AsyncImage(
-                            model = heroImage,
-                            contentDescription = group.showName,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
+    NavigationBar(
+        containerColor = SpaceDeep,
+        tonalElevation = 0.dp
+    ) {
+        tabs.forEach { (icon, label, index) ->
+            val selected = selectedTab == index
+            NavigationBarItem(
+                selected = selected,
+                onClick = { onTabSelected(index) },
+                label = {
+                    Text(
+                        text = label,
+                        color = if (selected) AmberGlow else TextFaint,
+                        fontSize = 11.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                    )
+                },
+                icon = {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = label,
+                            tint = if (selected) AmberGlow else TextFaint,
+                            modifier = Modifier.size(22.dp)
                         )
-                    } else {
-                        Box(modifier = Modifier.fillMaxSize().background(Color(0xFF161616)))
+                        if (selected) {
+                            Spacer(Modifier.height(3.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(4.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(AmberGlow)
+                            )
+                        }
                     }
+                },
+                colors = NavigationBarItemDefaults.colors(
+                    indicatorColor = Color.Transparent
+                )
+            )
+        }
+    }
+}
 
-                    // Gradient overlay
-                    Box(
-                        modifier = Modifier.fillMaxSize().background(
+@Composable
+fun HomeScreen(
+    videos: List<VideoWithMetadata>,
+    onScanRequest: () -> Unit,
+    onItemClick: (VideoWithMetadata) -> Unit,
+    onPlayClick: (VideoWithMetadata) -> Unit = {},
+    // Same callback MainActivity.kt already threads into
+    // LocalVideoLibraryScreen — needed here too so the big "Scan Library"
+    // button can start a REAL scan (via LibraryScanController) instead of
+    // just navigating to Library and leaving the person to tap Scan again
+    // once they get there.
+    onVideosLoaded: (List<VideoWithMetadata>) -> Unit = {}
+) {
+    ForceCineVaultBrightness()
+
+    val context = LocalContext.current
+    var continueMode by remember { mutableStateOf("List") }
+    var featuredMode by remember { mutableStateOf("Grid") }
+
+    // Storage permission for the big Scan Library button below — starts the
+    // real scan via LibraryScanController on grant, then navigates to
+    // Library either way (denied permission still lands on Library, which
+    // already has its own "Storage permission denied" messaging and its
+    // own Scan button to retry from).
+    val scanPermission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE
+    val scanPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) LibraryScanController.start(context, onVideosLoaded)
+        onScanRequest()
+    }
+
+    val continueWatching =
+        videos.filter {
+            loadPlaybackPosition(context, it.video.path) > 15_000L
+        }.take(12)
+
+    val heroImage =
+        continueWatching.firstOrNull { it.backdropUrl != null }?.backdropUrl
+            ?: videos.firstOrNull { it.backdropUrl != null }?.backdropUrl
+            ?: videos.firstOrNull { it.posterUrl != null }?.posterUrl
+
+    // Restores scroll position from HomeScrollState so returning from Detail
+    // (or switching tabs and back) lands where you left off, not the top.
+    val homeListState = rememberLazyListState(
+        initialFirstVisibleItemIndex = HomeScrollState.index,
+        initialFirstVisibleItemScrollOffset = HomeScrollState.offset
+    )
+    LaunchedEffect(homeListState) {
+        snapshotFlow { homeListState.firstVisibleItemIndex to homeListState.firstVisibleItemScrollOffset }
+            .collect { (i, o) -> HomeScrollState.index = i; HomeScrollState.offset = o }
+    }
+
+    androidx.compose.foundation.lazy.LazyColumn(
+        state = homeListState,
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SpaceBlack)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(bottom = 30.dp)
+    ) {
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(260.dp)
+                    .clip(RoundedCornerShape(30.dp))
+                    .background(SpaceMid)
+            ) {
+                if (heroImage != null) {
+                    AsyncImage(
+                        model = heroImage,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        alpha = 0.98f,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
                             Brush.verticalGradient(
                                 colors = listOf(
                                     Color.Transparent,
-                                    Color.Black.copy(alpha = 0.60f),
-                                    SpaceBlack
+                                    Color(0x66000000),
+                                    SpaceBlack.copy(alpha = 0.85f)
                                 )
                             )
                         )
-                    )
+                )
 
-                    // Show title + episode count at bottom
-                    Column(
-                        modifier = Modifier.align(Alignment.BottomStart).padding(start = 22.dp, end = 22.dp, bottom = 20.dp)
-                    ) {
-                        Text(text = group.showName, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = "${visibleEpisodes.size} Episodes", color = Color(0xFFAAAAAA), fontSize = 14.sp)
-                    }
-                }
-            }
+                // LOGO FIX: removed the 80.dp background square (Color.Black alpha 0.38f
+                // + RoundedCornerShape container) that was sitting behind the logo. The
+                // logo now renders directly with a soft drop-shadow for contrast against
+                // varying hero backdrops, instead of a visible box.
+                Image(
+                    painter = painterResource(id = R.drawable.cinevault_circle_logo),
+                    contentDescription = "CineVault Logo",
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(14.dp)
+                        .size(56.dp)
+                        .shadow(elevation = 10.dp, shape = CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
+                )
 
-            // ── Episode stills horizontal row ─────────────────────────────
-            item {
-                Column(modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(24.dp)
+                ) {
                     Text(
-                        text = "Episodes",
-                        color = Color.White,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 22.dp)
+                        text = "Your Cinema Library",
+                        color = TextBright,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 22.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        itemsIndexed(visibleEpisodes) { index, episode ->
-                            EpisodeStillCard(
-                                episode = episode,
-                                episodeNumber = index + 1,
-                                context = context,
-                                onClick = { onEpisodeClick(episode) },
-                                onLongPress = { openContextSheet(episode) }
+
+                    Spacer(modifier = Modifier.height(5.dp))
+
+                    Text(
+                        text = "Movies • TV Shows • Local Playback",
+                        color = TextMuted,
+                        fontSize = 14.sp
+                    )
+
+                    if (videos.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Button(
+                            onClick = onScanRequest,
+                            shape = RoundedCornerShape(40.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = AmberGlow.copy(alpha = 0.90f),
+                                contentColor = Color.Black
                             )
+                        ) {
+                            Text("Open Library", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
+        }
 
-            // ── Full episode list — grouped by season when there's more
-            // than one, same collapsible-header pattern already used for
-            // Library's Folders tab, so it's a familiar interaction rather
-            // than a new UI language. Single-season shows render exactly
-            // as before (flat list, no headers).
+        if (continueWatching.isNotEmpty()) {
             item {
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "All Episodes",
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 22.dp)
+                ContinueWatchingSection(
+                    items = continueWatching,
+                    mode = continueMode,
+                    onModeChange = { continueMode = it },
+                    onItemClick = onItemClick,
+                    // "See All" — sets Library's remembered category to
+                    // Continue Watching (LocalVideoLibraryScreen.kt reads
+                    // this on init) then reuses the same nav action the
+                    // hero card's own "Open Library" button already calls,
+                    // rather than threading a brand new navigation callback
+                    // through MainActivity.kt for this alone.
+                    onSeeAll = {
+                        LibraryScrollState.category = "Continue Watching"
+                        onScanRequest()
+                    }
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+
+        if (videos.isNotEmpty()) {
+            item {
+                FeaturedLibrarySection(
+                    items = videos.take(18),
+                    mode = featuredMode,
+                    onModeChange = { featuredMode = it },
+                    onItemClick = onItemClick,
+                    onPlayClick = onPlayClick
+                )
+            }
+        } else {
+            item {
+                Box(
+                    modifier = Modifier.fillParentMaxHeight(0.55f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        BigScanLibraryButton(onClick = { scanPermissionLauncher.launch(scanPermission) })
+                        Spacer(modifier = Modifier.height(18.dp))
+                        Text(
+                            text = "Scan your device or add a network share to get started.",
+                            color = TextMuted, fontSize = 13.sp, textAlign = TextAlign.Center,
+                            modifier = Modifier.widthIn(max = 260.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Continue Watching — screenshot style: clean card, timestamps at the
+//    corners, thin progress line at the bottom edge, title BELOW the card ──
+@Composable
+fun ContinueWatchingSection(
+    items: List<VideoWithMetadata>,
+    mode: String,
+    onModeChange: (String) -> Unit,
+    onItemClick: (VideoWithMetadata) -> Unit,
+    onSeeAll: () -> Unit = {}
+) {
+    val context = LocalContext.current
+
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Continue Watching",
+                color = TextBright,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
+
+            // Only worth showing when there's actually more to see than the
+            // 12-item cap this row already renders — a "See All" that takes
+            // you somewhere with nothing new is worse than no button.
+            if (items.size >= 12) {
+                Text(
+                    text = "See All",
+                    color = AmberCore,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable { onSeeAll() }.padding(horizontal = 6.dp, vertical = 4.dp)
+                )
             }
 
-            if (hasMultipleSeasons) {
-                seasonGroups.forEach { group ->
-                    val isExpanded = expandedSeasons.contains(group.season)
-                    item {
-                        Row(
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(GlassSurface)
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                SmallToggleChip(text = "List", selected = mode == "List", onClick = { onModeChange("List") })
+                SmallToggleChip(text = "Grid", selected = mode == "Grid", onClick = { onModeChange("Grid") })
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        if (mode == "List") {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                items(items) { item ->
+                    val positionMs = loadPlaybackPosition(context, item.video.path)
+                    val durationMs = loadDuration(context, item.video.path)
+                    val watchedPercent = getWatchedPercent(context, item)
+
+                    Column(modifier = Modifier.width(250.dp).clickable { onItemClick(item) }) {
+                        // ── FIX: composite card instead of bare force-crop ──
+                        // Previously: val image = item.backdropUrl ?: item.episodeStill ?: item.posterUrl
+                        // then ONE AsyncImage with ContentScale.Crop over the
+                        // whole 250x140 landscape box. When there was no
+                        // backdrop/still, a portrait poster got crushed into
+                        // that landscape shape — title text and faces sliced
+                        // off. Now: real landscape art (backdrop/still) still
+                        // crops exactly as before (unchanged, no regression).
+                        // Only when falling back to a PORTRAIT poster do we
+                        // switch to a composite layout — poster shown in full
+                        // on the right, same poster blurred+scaled as ambient
+                        // fill on the left. No second network fetch; same
+                        // posterUrl used twice.
+                        val landscapeImage = item.backdropUrl ?: item.episodeStill
+                        val fallbackPoster = item.posterUrl
+
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 22.dp, vertical = 4.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color.White.copy(alpha = 0.06f))
-                                .clickable {
-                                    expandedSeasons = if (isExpanded) expandedSeasons - group.season else expandedSeasons + group.season
-                                }
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .height(140.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(SpaceMid)
                         ) {
-                            Text(
-                                text = "Season ${group.season}",
-                                color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Text(
-                                text = "${group.eps.size} episode${if (group.eps.size != 1) "s" else ""}",
-                                color = Color(0xFFAAAAAA), fontSize = 12.sp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Icon(
-                                imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                                contentDescription = null, tint = Color(0xFFAAAAAA), modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                    if (isExpanded) {
-                        itemsIndexed(group.eps) { index, episode ->
-                            EpisodeListRow(
-                                episode = episode,
-                                episodeNumber = index + 1,
-                                context = context,
-                                onClick = { onEpisodeClick(episode) },
-                                onLongPress = { openContextSheet(episode) }
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                        }
-                    }
-                }
-            } else {
-                itemsIndexed(visibleEpisodes) { index, episode ->
-                    EpisodeListRow(
-                        episode = episode,
-                        episodeNumber = index + 1,
-                        context = context,
-                        onClick = { onEpisodeClick(episode) },
-                        onLongPress = { openContextSheet(episode) }
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                }
-            }
+                            if (!landscapeImage.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = landscapeImage,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else if (!fallbackPoster.isNullOrBlank()) {
+                                Row(modifier = Modifier.fillMaxSize()) {
+                                    // Left: ambient fill — same poster image,
+                                    // scaled + blurred (API 31+) or just
+                                    // scaled + darkened (below API 31).
+                                    Box(modifier = Modifier.weight(1.35f).fillMaxHeight()) {
+                                        AsyncImage(
+                                            model = fallbackPoster,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .graphicsLayer {
+                                                    scaleX = 1.4f; scaleY = 1.4f
+                                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                                        renderEffect = android.graphics.RenderEffect
+                                                            .createBlurEffect(
+                                                                40f, 40f,
+                                                                android.graphics.Shader.TileMode.CLAMP
+                                                            )
+                                                            .asComposeRenderEffect()
+                                                    }
+                                                }
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(Color.Black.copy(alpha = 0.35f))
+                                        )
+                                    }
+                                    // Right: the real poster, uncropped —
+                                    // title logo and face stay intact.
+                                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                                        AsyncImage(
+                                            model = fallbackPoster,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Fit,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                }
+                            }
 
-            item { Spacer(modifier = Modifier.height(100.dp)) }
-        }
-
-        // ── Back button ───────────────────────────────────────────────────
-        Box(
-            modifier = Modifier.align(Alignment.TopStart).padding(14.dp)
-                .size(42.dp).clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.55f))
-                .clickable { onBack() },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(imageVector = Icons.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(22.dp))
-        }
-
-        // ── Persistent error banner — same slide-down-from-top treatment
-        // as the Library screen's banner, positioned below the back button.
-        AnimatedVisibility(
-            visible = activeError != null,
-            enter = slideInVertically(initialOffsetY = { -it }, animationSpec = tween(280, easing = FastOutSlowInEasing)) + fadeIn(tween(220)),
-            exit = slideOutVertically(targetOffsetY = { -it }, animationSpec = tween(200)) + fadeOut(tween(150)),
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 68.dp, start = 16.dp, end = 16.dp)
-        ) {
-            activeError?.let { err -> ErrorBanner(state = err, onDismiss = { activeError = null }) }
-        }
-
-        // ── Long-press context sheet — same pattern as the Library screen ──
-        AnimatedVisibility(visible = contextSheetItem != null, enter = fadeIn(animationSpec = tween(160)), exit = fadeOut(animationSpec = tween(180))) {
-            val selectedItem = contextSheetItem
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.55f))
-                    .clickable { contextSheetItem = null },
-                contentAlignment = Alignment.Center
-            ) {
-                if (selectedItem != null) {
-                    val isFavorite = favoritePaths.contains(selectedItem.video.path)
-                    val isHidden = hiddenPaths.contains(selectedItem.video.path)
-                    val isInSecretFolder = videoIsInsideSecretFolder(selectedItem, hiddenFolders)
-
-                    // Sheet slides up + fades in on top of the scrim's plain
-                    // fade — same "bottom sheet arriving" language used on
-                    // the Library screen's context sheet.
-                    AnimatedVisibility(
-                        visible = contextSheetItem != null,
-                        enter = slideInVertically(initialOffsetY = { it / 3 }, animationSpec = tween(260, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
-                        exit = slideOutVertically(targetOffsetY = { it / 3 }, animationSpec = tween(180)) + fadeOut(tween(140))
-                    ) {
-                    Column(
-                        modifier = Modifier
-                            .width(300.dp)
-                            .glassPanel(cornerRadius = 24.dp, fill = SpaceMid.copy(alpha = 0.98f))
-                            .clickable(enabled = false) { }
-                            .padding(14.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // Scrim just behind the timestamps — unchanged
                             Box(
                                 modifier = Modifier
-                                    .width(56.dp)
-                                    .height(82.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(SpaceDeep)
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .height(44.dp)
+                                    .background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.60f))))
+                            )
+
+                            Text(
+                                text = formatClock(positionMs),
+                                color = TextBright, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 8.dp)
+                            )
+                            if (durationMs > 0L) {
+                                Text(
+                                    text = formatClock(durationMs),
+                                    color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 10.dp, bottom = 8.dp)
+                                )
+                            }
+
+                            // Thin progress line hugging the bottom edge — unchanged
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .height(3.dp)
+                                    .background(Color.White.copy(alpha = 0.18f))
                             ) {
-                                val thumb = selectedItem.episodeStill ?: selectedItem.posterUrl
-                                if (!thumb.isNullOrBlank()) {
-                                    AsyncImage(model = thumb, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(text = selectedItem.title, color = TextBright, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                if (selectedItem.subtitle.isNotBlank()) {
-                                    Text(text = selectedItem.subtitle, color = TextMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                }
+                                Box(modifier = Modifier.fillMaxWidth(watchedPercent.coerceIn(0f, 1f)).fillMaxHeight().background(AmberGlow))
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
-                        HorizontalDivider(color = GlassBorderBottom)
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        SheetActionRow(icon = Icons.Filled.PlayArrow, label = "Play", tint = AmberCore) {
-                            contextSheetItem = null; onEpisodeClick(selectedItem)
-                        }
-                        SheetActionRow(
-                            icon = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                            label = if (isFavorite) "Remove from Favorites" else "Add to Favorites",
-                            tint = if (isFavorite) AmberCore else TextBright
-                        ) {
-                            if (isFavorite) removeFavorite(selectedItem) else addFavorite(selectedItem)
-                            contextSheetItem = null
-                        }
-                        SheetActionRow(
-                            icon = if (isHidden) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
-                            label = if (isHidden) "Remove from Secret" else "Move to Secret",
-                            tint = TextBright
-                        ) {
-                            if (isHidden) unhideVideo(selectedItem) else hideVideo(selectedItem)
-                            contextSheetItem = null
-                        }
-                        SheetActionRow(
-                            icon = Icons.Filled.Folder,
-                            label = if (isInSecretFolder) "Unlock Folder" else "Hide Entire Folder",
-                            tint = TextBright
-                        ) {
-                            if (isInSecretFolder) unhideEntireFolder(selectedItem) else hideEntireFolder(selectedItem)
-                            contextSheetItem = null
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-                        HorizontalDivider(color = GlassBorderBottom)
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        SheetActionRow(icon = Icons.Rounded.Delete, label = "Delete File", tint = Color(0xFFFF5252)) {
-                            contextSheetItem = null
-                            deleteVideoFile(selectedItem)
-                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = item.title,
+                            color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
                     }
+                }
+            }
+        } else {
+            val gridItems = items.take(6)
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                gridItems.chunked(3).forEach { rowItems ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        rowItems.forEach { item ->
+                            val watchedPercent = getWatchedPercent(context, item)
+                            ResumePosterBox(
+                                item = item,
+                                modifier = Modifier.weight(1f),
+                                progress = watchedPercent,
+                                onClick = { onItemClick(item) }
+                            )
+                        }
+                        repeat(3 - rowItems.size) { Spacer(modifier = Modifier.weight(1f)) }
                     }
                 }
             }
@@ -510,202 +629,622 @@ fun TvShowDetailScreen(
 }
 
 @Composable
-private fun SheetActionRow(icon: ImageVector, label: String, tint: Color, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { onClick() }
-            .padding(horizontal = 12.dp, vertical = 11.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(text = label, color = if (tint == Color(0xFFFF5252)) tint else TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+private fun ResumePosterBox(
+    item: VideoWithMetadata,
+    modifier: Modifier,
+    progress: Float,
+    onClick: () -> Unit
+) {
+    Column(modifier = modifier.clickable { onClick() }) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(132.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(SpaceMid)
+        ) {
+            val imageModel = item.posterUrl ?: item.video.path
+            if (imageModel.isNotBlank()) {
+                AsyncImage(
+                    model = imageModel,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null, tint = TextFaint, modifier = Modifier.size(30.dp))
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(Color.White.copy(alpha = 0.18f))
+            ) {
+                Box(modifier = Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(AmberGlow))
+            }
+
+            RatingBadgeStack(item = item, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
+        }
+        Spacer(modifier = Modifier.height(5.dp))
+        Text(text = item.title, color = TextBright, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
-// ── Horizontal episode still card (in the top row) ───────────────────────────
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun EpisodeStillCard(
-    episode: VideoWithMetadata,
-    episodeNumber: Int,
-    context: android.content.Context,
-    onClick: () -> Unit,
-    onLongPress: () -> Unit = {}
-) {
-    val imageUrl = episode.episodeStill ?: episode.backdropUrl ?: episode.posterUrl
-    val savedPosition = remember { loadPlaybackPosition(context, episode.video.path) }
-    val hasProgress = savedPosition > 5_000L
-    val episodeDurationEstimate = 45L * 60L * 1000L
-    val progress = if (hasProgress) (savedPosition.toFloat() / episodeDurationEstimate).coerceIn(0f, 1f) else 0f
-
-    Column(
-        modifier = Modifier.width(220.dp).combinedClickable(onClick = onClick, onLongClick = onLongPress)
+private fun ProgressBar(progress: Float, compact: Boolean = false) {
+    val barHeight = if (compact) 3.dp else 4.dp
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(barHeight)
+            .clip(RoundedCornerShape(50))
+            .background(Color.White.copy(alpha = 0.18f))
     ) {
         Box(
-            modifier = Modifier.fillMaxWidth().height(124.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xFF1A1A1A))
+            modifier = Modifier
+                .fillMaxWidth(progress.coerceIn(0f, 1f))
+                .fillMaxHeight()
+                .background(AmberGlow)
+        )
+    }
+}
+
+@Composable
+private fun SmallToggleChip(text: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(if (selected) AmberGlow.copy(alpha = 0.85f) else Color.Transparent)
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text = text, color = if (selected) Color.Black else TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+// Quick play button overlay — gold circle, kept from CV1
+@Composable
+private fun QuickPlayButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(AmberGlow.copy(alpha = 0.92f))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Filled.PlayArrow,
+            contentDescription = "Play",
+            tint = Color.Black,
+            modifier = Modifier.size(22.dp)
+        )
+    }
+}
+
+// ── Poster corner chips — small glass badges, screenshot style ───────────────
+
+@Composable
+private fun ImdbCornerChip(value: String, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black.copy(alpha = 0.62f))
+            .padding(horizontal = 5.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.clip(RoundedCornerShape(3.dp)).background(Color(0xFFF5C518)).padding(horizontal = 3.dp, vertical = 1.dp)
         ) {
-            if (!imageUrl.isNullOrBlank()) {
-                AsyncImage(model = imageUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            }
+            Text(text = "IMDb", color = Color.Black, fontSize = 6.sp, fontWeight = FontWeight.Black)
+        }
+        Spacer(modifier = Modifier.width(3.dp))
+        Text(text = value, color = TextBright, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+    }
+}
 
-            // Episode number badge
-            Box(
-                modifier = Modifier.align(Alignment.TopStart).padding(8.dp)
-                    .clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.70f))
-                    .padding(horizontal = 7.dp, vertical = 3.dp)
+@Composable
+private fun TmdbCornerChip(value: String, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black.copy(alpha = 0.62f))
+            .padding(horizontal = 5.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Image(painter = painterResource(R.drawable.ic_tmdb), contentDescription = "TMDB", modifier = Modifier.height(8.dp), contentScale = ContentScale.Fit)
+        Spacer(modifier = Modifier.width(3.dp))
+        Text(text = value, color = TextBright, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun RottenTomatoesCornerChip(value: String, modifier: Modifier = Modifier) {
+    val percent = value.replace("%", "").trim().toIntOrNull() ?: 0
+    val isFresh = percent >= 60
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black.copy(alpha = 0.62f))
+            .padding(horizontal = 5.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Image(
+            painter = painterResource(R.drawable.ic_rotten_tomatoes),
+            contentDescription = "Rotten Tomatoes",
+            modifier = Modifier.height(9.dp),
+            contentScale = ContentScale.Fit,
+            colorFilter = if (!isFresh) androidx.compose.ui.graphics.ColorFilter.tint(Color(0xFF8BC34A)) else null
+        )
+        Spacer(modifier = Modifier.width(3.dp))
+        Text(text = value, color = TextBright, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+// Shared vertical stack of whichever rating badges the item actually has —
+// IMDb, Rotten Tomatoes, TMDB. Used by every poster-forward card (Library
+// grid, Home Featured, Continue Watching grid mode, Search results) so
+// ratings show up consistently everywhere a poster is the primary visual,
+// not just on the Detail screen. Renders nothing if the item has no ratings
+// at all (e.g. Select-Folder items, which never go through TMDB enrichment).
+@Composable
+private fun RatingBadgeStack(item: VideoWithMetadata, modifier: Modifier = Modifier) {
+    val imdb = item.imdbRating?.takeIf { it.isNotBlank() && it != "N/A" }
+    val rt = item.rottenTomatoesRating?.takeIf { it.isNotBlank() && it != "N/A" }
+    val tmdb = item.rating?.takeIf { it > 0.0 }
+    if (imdb == null && rt == null && tmdb == null) return
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        if (imdb != null) ImdbCornerChip(value = imdb)
+        if (rt != null) RottenTomatoesCornerChip(value = rt)
+        if (tmdb != null) TmdbCornerChip(value = String.format("%.1f", tmdb))
+    }
+}
+
+@Composable
+private fun CornerChip(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        color = TextBright,
+        fontSize = 8.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black.copy(alpha = 0.62f))
+            .padding(horizontal = 6.dp, vertical = 3.dp)
+    )
+}
+
+@Composable
+fun FeaturedLibrarySection(
+    items: List<VideoWithMetadata>,
+    mode: String,
+    onModeChange: (String) -> Unit,
+    onItemClick: (VideoWithMetadata) -> Unit,
+    onPlayClick: (VideoWithMetadata) -> Unit = {}
+) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Featured From Your Library",
+                color = TextBright,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(GlassSurface)
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                Text(text = "E$episodeNumber", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                SmallToggleChip(text = "Grid", selected = mode == "Grid", onClick = { onModeChange("Grid") })
+                SmallToggleChip(text = "List", selected = mode == "List", onClick = { onModeChange("List") })
             }
+        }
 
-            // Play icon overlay
-            Box(
-                modifier = Modifier.align(Alignment.Center).size(38.dp).clip(CircleShape)
-                    .background(Color(0xFFE8A020).copy(alpha = 0.88f)),
-                contentAlignment = Alignment.Center
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (mode == "Grid") {
+            val gridItems = items.take(9)
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                gridItems.chunked(3).forEach { rowItems ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        rowItems.forEach { item ->
+                            Box(modifier = Modifier.weight(1f)) {
+                                LibraryGridCard(item = item, onClick = { onItemClick(item) }, onPlayClick = onPlayClick)
+                            }
+                        }
+                        repeat(3 - rowItems.size) { Spacer(modifier = Modifier.weight(1f)) }
+                    }
+                }
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items.take(10).forEach { item ->
+                    LibraryCard(item = item, onClick = { onItemClick(item) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun HomeRow(
+    title: String,
+    items: List<VideoWithMetadata>,
+    onItemClick: (VideoWithMetadata) -> Unit
+) {
+    val context = LocalContext.current
+    Column {
+        Text(text = title, color = TextBright, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(14.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            items(items) { item ->
+                val watchedPercent = getWatchedPercent(context, item)
+                Column(
+                    modifier = Modifier.width(145.dp).clickable { onItemClick(item) }
+                ) {
+                    Box {
+                        PosterBox(
+                            posterUrl = item.posterUrl,
+                            modifier = Modifier.fillMaxWidth().height(180.dp),
+                            progress = watchedPercent,
+                            videoPath = item.video.path,
+                            episodeStill = item.episodeStill,
+                            backdropUrl = item.backdropUrl,
+                            type = item.type
+                        )
+                        RatingBadgeStack(item = item, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = item.title, color = TextBright, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                    if (item.subtitle.isNotBlank()) {
+                        Text(text = item.subtitle, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Best-effort year extraction straight from the filename — same pattern
+// already used elsewhere (cleanScannedTitle etc.), not a new field on the
+// model. Returns null rather than guessing when nothing matches.
+private fun extractYearFromFileName(fileName: String): String? =
+    Regex("\\b(19|20)\\d{2}\\b").find(fileName)?.value
+
+@Composable
+fun SearchScreen(
+    videos: List<VideoWithMetadata>,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onVideoClick: (VideoWithMetadata) -> Unit
+) {
+    ForceCineVaultBrightness()
+
+    // Expanded beyond title/filename to also match genre, director, and
+    // year — e.g. "horror" or "nolan" or "2010" now actually finds
+    // something instead of only exact title/filename substrings.
+    // Deliberately NOT fuzzy/typo-tolerant matching (that's real edit-
+    // distance scoring, a separate feature on its own merits) — this is
+    // still exact substring matching, just against more fields.
+    val filteredVideos = remember(videos, query) {
+        if (query.isBlank()) videos else videos.filter { v ->
+            v.title.contains(query, ignoreCase = true) ||
+                v.video.name.contains(query, ignoreCase = true) ||
+                v.genres.any { it.contains(query, ignoreCase = true) } ||
+                v.director?.contains(query, ignoreCase = true) == true ||
+                extractYearFromFileName(v.video.name)?.contains(query) == true
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SpaceBlack)
+            .padding(16.dp)
+    ) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(50),
+            singleLine = true,
+            leadingIcon = { Icon(imageVector = Icons.Filled.Search, contentDescription = null, tint = TextMuted) },
+            placeholder = { Text("Search title, genre, director, year...", color = TextFaint) },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = TextBright,
+                unfocusedTextColor = TextBright,
+                focusedContainerColor = GlassSurfaceStrong,
+                unfocusedContainerColor = GlassSurface,
+                focusedBorderColor = AmberGlow.copy(alpha = 0.65f),
+                unfocusedBorderColor = GlassBorderTop,
+                cursorColor = AmberGlow
+            )
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (query.isNotBlank() && filteredVideos.isEmpty()) {
+            EmptyStateBlock(
+                icon = Icons.Filled.Search,
+                title = "No results",
+                subtitle = "Nothing matches \"$query\" in title, genre, director, or year."
+            )
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(4),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null, tint = Color.Black, modifier = Modifier.size(22.dp))
+                items(filteredVideos) { videoItem ->
+                    SearchPosterCard(item = videoItem, onClick = { onVideoClick(videoItem) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchPosterCard(item: VideoWithMetadata, onClick: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().clickable { onClick() }) {
+        Box {
+            PosterBox(
+                posterUrl = item.posterUrl,
+                modifier = Modifier.fillMaxWidth().height(210.dp),
+                videoPath = item.video.path,
+                episodeStill = item.episodeStill,
+                backdropUrl = item.backdropUrl,
+                type = item.type
+            )
+            RatingBadgeStack(item = item, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(text = item.title, color = TextBright, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+        if (item.subtitle.isNotBlank()) {
+            Text(text = item.subtitle, color = TextMuted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+// ── PosterBox — CLEAN poster art. No gradients, no text overlays. Just the
+//    poster and (optionally) a thin progress line hugging the bottom edge. ──
+@Composable
+fun PosterBox(
+    posterUrl: String?,
+    modifier: Modifier,
+    progress: Float = 0f,
+    videoPath: String? = null,
+    episodeStill: String? = null,
+    backdropUrl: String? = null,
+    type: String = ""
+) {
+    val context = LocalContext.current
+
+    // Only TV episodes use stills — movies always use poster
+    val displayImage = when {
+        type.equals("tv", ignoreCase = true) && !episodeStill.isNullOrBlank() -> episodeStill
+        !posterUrl.isNullOrBlank() -> posterUrl
+        else -> null
+    }
+
+    var localBitmap by remember(videoPath) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var thumbnailFailed by remember(videoPath) { mutableStateOf(false) }
+
+    LaunchedEffect(displayImage, videoPath) {
+        if (displayImage.isNullOrBlank() && !videoPath.isNullOrBlank() && !thumbnailFailed) {
+            val bitmap = VideoThumbnailHelper.generateLocalThumbnail(context = context, videoPath = videoPath)
+            if (bitmap != null) localBitmap = bitmap else thumbnailFailed = true
+        }
+    }
+
+    val bitmapSnapshot = localBitmap
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(SpaceMid)
+    ) {
+        when {
+            !displayImage.isNullOrBlank() -> {
+                AsyncImage(model = displayImage, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+            bitmapSnapshot != null -> {
+                Image(bitmap = bitmapSnapshot.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+            else -> {
+                Box(modifier = Modifier.fillMaxSize().background(SpaceDeep), contentAlignment = Alignment.Center) {
+                    Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null, tint = TextFaint, modifier = Modifier.size(42.dp))
+                }
+            }
+        }
+
+        if (progress > 0f) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(Color.White.copy(alpha = 0.18f))
+            ) {
+                Box(modifier = Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(AmberGlow))
+            }
+        }
+    }
+}
+
+// ── LibraryGridCard — the new poster card. Clean art, corner chips,
+//    gold QuickPlay (CV1), title + year BELOW. Long-press for actions. ──
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun LibraryGridCard(
+    item: VideoWithMetadata,
+    onClick: () -> Unit,
+    onPlayClick: (VideoWithMetadata) -> Unit = {},
+    onLongPress: (VideoWithMetadata) -> Unit = {}
+) {
+    val context = LocalContext.current
+    val badges = mediaBadgesFromName(item.video.name)
+    val watchedPercent = getWatchedPercent(context, item)
+    val qualityChip = listOfNotNull(
+        badges.firstOrNull { it == "4K" || it == "1080p" || it == "720p" },
+        badges.firstOrNull { it == "HDR" }
+    ).joinToString(" ")
+
+    Column(
+        modifier = Modifier.combinedClickable(
+            onClick = onClick,
+            onLongClick = { onLongPress(item) }
+        )
+    ) {
+        Box {
+            PosterBox(
+                posterUrl = item.posterUrl,
+                modifier = Modifier.fillMaxWidth().height(160.dp),
+                progress = watchedPercent,
+                videoPath = item.video.path,
+                episodeStill = item.episodeStill,
+                backdropUrl = item.backdropUrl,
+                type = item.type
+            )
+
+            RatingBadgeStack(item = item, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
+            if (qualityChip.isNotBlank()) {
+                CornerChip(text = qualityChip, modifier = Modifier.align(Alignment.TopEnd).padding(6.dp))
             }
 
-            // Progress bar at bottom
-            if (hasProgress) {
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
-                    color = Color(0xFFE8A020),
-                    trackColor = Color.White.copy(alpha = 0.20f)
-                )
+            // Gold QuickPlay — kept from CV1
+            Box(modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp)) {
+                QuickPlayButton { onPlayClick(item) }
             }
         }
 
         Spacer(modifier = Modifier.height(6.dp))
+
         Text(
-            text = cleanEpisodeSubtitle(episode, episodeNumber),
-            color = Color(0xFFAAAAAA),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = cleanEpisodeTitle(episode, episodeNumber),
-            color = Color.White,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
+            text = item.title,
+            color = TextBright,
+            fontSize = 11.sp,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            fontWeight = FontWeight.SemiBold
         )
+
+        if (item.subtitle.isNotBlank()) {
+            Text(
+                text = item.subtitle,
+                color = TextMuted,
+                fontSize = 9.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
-// ── List row for each episode below the stills ───────────────────────────────
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun EpisodeListRow(
-    episode: VideoWithMetadata,
-    episodeNumber: Int,
-    context: android.content.Context,
+fun LibraryCard(
+    item: VideoWithMetadata,
     onClick: () -> Unit,
-    onLongPress: () -> Unit = {}
+    onLongPress: (VideoWithMetadata) -> Unit = {}
 ) {
-    val imageUrl = episode.episodeStill ?: episode.backdropUrl ?: episode.posterUrl
-    val savedPosition = remember { loadPlaybackPosition(context, episode.video.path) }
-    val hasProgress = savedPosition > 5_000L
-    val episodeDurationEstimate = 45L * 60L * 1000L
-    val progress = if (hasProgress) (savedPosition.toFloat() / episodeDurationEstimate).coerceIn(0f, 1f) else 0f
+    val context = LocalContext.current
+    val watchedPercent = getWatchedPercent(context, item)
 
     Row(
-        modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongPress)
-            .padding(horizontal = 22.dp, vertical = 8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(SpaceMid)
+            .combinedClickable(onClick = onClick, onLongClick = { onLongPress(item) })
+            .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Still thumbnail
-        Box(
-            modifier = Modifier.width(110.dp).height(62.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1A1A1A))
-        ) {
-            if (!imageUrl.isNullOrBlank()) {
-                AsyncImage(model = imageUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            }
-            if (hasProgress) {
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
-                    color = Color(0xFFE8A020),
-                    trackColor = Color.White.copy(alpha = 0.20f)
-                )
-            }
-        }
+        PosterBox(
+            posterUrl = item.posterUrl,
+            modifier = Modifier.width(72.dp).height(106.dp),
+            progress = watchedPercent,
+            videoPath = item.video.path,
+            episodeStill = item.episodeStill,
+            backdropUrl = item.backdropUrl,
+            type = item.type
+        )
 
         Spacer(modifier = Modifier.width(14.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = cleanEpisodeSubtitle(episode, episodeNumber),
-                color = Color(0xFFAAAAAA),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = cleanEpisodeTitle(episode, episodeNumber),
-                color = Color.White,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (!episode.overview.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = episode.overview!!,
-                    color = Color(0xFF888888),
-                    fontSize = 11.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+            Text(text = item.title, color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(text = item.subtitle.ifBlank { item.video.name }, color = TextMuted, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+
+            if (watchedPercent > 0f) {
+                Spacer(modifier = Modifier.height(8.dp))
+                ProgressBar(progress = watchedPercent)
+                Spacer(modifier = Modifier.height(5.dp))
+                Text(text = "${(watchedPercent * 100).toInt().coerceIn(1, 99)}% watched", color = AmberGlow, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            }
+
+            if ((item.rating ?: 0.0) > 0.0) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(text = "★ ${String.format("%.1f", item.rating)}", color = AmberGlow, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
-
-        Icon(
-            imageVector = Icons.Filled.PlayArrow,
-            contentDescription = null,
-            tint = Color(0xFFE8A020),
-            modifier = Modifier.size(24.dp)
-        )
     }
 }
 
-// ── Title cleaning helpers ────────────────────────────────────────────────────
-
-private fun cleanEpisodeSubtitle(episode: VideoWithMetadata, episodeNumber: Int): String {
-    val fileName = episode.video.name
-    val match = Regex("s(\\d{1,2})e(\\d{1,2})", RegexOption.IGNORE_CASE).find(fileName)
-    return if (match != null) {
-        "S${match.groupValues[1].padStart(2,'0')}E${match.groupValues[2].padStart(2,'0')}"
-    } else {
-        episode.subtitle.substringBefore("•").trim().ifBlank { "Episode $episodeNumber" }
-    }
+private fun formatClock(ms: Long): String {
+    val s = ms / 1000; val h = s / 3600; val m = (s % 3600) / 60; val sec = s % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%02d:%02d".format(m, sec)
 }
 
-private fun cleanEpisodeTitle(episode: VideoWithMetadata, episodeNumber: Int): String {
-    val fromSubtitle = episode.subtitle.substringAfter("•", "").trim()
-    if (fromSubtitle.isNotBlank()) return fromSubtitle
-    val fileNameTitle = cleanTvTitle(episode.video.name)
-    val showTitle = cleanTvTitle(episode.title)
-    return when {
-        fileNameTitle.isNotBlank() && !fileNameTitle.equals(showTitle, ignoreCase = true) -> fileNameTitle
-        showTitle.isNotBlank() -> showTitle
-        else -> "Episode $episodeNumber"
-    }
+private fun getWatchedPercent(context: Context, item: VideoWithMetadata): Float {
+    val savedPosition = loadPlaybackPosition(context, item.video.path)
+    if (savedPosition <= 15_000L) return 0f
+    // Use real saved duration if available, fall back to 90min estimate
+    val realDuration = loadDuration(context, item.video.path)
+    val duration = if (realDuration > 60_000L) realDuration else 90L * 60L * 1000L
+    return (savedPosition.toFloat() / duration.toFloat()).coerceIn(0.03f, 0.98f)
 }
 
-private fun cleanTvTitle(title: String): String {
-    var cleaned = title.substringAfterLast("/").substringAfterLast("\\").substringBeforeLast(".")
-        .replace(Regex("\\[.*?]"), " ").replace(Regex("\\(.*?\\)"), " ")
-        .replace(".", " ").replace("_", " ").replace("-", " ")
-    cleaned = cleaned.replace(Regex("s\\d{1,2}e\\d{1,2}", RegexOption.IGNORE_CASE), " ")
-    cleaned = cleaned.replace(Regex("\\bseason\\s*\\d+\\b", RegexOption.IGNORE_CASE), " ")
-    cleaned = cleaned.replace(Regex("\\bepisode\\s*\\d+\\b", RegexOption.IGNORE_CASE), " ")
-    cleaned = cleaned.replace(Regex("\\b(2160p|1080p|720p|480p|4k|uhd|hdr10\\+?|hdr|dv|dolby|vision|x264|x265|h264|h265|hevc|web|webdl|webrip|bluray|brrip|hdrip|dvdrip|aac|ddp|dts|atmos|10bit|nf|amzn|yts|rarbg|eztv|tgx|mkv|mp4|avi)\\b", RegexOption.IGNORE_CASE), " ")
-    return cleaned.replace(Regex("\\b(19|20)\\d{2}\\b"), " ").replace(Regex("\\s+"), " ").trim()
+fun groupTvShows(videos: List<VideoWithMetadata>): List<TvGroup> {
+    return videos
+        .filter { it.type == "tv" }
+        .groupBy { it.title }
+        .map { (title, episodes) ->
+            TvGroup(
+                showName = title,
+                posterUrl = episodes.firstOrNull()?.posterUrl,
+                backdropUrl = episodes.firstOrNull()?.backdropUrl,
+                episodes = episodes.sortedBy { it.subtitle }
+            )
+        }
+        .sortedBy { it.showName }
+}
+
+fun mediaBadgesFromName(fileName: String): List<String> {
+    val lower = fileName.lowercase()
+    val badges = mutableListOf<String>()
+
+    if (lower.contains("3d") || lower.contains("sbs") || lower.contains("hsbs") ||
+        lower.contains("half sbs") || lower.contains("ou")) badges.add("3D")
+    if (lower.contains("hevc") || lower.contains("x265") || lower.contains("h265")) badges.add("HEVC")
+    if (lower.contains("2160p") || lower.contains("4k")) badges.add("4K")
+    else if (lower.contains("1080p")) badges.add("1080p")
+    else if (lower.contains("720p")) badges.add("720p")
+    if (lower.contains("hdr")) badges.add("HDR")
+    if (lower.contains("atmos")) badges.add("ATMOS")
+
+    return badges.distinct()
 }
