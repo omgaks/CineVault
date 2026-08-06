@@ -1497,6 +1497,16 @@ fun VideoPlayerScreen(
             Toast.makeText(context, "Auto-Sync needs a downloaded or local subtitle loaded first", Toast.LENGTH_LONG).show()
             return
         }
+        // FEATURE: Studio closes the moment analysis actually starts —
+        // the floating indicator (see AutoSyncFloatingIndicator below)
+        // now shows progress and results on its own, so there's nothing
+        // left to do inside Studio once analysis is running. Reuses
+        // Studio's own existing fade-out (see SubtitleStudioOverlay's
+        // AnimatedVisibility) rather than adding a new animation — this
+        // just triggers the dismiss, same as tapping Studio's own close
+        // button would. Harmless no-op when triggered from the floating
+        // indicator's own "Try Again" (Studio's already closed by then).
+        studioUi.showStudio = false
         autoSyncStatus = AutoSyncStatus.Analyzing("Extracting audio…")
         // FIX: this used to only call VideoThumbnailHelper.clearPreviewCache(),
         // which evicts the LruCache — but the CURRENTLY PLAYING video's own
