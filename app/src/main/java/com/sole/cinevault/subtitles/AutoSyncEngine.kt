@@ -81,7 +81,27 @@ object AutoSyncEngine {
     // can't produce a flat offset the manual controls couldn't represent.
     private const val MAX_OFFSET_MS = 10_000L
     private const val SEARCH_STEP_MS = 40L
-    private const val TIMELINE_STEP_MS = 20L
+    // FIX: real bug, not just a memory issue — TIMELINE_STEP_MS was 20ms,
+    // but Silero VAD actually consumes audio in fixed 512-sample chunks,
+    // which at the 16kHz target sample rate is 32ms per chunk, not 20ms.
+    // buildVadTimeline() advanced its "how much real audio have I
+    // consumed" counter using the 512-sample window size while the
+    // timeline array itself was sized assuming 20ms slots — since
+    // 320 samples (20ms) < 512 samples (32ms), the loop ran out of real
+    // audio to feed the model at ~62.5% (320/512) of the way through the
+    // timeline array, silently leaving the last ~37.5% of EVERY window's
+    // VAD timeline at its default `false` ("no speech"), regardless of
+    // what's actually in that portion of the audio. Since the subtitle-
+    // side timeline correctly spans the full window, this systematically
+    // misaligned what was being correlated on every single run.
+    // VAD_WINDOW_SAMPLES/VAD_SAMPLE_RATE must stay in sync with Silero's
+    // configured windowSize below and AutoSyncAudioExtractor's
+    // targetSampleRate — TIMELINE_STEP_MS is derived from both so they
+    // can't silently drift apart again the way the old hardcoded 20
+    // could.
+    private const val VAD_WINDOW_SAMPLES = 512
+    private const val VAD_SAMPLE_RATE = 16000
+    private const val TIMELINE_STEP_MS = (VAD_WINDOW_SAMPLES * 1000L) / VAD_SAMPLE_RATE
 
     // Two offsets are considered "the same" (flat correction, not drift)
     // when they're within this of each other.
@@ -312,7 +332,7 @@ object AutoSyncEngine {
                 threshold = 0.5f,
                 minSilenceDuration = 0.25f,
                 minSpeechDuration = 0.25f,
-                windowSize = 512
+                windowSize = VAD_WINDOW_SAMPLES
             ),
             sampleRate = audio.sampleRate,
             numThreads = 1,
