@@ -286,7 +286,6 @@ fun VideoPlayerScreen(
     var volumeGestureKey by remember { mutableIntStateOf(0) }
 
     var showAudioSelector by remember { mutableStateOf(false) }
-    var showSubtitleSettings by remember { mutableStateOf(false) }
     val trackUi = remember { SubtitleTrackSelectionState() }
     val searchUi = remember { SubtitleAcquisitionUiState() }
 
@@ -299,21 +298,12 @@ fun VideoPlayerScreen(
     var sleepTimerRemainingMs by remember { mutableLongStateOf(0L) }
     var sleepTimerActive by remember { mutableStateOf(false) }
 
-    var subtitleTextSizeSp by remember { mutableFloatStateOf(22f) }
-    var subtitleBottomPadding by remember { mutableFloatStateOf(0.02f) }
-    var subtitleSyncOffset by remember { mutableFloatStateOf(0.0f) }
+    val appearanceUi = remember { SubtitleAppearanceUiState() }
+    val coreUi = remember { SubtitleCoreUiState(context) }
+
     val driftUi = remember { DriftCorrectionState() }
-    var dialogueSyncArmed by remember { mutableStateOf(false) }
-    var dialogueSyncReferenceMs by remember { mutableStateOf<Long?>(null) }
-    var showAppearanceStudio by remember { mutableStateOf(false) }
-    var subtitleAppearancePreset by remember { mutableStateOf("CineVault") }
-    var subtitleAppearance by remember { mutableStateOf(SubtitlePresets.CineVault) }
-    var subtitlePreserveOriginalStyling by remember { mutableStateOf(false) }
     val studioUi = remember { SubtitleStudioUiState() }
     var autoSyncStatus by remember { mutableStateOf<AutoSyncStatus>(AutoSyncStatus.Idle) }
-    var subtitleBehaviorPrefs by remember { mutableStateOf(loadSubtitleBehaviorPrefs(context)) }
-    var subtitleCleaningOptions by remember { mutableStateOf(loadSubtitleCleaningOptions(context)) }
-    var subtitlesEnabled by remember { mutableStateOf(true) }
     val autoSubtitleFetch = remember { AutoSubtitleFetchState() }
     var menuTouchKey by remember { mutableIntStateOf(0) }
 
@@ -372,10 +362,10 @@ fun VideoPlayerScreen(
     val trackSelector = remember {
         DefaultTrackSelector(context).apply {
             parameters = buildUponParameters()
-                .setPreferredAudioLanguage(subtitleBehaviorPrefs.preferredLanguages.firstOrNull() ?: "en")
-                .setPreferredTextLanguage(subtitleBehaviorPrefs.preferredLanguages.firstOrNull() ?: "en")
+                .setPreferredAudioLanguage(coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en")
+                .setPreferredTextLanguage(coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en")
                 .setSelectUndeterminedTextLanguage(true)
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subtitleBehaviorPrefs.autoEnableEmbeddedSubtitles).build()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !coreUi.behaviorPrefs.autoEnableEmbeddedSubtitles).build()
         }
     }
 
@@ -441,11 +431,11 @@ fun VideoPlayerScreen(
 
     fun closeAllMenus() {
         showAudioSelector = false
-        showSubtitleSettings = false
+        coreUi.showSettings = false
         trackUi.showSelector = false
         searchUi.showSearch = false
         driftUi.showDialog = false
-        showAppearanceStudio = false
+        coreUi.showAppearanceStudio = false
         studioUi.showStudio = false
         showSpeedMenu = false
         showSleepMenu = false
@@ -590,7 +580,7 @@ fun VideoPlayerScreen(
             if (subtitleUri != null && isOriginalSubtitle) {
                 trackUi.originalUri = subtitleUri
                 trackUi.appliedOffsetMs = 0L
-                subtitleSyncOffset = 0f
+                coreUi.syncOffset = 0f
             }
             val mediaItemBuilder = MediaItem.Builder().setUri(currentVideo.path)
             if (subtitleUri != null) {
@@ -629,13 +619,13 @@ fun VideoPlayerScreen(
             val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
             val cleanedUri = withContext(Dispatchers.IO) {
                 if (supportsCustomTextPipeline(imported.format)) {
-                    buildCleanedSubtitleFile(context, imported.uri, subtitleCleaningOptions)
+                    buildCleanedSubtitleFile(context, imported.uri, coreUi.cleaningOptions)
                 } else {
                     null
                 }
             } ?: imported.uri
 
-            subtitlesEnabled = true
+            coreUi.subtitlesEnabled = true
             trackSelector.parameters = trackSelector.buildUponParameters()
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                 .build()
@@ -670,7 +660,7 @@ fun VideoPlayerScreen(
                     input = stream,
                     suggestedName = uri.lastPathSegment,
                     releaseHint = currentVideo.path,
-                    preferredLanguage = subtitleBehaviorPrefs.preferredLanguages.firstOrNull() ?: "en"
+                    preferredLanguage = coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en"
                 )
             } ?: SubtitleImportResult.Failure("CineVault couldn't open that file.")
 
@@ -758,7 +748,7 @@ fun VideoPlayerScreen(
         else -> false
     }
 
-    fun performSubtitleSearch(query: String, seasonText: String, episodeText: String, language: String = subtitleBehaviorPrefs.preferredLanguages.firstOrNull() ?: "en") {
+    fun performSubtitleSearch(query: String, seasonText: String, episodeText: String, language: String = coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en") {
         searchUi.searchLoading = true
         searchUi.searchStatus = ""
         scope.launch {
@@ -771,8 +761,8 @@ fun VideoPlayerScreen(
                     season = seasonText.toIntOrNull(),
                     episode = episodeText.toIntOrNull(),
                     language = language,
-                    preferForced = subtitleBehaviorPrefs.preferForced,
-                    preferSdh = subtitleBehaviorPrefs.preferSdh
+                    preferForced = coreUi.behaviorPrefs.preferForced,
+                    preferSdh = coreUi.behaviorPrefs.preferSdh
                 )
             }
             val subDlDeferred = async {
@@ -815,7 +805,7 @@ fun VideoPlayerScreen(
             when (downloadResult) {
                 is SubtitleDownloadResult.Success -> {
                     if (alsoPlay) {
-                        // FIX: active-track state (subtitlesEnabled, track
+                        // FIX: active-track state (coreUi.subtitlesEnabled, track
                         // selector, trackUi.selectedKey/label/source,
                         // and the remember-last-language promotion) used to
                         // be set unconditionally above this check — meaning
@@ -823,7 +813,7 @@ fun VideoPlayerScreen(
                         // the ACTIVE one in the UI even though playback was
                         // never touched. All of that now only happens when
                         // the person actually chose to apply it.
-                        subtitlesEnabled = true
+                        coreUi.subtitlesEnabled = true
                         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                         trackUi.selectedKey = "downloaded"
                         // FIX: was hardcoded to "OpenSubtitles" regardless
@@ -835,12 +825,12 @@ fun VideoPlayerScreen(
                         // apply does nothing," when the download and apply
                         // may have genuinely worked the whole time.
                         trackUi.selectedLabel = friendlyLanguageName(result.language); trackUi.selectedSource = result.provider
-                        if (subtitleBehaviorPrefs.rememberLastSelectedLanguage && result.language.isNotBlank()) {
-                            subtitleBehaviorPrefs = promoteLanguageToFront(subtitleBehaviorPrefs, result.language.take(2).lowercase())
-                            saveSubtitleBehaviorPrefs(context, subtitleBehaviorPrefs)
+                        if (coreUi.behaviorPrefs.rememberLastSelectedLanguage && result.language.isNotBlank()) {
+                            coreUi.behaviorPrefs = promoteLanguageToFront(coreUi.behaviorPrefs, result.language.take(2).lowercase())
+                            saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
                         }
                         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
-                        val cleanedApplyUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, downloadResult.uri, subtitleCleaningOptions) } ?: downloadResult.uri
+                        val cleanedApplyUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, downloadResult.uri, coreUi.cleaningOptions) } ?: downloadResult.uri
                         trackUi.primaryUri = cleanedApplyUri
                         trackUi.primaryLanguage = SubtitleLanguageRegistry.normalize(result.language)
                         playCurrentVideoWithSubtitle(subtitleUri = cleanedApplyUri, resumePosition = resumeAt)
@@ -862,17 +852,17 @@ fun VideoPlayerScreen(
     LaunchedEffect(currentVideo.path) {
         val savedPosition = if (isStreamMedia) 0L else loadPlaybackPosition(context, currentVideo.path)
         position = savedPosition; duration = 1L; showControls = true; showTopBar = true
-        showAudioSelector = false; showSubtitleSettings = false; trackUi.showSelector = false; searchUi.showSearch = false; showSpeedMenu = false; showSleepMenu = false; showSrtBrowser = false
+        showAudioSelector = false; coreUi.showSettings = false; trackUi.showSelector = false; searchUi.showSearch = false; showSpeedMenu = false; showSleepMenu = false; showSrtBrowser = false
         searchUi.showFallback = false; searchUi.showEmbeddedBrowser = false; searchUi.pendingImportCandidates = null
         searchUi.searchResults = emptyList(); searchUi.searchStatus = ""; searchUi.searchLoading = false
         pendingNextEpisode = null; nextEpisodeCountdown = 0; showNextEpisodeOverlay = false
         previewBitmap = null; previewFrames = emptyList(); isVideoEnded = false
         playerErrorMessage = null; errorRetryCount = 0; stuckBufferingHint = false
-        trackUi.originalUri = null; trackUi.appliedOffsetMs = 0L; subtitleSyncOffset = 0.0f
+        trackUi.originalUri = null; trackUi.appliedOffsetMs = 0L; coreUi.syncOffset = 0.0f
         driftUi.scale = 1.0f; driftUi.appliedScale = 1.0f; driftUi.pointA = null; driftUi.pointB = null
-        dialogueSyncArmed = false; dialogueSyncReferenceMs = null; driftUi.showDialog = false
+        coreUi.dialogueSyncArmed = false; coreUi.dialogueSyncReferenceMs = null; driftUi.showDialog = false
         dualUi.enabled = false; dualUi.statusText = ""; trackUi.primaryUri = null; trackUi.primaryLanguage = null; audioLanguageCheckedForPath = null
-        subtitlePreserveOriginalStyling = false
+        appearanceUi.preserveOriginalStyling = false
         studioUi.gestureFeedback = ""
         autoSyncStatus = AutoSyncStatus.Idle
         trackUi.selectedKey = null; trackUi.selectedLabel = ""; trackUi.selectedSource = ""
@@ -886,20 +876,20 @@ fun VideoPlayerScreen(
         // the video (almost always more release-accurate) was available.
         // A local match is also generally free/instant to check, so trying
         // it first doesn't cost anything even when it doesn't pan out.
-        val localMatch = if (!isStreamMedia && subtitleBehaviorPrefs.autoLoadMatchingLocalFile) {
-            withContext(Dispatchers.IO) { findBestMatchingLocalSubtitle(currentVideo.path, subtitleBehaviorPrefs.preferredLanguages) }
+        val localMatch = if (!isStreamMedia && coreUi.behaviorPrefs.autoLoadMatchingLocalFile) {
+            withContext(Dispatchers.IO) { findBestMatchingLocalSubtitle(currentVideo.path, coreUi.behaviorPrefs.preferredLanguages) }
         } else null
 
         val cachedSubtitle = if (localMatch == null && !isStreamMedia && canDownloadExternalSubtitles) {
-            withContext(Dispatchers.IO) { OpenSubtitlesClient.findCachedSubtitle(context, currentVideo.path, subtitleBehaviorPrefs.preferredLanguages) }
+            withContext(Dispatchers.IO) { OpenSubtitlesClient.findCachedSubtitle(context, currentVideo.path, coreUi.behaviorPrefs.preferredLanguages) }
         } else null
 
         when {
             localMatch != null -> {
-                subtitlesEnabled = true
+                coreUi.subtitlesEnabled = true
                 trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                 val localUri = Uri.fromFile(localMatch.file)
-                val cleanedLocalUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, localUri, subtitleCleaningOptions) } ?: localUri
+                val cleanedLocalUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, localUri, coreUi.cleaningOptions) } ?: localUri
                 trackUi.primaryUri = cleanedLocalUri
                 trackUi.primaryLanguage = localMatch.languageCode
                 playCurrentVideoWithSubtitle(cleanedLocalUri, savedPosition)
@@ -908,9 +898,9 @@ fun VideoPlayerScreen(
                 trackUi.selectedLabel = localMatch.file.name; trackUi.selectedSource = "Local file"
             }
             cachedSubtitle != null -> {
-                subtitlesEnabled = true
+                coreUi.subtitlesEnabled = true
                 trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-                val cleanedCachedUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, cachedSubtitle.uri, subtitleCleaningOptions) } ?: cachedSubtitle.uri
+                val cleanedCachedUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, cachedSubtitle.uri, coreUi.cleaningOptions) } ?: cachedSubtitle.uri
                 trackUi.primaryUri = cleanedCachedUri
                 trackUi.primaryLanguage = cachedSubtitle.language
                 playCurrentVideoWithSubtitle(cleanedCachedUri, savedPosition)
@@ -924,7 +914,7 @@ fun VideoPlayerScreen(
         }
 
         if (!isStreamMedia && canDownloadExternalSubtitles && !isRestrictedFolderMedia &&
-            subtitleBehaviorPrefs.autoDownloadWhenMissing && cachedSubtitle == null && localMatch == null &&
+            coreUi.behaviorPrefs.autoDownloadWhenMissing && cachedSubtitle == null && localMatch == null &&
             autoSubtitleFetch.attemptedForPath != currentVideo.path
         ) {
             autoSubtitleFetch.attemptedForPath = currentVideo.path
@@ -933,13 +923,13 @@ fun VideoPlayerScreen(
                 autoSubtitleFetch.downloadInProgress = true
                 autoSubtitleFetch.status = "Searching subtitles..."
                 try {
-                    val result = OpenSubtitlesClient.downloadBestSubtitleDetailed(context, currentVideo.path, subtitleBehaviorPrefs.preferredLanguages)
+                    val result = OpenSubtitlesClient.downloadBestSubtitleDetailed(context, currentVideo.path, coreUi.behaviorPrefs.preferredLanguages)
                     if (result is SubtitleDownloadResult.Success) {
                         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
-                        subtitlesEnabled = true
+                        coreUi.subtitlesEnabled = true
                         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                         autoSubtitleFetch.status = "Subtitle loaded"
-                        val cleanedResultUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, result.uri, subtitleCleaningOptions) } ?: result.uri
+                        val cleanedResultUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, result.uri, coreUi.cleaningOptions) } ?: result.uri
                         trackUi.primaryUri = cleanedResultUri
                         trackUi.primaryLanguage = SubtitleLanguageRegistry.normalize(result.language)
                         playCurrentVideoWithSubtitle(cleanedResultUri, resumeAt)
@@ -998,14 +988,14 @@ fun VideoPlayerScreen(
                     // audioLanguageCheckedForPath) right when tracks first
                     // become available, so it sets the DEFAULT state rather
                     // than fighting a choice the person makes afterward.
-                    if (subtitleBehaviorPrefs.disableWhenAudioMatchesPreferred && audioLanguageCheckedForPath != currentVideo.path) {
+                    if (coreUi.behaviorPrefs.disableWhenAudioMatchesPreferred && audioLanguageCheckedForPath != currentVideo.path) {
                         audioLanguageCheckedForPath = currentVideo.path
                         val audioLang = exoPlayer.currentTracks.groups
                             .firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
                             ?.let { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { idx -> g.getTrackFormat(idx).language } }
-                        val preferred = subtitleBehaviorPrefs.preferredLanguages.firstOrNull()
+                        val preferred = coreUi.behaviorPrefs.preferredLanguages.firstOrNull()
                         if (audioLang != null && preferred != null && audioLang.take(2).equals(preferred.take(2), ignoreCase = true)) {
-                            subtitlesEnabled = false
+                            coreUi.subtitlesEnabled = false
                             trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
                         }
                     }
@@ -1173,16 +1163,16 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(showControls, showAudioSelector, showSubtitleSettings, trackUi.showSelector, searchUi.showSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || showSubtitleSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
+    LaunchedEffect(showControls, showAudioSelector, coreUi.showSettings, trackUi.showSelector, searchUi.showSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
+        val anyMenuOpen = showAudioSelector || coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
         if (showControls && !anyMenuOpen && !isDraggingSeekbar) {
             delay(4500)
             if (!isDraggingSeekbar && !anyMenuOpen) showControls = false
         }
     }
 
-    LaunchedEffect(showTopBar, showAudioSelector, showSubtitleSettings, trackUi.showSelector, searchUi.showSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || showSubtitleSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
+    LaunchedEffect(showTopBar, showAudioSelector, coreUi.showSettings, trackUi.showSelector, searchUi.showSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
+        val anyMenuOpen = showAudioSelector || coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
         if (showTopBar && !anyMenuOpen && !isDraggingSeekbar) {
             delay(2800)
             if (!isDraggingSeekbar && !anyMenuOpen) showTopBar = false
@@ -1190,7 +1180,7 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(showAudioSelector, menuTouchKey) { if (showAudioSelector) { delay(9000); showAudioSelector = false } }
-    LaunchedEffect(showSubtitleSettings, studioUi.menuTouchKey) { if (showSubtitleSettings) { delay(9000); showSubtitleSettings = false } }
+    LaunchedEffect(coreUi.showSettings, studioUi.menuTouchKey) { if (coreUi.showSettings) { delay(9000); coreUi.showSettings = false } }
     // FIX: shortened idle timeouts — these only ever fire on genuine
     // inactivity now that C3's activity-detection correctly resets them
     // on every real interaction (verified: Appearance Studio does close,
@@ -1198,7 +1188,7 @@ fun VideoPlayerScreen(
     // Browser (20s) weren't flagged as an issue, left unchanged.
     LaunchedEffect(trackUi.showSelector, studioUi.menuTouchKey) { if (trackUi.showSelector) { delay(12000); trackUi.showSelector = false } }
     LaunchedEffect(searchUi.showSearch, studioUi.menuTouchKey) { if (searchUi.showSearch) { delay(18000); searchUi.showSearch = false } }
-    LaunchedEffect(showAppearanceStudio, studioUi.menuTouchKey) { if (showAppearanceStudio) { delay(15000); showAppearanceStudio = false } }
+    LaunchedEffect(coreUi.showAppearanceStudio, studioUi.menuTouchKey) { if (coreUi.showAppearanceStudio) { delay(15000); coreUi.showAppearanceStudio = false } }
     LaunchedEffect(studioUi.showStudio, studioUi.menuTouchKey) { if (studioUi.showStudio) { delay(30000); studioUi.showStudio = false } }
     LaunchedEffect(showSrtBrowser) { if (showSrtBrowser) { delay(20000); showSrtBrowser = false } }
     LaunchedEffect(showSpeedMenu) { if (showSpeedMenu) { delay(8000); showSpeedMenu = false } }
@@ -1215,12 +1205,12 @@ fun VideoPlayerScreen(
         studioUi.menuTouchKey++
         when (choice) {
             is SubtitleTrackChoice.Off -> {
-                subtitlesEnabled = false
+                coreUi.subtitlesEnabled = false
                 trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
                 trackUi.selectedKey = choice.key; trackUi.selectedLabel = ""; trackUi.selectedSource = ""
             }
             is SubtitleTrackChoice.Embedded -> {
-                subtitlesEnabled = true
+                coreUi.subtitlesEnabled = true
                 val group = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.getOrNull(choice.groupIndex)
                 if (group != null) {
                     trackSelector.parameters = trackSelector.buildUponParameters()
@@ -1231,17 +1221,17 @@ fun VideoPlayerScreen(
                 trackUi.selectedKey = choice.key
                 trackUi.selectedLabel = friendlyLanguageName(choice.language)
                 trackUi.selectedSource = "Embedded"
-                if (subtitleBehaviorPrefs.rememberLastSelectedLanguage && choice.language.isNotBlank() && choice.language != "und") {
-                    subtitleBehaviorPrefs = promoteLanguageToFront(subtitleBehaviorPrefs, choice.language.take(2).lowercase())
-                    saveSubtitleBehaviorPrefs(context, subtitleBehaviorPrefs)
+                if (coreUi.behaviorPrefs.rememberLastSelectedLanguage && choice.language.isNotBlank() && choice.language != "und") {
+                    coreUi.behaviorPrefs = promoteLanguageToFront(coreUi.behaviorPrefs, choice.language.take(2).lowercase())
+                    saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
                 }
             }
             is SubtitleTrackChoice.Downloaded -> {
-                subtitlesEnabled = true
+                coreUi.subtitlesEnabled = true
                 trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                 val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
                 scope.launch {
-                    val cleaned = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, Uri.fromFile(choice.file), subtitleCleaningOptions) } ?: Uri.fromFile(choice.file)
+                    val cleaned = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, Uri.fromFile(choice.file), coreUi.cleaningOptions) } ?: Uri.fromFile(choice.file)
                     trackUi.primaryUri = cleaned
                     trackUi.primaryLanguage = SubtitleLanguageRegistry.normalize(choice.language)
                     playCurrentVideoWithSubtitle(subtitleUri = cleaned, resumePosition = resumeAt)
@@ -1258,7 +1248,7 @@ fun VideoPlayerScreen(
     LaunchedEffect(pendingSrtUri) {
         val uri = pendingSrtUri ?: return@LaunchedEffect
         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
-        subtitlesEnabled = true
+        coreUi.subtitlesEnabled = true
         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
         // FIX: previously hardcoded "SRT loaded"/"SRT file loaded" even
         // when the picked file was .vtt/.ass/.ssa/.ttml — now reflects
@@ -1266,7 +1256,7 @@ fun VideoPlayerScreen(
         val pickedFormat = detectSubtitleFormat(uri)
         val formatLabel = if (pickedFormat == SubtitleFormat.SRT || pickedFormat == SubtitleFormat.UNKNOWN) "Subtitle" else pickedFormat.label.substringBefore(" (")
         autoSubtitleFetch.status = "$formatLabel loaded"
-        val cleanedSrtUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, uri, subtitleCleaningOptions) } ?: uri
+        val cleanedSrtUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, uri, coreUi.cleaningOptions) } ?: uri
         trackUi.primaryUri = cleanedSrtUri
         val pickedFile = uri.path?.let { java.io.File(it) }
         // Best-effort language detection from the filename itself (e.g.
@@ -1277,7 +1267,7 @@ fun VideoPlayerScreen(
         playCurrentVideoWithSubtitle(subtitleUri = cleanedSrtUri, resumePosition = resumeAt)
         trackUi.selectedKey = "local:${pickedFile?.absolutePath ?: uri.toString()}"
         trackUi.selectedLabel = pickedFile?.name ?: "Subtitle file"; trackUi.selectedSource = "Local file"
-        showSubtitleSettings = false; trackUi.showSelector = false; showControls = true
+        coreUi.showSettings = false; trackUi.showSelector = false; showControls = true
         Toast.makeText(context, "$formatLabel file loaded", Toast.LENGTH_SHORT).show()
         delay(1400); autoSubtitleFetch.status = ""
         pendingSrtUri = null
@@ -1286,33 +1276,33 @@ fun VideoPlayerScreen(
     val activeSubtitleFormat = remember(trackUi.originalUri) { trackUi.originalUri?.let { detectSubtitleFormat(it) } ?: SubtitleFormat.UNKNOWN }
     val isAssOrSsaFormat = activeSubtitleFormat == SubtitleFormat.ASS || activeSubtitleFormat == SubtitleFormat.SSA
 
-    LaunchedEffect(studioUi.playerView, subtitleTextSizeSp, subtitleBottomPadding, subtitleAppearance, dualUi.enabled, subtitlePreserveOriginalStyling, isAssOrSsaFormat) {
+    LaunchedEffect(studioUi.playerView, appearanceUi.textSizeSp, appearanceUi.bottomPadding, appearanceUi.appearance, dualUi.enabled, appearanceUi.preserveOriginalStyling, isAssOrSsaFormat) {
         val sv = studioUi.playerView?.subtitleView
         sv?.setUserDefaultStyle()
         // Embedded styling is enabled in TWO cases: dual mode (needs the
         // injected <font color> tag to render) or the person explicitly
         // asked to preserve an ASS/SSA file's own styling. Off otherwise,
         // so CineVault's own styling stays authoritative for plain SRT/VTT.
-        val useEmbeddedStyles = dualUi.enabled || (subtitlePreserveOriginalStyling && isAssOrSsaFormat)
+        val useEmbeddedStyles = dualUi.enabled || (appearanceUi.preserveOriginalStyling && isAssOrSsaFormat)
         sv?.setApplyEmbeddedStyles(useEmbeddedStyles); sv?.setApplyEmbeddedFontSizes(false)
-        sv?.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleTextSizeSp)
-        sv?.setBottomPaddingFraction(subtitleBottomPadding)
+        sv?.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, appearanceUi.textSizeSp)
+        sv?.setBottomPaddingFraction(appearanceUi.bottomPadding)
         sv?.setStyle(
             CaptionStyleCompat(
-                subtitleAppearance.foregroundColor,
-                subtitleAppearance.backgroundColor,
+                appearanceUi.appearance.foregroundColor,
+                appearanceUi.appearance.backgroundColor,
                 AndroidColor.TRANSPARENT,
-                subtitleAppearance.edgeType,
-                subtitleAppearance.edgeColor,
+                appearanceUi.appearance.edgeType,
+                appearanceUi.appearance.edgeColor,
                 null
             )
         )
     }
 
-    LaunchedEffect(subtitleSyncOffset, driftUi.scale, trackUi.originalUri) {
+    LaunchedEffect(coreUi.syncOffset, driftUi.scale, trackUi.originalUri) {
         val baseUri = trackUi.originalUri ?: return@LaunchedEffect
-        if (!subtitlesEnabled) return@LaunchedEffect
-        val offsetMs = (subtitleSyncOffset * 1000f).toLong()
+        if (!coreUi.subtitlesEnabled) return@LaunchedEffect
+        val offsetMs = (coreUi.syncOffset * 1000f).toLong()
         if (offsetMs == trackUi.appliedOffsetMs && driftUi.scale == driftUi.appliedScale) return@LaunchedEffect
         delay(350)
         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
@@ -1333,24 +1323,24 @@ fun VideoPlayerScreen(
     // (where they tapped) - (where the subtitle visually appeared),
     // stacked on top of whatever sync offset was already active.
     fun armDialogueSync() {
-        dialogueSyncReferenceMs = exoPlayer.currentPosition.coerceAtLeast(0L)
-        dialogueSyncArmed = true
+        coreUi.dialogueSyncReferenceMs = exoPlayer.currentPosition.coerceAtLeast(0L)
+        coreUi.dialogueSyncArmed = true
         exoPlayer.play()
-        showSubtitleSettings = false
+        coreUi.showSettings = false
     }
     fun cancelDialogueSync() {
-        dialogueSyncArmed = false
-        dialogueSyncReferenceMs = null
+        coreUi.dialogueSyncArmed = false
+        coreUi.dialogueSyncReferenceMs = null
     }
     fun confirmDialogueSyncTap() {
-        val reference = dialogueSyncReferenceMs
+        val reference = coreUi.dialogueSyncReferenceMs
         if (reference != null) {
             val deltaMs = exoPlayer.currentPosition - reference
-            subtitleSyncOffset = (subtitleSyncOffset + deltaMs / 1000f).coerceIn(-10f, 10f)
+            coreUi.syncOffset = (coreUi.syncOffset + deltaMs / 1000f).coerceIn(-10f, 10f)
             Toast.makeText(context, "Sync adjusted by ${if (deltaMs >= 0) "+" else ""}${String.format("%.1f", deltaMs / 1000f)}s", Toast.LENGTH_SHORT).show()
         }
-        dialogueSyncArmed = false
-        dialogueSyncReferenceMs = null
+        coreUi.dialogueSyncArmed = false
+        coreUi.dialogueSyncReferenceMs = null
     }
 
     // ── Progressive Drift Correction ─────────────────────────────────
@@ -1361,7 +1351,7 @@ fun VideoPlayerScreen(
         if (a == null || b == null || a.positionMs == b.positionMs) return
         val (scale, shiftMs) = computeDriftTransform(a, b)
         driftUi.scale = scale
-        subtitleSyncOffset = (shiftMs / 1000f).coerceIn(-30f, 30f)
+        coreUi.syncOffset = (shiftMs / 1000f).coerceIn(-30f, 30f)
         driftUi.showDialog = false
         Toast.makeText(context, "Drift correction applied", Toast.LENGTH_SHORT).show()
     }
@@ -1448,7 +1438,7 @@ fun VideoPlayerScreen(
             val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
             playCurrentVideoWithSubtitle(subtitleUri = merged, resumePosition = resumeAt, isOriginalSubtitle = false)
             trackUi.originalUri = merged
-            trackUi.appliedOffsetMs = (subtitleSyncOffset * 1000f).toLong()
+            trackUi.appliedOffsetMs = (coreUi.syncOffset * 1000f).toLong()
             dualUi.statusText = "Dual subtitles: ${if (trackUi.primaryLanguage != null) friendlyLanguageName(trackUi.primaryLanguage) else "Primary"} + ${friendlyLanguageName(dualUi.secondaryLanguage)}"
         }
     }
@@ -1554,7 +1544,7 @@ fun VideoPlayerScreen(
         // exact same driftUi.scale state the manual "Fix Gradual
         // Drift" tool already uses, so it goes through the identical
         // reactive rebuild path.
-        subtitleSyncOffset = (result.initialOffsetMs / 1000f).coerceIn(-10f, 10f)
+        coreUi.syncOffset = (result.initialOffsetMs / 1000f).coerceIn(-10f, 10f)
         driftUi.scale = result.timeScale.toFloat()
         autoSyncStatus = AutoSyncStatus.Idle
         studioUi.menuTouchKey++
@@ -1610,10 +1600,10 @@ fun VideoPlayerScreen(
         // glasses, not whatever was active a second ago on the tablet.
         LaunchedEffect(currentProfileId) {
             val settings = loadSubtitleProfileSettings(context, displayProfileType, isLandscape)
-            subtitleTextSizeSp = settings.fontSizeSp
-            subtitleBottomPadding = settings.bottomPadding
-            subtitleAppearancePreset = settings.presetName
-            subtitleAppearance = SubtitleAppearance(settings.foregroundColor, settings.edgeType, settings.edgeColor, settings.backgroundColor)
+            appearanceUi.textSizeSp = settings.fontSizeSp
+            appearanceUi.bottomPadding = settings.bottomPadding
+            appearanceUi.preset = settings.presetName
+            appearanceUi.appearance = SubtitleAppearance(settings.foregroundColor, settings.edgeType, settings.edgeColor, settings.backgroundColor)
             profileLoadedFor = currentProfileId
         }
 
@@ -1623,19 +1613,19 @@ fun VideoPlayerScreen(
         // get written back over themselves, and so a value still carrying
         // over from the PREVIOUS profile during the one-frame transition
         // can't leak into the new profile's saved settings.
-        LaunchedEffect(currentProfileId, subtitleTextSizeSp, subtitleBottomPadding, subtitleAppearancePreset, subtitleAppearance) {
+        LaunchedEffect(currentProfileId, appearanceUi.textSizeSp, appearanceUi.bottomPadding, appearanceUi.preset, appearanceUi.appearance) {
             if (profileLoadedFor != currentProfileId) return@LaunchedEffect
             delay(400)
             saveSubtitleProfileSettings(
                 context, displayProfileType, isLandscape,
                 SubtitleProfileSettings(
-                    fontSizeSp = subtitleTextSizeSp,
-                    bottomPadding = subtitleBottomPadding,
-                    presetName = subtitleAppearancePreset,
-                    foregroundColor = subtitleAppearance.foregroundColor,
-                    edgeType = subtitleAppearance.edgeType,
-                    edgeColor = subtitleAppearance.edgeColor,
-                    backgroundColor = subtitleAppearance.backgroundColor
+                    fontSizeSp = appearanceUi.textSizeSp,
+                    bottomPadding = appearanceUi.bottomPadding,
+                    presetName = appearanceUi.preset,
+                    foregroundColor = appearanceUi.appearance.foregroundColor,
+                    edgeType = appearanceUi.appearance.edgeType,
+                    edgeColor = appearanceUi.appearance.edgeColor,
+                    backgroundColor = appearanceUi.appearance.backgroundColor
                 )
             )
         }
@@ -1722,13 +1712,13 @@ fun VideoPlayerScreen(
                     onTap = {
                         when {
                             showAudioSelector -> showAudioSelector = false
-                            showSubtitleSettings -> showSubtitleSettings = false
+                            coreUi.showSettings -> coreUi.showSettings = false
                             trackUi.showSelector -> trackUi.showSelector = false
                             searchUi.showSearch -> searchUi.showSearch = false
                             driftUi.showDialog -> driftUi.showDialog = false
-                            showAppearanceStudio -> showAppearanceStudio = false
+                            coreUi.showAppearanceStudio -> coreUi.showAppearanceStudio = false
                             studioUi.showStudio -> studioUi.showStudio = false
-                            dialogueSyncArmed -> {}
+                            coreUi.dialogueSyncArmed -> {}
                             showSpeedMenu -> showSpeedMenu = false
                             showSleepMenu -> showSleepMenu = false
                             showSrtBrowser -> showSrtBrowser = false
@@ -1789,7 +1779,7 @@ fun VideoPlayerScreen(
 
         // ── Subtitle gestures (opt-in, off by default) ──────────────────
         // Deliberately NOT pixel-tracking the subtitle's actual rendered
-        // position (which depends on subtitleBottomPadding, itself
+        // position (which depends on appearanceUi.bottomPadding, itself
         // adjustable 0.02-0.90) — at low padding values that would sit
         // directly on top of the transport dock and seek bar, guaranteeing
         // touch conflicts with existing controls. Instead this is a FIXED
@@ -1798,7 +1788,7 @@ fun VideoPlayerScreen(
         // brightness/volume vertical-swipe zones on the far left/right
         // edges of the full screen. A deliberate simplification, not an
         // attempt at exact subtitle-position tracking.
-        if (subtitleBehaviorPrefs.enableSubtitleGestures && subtitlesEnabled && !isStreamMedia) {
+        if (coreUi.behaviorPrefs.enableSubtitleGestures && coreUi.subtitlesEnabled && !isStreamMedia) {
             val gestureZoneHeight = 110.dp
             val gestureZoneBottomOffset = bottomDockPadding + playButton + 26.dp
             Box(
@@ -1808,28 +1798,28 @@ fun VideoPlayerScreen(
                     .fillMaxWidth()
                     .height(gestureZoneHeight)
                     .subtitleGestureZone(
-                        enabledKey = subtitleBehaviorPrefs.enableSubtitleGestures,
+                        enabledKey = coreUi.behaviorPrefs.enableSubtitleGestures,
                         onPinchTextSize = { zoom ->
-                            subtitleTextSizeSp = (subtitleTextSizeSp * zoom).coerceIn(12f, 32f)
-                            studioUi.gestureFeedback = "${subtitleTextSizeSp.toInt()}sp"
+                            appearanceUi.textSizeSp = (appearanceUi.textSizeSp * zoom).coerceIn(12f, 32f)
+                            studioUi.gestureFeedback = "${appearanceUi.textSizeSp.toInt()}sp"
                         },
                         onHorizontalSyncDrag = { deltaX ->
                             // Positive (rightward) delay matches the same
                             // sign convention as the Sync slider elsewhere.
                             val deltaSeconds = deltaX / 60f
-                            subtitleSyncOffset = (subtitleSyncOffset + deltaSeconds).coerceIn(-10f, 10f)
-                            val formattedOffset = String.format("%.1f", subtitleSyncOffset)
-                            studioUi.gestureFeedback = if (subtitleSyncOffset >= 0f) "+${formattedOffset}s" else "${formattedOffset}s"
+                            coreUi.syncOffset = (coreUi.syncOffset + deltaSeconds).coerceIn(-10f, 10f)
+                            val formattedOffset = String.format("%.1f", coreUi.syncOffset)
+                            studioUi.gestureFeedback = if (coreUi.syncOffset >= 0f) "+${formattedOffset}s" else "${formattedOffset}s"
                         },
                         onVerticalPositionDrag = { deltaFraction ->
                             // Dragging UP raises the subtitle, which is a
                             // DECREASE in bottom-padding fraction — sign
                             // flip already applied by the caller.
-                            subtitleBottomPadding = (subtitleBottomPadding + deltaFraction).coerceIn(0.02f, 0.90f)
+                            appearanceUi.bottomPadding = (appearanceUi.bottomPadding + deltaFraction).coerceIn(0.02f, 0.90f)
                             studioUi.gestureFeedback = "Position"
                         },
                         onDoubleTapResetSync = {
-                            subtitleSyncOffset = 0f
+                            coreUi.syncOffset = 0f
                             studioUi.gestureFeedback = "Sync reset"
                         },
                         onLongPressTogglePlayback = {
@@ -2010,7 +2000,7 @@ fun VideoPlayerScreen(
         }
         val downloadedTrackChoice = remember(currentVideo.path, trackUi.showSelector) {
             if (!canDownloadExternalSubtitles) null
-            else OpenSubtitlesClient.findCachedSubtitle(context, currentVideo.path, subtitleBehaviorPrefs.preferredLanguages)?.let { cached ->
+            else OpenSubtitlesClient.findCachedSubtitle(context, currentVideo.path, coreUi.behaviorPrefs.preferredLanguages)?.let { cached ->
                 cached.uri.path?.let { path -> SubtitleTrackChoice.Downloaded(file = java.io.File(path), language = cached.language) }
             }
         }
@@ -2018,41 +2008,41 @@ fun VideoPlayerScreen(
             .filter { it.absolutePath !in pendingDeletePaths }
 
         val subtitleQuickMenuStatusText = when {
-            !subtitlesEnabled -> "Subtitles off"
+            !coreUi.subtitlesEnabled -> "Subtitles off"
             trackUi.selectedLabel.isNotBlank() -> "$trackUi.selectedLabel · $trackUi.selectedSource"
             hasInternalSubtitles -> "Embedded track active"
             else -> "No subtitle selected"
         }
         SubtitleQuickMenuAndTrackSelector(
-            showSubtitleSettings = showSubtitleSettings,
+            showSubtitleSettings = coreUi.showSettings,
             showTrackSelector = trackUi.showSelector,
-            subtitlesEnabled = subtitlesEnabled,
+            subtitlesEnabled = coreUi.subtitlesEnabled,
             activeTrackStatusText = subtitleQuickMenuStatusText,
             quickMenuBottomPadding = anchoredY(popupBottomPadding, subtitlePopupHeightEstimate),
             quickMenuOffsetX = anchoredX(subIconX, subtitlePopupWidth),
-            subtitleTextSizeSp = subtitleTextSizeSp,
-            subtitleBottomPadding = subtitleBottomPadding,
+            subtitleTextSizeSp = appearanceUi.textSizeSp,
+            subtitleBottomPadding = appearanceUi.bottomPadding,
             onFindClick = {
                 studioUi.menuTouchKey++
-                showSubtitleSettings = false
+                coreUi.showSettings = false
                 searchUi.showSearch = true
                 showControls = true
                 if (searchUi.searchResults.isEmpty() && !searchUi.searchLoading) {
                     performSubtitleSearch(OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path), "", "")
                 }
             },
-            onTracksClick = { showSubtitleSettings = false; trackUi.showSelector = true; showControls = true; studioUi.menuTouchKey++ },
+            onTracksClick = { coreUi.showSettings = false; trackUi.showSelector = true; showControls = true; studioUi.menuTouchKey++ },
             onToggleSubtitles = {
-                subtitlesEnabled = !subtitlesEnabled
-                trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subtitlesEnabled).build()
-                if (!subtitlesEnabled) { trackUi.selectedKey = "off"; trackUi.selectedLabel = ""; trackUi.selectedSource = "" }
+                coreUi.subtitlesEnabled = !coreUi.subtitlesEnabled
+                trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !coreUi.subtitlesEnabled).build()
+                if (!coreUi.subtitlesEnabled) { trackUi.selectedKey = "off"; trackUi.selectedLabel = ""; trackUi.selectedSource = "" }
                 showControls = true; studioUi.menuTouchKey++
             },
-            onDismissSettings = { showSubtitleSettings = false; showControls = true },
-            onFontSizeChange = { subtitleTextSizeSp = it; showControls = true; studioUi.menuTouchKey++ },
-            onVerticalPositionChange = { subtitleBottomPadding = it; showControls = true; studioUi.menuTouchKey++ },
-            onSyncClick = { showSubtitleSettings = false; studioUi.initialTab = SubtitleStudioTab.TIMING; studioUi.showStudio = true; showControls = true },
-            onStyleClick = { showSubtitleSettings = false; showAppearanceStudio = true; showControls = true },
+            onDismissSettings = { coreUi.showSettings = false; showControls = true },
+            onFontSizeChange = { appearanceUi.textSizeSp = it; showControls = true; studioUi.menuTouchKey++ },
+            onVerticalPositionChange = { appearanceUi.bottomPadding = it; showControls = true; studioUi.menuTouchKey++ },
+            onSyncClick = { coreUi.showSettings = false; studioUi.initialTab = SubtitleStudioTab.TIMING; studioUi.showStudio = true; showControls = true },
+            onStyleClick = { coreUi.showSettings = false; coreUi.showAppearanceStudio = true; showControls = true },
             onSettingsUserInteraction = { studioUi.menuTouchKey++; showControls = true },
             trackSelectorBottomPadding = anchoredY(popupBottomPadding, trackSelectorMaxHeight),
             trackSelectorOffsetX = anchoredX(subIconX, trackSelectorWidth),
@@ -2123,7 +2113,7 @@ fun VideoPlayerScreen(
             onDismissFallback = { searchUi.showFallback = false },
             showEmbeddedSubtitleBrowser = searchUi.showEmbeddedBrowser,
             embeddedBrowserQuery = OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path),
-            embeddedBrowserPreferredLanguage = subtitleBehaviorPrefs.preferredLanguages.firstOrNull() ?: "en",
+            embeddedBrowserPreferredLanguage = coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en",
             onImported = { result ->
                 if (result.alternatives.isEmpty()) {
                     applyImportedWebsiteSubtitle(result.selected)
@@ -2140,7 +2130,7 @@ fun VideoPlayerScreen(
         )
 
         SubtitleSyncAndAppearancePopups(
-            dialogueSyncArmed = dialogueSyncArmed,
+            dialogueSyncArmed = coreUi.dialogueSyncArmed,
             isLandscape = isLandscape,
             onDialogueSyncTap = { confirmDialogueSyncTap() },
             onDialogueSyncCancel = { cancelDialogueSync() },
@@ -2154,25 +2144,25 @@ fun VideoPlayerScreen(
             onMarkPointB = { correction -> markDriftPointB(correction) },
             onApplyDrift = { applyDriftFix() },
             onDismissDrift = { driftUi.showDialog = false; showControls = true },
-            showAppearanceStudio = showAppearanceStudio,
+            showAppearanceStudio = coreUi.showAppearanceStudio,
             appearanceBottomPadding = anchoredY(popupBottomPadding, trackSelectorMaxHeight),
             appearanceOffsetX = anchoredX(subIconX, trackSelectorWidth),
             appearancePopupWidth = trackSelectorWidth,
             appearancePopupMaxHeight = trackSelectorMaxHeight,
             containerWidth = maxWidth,
             containerHeight = maxHeight,
-            appearancePresetName = subtitleAppearancePreset,
-            appearance = subtitleAppearance,
-            appearanceFontSizeSp = subtitleTextSizeSp,
-            onApplyPreset = { name, preset -> subtitleAppearancePreset = name; subtitleAppearance = preset },
-            onForegroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(foregroundColor = c) },
-            onEdgeTypeChange = { t -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeType = t) },
-            onEdgeColorChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeColor = c) },
-            onBackgroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(backgroundColor = c) },
+            appearancePresetName = appearanceUi.preset,
+            appearance = appearanceUi.appearance,
+            appearanceFontSizeSp = appearanceUi.textSizeSp,
+            onApplyPreset = { name, preset -> appearanceUi.preset = name; appearanceUi.appearance = preset },
+            onForegroundChange = { c -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(foregroundColor = c) },
+            onEdgeTypeChange = { t -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(edgeType = t) },
+            onEdgeColorChange = { c -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(edgeColor = c) },
+            onBackgroundChange = { c -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(backgroundColor = c) },
             isAssOrSsaFormat = isAssOrSsaFormat,
-            preserveOriginalStyling = subtitlePreserveOriginalStyling,
-            onPreserveOriginalStylingChange = { subtitlePreserveOriginalStyling = it },
-            onDismissAppearanceStudio = { showAppearanceStudio = false; showControls = true },
+            preserveOriginalStyling = appearanceUi.preserveOriginalStyling,
+            onPreserveOriginalStylingChange = { appearanceUi.preserveOriginalStyling = it },
+            onDismissAppearanceStudio = { coreUi.showAppearanceStudio = false; showControls = true },
             onAppearanceUserInteraction = { studioUi.menuTouchKey++ },
         )
 
@@ -2233,8 +2223,8 @@ fun VideoPlayerScreen(
             onSelectTrack = { choice -> selectSubtitleTrack(choice) },
             onDeleteLocalTrack = { file -> requestDeleteSubtitle(file) },
             onOpenFilePicker = { srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
-            currentSyncOffset = subtitleSyncOffset,
-            onSyncOffsetChange = { subtitleSyncOffset = it; studioUi.menuTouchKey++ },
+            currentSyncOffset = coreUi.syncOffset,
+            onSyncOffsetChange = { coreUi.syncOffset = it; studioUi.menuTouchKey++ },
             onDialogueSyncClick = { armDialogueSync() },
             onDriftFixClick = { studioUi.showStudio = false; driftUi.showDialog = true },
             autoSyncStatus = autoSyncStatus,
@@ -2242,24 +2232,24 @@ fun VideoPlayerScreen(
             onAutoSyncClick = { runAutoSync() },
             onApplyAutoSync = { result -> applyAutoSyncResult(result) },
             onCancelAutoSync = { autoSyncStatus = AutoSyncStatus.Idle },
-            presetName = subtitleAppearancePreset,
-            appearance = subtitleAppearance,
-            fontSizeSp = subtitleTextSizeSp,
-            onFontSizeChange = { subtitleTextSizeSp = it },
-            onApplyPreset = { name, preset -> subtitleAppearancePreset = name; subtitleAppearance = preset },
-            onForegroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(foregroundColor = c) },
-            onEdgeTypeChange = { t -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeType = t) },
-            onEdgeColorChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(edgeColor = c) },
-            onBackgroundChange = { c -> subtitleAppearancePreset = "Custom"; subtitleAppearance = subtitleAppearance.copy(backgroundColor = c) },
+            presetName = appearanceUi.preset,
+            appearance = appearanceUi.appearance,
+            fontSizeSp = appearanceUi.textSizeSp,
+            onFontSizeChange = { appearanceUi.textSizeSp = it },
+            onApplyPreset = { name, preset -> appearanceUi.preset = name; appearanceUi.appearance = preset },
+            onForegroundChange = { c -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(foregroundColor = c) },
+            onEdgeTypeChange = { t -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(edgeType = t) },
+            onEdgeColorChange = { c -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(edgeColor = c) },
+            onBackgroundChange = { c -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(backgroundColor = c) },
             isAssOrSsaFormat = isAssOrSsaFormat,
-            preserveOriginalStyling = subtitlePreserveOriginalStyling,
-            onPreserveOriginalStylingChange = { subtitlePreserveOriginalStyling = it },
-            bottomPadding = subtitleBottomPadding,
-            onBottomPaddingChange = { subtitleBottomPadding = it },
-            behaviorPrefs = subtitleBehaviorPrefs,
-            onBehaviorPrefsChange = { subtitleBehaviorPrefs = it; saveSubtitleBehaviorPrefs(context, it) },
-            cleaningOptions = subtitleCleaningOptions,
-            onCleaningOptionsChange = { subtitleCleaningOptions = it; saveSubtitleCleaningOptions(context, it) },
+            preserveOriginalStyling = appearanceUi.preserveOriginalStyling,
+            onPreserveOriginalStylingChange = { appearanceUi.preserveOriginalStyling = it },
+            bottomPadding = appearanceUi.bottomPadding,
+            onBottomPaddingChange = { appearanceUi.bottomPadding = it },
+            behaviorPrefs = coreUi.behaviorPrefs,
+            onBehaviorPrefsChange = { coreUi.behaviorPrefs = it; saveSubtitleBehaviorPrefs(context, it) },
+            cleaningOptions = coreUi.cleaningOptions,
+            onCleaningOptionsChange = { coreUi.cleaningOptions = it; saveSubtitleCleaningOptions(context, it) },
             dualSubtitlesEnabled = dualUi.enabled,
             dualCanEnable = trackUi.primaryUri != null,
             dualSecondaryLanguage = dualUi.secondaryLanguage,
@@ -2291,7 +2281,7 @@ fun VideoPlayerScreen(
         // popups (Track Selector, Drift, Appearance, quick menu) which
         // were designed to sit alongside visible controls and still do.
         val hideControlsForLargeSheet = studioUi.showStudio || searchUi.showSearch
-        AnimatedVisibility(visible = (showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || trackUi.showSelector || driftUi.showDialog || showAppearanceStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu) && !hideControlsForLargeSheet, enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(visible = (showControls || isDraggingSeekbar || showAudioSelector || coreUi.showSettings || trackUi.showSelector || driftUi.showDialog || coreUi.showAppearanceStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu) && !hideControlsForLargeSheet, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize()) {
 
                 val topRowVisible = !showSeekPreview
@@ -2395,7 +2385,7 @@ fun VideoPlayerScreen(
                     )
                 }
 
-                val anyMenuOpenForIntroSkip = showAudioSelector || showSubtitleSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
+                val anyMenuOpenForIntroSkip = showAudioSelector || coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
                 AnimatedVisibility(visible = showIntroSkip && !showSeekPreview && !isDraggingSeekbar && !anyMenuOpenForIntroSkip, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
                     SkipIntroButton(isLandscape = isLandscape) { val t = 95_000L.coerceAtMost(duration.coerceAtLeast(1L)); exoPlayer.seekTo(t); position = t; showControls = true }
                 }
@@ -2466,8 +2456,8 @@ fun VideoPlayerScreen(
                                     .onGloballyPositioned { subIconX = it.positionInRoot().x + it.size.width / 2f }
                                     .combinedClickable(
                                         onClick = {
-                                            val wasOpen = showSubtitleSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio
-                                            closeAllMenus(); showSubtitleSettings = !wasOpen; showControls = true; menuTouchKey++
+                                            val wasOpen = coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio
+                                            closeAllMenus(); coreUi.showSettings = !wasOpen; showControls = true; menuTouchKey++
                                         },
                                         onLongClick = {
                                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -2478,7 +2468,7 @@ fun VideoPlayerScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.ClosedCaption, contentDescription = null,
-                                    tint = if (showSubtitleSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio) AmberCore else TextBright,
+                                    tint = if (coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio) AmberCore else TextBright,
                                     modifier = Modifier.size(smallButton * 0.44f)
                                 )
                             }
