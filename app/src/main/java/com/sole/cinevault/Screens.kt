@@ -13,6 +13,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.Crossfade
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import android.app.Activity
@@ -57,6 +58,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -266,10 +268,26 @@ fun HomeScreen(
             loadPlaybackPosition(context, it.video.path) > 15_000L
         }.take(12)
 
-    val heroImage =
-        continueWatching.firstOrNull { it.backdropUrl != null }?.backdropUrl
-            ?: videos.firstOrNull { it.backdropUrl != null }?.backdropUrl
-            ?: videos.firstOrNull { it.posterUrl != null }?.posterUrl
+    // FEATURE: was a single fixed pick (continueWatching's top backdrop,
+    // falling back to the library's first) — same image every time Home
+    // opens, however large the library actually is. Now builds a shuffled
+    // pool from every video with a backdrop/poster and rotates through it
+    // on a timer, so the hero banner stays fresh across visits instead of
+    // just showing whatever happens to be first. Shuffled once per
+    // composition (remember(videos), not on every recomposition) so the
+    // rotation order stays stable and doesn't re-shuffle mid-view.
+    val heroCandidates = remember(videos) {
+        videos.mapNotNull { it.backdropUrl ?: it.posterUrl }.distinct().shuffled()
+    }
+    var heroIndex by remember(heroCandidates) { mutableStateOf(0) }
+    LaunchedEffect(heroCandidates) {
+        if (heroCandidates.size <= 1) return@LaunchedEffect
+        while (true) {
+            delay(7000)
+            heroIndex = (heroIndex + 1) % heroCandidates.size
+        }
+    }
+    val heroImage = heroCandidates.getOrNull(heroIndex)
 
     // Restores scroll position from HomeScrollState so returning from Detail
     // (or switching tabs and back) lands where you left off, not the top.
@@ -299,14 +317,16 @@ fun HomeScreen(
                     .clip(RoundedCornerShape(30.dp))
                     .background(SpaceMid)
             ) {
-                if (heroImage != null) {
-                    AsyncImage(
-                        model = heroImage,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        alpha = 0.98f,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                Crossfade(targetState = heroImage, animationSpec = tween(900), label = "heroImageCrossfade") { image ->
+                    if (image != null) {
+                        AsyncImage(
+                            model = image,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            alpha = 0.98f,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
 
                 Box(
