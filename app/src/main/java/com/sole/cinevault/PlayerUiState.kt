@@ -7,6 +7,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.media3.ui.PlayerView
 import com.sole.cinevault.subtitles.DriftPoint
+import com.sole.cinevault.subtitles.SubtitleImportResult
+import com.sole.cinevault.subtitles.SubtitleSearchResult
 import com.sole.cinevault.subtitles.SubtitleStudioTab
 
 /*
@@ -72,4 +74,20 @@ class SubtitleStudioUiState {
     var menuTouchKey by mutableIntStateOf(0)
     var gestureFeedback by mutableStateOf("")
     var playerView by mutableStateOf<PlayerView?>(null)
+}
+
+// Fifth slice: the "getting a subtitle onto the device" chain — search,
+// then (on failure) the website fallback, then (from there) the embedded
+// browser, which can surface multiple candidates for the person to pick
+// from. Grouped together because they're genuinely one flow, not five
+// independent toggles — each step's state only matters in the context of
+// how the person got there.
+class SubtitleAcquisitionUiState {
+    var showSearch by mutableStateOf(false)
+    var searchResults by mutableStateOf<List<SubtitleSearchResult>>(emptyList())
+    var searchLoading by mutableStateOf(false)
+    var searchStatus by mutableStateOf("")
+    var showFallback by mutableStateOf(false)
+    var showEmbeddedBrowser by mutableStateOf(false)
+    var pendingImportCandidates by mutableStateOf<SubtitleImportResult.Success?>(null)
 }
