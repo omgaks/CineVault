@@ -320,8 +320,21 @@ fun VideoPlayerScreen(
     // off can revert to the actual primary instead of getting stuck on a
     // merged file with nothing to un-merge from.
     var audioLanguageCheckedForPath by remember { mutableStateOf<String?>(null) }
-    val dualUi = remember { DualSubtitleState() }
-    val dualSecondaryColorHex = "#7FDBFF"
+    val dualUi = remember { DualSubtitleState().apply { secondaryLanguage = coreUi.behaviorPrefs.dualSecondaryLanguage } }
+    // Secondary line color for dual subtitles. Injected as an HTML
+    // <font color> tag directly into the merged SRT text (see
+    // mergeDualSubtitles) rather than sourced from SubtitleAppearance,
+    // since that governs the PRIMARY line's native CaptionStyleCompat
+    // styling — a fundamentally different rendering path that can't
+    // apply per-line. Chosen for reliable contrast against every built-in
+    // appearance preset's foreground color (CineVault/Netflix/Cinema/
+    // Minimal are white or near-white; HighContrast/ClassicYellow are
+    // pure yellow) — a saturated cyan reads clearly against both without
+    // being mistaken for either. Not genuinely content-aware (true
+    // auto-contrast against arbitrary video would need real-time color
+    // sampling, a much bigger feature) — this is a safer general-purpose
+    // default, not a guarantee for every possible background.
+    val dualSecondaryColorHex = "#00E5FF"
 
     // Which subtitle source/track is actually active right now — the single
     // source of truth for both the checkmark in SubtitleTrackSelectorSheet
@@ -2347,6 +2360,8 @@ fun VideoPlayerScreen(
             },
             onDualSecondaryLanguageChange = { lang ->
                 dualUi.secondaryLanguage = lang
+                coreUi.behaviorPrefs = coreUi.behaviorPrefs.copy(dualSecondaryLanguage = lang)
+                saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
                 if (dualUi.enabled) fetchAndApplyDualSecondary()
             },
             onDualGapLinesChange = { gap ->
