@@ -827,9 +827,13 @@ fun LocalVideoLibraryScreen(
                 run {
                     data class CollectionShelfEntry(val key: String, val displayName: String, val backdropUrl: String?, val isCurated: Boolean, val collectionId: Int?)
                     val nativeEntries = visibleSortedVideos
-                        .filter { it.collectionId != null && it.collectionName != null }
                         .distinctBy { it.collectionId }
-                        .map { CollectionShelfEntry("native:${it.collectionId}", it.collectionName!!, it.backdropUrl, false, it.collectionId) }
+                        .mapNotNull { video ->
+                            val collectionId = video.collectionId
+                            val collectionName = video.collectionName
+                            if (collectionId == null || collectionName == null) null
+                            else CollectionShelfEntry("native:$collectionId", collectionName, video.backdropUrl, false, collectionId)
+                        }
                     val curatedNames = visibleSortedVideos.flatMap { it.curatedCollections }.distinct()
                     val curatedEntries = curatedNames.map { name ->
                         val backdrop = visibleSortedVideos.firstOrNull { it.curatedCollections.contains(name) && !it.backdropUrl.isNullOrBlank() }?.backdropUrl
