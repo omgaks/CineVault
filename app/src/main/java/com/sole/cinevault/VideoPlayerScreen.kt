@@ -288,14 +288,7 @@ fun VideoPlayerScreen(
     var showAudioSelector by remember { mutableStateOf(false) }
     var showSubtitleSettings by remember { mutableStateOf(false) }
     var showTrackSelector by remember { mutableStateOf(false) }
-    var showSubtitleSearch by remember { mutableStateOf(false) }
-    var subtitleSearchResults by remember { mutableStateOf<List<SubtitleSearchResult>>(emptyList()) }
-    var subtitleSearchLoading by remember { mutableStateOf(false) }
-    var subtitleSearchStatus by remember { mutableStateOf("") }
-    // Website fallback (last-resort manual search) — see SubtitleWebFallback.kt
-    var showSubtitleFallback by remember { mutableStateOf(false) }
-    var showEmbeddedSubtitleBrowser by remember { mutableStateOf(false) }
-    var pendingImportedCandidates by remember { mutableStateOf<SubtitleImportResult.Success?>(null) }
+    val searchUi = remember { SubtitleAcquisitionUiState() }
 
     var showSpeedMenu by remember { mutableStateOf(false) }
     var showSleepMenu by remember { mutableStateOf(false) }
@@ -458,16 +451,16 @@ fun VideoPlayerScreen(
         showAudioSelector = false
         showSubtitleSettings = false
         showTrackSelector = false
-        showSubtitleSearch = false
+        searchUi.showSearch = false
         driftUi.showDialog = false
         showAppearanceStudio = false
         studioUi.showStudio = false
         showSpeedMenu = false
         showSleepMenu = false
         showSrtBrowser = false
-        showSubtitleFallback = false
-        showEmbeddedSubtitleBrowser = false
-        pendingImportedCandidates = null
+        searchUi.showFallback = false
+        searchUi.showEmbeddedBrowser = false
+        searchUi.pendingImportCandidates = null
     }
 
     var pendingSrtUri by remember { mutableStateOf<Uri?>(null) }
@@ -660,9 +653,9 @@ fun VideoPlayerScreen(
             selectedSubtitleTrackLabel = friendlyLanguageName(imported.language ?: "en")
             selectedSubtitleTrackSource = "Website import"
             playCurrentVideoWithSubtitle(cleanedUri, resumeAt)
-            showSubtitleFallback = false
-            showEmbeddedSubtitleBrowser = false
-            pendingImportedCandidates = null
+            searchUi.showFallback = false
+            searchUi.showEmbeddedBrowser = false
+            searchUi.pendingImportCandidates = null
             showControls = true
             Toast.makeText(context, "Subtitle loaded", Toast.LENGTH_SHORT).show()
         }
@@ -694,7 +687,7 @@ fun VideoPlayerScreen(
                     if (result.alternatives.isEmpty()) {
                         applyImportedWebsiteSubtitle(result.selected)
                     } else {
-                        pendingImportedCandidates = result
+                        searchUi.pendingImportCandidates = result
                     }
                 }
                 is SubtitleImportResult.Failure -> Toast.makeText(context, result.userMessage, Toast.LENGTH_LONG).show()
@@ -774,8 +767,8 @@ fun VideoPlayerScreen(
     }
 
     fun performSubtitleSearch(query: String, seasonText: String, episodeText: String, language: String = subtitleBehaviorPrefs.preferredLanguages.firstOrNull() ?: "en") {
-        subtitleSearchLoading = true
-        subtitleSearchStatus = ""
+        searchUi.searchLoading = true
+        searchUi.searchStatus = ""
         scope.launch {
             // Both providers queried concurrently rather than one after
             // the other — they're independent network calls, no reason to
@@ -796,7 +789,7 @@ fun VideoPlayerScreen(
             val openSubsResult = openSubsDeferred.await()
             val subDlResult = subDlDeferred.await()
 
-            subtitleSearchLoading = false
+            searchUi.searchLoading = false
             val openSubsList = (openSubsResult as? SubtitleSearchListResult.Success)?.results.orEmpty()
             val subDlList = (subDlResult as? SubtitleSearchListResult.Success)?.results.orEmpty()
             // OpenSubtitles first (already ranked by its own match-scoring
@@ -810,9 +803,9 @@ fun VideoPlayerScreen(
             val merged = subDlList + openSubsList
 
             when {
-                merged.isNotEmpty() -> { subtitleSearchResults = merged; subtitleSearchStatus = "" }
-                openSubsResult is SubtitleSearchListResult.HttpError -> { subtitleSearchResults = emptyList(); subtitleSearchStatus = "Search error: ${openSubsResult.detail}" }
-                else -> { subtitleSearchResults = emptyList(); subtitleSearchStatus = "No subtitles found for this search" }
+                merged.isNotEmpty() -> { searchUi.searchResults = merged; searchUi.searchStatus = "" }
+                openSubsResult is SubtitleSearchListResult.HttpError -> { searchUi.searchResults = emptyList(); searchUi.searchStatus = "Search error: ${openSubsResult.detail}" }
+                else -> { searchUi.searchResults = emptyList(); searchUi.searchStatus = "No subtitles found for this search" }
             }
         }
     }
@@ -859,7 +852,7 @@ fun VideoPlayerScreen(
                         primarySubtitleUri = cleanedApplyUri
                         primarySubtitleLanguage = SubtitleLanguageRegistry.normalize(result.language)
                         playCurrentVideoWithSubtitle(subtitleUri = cleanedApplyUri, resumePosition = resumeAt)
-                        showSubtitleSearch = false; showControls = true
+                        searchUi.showSearch = false; showControls = true
                         Toast.makeText(context, "Subtitle applied", Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(context, "Subtitle saved — apply it from Tracks", Toast.LENGTH_SHORT).show()
@@ -877,9 +870,9 @@ fun VideoPlayerScreen(
     LaunchedEffect(currentVideo.path) {
         val savedPosition = if (isStreamMedia) 0L else loadPlaybackPosition(context, currentVideo.path)
         position = savedPosition; duration = 1L; showControls = true; showTopBar = true
-        showAudioSelector = false; showSubtitleSettings = false; showTrackSelector = false; showSubtitleSearch = false; showSpeedMenu = false; showSleepMenu = false; showSrtBrowser = false
-        showSubtitleFallback = false; showEmbeddedSubtitleBrowser = false; pendingImportedCandidates = null
-        subtitleSearchResults = emptyList(); subtitleSearchStatus = ""; subtitleSearchLoading = false
+        showAudioSelector = false; showSubtitleSettings = false; showTrackSelector = false; searchUi.showSearch = false; showSpeedMenu = false; showSleepMenu = false; showSrtBrowser = false
+        searchUi.showFallback = false; searchUi.showEmbeddedBrowser = false; searchUi.pendingImportCandidates = null
+        searchUi.searchResults = emptyList(); searchUi.searchStatus = ""; searchUi.searchLoading = false
         pendingNextEpisode = null; nextEpisodeCountdown = 0; showNextEpisodeOverlay = false
         previewBitmap = null; previewFrames = emptyList(); isVideoEnded = false
         playerErrorMessage = null; errorRetryCount = 0; stuckBufferingHint = false
@@ -1188,16 +1181,16 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(showControls, showAudioSelector, showSubtitleSettings, showTrackSelector, showSubtitleSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
+    LaunchedEffect(showControls, showAudioSelector, showSubtitleSettings, showTrackSelector, searchUi.showSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
+        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
         if (showControls && !anyMenuOpen && !isDraggingSeekbar) {
             delay(4500)
             if (!isDraggingSeekbar && !anyMenuOpen) showControls = false
         }
     }
 
-    LaunchedEffect(showTopBar, showAudioSelector, showSubtitleSettings, showTrackSelector, showSubtitleSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
+    LaunchedEffect(showTopBar, showAudioSelector, showSubtitleSettings, showTrackSelector, searchUi.showSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
+        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
         if (showTopBar && !anyMenuOpen && !isDraggingSeekbar) {
             delay(2800)
             if (!isDraggingSeekbar && !anyMenuOpen) showTopBar = false
@@ -1212,7 +1205,7 @@ fun VideoPlayerScreen(
     // just felt slow at the old duration). Track Selector (12s) and SRT
     // Browser (20s) weren't flagged as an issue, left unchanged.
     LaunchedEffect(showTrackSelector, studioUi.menuTouchKey) { if (showTrackSelector) { delay(12000); showTrackSelector = false } }
-    LaunchedEffect(showSubtitleSearch, studioUi.menuTouchKey) { if (showSubtitleSearch) { delay(18000); showSubtitleSearch = false } }
+    LaunchedEffect(searchUi.showSearch, studioUi.menuTouchKey) { if (searchUi.showSearch) { delay(18000); searchUi.showSearch = false } }
     LaunchedEffect(showAppearanceStudio, studioUi.menuTouchKey) { if (showAppearanceStudio) { delay(15000); showAppearanceStudio = false } }
     LaunchedEffect(studioUi.showStudio, studioUi.menuTouchKey) { if (studioUi.showStudio) { delay(30000); studioUi.showStudio = false } }
     LaunchedEffect(showSrtBrowser) { if (showSrtBrowser) { delay(20000); showSrtBrowser = false } }
@@ -1739,7 +1732,7 @@ fun VideoPlayerScreen(
                             showAudioSelector -> showAudioSelector = false
                             showSubtitleSettings -> showSubtitleSettings = false
                             showTrackSelector -> showTrackSelector = false
-                            showSubtitleSearch -> showSubtitleSearch = false
+                            searchUi.showSearch -> searchUi.showSearch = false
                             driftUi.showDialog -> driftUi.showDialog = false
                             showAppearanceStudio -> showAppearanceStudio = false
                             studioUi.showStudio -> studioUi.showStudio = false
@@ -2050,9 +2043,9 @@ fun VideoPlayerScreen(
             onFindClick = {
                 studioUi.menuTouchKey++
                 showSubtitleSettings = false
-                showSubtitleSearch = true
+                searchUi.showSearch = true
                 showControls = true
-                if (subtitleSearchResults.isEmpty() && !subtitleSearchLoading) {
+                if (searchUi.searchResults.isEmpty() && !searchUi.searchLoading) {
                     performSubtitleSearch(OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path), "", "")
                 }
             },
@@ -2093,34 +2086,34 @@ fun VideoPlayerScreen(
             else (maxHeight.value * 0.65f).dp.coerceAtMost(580.dp)
         val subtitleWebQuery = OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path)
         SubtitleAcquisitionFlow(
-            showSubtitleSearch = showSubtitleSearch,
+            showSubtitleSearch = searchUi.showSearch,
             searchWidth = searchWidth,
             searchMaxHeight = searchMaxHeight,
             containerWidth = maxWidth,
             containerHeight = maxHeight,
             initialSearchQuery = remember(currentVideo.path) { OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path) },
-            searchResults = subtitleSearchResults,
-            isSearching = subtitleSearchLoading,
-            searchStatusText = subtitleSearchStatus,
+            searchResults = searchUi.searchResults,
+            isSearching = searchUi.searchLoading,
+            searchStatusText = searchUi.searchStatus,
             onSearchUserInteraction = { studioUi.menuTouchKey++ },
             onSearch = { q, s, e -> studioUi.menuTouchKey++; performSubtitleSearch(q, s, e) },
             onDownloadAndApply = { result -> studioUi.menuTouchKey++; applySearchResult(result, alsoPlay = true) },
             onDownloadOnly = { result -> studioUi.menuTouchKey++; applySearchResult(result, alsoPlay = false) },
-            onWebsiteFallbackFromSearch = { showSubtitleSearch = false; showSubtitleFallback = true; showControls = true },
-            onDismissSearch = { showSubtitleSearch = false; showControls = true },
-            showSubtitleFallback = showSubtitleFallback,
+            onWebsiteFallbackFromSearch = { searchUi.showSearch = false; searchUi.showFallback = true; showControls = true },
+            onDismissSearch = { searchUi.showSearch = false; showControls = true },
+            showSubtitleFallback = searchUi.showFallback,
             fallbackSearchQuery = subtitleWebQuery,
-            fallbackStatusText = subtitleSearchStatus,
+            fallbackStatusText = searchUi.searchStatus,
             onSecureBrowser = {
                 exoPlayer.pause()
                 launchSubtitleCustomTab(context, subtitleWebQuery)
-                showSubtitleFallback = false
+                searchUi.showFallback = false
                 Toast.makeText(context, "After downloading, return and choose Import downloaded subtitle", Toast.LENGTH_LONG).show()
             },
             onEmbeddedBrowser = {
                 exoPlayer.pause()
-                showSubtitleFallback = false
-                showEmbeddedSubtitleBrowser = true
+                searchUi.showFallback = false
+                searchUi.showEmbeddedBrowser = true
             },
             onImportFile = {
                 exoPlayer.pause()
@@ -2135,23 +2128,23 @@ fun VideoPlayerScreen(
                     )
                 )
             },
-            onDismissFallback = { showSubtitleFallback = false },
-            showEmbeddedSubtitleBrowser = showEmbeddedSubtitleBrowser,
+            onDismissFallback = { searchUi.showFallback = false },
+            showEmbeddedSubtitleBrowser = searchUi.showEmbeddedBrowser,
             embeddedBrowserQuery = OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path),
             embeddedBrowserPreferredLanguage = subtitleBehaviorPrefs.preferredLanguages.firstOrNull() ?: "en",
             onImported = { result ->
                 if (result.alternatives.isEmpty()) {
                     applyImportedWebsiteSubtitle(result.selected)
                 } else {
-                    pendingImportedCandidates = result
-                    showEmbeddedSubtitleBrowser = false
+                    searchUi.pendingImportCandidates = result
+                    searchUi.showEmbeddedBrowser = false
                 }
             },
             onMessage = { Toast.makeText(context, it, Toast.LENGTH_LONG).show() },
-            onDismissEmbeddedBrowser = { showEmbeddedSubtitleBrowser = false; showControls = true },
-            pendingImportedCandidates = pendingImportedCandidates,
+            onDismissEmbeddedBrowser = { searchUi.showEmbeddedBrowser = false; showControls = true },
+            pendingImportedCandidates = searchUi.pendingImportCandidates,
             onCandidateSelected = { applyImportedWebsiteSubtitle(it) },
-            onDismissCandidateSheet = { pendingImportedCandidates = null },
+            onDismissCandidateSheet = { searchUi.pendingImportCandidates = null },
         )
 
         SubtitleSyncAndAppearancePopups(
@@ -2230,15 +2223,15 @@ fun VideoPlayerScreen(
             videoPath = currentVideo.path,
             onOpenSearch = {
                 studioUi.showStudio = false
-                showSubtitleSearch = true
+                searchUi.showSearch = true
                 showControls = true
-                if (subtitleSearchResults.isEmpty() && !subtitleSearchLoading) {
+                if (searchUi.searchResults.isEmpty() && !searchUi.searchLoading) {
                     performSubtitleSearch(OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path), "", "")
                 }
             },
             onOpenManualSearch = {
                 studioUi.showStudio = false
-                showSubtitleFallback = true
+                searchUi.showFallback = true
                 showControls = true
             },
             embeddedTracks = embeddedTrackChoices,
@@ -2305,7 +2298,7 @@ fun VideoPlayerScreen(
         // block via the trailing && clause, unlike the smaller anchored
         // popups (Track Selector, Drift, Appearance, quick menu) which
         // were designed to sit alongside visible controls and still do.
-        val hideControlsForLargeSheet = studioUi.showStudio || showSubtitleSearch
+        val hideControlsForLargeSheet = studioUi.showStudio || searchUi.showSearch
         AnimatedVisibility(visible = (showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showTrackSelector || driftUi.showDialog || showAppearanceStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu) && !hideControlsForLargeSheet, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize()) {
 
@@ -2410,7 +2403,7 @@ fun VideoPlayerScreen(
                     )
                 }
 
-                val anyMenuOpenForIntroSkip = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
+                val anyMenuOpenForIntroSkip = showAudioSelector || showSubtitleSettings || showTrackSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
                 AnimatedVisibility(visible = showIntroSkip && !showSeekPreview && !isDraggingSeekbar && !anyMenuOpenForIntroSkip, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
                     SkipIntroButton(isLandscape = isLandscape) { val t = 95_000L.coerceAtMost(duration.coerceAtLeast(1L)); exoPlayer.seekTo(t); position = t; showControls = true }
                 }
@@ -2481,7 +2474,7 @@ fun VideoPlayerScreen(
                                     .onGloballyPositioned { subIconX = it.positionInRoot().x + it.size.width / 2f }
                                     .combinedClickable(
                                         onClick = {
-                                            val wasOpen = showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio
+                                            val wasOpen = showSubtitleSettings || showTrackSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio
                                             closeAllMenus(); showSubtitleSettings = !wasOpen; showControls = true; menuTouchKey++
                                         },
                                         onLongClick = {
@@ -2493,7 +2486,7 @@ fun VideoPlayerScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.ClosedCaption, contentDescription = null,
-                                    tint = if (showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio) AmberCore else TextBright,
+                                    tint = if (showSubtitleSettings || showTrackSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio) AmberCore else TextBright,
                                     modifier = Modifier.size(smallButton * 0.44f)
                                 )
                             }
