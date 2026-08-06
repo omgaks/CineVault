@@ -1143,6 +1143,19 @@ fun VideoPlayerScreen(
         }
     }
 
+    // FEATURE: minimal, correct PiP — CineVault's own overlay chrome
+    // (transport controls, lock button, Auto-Sync pill) is now hidden
+    // while in PiP (see the AnimatedVisibility/if conditions gated on
+    // CineVaultPlayerHolder.isInPipMode elsewhere in this file), relying
+    // entirely on Android's own system-drawn PiP controls instead — the
+    // same standard approach most video apps use. This closes out
+    // whatever menus/Studio happened to be open the moment PiP is
+    // entered, so the window is guaranteed to show just clean video no
+    // matter what was on screen right before minimizing.
+    LaunchedEffect(CineVaultPlayerHolder.isInPipMode) {
+        if (CineVaultPlayerHolder.isInPipMode) closeAllMenus()
+    }
+
     DisposableEffect(exoPlayer) {
         CineVaultPlayerHolder.currentPlayer = exoPlayer
         val receiver = object : BroadcastReceiver() {
@@ -2354,7 +2367,7 @@ fun VideoPlayerScreen(
         // popups (Track Selector, Drift, Appearance, quick menu) which
         // were designed to sit alongside visible controls and still do.
         val hideControlsForLargeSheet = studioUi.showStudio || searchUi.showSearch
-        AnimatedVisibility(visible = (showControls || isDraggingSeekbar || showAudioSelector || coreUi.showSettings || trackUi.showSelector || driftUi.showDialog || coreUi.showAppearanceStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu) && !hideControlsForLargeSheet, enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(visible = (showControls || isDraggingSeekbar || showAudioSelector || coreUi.showSettings || trackUi.showSelector || driftUi.showDialog || coreUi.showAppearanceStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu) && !hideControlsForLargeSheet && !CineVaultPlayerHolder.isInPipMode, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize()) {
 
                 val topRowVisible = !showSeekPreview
@@ -2607,7 +2620,7 @@ fun VideoPlayerScreen(
         // without ever showing (or unblocking) the other, still-locked
         // controls behind it.
         AnimatedVisibility(
-            visible = if (controlsLocked) lockButtonVisibleWhileLocked else showControls,
+            visible = (if (controlsLocked) lockButtonVisibleWhileLocked else showControls) && !CineVaultPlayerHolder.isInPipMode,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.TopEnd)
@@ -2635,7 +2648,7 @@ fun VideoPlayerScreen(
             }
         }
 
-        if (!studioUi.showStudio) {
+        if (!studioUi.showStudio && !CineVaultPlayerHolder.isInPipMode) {
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
