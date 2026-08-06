@@ -1,5 +1,6 @@
 package com.sole.cinevault
 
+import android.content.Context
 import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -9,9 +10,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.media3.ui.PlayerView
 import com.sole.cinevault.subtitles.DriftPoint
+import com.sole.cinevault.subtitles.SubtitleAppearance
+import com.sole.cinevault.subtitles.SubtitleBehaviorPrefs
+import com.sole.cinevault.subtitles.SubtitleCleaningOptions
 import com.sole.cinevault.subtitles.SubtitleImportResult
+import com.sole.cinevault.subtitles.SubtitlePresets
 import com.sole.cinevault.subtitles.SubtitleSearchResult
 import com.sole.cinevault.subtitles.SubtitleStudioTab
+import com.sole.cinevault.subtitles.loadSubtitleBehaviorPrefs
+import com.sole.cinevault.subtitles.loadSubtitleCleaningOptions
 
 /*
  * PlayerUiState.kt
@@ -108,4 +115,38 @@ class SubtitleTrackSelectionState {
     var selectedKey by mutableStateOf<String?>(null)
     var selectedLabel by mutableStateOf("")
     var selectedSource by mutableStateOf("")
+}
+
+// Seventh slice: visual styling — font size, position, color/edge preset,
+// and the "keep the file's own embedded ASS/SSA styling" toggle. All read
+// together in the same style-application LaunchedEffect and profile-save
+// LaunchedEffect, so they're one unit in practice even though they're
+// conceptually "size/position" vs "color scheme" vs "override toggle".
+class SubtitleAppearanceUiState {
+    var textSizeSp by mutableFloatStateOf(22f)
+    var bottomPadding by mutableFloatStateOf(0.02f)
+    var preset by mutableStateOf("CineVault")
+    var appearance by mutableStateOf(SubtitlePresets.CineVault)
+    var preserveOriginalStyling by mutableStateOf(false)
+}
+
+// Eighth and final slice: the core on/off toggles, the sync-offset value
+// itself, the dialogue-tap-sync flow's two fields (kept together since
+// they're one feature), and the two persisted preference blobs. This is
+// the biggest single slice (12 variables) because it's genuinely the most
+// central — read from nearly every overlay function rather than one
+// specific flow, which is also why it was done last: by this point every
+// OTHER cluster's own state is already isolated, so this one's the
+// "everything else" bucket rather than a feature in its own right.
+// Needs Context at construction time since behaviorPrefs/cleaningOptions
+// load their saved values from SharedPreferences immediately.
+class SubtitleCoreUiState(context: Context) {
+    var subtitlesEnabled by mutableStateOf(true)
+    var showSettings by mutableStateOf(false)
+    var showAppearanceStudio by mutableStateOf(false)
+    var syncOffset by mutableFloatStateOf(0.0f)
+    var dialogueSyncArmed by mutableStateOf(false)
+    var dialogueSyncReferenceMs by mutableStateOf<Long?>(null)
+    var behaviorPrefs by mutableStateOf(loadSubtitleBehaviorPrefs(context))
+    var cleaningOptions by mutableStateOf(loadSubtitleCleaningOptions(context))
 }
