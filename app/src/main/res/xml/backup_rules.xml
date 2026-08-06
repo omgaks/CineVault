@@ -1,13 +1,29 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   FIX: this was the untouched Android Studio sample stub — the
+   <full-backup-content> element was present (required for
+   android:fullBackupContent to be valid) but everything inside was
+   commented out, meaning NOTHING was actually excluded. Combined with
+   android:allowBackup="true" in the manifest, that meant every
+   SharedPreferences file this app writes — including cinevault_secret
+   (the hidden-folder path list) and the legacy pre-encryption SMB
+   credentials file — was eligible for adb backup and device-transfer.
+
+   Excluded here: anything where "this data existing in a backup at all"
+   defeats the point of the feature (Secret Folder, Restricted Folders,
+   SMB credentials). NOT excluded: favorites, watch history, playback
+   positions, library/scan/metadata caches, subtitle prefs — these are
+   just app state with no privacy concern, and excluding them too would
+   mean losing watch history on every reinstall or device swap for no
+   real benefit.
+
+   This file only applies below Android 12 (API 31) — see
+   data_extraction_rules.xml for the modern equivalent, which needs the
+   same exclusions kept in sync.
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <exclude domain="sharedpref" path="cinevault_secret.xml"/>
+    <exclude domain="sharedpref" path="cinevault_restricted_folders.xml"/>
+    <exclude domain="sharedpref" path="cinevault_smb_shares.xml"/>
+    <exclude domain="sharedpref" path="cinevault_smb_shares_secure.xml"/>
 </full-backup-content>
