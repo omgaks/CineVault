@@ -346,6 +346,12 @@ fun VideoPlayerScreen(
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isSeekPreviewLarge by remember { mutableStateOf(false) }
     var previewFrames by remember { mutableStateOf<List<VideoThumbnailHelper.PreviewFrame>>(emptyList()) }
+    // Bumping this forces the preview-generation LaunchedEffect below to
+    // rerun even when currentVideo.path/duration haven't changed — needed
+    // because Auto-Sync deliberately clears previewFrames/previewBitmap
+    // mid-playback (see runAutoSync) to free memory before analysis, and
+    // that effect's own keys wouldn't otherwise notice anything changed.
+    var previewReloadKey by remember { mutableIntStateOf(0) }
     var edgeSwipeHint by remember { mutableStateOf("") }
 
     var isBuffering by remember { mutableStateOf(false) }
@@ -1100,7 +1106,7 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(currentVideo.path, duration) {
+    LaunchedEffect(currentVideo.path, duration, previewReloadKey) {
         if (!isStreamMedia && duration > 1000L) {
             previewFrames = emptyList()
             val quick = VideoThumbnailHelper.generatePreviewCache(context, currentVideo.path, duration, 18)
@@ -1489,18 +1495,26 @@ fun VideoPlayerScreen(
             return
         }
         autoSyncStatus = AutoSyncStatus.Analyzing("Extracting audio…")
-        // FIX: seek-preview frames (up to 120 bitmaps, now capped by
-        // actual memory rather than entry count — see
-        // VideoThumbnailHelper.kt) were competing with Auto-Sync's own
-        // extraction buffers for the same heap. They regenerate on demand
-        // the next time the person seeks, so there's nothing lost by
-        // freeing them proactively right before a memory-hungry analysis
-        // pass starts.
+        // FIX: this used to only call VideoThumbnailHelper.clearPreviewCache(),
+        // which evicts the LruCache — but the CURRENTLY PLAYING video's own
+        // preview bitmaps are held separately in previewFrames/previewBitmap
+        // (two plain composable state vars), which the cache eviction never
+        // touched. Those are exactly the bitmaps most likely to still be
+        // resident and large (up to 72 dense frames) right when Auto-Sync
+        // needs headroom most, so clearing the cache alone was missing the
+        // single biggest offender. Cleared explicitly here now, and
+        // regenerated afterward via previewReloadKey — the underlying
+        // LaunchedEffect's own keys (currentVideo.path, duration) don't
+        // change mid-playback, so without that reload key these would stay
+        // empty for the rest of the session instead of coming back.
+        previewFrames = emptyList()
+        previewBitmap = null
         VideoThumbnailHelper.clearPreviewCache()
         scope.launch {
             val srtText = withContext(Dispatchers.IO) { readTextFromUri(context, primary) }
             if (srtText == null) {
                 autoSyncStatus = AutoSyncStatus.Failed("Couldn't read the subtitle file")
+                previewReloadKey++
                 return@launch
             }
             autoSyncStatus = AutoSyncStatus.Analyzing("Analysing dialogue…")
@@ -1533,6 +1547,7 @@ fun VideoPlayerScreen(
                 AutoSyncStatus.Failed("Not enough available memory for Auto-Sync right now. Close other apps and try again.")
             }
             autoSyncStatus = result
+            previewReloadKey++
         }
     }
 
