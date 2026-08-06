@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.app.Activity
 import android.content.Intent
 import android.content.Context
+import android.content.res.Configuration
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -34,6 +35,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.ui.theme.CineVaultTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.sole.cinevault.subtitles.SubtitleImportEngine
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +56,16 @@ object CineVaultPlayerHolder {
     // hardware key events via the MediaSession.
     var onNextRequested: (() -> Unit)? = null
     var onPreviousRequested: (() -> Unit)? = null
+    // Bridges MainActivity's onPictureInPictureModeChanged (an Android
+    // lifecycle callback, not something Compose can observe directly) into
+    // Compose. State-backed (unlike the two above) specifically so
+    // VideoPlayerScreen.kt can react to it — hiding its overlay chrome
+    // (transport controls, lock button, menus, the Auto-Sync pill) while
+    // in the tiny PiP window, leaving just the bare video visible. Without
+    // this, the full player UI would try to render into that postage-
+    // stamp-sized window, which is what "only tiny control buttons
+    // visible, nothing usable" was actually describing.
+    var isInPipMode by mutableStateOf(false)
 }
 
 // "Open with CineVault" support — MainActivity receives the incoming VIEW
@@ -189,6 +203,22 @@ class MainActivity : FragmentActivity() {
     // for onStop to do here.
     override fun onStop() {
         super.onStop()
+    }
+
+    // FIX: this override didn't exist at all before — meaning the app
+    // could ENTER PiP mode (see the explicit enterPictureInPictureMode()
+    // calls in VideoPlayerScreen.kt) but had no way to react once there.
+    // Combined with the configChanges gap in AndroidManifest.xml (missing
+    // smallestScreenSize, now fixed — that gap could make Android
+    // recreate the whole Activity on a PiP transition, which is what was
+    // actually behind "movie stopped playing and went to home screen"),
+    // this bridges the mode change into Compose via
+    // CineVaultPlayerHolder.isInPipMode so VideoPlayerScreen.kt can hide
+    // its overlay chrome and show just the bare video, the correct look
+    // for a PiP window rather than a cramped full player UI.
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        CineVaultPlayerHolder.isInPipMode = isInPictureInPictureMode
     }
 
     override fun onDestroy() {
