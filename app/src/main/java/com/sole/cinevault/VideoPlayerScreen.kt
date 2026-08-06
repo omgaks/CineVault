@@ -34,6 +34,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.IntentSenderRequest
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -64,6 +65,7 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Audiotrack
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ClosedCaption
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Tv
@@ -77,6 +79,7 @@ import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -2572,6 +2575,29 @@ fun VideoPlayerScreen(
             )
         }
 
+        if (!studioUi.showStudio) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = if (isLandscape) 62.dp else 66.dp, end = 14.dp)
+            ) {
+                DraggableFloatingPopup(
+                    containerWidth = maxWidth,
+                    containerHeight = maxHeight,
+                    popupWidth = 260.dp,
+                    popupMaxHeight = 200.dp,
+                    onUserInteraction = {}
+                ) {
+                    AutoSyncFloatingIndicator(
+                        status = autoSyncStatus,
+                        onApply = { result -> applyAutoSyncResult(result) },
+                        onCancel = { autoSyncStatus = AutoSyncStatus.Idle },
+                        onRetry = { runAutoSync() }
+                    )
+                }
+            }
+        }
+
         // ── Delete confirmation dialog (styled to match the app, not the
         // plain white Android AlertDialog) ─────────────────────────────
         AnimatedVisibility(
@@ -2781,6 +2807,131 @@ private fun findNearbySrtFiles(videoPath: String): List<java.io.File> {
 // input file gets normalized to spec-correct comma on its first shift,
 // which is a strict improvement, not a behavior change to guard against.
 private val SRT_TIME_REGEX = Regex("(\\d{2}):(\\d{2}):(\\d{2})[,.](\\d{3})")
+
+// FIX/FEATURE: Auto-Sync progress and results previously only rendered
+// inside Subtitle Studio's Timing tab — meaning closing or navigating
+// away from Studio while analysis was running (or while a result was
+// waiting to be applied) made it invisible, with no way to see it again
+// short of reopening Studio and navigating back to Timing. This floating
+// indicator sits above the player itself, independent of Studio's
+// open/closed state, so progress and results stay visible regardless of
+// what else the person is doing on screen. Only rendered while Studio is
+// NOT open (studioUi.showStudio == false at the call site) — when Studio
+// IS open on the Timing tab, the existing inline card there already shows
+// the same information, and showing both at once would just be visual
+// clutter for no benefit.
+//
+// Draggable: wrapped at its call site in the existing
+// DraggableFloatingPopup (same long-press-drag + bounds-clamping already
+// proven for Track Selector/Appearance Studio) — this composable itself
+// only owns the visual content, not positioning or drag, which live at
+// the call site instead.
+@Composable
+private fun AutoSyncFloatingIndicator(
+    status: AutoSyncStatus,
+    onApply: (SubtitleSyncResult) -> Unit,
+    onCancel: () -> Unit,
+    onRetry: () -> Unit
+) {
+    if (status is AutoSyncStatus.Idle) return
+
+    val infiniteTransition = rememberInfiniteTransition(label = "autoSyncSpin")
+    val spinAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(animation = tween(1100, easing = LinearEasing)),
+        label = "autoSyncSpinAngle"
+    )
+
+    Column(
+        horizontalAlignment = Alignment.Start,
+        modifier = Modifier
+            .widthIn(max = 260.dp)
+            .animateContentSize(animationSpec = tween(220))
+            .clip(RoundedCornerShape(16.dp))
+            .background(SpaceDeep.copy(alpha = 0.72f))
+            .border(1.dp, AmberGlow.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
+    ) {
+        when (status) {
+            is AutoSyncStatus.Analyzing -> {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Sync, contentDescription = null, tint = AmberCore,
+                        modifier = Modifier.size(15.dp).graphicsLayer { rotationZ = spinAngle }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = status.stage, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                }
+            }
+            is AutoSyncStatus.Success, is AutoSyncStatus.LowConfidence -> {
+                val result = if (status is AutoSyncStatus.Success) status.result else (status as AutoSyncStatus.LowConfidence).result
+                val highConfidence = status is AutoSyncStatus.Success
+                val accentColor = if (highConfidence) Color(0xFF4CAF50) else Color(0xFFFF9800)
+                val offsetSeconds = result.initialOffsetMs / 1000f
+                val isDrift = result.timeScale != 1.0
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = if (highConfidence) "Auto-sync complete" else "Possible correction found",
+                        color = accentColor, fontSize = 12.sp, fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "${if (isDrift) "Starting offset" else "Offset"}: ${if (offsetSeconds >= 0f) "+" else ""}${"%.2f".format(offsetSeconds)}s",
+                        color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.SemiBold
+                    )
+                    if (isDrift) {
+                        val driftPercent = (result.timeScale - 1.0) * 100.0
+                        Text(
+                            text = "Drift: ${if (driftPercent >= 0) "+" else ""}${"%.2f".format(driftPercent)}%",
+                            color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Text(text = "Confidence: ${(result.confidence * 100).toInt()}%", color = TextMuted, fontSize = 10.sp)
+                    if (!highConfidence) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Limited matching dialogue found — worth previewing before you commit.",
+                            color = TextMuted, fontSize = 9.5.sp, lineHeight = 13.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Apply", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Black,
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFF4CAF50)).clickable { onApply(result) }.padding(horizontal = 14.dp, vertical = 7.dp)
+                        )
+                        Text(
+                            text = "Cancel", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFFE53935)).clickable { onCancel() }.padding(horizontal = 14.dp, vertical = 7.dp)
+                        )
+                    }
+                }
+            }
+            is AutoSyncStatus.Failed -> {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                        Text(text = "Couldn't sync", color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Icon(
+                            imageVector = Icons.Rounded.Close, contentDescription = "Dismiss", tint = TextMuted,
+                            modifier = Modifier.size(15.dp).clickable { onCancel() }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = status.reason, color = TextMuted, fontSize = 10.sp, lineHeight = 13.sp, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Try Again", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Black,
+                        modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore).clickable { onRetry() }.padding(horizontal = 14.dp, vertical = 7.dp)
+                    )
+                }
+            }
+            AutoSyncStatus.Idle -> {}
+        }
+    }
+}
 
 private fun readTextFromUri(context: Context, uri: Uri): String? {
     return try {
