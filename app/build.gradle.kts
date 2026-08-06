@@ -153,12 +153,28 @@ dependencies {
     // stable, official AndroidX artifact (not a third-party dependency).
     implementation("androidx.palette:palette-ktx:1.0.0")
 
-    // Encrypted storage for SMB credentials (Android Keystore-backed).
-    // NOTE: 1.1.0-alpha06 is deliberate, not a mistake — AndroidX Security
+    // Encrypted storage for SMB credentials AND (as of this fix) Secret
+    // Folder's hidden path lists (Android Keystore-backed). NOTE:
+    // 1.1.0-alpha06 is deliberate, not a mistake — AndroidX Security
     // Crypto has never shipped a stable 1.1 release, and this alpha is the
     // de facto production-standard version (1.0.0 has known Keystore bugs
     // on some devices that this release fixed).
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    // BiometricPrompt for Secret Folder's unlock — replaces the deprecated
+    // (since API 30) KeyguardManager.createConfirmDeviceCredentialIntent.
+    // 1.1.0 is the current STABLE release (verified — the -ktx and
+    // -compose variants are still alpha-only as of this writing, so the
+    // plain Java-interop artifact is the correct choice here, same as
+    // it's fine to call from Kotlin).
+    implementation("androidx.biometric:biometric:1.1.0")
+
+    // FragmentActivity (MainActivity's new base class, needed for
+    // BiometricPrompt above) lives in this artifact. Would likely also
+    // arrive transitively via androidx.biometric itself, but declared
+    // explicitly here rather than leave that to chance — 1.8.9 is current
+    // stable (verified).
+    implementation("androidx.fragment:fragment-ktx:1.8.9")
 
     // Custom Tabs — used by the subtitle website fallback (SubtitleWebFallback.kt)
     // to open OpenSubtitles as the recommended/default route: a real browser
