@@ -316,17 +316,13 @@ fun VideoPlayerScreen(
     var subtitleAppearancePreset by remember { mutableStateOf("CineVault") }
     var subtitleAppearance by remember { mutableStateOf(SubtitlePresets.CineVault) }
     var subtitlePreserveOriginalStyling by remember { mutableStateOf(false) }
-    var subtitleGestureFeedback by remember { mutableStateOf("") }
+    val studioUi = remember { SubtitleStudioUiState() }
     var autoSyncStatus by remember { mutableStateOf<AutoSyncStatus>(AutoSyncStatus.Idle) }
-    var showSubtitleStudio by remember { mutableStateOf(false) }
-    var subtitleStudioInitialTab by remember { mutableStateOf<SubtitleStudioTab?>(null) }
     var subtitleBehaviorPrefs by remember { mutableStateOf(loadSubtitleBehaviorPrefs(context)) }
     var subtitleCleaningOptions by remember { mutableStateOf(loadSubtitleCleaningOptions(context)) }
-    var subtitleMenuTouchKey by remember { mutableIntStateOf(0) }
     var subtitlesEnabled by remember { mutableStateOf(true) }
     val autoSubtitleFetch = remember { AutoSubtitleFetchState() }
     var menuTouchKey by remember { mutableIntStateOf(0) }
-    var playerViewForSubtitleStyle by remember { mutableStateOf<PlayerView?>(null) }
 
     var originalSubtitleUri by remember { mutableStateOf<Uri?>(null) }
     var appliedSubtitleOffsetMs by remember { mutableLongStateOf(0L) }
@@ -465,7 +461,7 @@ fun VideoPlayerScreen(
         showSubtitleSearch = false
         driftUi.showDialog = false
         showAppearanceStudio = false
-        showSubtitleStudio = false
+        studioUi.showStudio = false
         showSpeedMenu = false
         showSleepMenu = false
         showSrtBrowser = false
@@ -892,7 +888,7 @@ fun VideoPlayerScreen(
         dialogueSyncArmed = false; dialogueSyncReferenceMs = null; driftUi.showDialog = false
         dualUi.enabled = false; dualUi.statusText = ""; primarySubtitleUri = null; primarySubtitleLanguage = null; audioLanguageCheckedForPath = null
         subtitlePreserveOriginalStyling = false
-        subtitleGestureFeedback = ""
+        studioUi.gestureFeedback = ""
         autoSyncStatus = AutoSyncStatus.Idle
         selectedSubtitleTrackKey = null; selectedSubtitleTrackLabel = ""; selectedSubtitleTrackSource = ""
         droppedFrameNudgeCount = 0; lastNudgeAtMs = 0L
@@ -1193,7 +1189,7 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(showControls, showAudioSelector, showSubtitleSettings, showTrackSelector, showSubtitleSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || showSubtitleStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
+        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
         if (showControls && !anyMenuOpen && !isDraggingSeekbar) {
             delay(4500)
             if (!isDraggingSeekbar && !anyMenuOpen) showControls = false
@@ -1201,7 +1197,7 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(showTopBar, showAudioSelector, showSubtitleSettings, showTrackSelector, showSubtitleSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || showSubtitleStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
+        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
         if (showTopBar && !anyMenuOpen && !isDraggingSeekbar) {
             delay(2800)
             if (!isDraggingSeekbar && !anyMenuOpen) showTopBar = false
@@ -1209,16 +1205,16 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(showAudioSelector, menuTouchKey) { if (showAudioSelector) { delay(9000); showAudioSelector = false } }
-    LaunchedEffect(showSubtitleSettings, subtitleMenuTouchKey) { if (showSubtitleSettings) { delay(9000); showSubtitleSettings = false } }
+    LaunchedEffect(showSubtitleSettings, studioUi.menuTouchKey) { if (showSubtitleSettings) { delay(9000); showSubtitleSettings = false } }
     // FIX: shortened idle timeouts — these only ever fire on genuine
     // inactivity now that C3's activity-detection correctly resets them
     // on every real interaction (verified: Appearance Studio does close,
     // just felt slow at the old duration). Track Selector (12s) and SRT
     // Browser (20s) weren't flagged as an issue, left unchanged.
-    LaunchedEffect(showTrackSelector, subtitleMenuTouchKey) { if (showTrackSelector) { delay(12000); showTrackSelector = false } }
-    LaunchedEffect(showSubtitleSearch, subtitleMenuTouchKey) { if (showSubtitleSearch) { delay(18000); showSubtitleSearch = false } }
-    LaunchedEffect(showAppearanceStudio, subtitleMenuTouchKey) { if (showAppearanceStudio) { delay(15000); showAppearanceStudio = false } }
-    LaunchedEffect(showSubtitleStudio, subtitleMenuTouchKey) { if (showSubtitleStudio) { delay(30000); showSubtitleStudio = false } }
+    LaunchedEffect(showTrackSelector, studioUi.menuTouchKey) { if (showTrackSelector) { delay(12000); showTrackSelector = false } }
+    LaunchedEffect(showSubtitleSearch, studioUi.menuTouchKey) { if (showSubtitleSearch) { delay(18000); showSubtitleSearch = false } }
+    LaunchedEffect(showAppearanceStudio, studioUi.menuTouchKey) { if (showAppearanceStudio) { delay(15000); showAppearanceStudio = false } }
+    LaunchedEffect(studioUi.showStudio, studioUi.menuTouchKey) { if (studioUi.showStudio) { delay(30000); studioUi.showStudio = false } }
     LaunchedEffect(showSrtBrowser) { if (showSrtBrowser) { delay(20000); showSrtBrowser = false } }
     LaunchedEffect(showSpeedMenu) { if (showSpeedMenu) { delay(8000); showSpeedMenu = false } }
     LaunchedEffect(showSleepMenu) { if (showSleepMenu) { delay(8000); showSleepMenu = false } }
@@ -1231,7 +1227,7 @@ fun VideoPlayerScreen(
     // gotten cleaning applied in one of the two copies if edited by hand.
     // One function, both call sites use it.
     fun selectSubtitleTrack(choice: SubtitleTrackChoice) {
-        subtitleMenuTouchKey++
+        studioUi.menuTouchKey++
         when (choice) {
             is SubtitleTrackChoice.Off -> {
                 subtitlesEnabled = false
@@ -1305,8 +1301,8 @@ fun VideoPlayerScreen(
     val activeSubtitleFormat = remember(originalSubtitleUri) { originalSubtitleUri?.let { detectSubtitleFormat(it) } ?: SubtitleFormat.UNKNOWN }
     val isAssOrSsaFormat = activeSubtitleFormat == SubtitleFormat.ASS || activeSubtitleFormat == SubtitleFormat.SSA
 
-    LaunchedEffect(playerViewForSubtitleStyle, subtitleTextSizeSp, subtitleBottomPadding, subtitleAppearance, dualUi.enabled, subtitlePreserveOriginalStyling, isAssOrSsaFormat) {
-        val sv = playerViewForSubtitleStyle?.subtitleView
+    LaunchedEffect(studioUi.playerView, subtitleTextSizeSp, subtitleBottomPadding, subtitleAppearance, dualUi.enabled, subtitlePreserveOriginalStyling, isAssOrSsaFormat) {
+        val sv = studioUi.playerView?.subtitleView
         sv?.setUserDefaultStyle()
         // Embedded styling is enabled in TWO cases: dual mode (needs the
         // injected <font color> tag to render) or the person explicitly
@@ -1576,7 +1572,7 @@ fun VideoPlayerScreen(
         subtitleSyncOffset = (result.initialOffsetMs / 1000f).coerceIn(-10f, 10f)
         driftUi.scale = result.timeScale.toFloat()
         autoSyncStatus = AutoSyncStatus.Idle
-        subtitleMenuTouchKey++
+        studioUi.menuTouchKey++
         Toast.makeText(context, if (result.timeScale != 1.0) "Auto-Sync applied (drift correction)" else "Auto-Sync applied", Toast.LENGTH_SHORT).show()
     }
 
@@ -1710,13 +1706,13 @@ fun VideoPlayerScreen(
                     player = exoPlayer; useController = false
                     resizeMode = if (isZoomMode) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                     subtitleView?.setViewType(SubtitleView.VIEW_TYPE_CANVAS)
-                    playerViewForSubtitleStyle = this
+                    studioUi.playerView = this
                 }
             },
             update = { pv ->
                 pv.player = exoPlayer
                 pv.resizeMode = if (isZoomMode) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                playerViewForSubtitleStyle = pv
+                studioUi.playerView = pv
             }
         )
 
@@ -1746,7 +1742,7 @@ fun VideoPlayerScreen(
                             showSubtitleSearch -> showSubtitleSearch = false
                             driftUi.showDialog -> driftUi.showDialog = false
                             showAppearanceStudio -> showAppearanceStudio = false
-                            showSubtitleStudio -> showSubtitleStudio = false
+                            studioUi.showStudio -> studioUi.showStudio = false
                             dialogueSyncArmed -> {}
                             showSpeedMenu -> showSpeedMenu = false
                             showSleepMenu -> showSleepMenu = false
@@ -1800,10 +1796,10 @@ fun VideoPlayerScreen(
                 )
         )
 
-        LaunchedEffect(subtitleGestureFeedback) {
-            if (subtitleGestureFeedback.isBlank()) return@LaunchedEffect
+        LaunchedEffect(studioUi.gestureFeedback) {
+            if (studioUi.gestureFeedback.isBlank()) return@LaunchedEffect
             delay(900)
-            subtitleGestureFeedback = ""
+            studioUi.gestureFeedback = ""
         }
 
         // ── Subtitle gestures (opt-in, off by default) ──────────────────
@@ -1830,7 +1826,7 @@ fun VideoPlayerScreen(
                         enabledKey = subtitleBehaviorPrefs.enableSubtitleGestures,
                         onPinchTextSize = { zoom ->
                             subtitleTextSizeSp = (subtitleTextSizeSp * zoom).coerceIn(12f, 32f)
-                            subtitleGestureFeedback = "${subtitleTextSizeSp.toInt()}sp"
+                            studioUi.gestureFeedback = "${subtitleTextSizeSp.toInt()}sp"
                         },
                         onHorizontalSyncDrag = { deltaX ->
                             // Positive (rightward) delay matches the same
@@ -1838,18 +1834,18 @@ fun VideoPlayerScreen(
                             val deltaSeconds = deltaX / 60f
                             subtitleSyncOffset = (subtitleSyncOffset + deltaSeconds).coerceIn(-10f, 10f)
                             val formattedOffset = String.format("%.1f", subtitleSyncOffset)
-                            subtitleGestureFeedback = if (subtitleSyncOffset >= 0f) "+${formattedOffset}s" else "${formattedOffset}s"
+                            studioUi.gestureFeedback = if (subtitleSyncOffset >= 0f) "+${formattedOffset}s" else "${formattedOffset}s"
                         },
                         onVerticalPositionDrag = { deltaFraction ->
                             // Dragging UP raises the subtitle, which is a
                             // DECREASE in bottom-padding fraction — sign
                             // flip already applied by the caller.
                             subtitleBottomPadding = (subtitleBottomPadding + deltaFraction).coerceIn(0.02f, 0.90f)
-                            subtitleGestureFeedback = "Position"
+                            studioUi.gestureFeedback = "Position"
                         },
                         onDoubleTapResetSync = {
                             subtitleSyncOffset = 0f
-                            subtitleGestureFeedback = "Sync reset"
+                            studioUi.gestureFeedback = "Sync reset"
                         },
                         onLongPressTogglePlayback = {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -1859,12 +1855,12 @@ fun VideoPlayerScreen(
                     )
             )
             AnimatedVisibility(
-                visible = subtitleGestureFeedback.isNotBlank(),
+                visible = studioUi.gestureFeedback.isNotBlank(),
                 enter = fadeIn(animationSpec = tween(100)), exit = fadeOut(animationSpec = tween(200)),
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = gestureZoneBottomOffset + gestureZoneHeight / 2)
             ) {
                 Text(
-                    text = subtitleGestureFeedback, color = AmberCore, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    text = studioUi.gestureFeedback, color = AmberCore, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 14.dp, vertical = 7.dp)
                 )
             }
@@ -2052,7 +2048,7 @@ fun VideoPlayerScreen(
             subtitleTextSizeSp = subtitleTextSizeSp,
             subtitleBottomPadding = subtitleBottomPadding,
             onFindClick = {
-                subtitleMenuTouchKey++
+                studioUi.menuTouchKey++
                 showSubtitleSettings = false
                 showSubtitleSearch = true
                 showControls = true
@@ -2060,19 +2056,19 @@ fun VideoPlayerScreen(
                     performSubtitleSearch(OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path), "", "")
                 }
             },
-            onTracksClick = { showSubtitleSettings = false; showTrackSelector = true; showControls = true; subtitleMenuTouchKey++ },
+            onTracksClick = { showSubtitleSettings = false; showTrackSelector = true; showControls = true; studioUi.menuTouchKey++ },
             onToggleSubtitles = {
                 subtitlesEnabled = !subtitlesEnabled
                 trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subtitlesEnabled).build()
                 if (!subtitlesEnabled) { selectedSubtitleTrackKey = "off"; selectedSubtitleTrackLabel = ""; selectedSubtitleTrackSource = "" }
-                showControls = true; subtitleMenuTouchKey++
+                showControls = true; studioUi.menuTouchKey++
             },
             onDismissSettings = { showSubtitleSettings = false; showControls = true },
-            onFontSizeChange = { subtitleTextSizeSp = it; showControls = true; subtitleMenuTouchKey++ },
-            onVerticalPositionChange = { subtitleBottomPadding = it; showControls = true; subtitleMenuTouchKey++ },
-            onSyncClick = { showSubtitleSettings = false; subtitleStudioInitialTab = SubtitleStudioTab.TIMING; showSubtitleStudio = true; showControls = true },
+            onFontSizeChange = { subtitleTextSizeSp = it; showControls = true; studioUi.menuTouchKey++ },
+            onVerticalPositionChange = { subtitleBottomPadding = it; showControls = true; studioUi.menuTouchKey++ },
+            onSyncClick = { showSubtitleSettings = false; studioUi.initialTab = SubtitleStudioTab.TIMING; studioUi.showStudio = true; showControls = true },
             onStyleClick = { showSubtitleSettings = false; showAppearanceStudio = true; showControls = true },
-            onSettingsUserInteraction = { subtitleMenuTouchKey++; showControls = true },
+            onSettingsUserInteraction = { studioUi.menuTouchKey++; showControls = true },
             trackSelectorBottomPadding = anchoredY(popupBottomPadding, trackSelectorMaxHeight),
             trackSelectorOffsetX = anchoredX(subIconX, trackSelectorWidth),
             trackSelectorWidth = trackSelectorWidth,
@@ -2087,7 +2083,7 @@ fun VideoPlayerScreen(
             onDeleteLocalTrack = { file -> requestDeleteSubtitle(file) },
             onOpenFilePickerFromTrackSelector = { showTrackSelector = false; srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
             onDismissTrackSelector = { showTrackSelector = false; showControls = true },
-            onTrackSelectorUserInteraction = { subtitleMenuTouchKey++ },
+            onTrackSelectorUserInteraction = { studioUi.menuTouchKey++ },
         )
 
         val searchWidth = if (isLandscape) (maxWidth.value * 0.72f).dp.coerceIn(320.dp, 620.dp)
@@ -2106,10 +2102,10 @@ fun VideoPlayerScreen(
             searchResults = subtitleSearchResults,
             isSearching = subtitleSearchLoading,
             searchStatusText = subtitleSearchStatus,
-            onSearchUserInteraction = { subtitleMenuTouchKey++ },
-            onSearch = { q, s, e -> subtitleMenuTouchKey++; performSubtitleSearch(q, s, e) },
-            onDownloadAndApply = { result -> subtitleMenuTouchKey++; applySearchResult(result, alsoPlay = true) },
-            onDownloadOnly = { result -> subtitleMenuTouchKey++; applySearchResult(result, alsoPlay = false) },
+            onSearchUserInteraction = { studioUi.menuTouchKey++ },
+            onSearch = { q, s, e -> studioUi.menuTouchKey++; performSubtitleSearch(q, s, e) },
+            onDownloadAndApply = { result -> studioUi.menuTouchKey++; applySearchResult(result, alsoPlay = true) },
+            onDownloadOnly = { result -> studioUi.menuTouchKey++; applySearchResult(result, alsoPlay = false) },
             onWebsiteFallbackFromSearch = { showSubtitleSearch = false; showSubtitleFallback = true; showControls = true },
             onDismissSearch = { showSubtitleSearch = false; showControls = true },
             showSubtitleFallback = showSubtitleFallback,
@@ -2192,7 +2188,7 @@ fun VideoPlayerScreen(
             preserveOriginalStyling = subtitlePreserveOriginalStyling,
             onPreserveOriginalStylingChange = { subtitlePreserveOriginalStyling = it },
             onDismissAppearanceStudio = { showAppearanceStudio = false; showControls = true },
-            onAppearanceUserInteraction = { subtitleMenuTouchKey++ },
+            onAppearanceUserInteraction = { studioUi.menuTouchKey++ },
         )
 
         // FIX: sizing only ever reacted to ORIENTATION (isLandscape/
@@ -2225,15 +2221,15 @@ fun VideoPlayerScreen(
             else -> (maxHeight.value * 0.58f).dp.coerceAtMost(480.dp)
         }
         SubtitleStudioOverlay(
-            showSubtitleStudio = showSubtitleStudio,
+            showSubtitleStudio = studioUi.showStudio,
             studioWidth = studioWidth,
             studioMaxHeight = studioMaxHeight,
             containerWidth = maxWidth,
             containerHeight = maxHeight,
-            initialTab = subtitleStudioInitialTab,
+            initialTab = studioUi.initialTab,
             videoPath = currentVideo.path,
             onOpenSearch = {
-                showSubtitleStudio = false
+                studioUi.showStudio = false
                 showSubtitleSearch = true
                 showControls = true
                 if (subtitleSearchResults.isEmpty() && !subtitleSearchLoading) {
@@ -2241,7 +2237,7 @@ fun VideoPlayerScreen(
                 }
             },
             onOpenManualSearch = {
-                showSubtitleStudio = false
+                studioUi.showStudio = false
                 showSubtitleFallback = true
                 showControls = true
             },
@@ -2253,9 +2249,9 @@ fun VideoPlayerScreen(
             onDeleteLocalTrack = { file -> requestDeleteSubtitle(file) },
             onOpenFilePicker = { srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
             currentSyncOffset = subtitleSyncOffset,
-            onSyncOffsetChange = { subtitleSyncOffset = it; subtitleMenuTouchKey++ },
+            onSyncOffsetChange = { subtitleSyncOffset = it; studioUi.menuTouchKey++ },
             onDialogueSyncClick = { armDialogueSync() },
-            onDriftFixClick = { showSubtitleStudio = false; driftUi.showDialog = true },
+            onDriftFixClick = { studioUi.showStudio = false; driftUi.showDialog = true },
             autoSyncStatus = autoSyncStatus,
             autoSyncAvailable = autoSyncAvailable,
             onAutoSyncClick = { runAutoSync() },
@@ -2296,8 +2292,8 @@ fun VideoPlayerScreen(
                 dualUi.gapLines = gap
                 if (dualUi.enabled) fetchAndApplyDualSecondary()
             },
-            onDismiss = { showSubtitleStudio = false; showControls = true },
-            onUserInteraction = { subtitleMenuTouchKey++ },
+            onDismiss = { studioUi.showStudio = false; showControls = true },
+            onUserInteraction = { studioUi.menuTouchKey++ },
         )
 
         // Studio and Search are large, self-contained sheets that cover
@@ -2309,7 +2305,7 @@ fun VideoPlayerScreen(
         // block via the trailing && clause, unlike the smaller anchored
         // popups (Track Selector, Drift, Appearance, quick menu) which
         // were designed to sit alongside visible controls and still do.
-        val hideControlsForLargeSheet = showSubtitleStudio || showSubtitleSearch
+        val hideControlsForLargeSheet = studioUi.showStudio || showSubtitleSearch
         AnimatedVisibility(visible = (showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showTrackSelector || driftUi.showDialog || showAppearanceStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu) && !hideControlsForLargeSheet, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize()) {
 
@@ -2414,7 +2410,7 @@ fun VideoPlayerScreen(
                     )
                 }
 
-                val anyMenuOpenForIntroSkip = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || showSubtitleStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
+                val anyMenuOpenForIntroSkip = showAudioSelector || showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
                 AnimatedVisibility(visible = showIntroSkip && !showSeekPreview && !isDraggingSeekbar && !anyMenuOpenForIntroSkip, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
                     SkipIntroButton(isLandscape = isLandscape) { val t = 95_000L.coerceAtMost(duration.coerceAtLeast(1L)); exoPlayer.seekTo(t); position = t; showControls = true }
                 }
@@ -2485,19 +2481,19 @@ fun VideoPlayerScreen(
                                     .onGloballyPositioned { subIconX = it.positionInRoot().x + it.size.width / 2f }
                                     .combinedClickable(
                                         onClick = {
-                                            val wasOpen = showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || showSubtitleStudio
+                                            val wasOpen = showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio
                                             closeAllMenus(); showSubtitleSettings = !wasOpen; showControls = true; menuTouchKey++
                                         },
                                         onLongClick = {
                                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            closeAllMenus(); subtitleStudioInitialTab = null; showSubtitleStudio = true; showControls = true
+                                            closeAllMenus(); studioUi.initialTab = null; studioUi.showStudio = true; showControls = true
                                         }
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.ClosedCaption, contentDescription = null,
-                                    tint = if (showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || showSubtitleStudio) AmberCore else TextBright,
+                                    tint = if (showSubtitleSettings || showTrackSelector || showSubtitleSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio) AmberCore else TextBright,
                                     modifier = Modifier.size(smallButton * 0.44f)
                                 )
                             }
