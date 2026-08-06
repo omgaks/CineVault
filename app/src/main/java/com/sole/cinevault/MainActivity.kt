@@ -172,7 +172,27 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        CineVaultPlayerHolder.currentPlayer?.pause()
+        // FIX: this only ever called .pause() — never .release() or
+        // cleared CineVaultPlayerHolder. In the NORMAL teardown path this
+        // doesn't actually leak: VideoPlayerScreen.kt's own
+        // DisposableEffect already calls exoPlayer.release() and clears
+        // currentPlayer/onNextRequested/onPreviousRequested when the
+        // composable is disposed, which happens as part of Compose's own
+        // lifecycle binding to this Activity's onDestroy. This is
+        // defense-in-depth for the abnormal case — if that composable's
+        // onDispose doesn't get a chance to run for some reason, the
+        // ExoPlayer instance and its native MediaCodec resources would
+        // otherwise stay referenced by the static CineVaultPlayerHolder
+        // object indefinitely. release() is safe to call twice (idempotent
+        // per Media3), so this costs nothing even when the normal path
+        // already handled it.
+        CineVaultPlayerHolder.currentPlayer?.apply {
+            stop()
+            release()
+        }
+        CineVaultPlayerHolder.currentPlayer = null
+        CineVaultPlayerHolder.onNextRequested = null
+        CineVaultPlayerHolder.onPreviousRequested = null
         super.onDestroy()
     }
 }
