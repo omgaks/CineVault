@@ -460,13 +460,9 @@ suspend fun enrichVideoWithOnlineMetadata(
                     }
 
                 val movie =
-                    if (movieSearchName.contains("sassy girl", ignoreCase = true)) {
-                        movieResults.firstOrNull {
-                            it.release_date?.startsWith("2001") == true
-                        } ?: movieResults.firstOrNull()
-                    } else {
-                        movieResults.firstOrNull()
-                    }
+                    extractYearHint(item.video.name)?.let { yearHint ->
+                        movieResults.firstOrNull { it.release_date?.startsWith(yearHint) == true }
+                    } ?: movieResults.firstOrNull()
 
                 // OMDB ratings for the movie (title + year gives the best match)
                 val (imdb, rt) =
