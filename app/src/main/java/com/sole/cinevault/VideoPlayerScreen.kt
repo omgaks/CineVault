@@ -1605,6 +1605,16 @@ fun VideoPlayerScreen(
     }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        // Captured as plain local vals (not referenced as the implicit
+        // BoxWithConstraintsScope receiver) specifically so they can be
+        // used unambiguously from inside further-nested Box {} scopes
+        // later in this composable (e.g. AutoSyncFloatingIndicator's
+        // wrapping Box) — Kotlin's implicit-receiver resolution can
+        // become ambiguous once there's more than one Box-like receiver
+        // in scope at a given point, even though maxWidth/maxHeight are
+        // only actually defined on this outer one.
+        val playerMaxWidth = maxWidth
+        val playerMaxHeight = maxHeight
         val isLandscape = maxWidth > maxHeight
         val isSmallPhone = maxWidth < 430.dp || maxHeight < 760.dp
         val isCompactLandscape = isLandscape && maxHeight < 430.dp
@@ -2592,8 +2602,8 @@ fun VideoPlayerScreen(
                     .padding(top = if (isLandscape) 62.dp else 66.dp, end = 14.dp)
             ) {
                 DraggableFloatingPopup(
-                    containerWidth = maxWidth,
-                    containerHeight = maxHeight,
+                    containerWidth = playerMaxWidth,
+                    containerHeight = playerMaxHeight,
                     popupWidth = 260.dp,
                     popupMaxHeight = 200.dp,
                     onUserInteraction = {}
