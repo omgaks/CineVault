@@ -256,8 +256,10 @@ fun DetailScreen(
                 // Rating badges — real logo marks, matching the player screen, now with a breathing amber glow
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
                     if ((item.rating ?: 0.0) > 0.0) TmdbBadge(value = formatRating(item.rating))
-                    if (!item.imdbRating.isNullOrBlank() && item.imdbRating != "N/A") ImdbBadge(value = item.imdbRating!!)
-                    if (!item.rottenTomatoesRating.isNullOrBlank() && item.rottenTomatoesRating != "N/A") RottenTomatoesBadge(value = item.rottenTomatoesRating!!)
+                    val imdbRating = item.imdbRating
+                    if (!imdbRating.isNullOrBlank() && imdbRating != "N/A") ImdbBadge(value = imdbRating)
+                    val rtRating = item.rottenTomatoesRating
+                    if (!rtRating.isNullOrBlank() && rtRating != "N/A") RottenTomatoesBadge(value = rtRating)
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
@@ -287,18 +289,21 @@ fun DetailScreen(
                 if (!item.director.isNullOrBlank() || item.collectionName != null || item.curatedCollections.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (!item.director.isNullOrBlank()) {
+                        val director = item.director
+                        if (!director.isNullOrBlank()) {
                             Text(
-                                text = "Directed by ${item.director}",
+                                text = "Directed by $director",
                                 color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.clickable { onDirectorClick(item.director!!) }
+                                modifier = Modifier.clickable { onDirectorClick(director) }
                             )
                         }
-                        if (item.collectionName != null && item.collectionId != null) {
+                        val collectionId = item.collectionId
+                        val collectionName = item.collectionName
+                        if (collectionId != null && collectionName != null) {
                             Text(
-                                text = "Part of the ${item.collectionName}",
+                                text = "Part of the $collectionName",
                                 color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.clickable { onNativeCollectionClick(item.collectionId!!, item.collectionName!!) }
+                                modifier = Modifier.clickable { onNativeCollectionClick(collectionId, collectionName) }
                             )
                         }
                         item.curatedCollections.forEach { curated ->
@@ -360,10 +365,11 @@ fun DetailScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                if (!item.overview.isNullOrBlank()) {
+                val overview = item.overview
+                if (!overview.isNullOrBlank()) {
                     SectionTitle("Overview")
                     Spacer(modifier = Modifier.height(10.dp))
-                    Text(text = item.overview!!, color = TextMuted, fontSize = 15.sp, lineHeight = 22.sp)
+                    Text(text = overview, color = TextMuted, fontSize = 15.sp, lineHeight = 22.sp)
                     Spacer(modifier = Modifier.height(26.dp))
                 }
 
