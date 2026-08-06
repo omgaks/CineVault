@@ -2783,14 +2783,14 @@ private fun TopIconCluster(
     modifier: Modifier = Modifier
 ) {
     val content: @Composable () -> Unit = {
-        LabeledGlowIcon(icon = Icons.Rounded.Tv, label = "PiP", size = iconSize, tint = TextBright, onClick = onPipClick)
-        LabeledGlowIcon(icon = Icons.Rounded.Timer, label = "Sleep", size = iconSize, tint = if (sleepTimerActive || showSleepMenu) AmberCore else TextBright, active = sleepTimerActive || showSleepMenu, onClick = onSleepClick)
+        AmberPillIcon(icon = Icons.Rounded.Tv, contentDescription = "Picture in picture", onClick = onPipClick)
+        AmberPillIcon(icon = Icons.Rounded.Timer, contentDescription = "Sleep timer", activeDot = sleepTimerActive || showSleepMenu, onClick = onSleepClick)
         LabeledGlowIcon(icon = Icons.Rounded.Speed, label = "Speed", size = iconSize, tint = if (playbackSpeed != 1f || showSpeedMenu) AmberCore else TextBright, active = playbackSpeed != 1f || showSpeedMenu, onClick = onSpeedClick)
     }
     if (isLandscape) {
-        Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) { content() }
+        Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) { content() }
     } else {
-        Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) { content() }
+        Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) { content() }
     }
 }
 
@@ -2800,6 +2800,41 @@ private fun TopIconCluster(
 // playback speed != 1x, sleep timer running — still reads clearly through
 // tint and glow intensity). Labels sit below the icon so PiP/Sleep/Speed
 // don't need to be guessed from silhouette alone.
+@Composable
+// FEATURE: matches the lock/unlock button's exact styling (solid amber
+// pill, black icon, no text label) rather than the glass-surface +
+// label look LabeledGlowIcon uses — requested specifically for PiP and
+// Sleep Timer, to bring them visually in line with Lock. activeDot is a
+// small optional indicator (used for Sleep Timer) since a solid-fill
+// pill has no obvious way to show an "active" state via icon swap the
+// way Lock does (Lock/LockOpen) — Timer doesn't have a natural active
+// variant, so a subtle dot preserves that information without breaking
+// the requested visual consistency.
+@Composable
+private fun AmberPillIcon(icon: ImageVector, contentDescription: String, activeDot: Boolean = false, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .height(46.dp)
+            .clip(RoundedCornerShape(50))
+            .background(AmberCore)
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(imageVector = icon, contentDescription = contentDescription, tint = Color.Black, modifier = Modifier.size(22.dp))
+        if (activeDot) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 2.dp, end = 2.dp)
+                    .size(7.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color(0xFFE53935))
+            )
+        }
+    }
+}
+
 @Composable
 private fun LabeledGlowIcon(icon: ImageVector, label: String, size: Dp, tint: Color = TextBright, active: Boolean = false, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
