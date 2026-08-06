@@ -67,3 +67,13 @@ fun tmdbMovieSearchQuery(name: String): String {
         .replace(Regex("\\s+"), " ")
         .trim()
 }
+
+// Pulls a plausible release year straight out of the ORIGINAL filename
+// (before cleanMovieFilename strips it), e.g. "Movie.Name.2001.1080p.mkv"
+// -> "2001". Used to disambiguate TMDB search results generically — any
+// title with a same-named remake/different-year release benefits from
+// this, not just one specific film. Returns null rather than guessing
+// when no year-shaped token is present, same convention as the rest of
+// this file's cleaning functions.
+fun extractYearHint(name: String): String? =
+    Regex("\\b(19|20)\\d{2}\\b").find(name)?.value
