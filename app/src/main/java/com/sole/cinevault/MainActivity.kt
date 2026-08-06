@@ -34,8 +34,11 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.ui.theme.CineVaultTheme
+import androidx.lifecycle.lifecycleScope
+import com.sole.cinevault.subtitles.SubtitleImportEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 object CineVaultPlayerHolder {
@@ -95,6 +98,16 @@ class MainActivity : ComponentActivity() {
         // workflow instead of guessing blind. Still calls the real default
         // handler afterward so the OS crash behavior is unchanged.
         installCrashLogger(applicationContext)
+
+        // Cleans up imported subtitle files older than a week — see
+        // SubtitleImportEngine.cleanOldCache() for why this exists (that
+        // directory only ever grew, never shrank, before this). Launched
+        // on lifecycleScope/IO so it never blocks app startup and cancels
+        // itself automatically if the Activity doesn't survive long enough
+        // to finish, which is fine for a disposable-cache cleanup pass.
+        lifecycleScope.launch(Dispatchers.IO) {
+            SubtitleImportEngine.cleanOldCache(applicationContext)
+        }
 
         // Required for the lock-screen/media notification (CineVaultPlaybackService.kt)
         // to actually be visible on Android 13+. The service itself still runs and
