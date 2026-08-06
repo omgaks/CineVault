@@ -11,7 +11,10 @@ import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
 import android.os.Build
-import android.app.KeyguardManager
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import android.provider.MediaStore
 import android.view.WindowManager
 import android.widget.Toast
@@ -423,8 +426,6 @@ fun LocalVideoLibraryScreen(
     // on purpose — a banner would be overkill for those.
     var activeError by remember { mutableStateOf<ErrorBannerState?>(null) }
 
-    val keyguardManager = remember { context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager }
-
     val gridState = rememberLazyGridState(
         initialFirstVisibleItemIndex = LibraryScrollState.index,
         initialFirstVisibleItemScrollOffset = LibraryScrollState.offset
@@ -439,32 +440,60 @@ fun LocalVideoLibraryScreen(
         LibraryScrollState.gridMode = isGridMode
     }
 
-    // FIX (#4): the previous version only set secretUnlocked = true here and
-    // relied on the NEXT tap of the "Secret" chip to actually navigate,
-    // because openSecretFolder() checks `if (secretUnlocked)` up front and
-    // that check hadn't run yet on the tap that triggered the auth prompt.
-    // Now we navigate immediately in the same callback that confirms the
-    // unlock, so it opens on the first successful unlock.
-    val secretUnlockLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result: ActivityResult ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            secretUnlocked = true
-            selectedCategory = "Secret"
-            Toast.makeText(context, "Secret folder unlocked", Toast.LENGTH_SHORT).show()
-        } else {
-            secretUnlocked = false; selectedCategory = "All"
-            Toast.makeText(context, "Secret folder locked", Toast.LENGTH_SHORT).show()
-        }
-    }
-
+    // FIX: KeyguardManager.createConfirmDeviceCredentialIntent has been
+    // deprecated since API 30, with inconsistent behavior on newer
+    // platforms — androidx.biometric's BiometricPrompt is the current
+    // standard replacement, and additionally supports actual biometric
+    // auth (fingerprint/face) rather than only PIN/pattern/password.
+    // setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL) means
+    // either biometric OR the device's own PIN/pattern/password satisfies
+    // it — matching the original's fallback behavior — and deliberately
+    // has NO setNegativeButtonText(), since combining that with
+    // DEVICE_CREDENTIAL throws IllegalStateException (DEVICE_CREDENTIAL
+    // already provides its own way out of the prompt).
     fun openSecretFolder() {
         if (secretUnlocked) { selectedCategory = "Secret"; return }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && keyguardManager.isKeyguardSecure) {
-            val intent = keyguardManager.createConfirmDeviceCredentialIntent("Unlock Secret Folder", "Confirm fingerprint, PIN, pattern, or password")
-            if (intent != null) secretUnlockLauncher.launch(intent)
-            else Toast.makeText(context, "Device lock is not available", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(context, "Set phone screen lock first to secure this folder", Toast.LENGTH_LONG).show()
+        val activity = context.findCineActivity() as? FragmentActivity
+        if (activity == null) {
+            Toast.makeText(context, "Couldn't open Secret Folder unlock", Toast.LENGTH_SHORT).show()
+            return
         }
+        val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        if (BiometricManager.from(context).canAuthenticate(authenticators) != BiometricManager.BIOMETRIC_SUCCESS) {
+            // Never unlocks by default — an unavailable/unset device lock
+            // means the folder simply stays locked, with a clear reason why.
+            Toast.makeText(context, "Set a device lock (fingerprint, PIN, pattern, or password) first to secure this folder", Toast.LENGTH_LONG).show()
+            return
+        }
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Unlock Secret Folder")
+            .setSubtitle("Confirm fingerprint, PIN, pattern, or password")
+            .setAllowedAuthenticators(authenticators)
+            .build()
+        val prompt = BiometricPrompt(activity, ContextCompat.getMainExecutor(context), object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                // FIX (#4, carried over): navigate in the same callback
+                // that confirms the unlock, not on the NEXT tap of the
+                // "Secret" chip — otherwise it only opens on the second tap.
+                secretUnlocked = true
+                selectedCategory = "Secret"
+                Toast.makeText(context, "Secret folder unlocked", Toast.LENGTH_SHORT).show()
+            }
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                secretUnlocked = false
+                // User-initiated cancel (backed out, or tapped the device
+                // credential fallback's own cancel) isn't a failure worth
+                // a toast — anything else genuinely is.
+                if (errorCode != BiometricPrompt.ERROR_USER_CANCELED && errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON && errorCode != BiometricPrompt.ERROR_CANCELED) {
+                    Toast.makeText(context, "Secret folder locked", Toast.LENGTH_SHORT).show()
+                }
+            }
+            // A single failed attempt (e.g. one bad fingerprint read) keeps
+            // the prompt open for retry — no state change here, matching
+            // BiometricPrompt's own intended UX.
+            override fun onAuthenticationFailed() {}
+        })
+        prompt.authenticate(promptInfo)
     }
 
     fun openContextSheet(item: VideoWithMetadata) {
