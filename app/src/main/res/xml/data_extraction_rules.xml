@@ -16,12 +16,14 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="cinevault_secret.xml"/>
+        <exclude domain="sharedpref" path="cinevault_secret_secure.xml"/>
         <exclude domain="sharedpref" path="cinevault_restricted_folders.xml"/>
         <exclude domain="sharedpref" path="cinevault_smb_shares.xml"/>
         <exclude domain="sharedpref" path="cinevault_smb_shares_secure.xml"/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="cinevault_secret.xml"/>
+        <exclude domain="sharedpref" path="cinevault_secret_secure.xml"/>
         <exclude domain="sharedpref" path="cinevault_restricted_folders.xml"/>
         <exclude domain="sharedpref" path="cinevault_smb_shares.xml"/>
         <exclude domain="sharedpref" path="cinevault_smb_shares_secure.xml"/>
