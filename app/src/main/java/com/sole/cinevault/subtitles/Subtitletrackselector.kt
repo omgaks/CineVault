@@ -211,10 +211,21 @@ private fun TrackRow(
         }
         if (onDelete != null) {
             Spacer(modifier = Modifier.width(6.dp))
-            Icon(
-                imageVector = Icons.Rounded.Delete, contentDescription = "Delete subtitle file", tint = TextMuted,
-                modifier = Modifier.size(15.dp).clickable { onDelete() }
-            )
+            // FIX: the clickable used to be directly on the 15dp icon
+            // itself — well under Android's 48dp recommended minimum
+            // touch target, and sitting right against the much larger
+            // row-wide clickable for onClick (select this track). Easy
+            // to miss and select the track instead of deleting it. Visual
+            // icon size unchanged; only the tappable area is bigger now.
+            Box(
+                modifier = Modifier.size(40.dp).clickable { onDelete() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Delete, contentDescription = "Delete subtitle file", tint = TextMuted,
+                    modifier = Modifier.size(15.dp)
+                )
+            }
         }
     }
 }
