@@ -287,7 +287,7 @@ fun VideoPlayerScreen(
 
     var showAudioSelector by remember { mutableStateOf(false) }
     var showSubtitleSettings by remember { mutableStateOf(false) }
-    var showTrackSelector by remember { mutableStateOf(false) }
+    val trackUi = remember { SubtitleTrackSelectionState() }
     val searchUi = remember { SubtitleAcquisitionUiState() }
 
     var showSpeedMenu by remember { mutableStateOf(false) }
@@ -317,16 +317,11 @@ fun VideoPlayerScreen(
     val autoSubtitleFetch = remember { AutoSubtitleFetchState() }
     var menuTouchKey by remember { mutableIntStateOf(0) }
 
-    var originalSubtitleUri by remember { mutableStateOf<Uri?>(null) }
-    var appliedSubtitleOffsetMs by remember { mutableLongStateOf(0L) }
-
-    // The "true" primary subtitle source — distinct from originalSubtitleUri
+    // The "true" primary subtitle source — distinct from trackUi.originalUri
     // (which sync/drift build FROM, and which becomes the DUAL-MERGED file
     // whenever dual mode is on). Kept separately so turning dual mode back
     // off can revert to the actual primary instead of getting stuck on a
     // merged file with nothing to un-merge from.
-    var primarySubtitleUri by remember { mutableStateOf<Uri?>(null) }
-    var primarySubtitleLanguage by remember { mutableStateOf<String?>(null) }
     var audioLanguageCheckedForPath by remember { mutableStateOf<String?>(null) }
     val dualUi = remember { DualSubtitleState() }
     val dualSecondaryColorHex = "#7FDBFF"
@@ -337,9 +332,6 @@ fun VideoPlayerScreen(
     // exact same key format SubtitleTrackChoice uses (see
     // SubtitleTrackSelector.kt) so the two files can never silently
     // disagree about what "selected" means.
-    var selectedSubtitleTrackKey by remember { mutableStateOf<String?>(null) }
-    var selectedSubtitleTrackLabel by remember { mutableStateOf("") }
-    var selectedSubtitleTrackSource by remember { mutableStateOf("") }
 
     var position by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(1L) }
@@ -450,7 +442,7 @@ fun VideoPlayerScreen(
     fun closeAllMenus() {
         showAudioSelector = false
         showSubtitleSettings = false
-        showTrackSelector = false
+        trackUi.showSelector = false
         searchUi.showSearch = false
         driftUi.showDialog = false
         showAppearanceStudio = false
@@ -596,8 +588,8 @@ fun VideoPlayerScreen(
         try {
             playerErrorMessage = null
             if (subtitleUri != null && isOriginalSubtitle) {
-                originalSubtitleUri = subtitleUri
-                appliedSubtitleOffsetMs = 0L
+                trackUi.originalUri = subtitleUri
+                trackUi.appliedOffsetMs = 0L
                 subtitleSyncOffset = 0f
             }
             val mediaItemBuilder = MediaItem.Builder().setUri(currentVideo.path)
@@ -647,11 +639,11 @@ fun VideoPlayerScreen(
             trackSelector.parameters = trackSelector.buildUponParameters()
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                 .build()
-            primarySubtitleUri = cleanedUri
-            primarySubtitleLanguage = imported.language
-            selectedSubtitleTrackKey = "downloaded"
-            selectedSubtitleTrackLabel = friendlyLanguageName(imported.language ?: "en")
-            selectedSubtitleTrackSource = "Website import"
+            trackUi.primaryUri = cleanedUri
+            trackUi.primaryLanguage = imported.language
+            trackUi.selectedKey = "downloaded"
+            trackUi.selectedLabel = friendlyLanguageName(imported.language ?: "en")
+            trackUi.selectedSource = "Website import"
             playCurrentVideoWithSubtitle(cleanedUri, resumeAt)
             searchUi.showFallback = false
             searchUi.showEmbeddedBrowser = false
@@ -824,7 +816,7 @@ fun VideoPlayerScreen(
                 is SubtitleDownloadResult.Success -> {
                     if (alsoPlay) {
                         // FIX: active-track state (subtitlesEnabled, track
-                        // selector, selectedSubtitleTrackKey/label/source,
+                        // selector, trackUi.selectedKey/label/source,
                         // and the remember-last-language promotion) used to
                         // be set unconditionally above this check — meaning
                         // "Save only" incorrectly marked this subtitle as
@@ -833,7 +825,7 @@ fun VideoPlayerScreen(
                         // the person actually chose to apply it.
                         subtitlesEnabled = true
                         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-                        selectedSubtitleTrackKey = "downloaded"
+                        trackUi.selectedKey = "downloaded"
                         // FIX: was hardcoded to "OpenSubtitles" regardless
                         // of which provider actually supplied this result
                         // — meaning a successfully-applied SubDL subtitle
@@ -842,15 +834,15 @@ fun VideoPlayerScreen(
                         // From the outside that looks exactly like "SubDL
                         // apply does nothing," when the download and apply
                         // may have genuinely worked the whole time.
-                        selectedSubtitleTrackLabel = friendlyLanguageName(result.language); selectedSubtitleTrackSource = result.provider
+                        trackUi.selectedLabel = friendlyLanguageName(result.language); trackUi.selectedSource = result.provider
                         if (subtitleBehaviorPrefs.rememberLastSelectedLanguage && result.language.isNotBlank()) {
                             subtitleBehaviorPrefs = promoteLanguageToFront(subtitleBehaviorPrefs, result.language.take(2).lowercase())
                             saveSubtitleBehaviorPrefs(context, subtitleBehaviorPrefs)
                         }
                         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
                         val cleanedApplyUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, downloadResult.uri, subtitleCleaningOptions) } ?: downloadResult.uri
-                        primarySubtitleUri = cleanedApplyUri
-                        primarySubtitleLanguage = SubtitleLanguageRegistry.normalize(result.language)
+                        trackUi.primaryUri = cleanedApplyUri
+                        trackUi.primaryLanguage = SubtitleLanguageRegistry.normalize(result.language)
                         playCurrentVideoWithSubtitle(subtitleUri = cleanedApplyUri, resumePosition = resumeAt)
                         searchUi.showSearch = false; showControls = true
                         Toast.makeText(context, "Subtitle applied", Toast.LENGTH_SHORT).show()
@@ -870,20 +862,20 @@ fun VideoPlayerScreen(
     LaunchedEffect(currentVideo.path) {
         val savedPosition = if (isStreamMedia) 0L else loadPlaybackPosition(context, currentVideo.path)
         position = savedPosition; duration = 1L; showControls = true; showTopBar = true
-        showAudioSelector = false; showSubtitleSettings = false; showTrackSelector = false; searchUi.showSearch = false; showSpeedMenu = false; showSleepMenu = false; showSrtBrowser = false
+        showAudioSelector = false; showSubtitleSettings = false; trackUi.showSelector = false; searchUi.showSearch = false; showSpeedMenu = false; showSleepMenu = false; showSrtBrowser = false
         searchUi.showFallback = false; searchUi.showEmbeddedBrowser = false; searchUi.pendingImportCandidates = null
         searchUi.searchResults = emptyList(); searchUi.searchStatus = ""; searchUi.searchLoading = false
         pendingNextEpisode = null; nextEpisodeCountdown = 0; showNextEpisodeOverlay = false
         previewBitmap = null; previewFrames = emptyList(); isVideoEnded = false
         playerErrorMessage = null; errorRetryCount = 0; stuckBufferingHint = false
-        originalSubtitleUri = null; appliedSubtitleOffsetMs = 0L; subtitleSyncOffset = 0.0f
+        trackUi.originalUri = null; trackUi.appliedOffsetMs = 0L; subtitleSyncOffset = 0.0f
         driftUi.scale = 1.0f; driftUi.appliedScale = 1.0f; driftUi.pointA = null; driftUi.pointB = null
         dialogueSyncArmed = false; dialogueSyncReferenceMs = null; driftUi.showDialog = false
-        dualUi.enabled = false; dualUi.statusText = ""; primarySubtitleUri = null; primarySubtitleLanguage = null; audioLanguageCheckedForPath = null
+        dualUi.enabled = false; dualUi.statusText = ""; trackUi.primaryUri = null; trackUi.primaryLanguage = null; audioLanguageCheckedForPath = null
         subtitlePreserveOriginalStyling = false
         studioUi.gestureFeedback = ""
         autoSyncStatus = AutoSyncStatus.Idle
-        selectedSubtitleTrackKey = null; selectedSubtitleTrackLabel = ""; selectedSubtitleTrackSource = ""
+        trackUi.selectedKey = null; trackUi.selectedLabel = ""; trackUi.selectedSource = ""
         droppedFrameNudgeCount = 0; lastNudgeAtMs = 0L
         if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
         if (isRestrictedFolderMedia) updateRestrictedFolderLastPlayed(context, currentVideo.path, currentVideo.folderPath)
@@ -908,23 +900,23 @@ fun VideoPlayerScreen(
                 trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                 val localUri = Uri.fromFile(localMatch.file)
                 val cleanedLocalUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, localUri, subtitleCleaningOptions) } ?: localUri
-                primarySubtitleUri = cleanedLocalUri
-                primarySubtitleLanguage = localMatch.languageCode
+                trackUi.primaryUri = cleanedLocalUri
+                trackUi.primaryLanguage = localMatch.languageCode
                 playCurrentVideoWithSubtitle(cleanedLocalUri, savedPosition)
                 autoSubtitleFetch.attemptedForPath = currentVideo.path
-                selectedSubtitleTrackKey = "local:${localMatch.file.absolutePath}"
-                selectedSubtitleTrackLabel = localMatch.file.name; selectedSubtitleTrackSource = "Local file"
+                trackUi.selectedKey = "local:${localMatch.file.absolutePath}"
+                trackUi.selectedLabel = localMatch.file.name; trackUi.selectedSource = "Local file"
             }
             cachedSubtitle != null -> {
                 subtitlesEnabled = true
                 trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                 val cleanedCachedUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, cachedSubtitle.uri, subtitleCleaningOptions) } ?: cachedSubtitle.uri
-                primarySubtitleUri = cleanedCachedUri
-                primarySubtitleLanguage = cachedSubtitle.language
+                trackUi.primaryUri = cleanedCachedUri
+                trackUi.primaryLanguage = cachedSubtitle.language
                 playCurrentVideoWithSubtitle(cleanedCachedUri, savedPosition)
                 autoSubtitleFetch.attemptedForPath = currentVideo.path
-                selectedSubtitleTrackKey = "downloaded"
-                selectedSubtitleTrackLabel = friendlyLanguageName(cachedSubtitle.language); selectedSubtitleTrackSource = "OpenSubtitles"
+                trackUi.selectedKey = "downloaded"
+                trackUi.selectedLabel = friendlyLanguageName(cachedSubtitle.language); trackUi.selectedSource = "OpenSubtitles"
             }
             else -> {
                 playCurrentVideoWithSubtitle(resumePosition = savedPosition)
@@ -948,11 +940,11 @@ fun VideoPlayerScreen(
                         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                         autoSubtitleFetch.status = "Subtitle loaded"
                         val cleanedResultUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, result.uri, subtitleCleaningOptions) } ?: result.uri
-                        primarySubtitleUri = cleanedResultUri
-                        primarySubtitleLanguage = SubtitleLanguageRegistry.normalize(result.language)
+                        trackUi.primaryUri = cleanedResultUri
+                        trackUi.primaryLanguage = SubtitleLanguageRegistry.normalize(result.language)
                         playCurrentVideoWithSubtitle(cleanedResultUri, resumeAt)
-                        selectedSubtitleTrackKey = "downloaded"
-                        selectedSubtitleTrackLabel = friendlyLanguageName(result.language); selectedSubtitleTrackSource = "OpenSubtitles"
+                        trackUi.selectedKey = "downloaded"
+                        trackUi.selectedLabel = friendlyLanguageName(result.language); trackUi.selectedSource = "OpenSubtitles"
                         delay(1400); autoSubtitleFetch.status = ""
                     } else {
                         autoSubtitleFetch.status = result.summary(); delay(3500); autoSubtitleFetch.status = ""
@@ -1043,7 +1035,7 @@ fun VideoPlayerScreen(
                     errorRetryCount++
                     scope.launch {
                         delay(1000L * errorRetryCount)
-                        playCurrentVideoWithSubtitle(subtitleUri = originalSubtitleUri, resumePosition = posAtError, isOriginalSubtitle = false)
+                        playCurrentVideoWithSubtitle(subtitleUri = trackUi.originalUri, resumePosition = posAtError, isOriginalSubtitle = false)
                     }
                 } else {
                     playerErrorMessage = friendlyPlaybackError(error)
@@ -1181,16 +1173,16 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(showControls, showAudioSelector, showSubtitleSettings, showTrackSelector, searchUi.showSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
+    LaunchedEffect(showControls, showAudioSelector, showSubtitleSettings, trackUi.showSelector, searchUi.showSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
+        val anyMenuOpen = showAudioSelector || showSubtitleSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
         if (showControls && !anyMenuOpen && !isDraggingSeekbar) {
             delay(4500)
             if (!isDraggingSeekbar && !anyMenuOpen) showControls = false
         }
     }
 
-    LaunchedEffect(showTopBar, showAudioSelector, showSubtitleSettings, showTrackSelector, searchUi.showSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || showSubtitleSettings || showTrackSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
+    LaunchedEffect(showTopBar, showAudioSelector, showSubtitleSettings, trackUi.showSelector, searchUi.showSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
+        val anyMenuOpen = showAudioSelector || showSubtitleSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
         if (showTopBar && !anyMenuOpen && !isDraggingSeekbar) {
             delay(2800)
             if (!isDraggingSeekbar && !anyMenuOpen) showTopBar = false
@@ -1204,7 +1196,7 @@ fun VideoPlayerScreen(
     // on every real interaction (verified: Appearance Studio does close,
     // just felt slow at the old duration). Track Selector (12s) and SRT
     // Browser (20s) weren't flagged as an issue, left unchanged.
-    LaunchedEffect(showTrackSelector, studioUi.menuTouchKey) { if (showTrackSelector) { delay(12000); showTrackSelector = false } }
+    LaunchedEffect(trackUi.showSelector, studioUi.menuTouchKey) { if (trackUi.showSelector) { delay(12000); trackUi.showSelector = false } }
     LaunchedEffect(searchUi.showSearch, studioUi.menuTouchKey) { if (searchUi.showSearch) { delay(18000); searchUi.showSearch = false } }
     LaunchedEffect(showAppearanceStudio, studioUi.menuTouchKey) { if (showAppearanceStudio) { delay(15000); showAppearanceStudio = false } }
     LaunchedEffect(studioUi.showStudio, studioUi.menuTouchKey) { if (studioUi.showStudio) { delay(30000); studioUi.showStudio = false } }
@@ -1225,7 +1217,7 @@ fun VideoPlayerScreen(
             is SubtitleTrackChoice.Off -> {
                 subtitlesEnabled = false
                 trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
-                selectedSubtitleTrackKey = choice.key; selectedSubtitleTrackLabel = ""; selectedSubtitleTrackSource = ""
+                trackUi.selectedKey = choice.key; trackUi.selectedLabel = ""; trackUi.selectedSource = ""
             }
             is SubtitleTrackChoice.Embedded -> {
                 subtitlesEnabled = true
@@ -1236,9 +1228,9 @@ fun VideoPlayerScreen(
                         .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, listOf(choice.trackIndexInGroup)))
                         .build()
                 }
-                selectedSubtitleTrackKey = choice.key
-                selectedSubtitleTrackLabel = friendlyLanguageName(choice.language)
-                selectedSubtitleTrackSource = "Embedded"
+                trackUi.selectedKey = choice.key
+                trackUi.selectedLabel = friendlyLanguageName(choice.language)
+                trackUi.selectedSource = "Embedded"
                 if (subtitleBehaviorPrefs.rememberLastSelectedLanguage && choice.language.isNotBlank() && choice.language != "und") {
                     subtitleBehaviorPrefs = promoteLanguageToFront(subtitleBehaviorPrefs, choice.language.take(2).lowercase())
                     saveSubtitleBehaviorPrefs(context, subtitleBehaviorPrefs)
@@ -1250,12 +1242,12 @@ fun VideoPlayerScreen(
                 val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
                 scope.launch {
                     val cleaned = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, Uri.fromFile(choice.file), subtitleCleaningOptions) } ?: Uri.fromFile(choice.file)
-                    primarySubtitleUri = cleaned
-                    primarySubtitleLanguage = SubtitleLanguageRegistry.normalize(choice.language)
+                    trackUi.primaryUri = cleaned
+                    trackUi.primaryLanguage = SubtitleLanguageRegistry.normalize(choice.language)
                     playCurrentVideoWithSubtitle(subtitleUri = cleaned, resumePosition = resumeAt)
                 }
-                selectedSubtitleTrackKey = choice.key
-                selectedSubtitleTrackLabel = friendlyLanguageName(choice.language); selectedSubtitleTrackSource = "OpenSubtitles"
+                trackUi.selectedKey = choice.key
+                trackUi.selectedLabel = friendlyLanguageName(choice.language); trackUi.selectedSource = "OpenSubtitles"
             }
             is SubtitleTrackChoice.Local -> {
                 pendingSrtUri = Uri.fromFile(choice.file)
@@ -1275,23 +1267,23 @@ fun VideoPlayerScreen(
         val formatLabel = if (pickedFormat == SubtitleFormat.SRT || pickedFormat == SubtitleFormat.UNKNOWN) "Subtitle" else pickedFormat.label.substringBefore(" (")
         autoSubtitleFetch.status = "$formatLabel loaded"
         val cleanedSrtUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, uri, subtitleCleaningOptions) } ?: uri
-        primarySubtitleUri = cleanedSrtUri
+        trackUi.primaryUri = cleanedSrtUri
         val pickedFile = uri.path?.let { java.io.File(it) }
         // Best-effort language detection from the filename itself (e.g.
         // "Movie.hi.srt") using the same parser the auto-matcher uses —
         // stays null (unknown) for a bare "Movie.srt" with no language
         // token, which is a safe/honest fallback rather than guessing.
-        primarySubtitleLanguage = pickedFile?.name?.let { name -> parseSubtitleFilename(name).first }
+        trackUi.primaryLanguage = pickedFile?.name?.let { name -> parseSubtitleFilename(name).first }
         playCurrentVideoWithSubtitle(subtitleUri = cleanedSrtUri, resumePosition = resumeAt)
-        selectedSubtitleTrackKey = "local:${pickedFile?.absolutePath ?: uri.toString()}"
-        selectedSubtitleTrackLabel = pickedFile?.name ?: "Subtitle file"; selectedSubtitleTrackSource = "Local file"
-        showSubtitleSettings = false; showTrackSelector = false; showControls = true
+        trackUi.selectedKey = "local:${pickedFile?.absolutePath ?: uri.toString()}"
+        trackUi.selectedLabel = pickedFile?.name ?: "Subtitle file"; trackUi.selectedSource = "Local file"
+        showSubtitleSettings = false; trackUi.showSelector = false; showControls = true
         Toast.makeText(context, "$formatLabel file loaded", Toast.LENGTH_SHORT).show()
         delay(1400); autoSubtitleFetch.status = ""
         pendingSrtUri = null
     }
 
-    val activeSubtitleFormat = remember(originalSubtitleUri) { originalSubtitleUri?.let { detectSubtitleFormat(it) } ?: SubtitleFormat.UNKNOWN }
+    val activeSubtitleFormat = remember(trackUi.originalUri) { trackUi.originalUri?.let { detectSubtitleFormat(it) } ?: SubtitleFormat.UNKNOWN }
     val isAssOrSsaFormat = activeSubtitleFormat == SubtitleFormat.ASS || activeSubtitleFormat == SubtitleFormat.SSA
 
     LaunchedEffect(studioUi.playerView, subtitleTextSizeSp, subtitleBottomPadding, subtitleAppearance, dualUi.enabled, subtitlePreserveOriginalStyling, isAssOrSsaFormat) {
@@ -1317,16 +1309,16 @@ fun VideoPlayerScreen(
         )
     }
 
-    LaunchedEffect(subtitleSyncOffset, driftUi.scale, originalSubtitleUri) {
-        val baseUri = originalSubtitleUri ?: return@LaunchedEffect
+    LaunchedEffect(subtitleSyncOffset, driftUi.scale, trackUi.originalUri) {
+        val baseUri = trackUi.originalUri ?: return@LaunchedEffect
         if (!subtitlesEnabled) return@LaunchedEffect
         val offsetMs = (subtitleSyncOffset * 1000f).toLong()
-        if (offsetMs == appliedSubtitleOffsetMs && driftUi.scale == driftUi.appliedScale) return@LaunchedEffect
+        if (offsetMs == trackUi.appliedOffsetMs && driftUi.scale == driftUi.appliedScale) return@LaunchedEffect
         delay(350)
         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
         val shiftedUri = withContext(Dispatchers.IO) { buildShiftedSubtitleFile(context, baseUri, offsetMs, driftUi.scale) }
         if (shiftedUri != null) {
-            appliedSubtitleOffsetMs = offsetMs
+            trackUi.appliedOffsetMs = offsetMs
             driftUi.appliedScale = driftUi.scale
             playCurrentVideoWithSubtitle(subtitleUri = shiftedUri, resumePosition = resumeAt, isOriginalSubtitle = false)
         }
@@ -1382,7 +1374,7 @@ fun VideoPlayerScreen(
     // subtitle. Rebuilds automatically if the secondary language changes
     // while dual mode is already on.
     fun fetchAndApplyDualSecondary() {
-        val primary = primarySubtitleUri
+        val primary = trackUi.primaryUri
         if (primary == null) {
             Toast.makeText(context, "Dual subtitles need a downloaded or local subtitle as the primary track", Toast.LENGTH_LONG).show()
             dualUi.enabled = false
@@ -1399,8 +1391,8 @@ fun VideoPlayerScreen(
         // a clear message, using the real tracked primary language rather
         // than guessing from preferences.
         val normalizedSecondary = SubtitleLanguageRegistry.normalize(dualUi.secondaryLanguage)
-        if (primarySubtitleLanguage != null && normalizedSecondary != null && primarySubtitleLanguage == normalizedSecondary) {
-            Toast.makeText(context, "Secondary language can't be the same as the primary (${friendlyLanguageName(primarySubtitleLanguage)}) — pick a different one", Toast.LENGTH_LONG).show()
+        if (trackUi.primaryLanguage != null && normalizedSecondary != null && trackUi.primaryLanguage == normalizedSecondary) {
+            Toast.makeText(context, "Secondary language can't be the same as the primary (${friendlyLanguageName(trackUi.primaryLanguage)}) — pick a different one", Toast.LENGTH_LONG).show()
             dualUi.enabled = false
             return
         }
@@ -1455,16 +1447,16 @@ fun VideoPlayerScreen(
             }
             val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
             playCurrentVideoWithSubtitle(subtitleUri = merged, resumePosition = resumeAt, isOriginalSubtitle = false)
-            originalSubtitleUri = merged
-            appliedSubtitleOffsetMs = (subtitleSyncOffset * 1000f).toLong()
-            dualUi.statusText = "Dual subtitles: ${if (primarySubtitleLanguage != null) friendlyLanguageName(primarySubtitleLanguage) else "Primary"} + ${friendlyLanguageName(dualUi.secondaryLanguage)}"
+            trackUi.originalUri = merged
+            trackUi.appliedOffsetMs = (subtitleSyncOffset * 1000f).toLong()
+            dualUi.statusText = "Dual subtitles: ${if (trackUi.primaryLanguage != null) friendlyLanguageName(trackUi.primaryLanguage) else "Primary"} + ${friendlyLanguageName(dualUi.secondaryLanguage)}"
         }
     }
 
     fun disableDualSubtitles() {
         dualUi.enabled = false
         dualUi.statusText = ""
-        val primary = primarySubtitleUri ?: return
+        val primary = trackUi.primaryUri ?: return
         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
         playCurrentVideoWithSubtitle(subtitleUri = primary, resumePosition = resumeAt)
     }
@@ -1481,7 +1473,7 @@ fun VideoPlayerScreen(
     // silently fail deep inside the engine instead of being caught here)
     // or that the video itself is a genuinely readable local/content
     // source rather than some other unplayable state.
-    val primarySubtitleForAutoSync = primarySubtitleUri
+    val primarySubtitleForAutoSync = trackUi.primaryUri
     val autoSyncAvailable = primarySubtitleForAutoSync != null &&
         supportsCustomTextPipeline(detectSubtitleFormat(primarySubtitleForAutoSync)) &&
         !isStreamMedia &&
@@ -1498,10 +1490,10 @@ fun VideoPlayerScreen(
         // concurrent analyses would each hold their own extraction
         // buffers at once, which is exactly the kind of avoidable memory
         // pressure Auto-Sync can't afford on a 256MB heap. Checked first,
-        // before even reading primarySubtitleUri, to close that window as
+        // before even reading trackUi.primaryUri, to close that window as
         // tightly as possible.
         if (autoSyncStatus is AutoSyncStatus.Analyzing) return
-        val primary = primarySubtitleUri
+        val primary = trackUi.primaryUri
         if (primary == null) {
             Toast.makeText(context, "Auto-Sync needs a downloaded or local subtitle loaded first", Toast.LENGTH_LONG).show()
             return
@@ -1731,7 +1723,7 @@ fun VideoPlayerScreen(
                         when {
                             showAudioSelector -> showAudioSelector = false
                             showSubtitleSettings -> showSubtitleSettings = false
-                            showTrackSelector -> showTrackSelector = false
+                            trackUi.showSelector -> trackUi.showSelector = false
                             searchUi.showSearch -> searchUi.showSearch = false
                             driftUi.showDialog -> driftUi.showDialog = false
                             showAppearanceStudio -> showAppearanceStudio = false
@@ -1918,7 +1910,7 @@ fun VideoPlayerScreen(
                         text = "Retry", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
                         modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore).clickable {
                             errorRetryCount = 0
-                            playCurrentVideoWithSubtitle(subtitleUri = originalSubtitleUri, resumePosition = position, isOriginalSubtitle = false)
+                            playCurrentVideoWithSubtitle(subtitleUri = trackUi.originalUri, resumePosition = position, isOriginalSubtitle = false)
                         }.padding(horizontal = 18.dp, vertical = 9.dp)
                     )
                 }
@@ -2016,24 +2008,24 @@ fun VideoPlayerScreen(
                     }
                 }
         }
-        val downloadedTrackChoice = remember(currentVideo.path, showTrackSelector) {
+        val downloadedTrackChoice = remember(currentVideo.path, trackUi.showSelector) {
             if (!canDownloadExternalSubtitles) null
             else OpenSubtitlesClient.findCachedSubtitle(context, currentVideo.path, subtitleBehaviorPrefs.preferredLanguages)?.let { cached ->
                 cached.uri.path?.let { path -> SubtitleTrackChoice.Downloaded(file = java.io.File(path), language = cached.language) }
             }
         }
-        val localFileChoices = remember(currentVideo.path, showTrackSelector) { findNearbySrtFiles(currentVideo.path) }
+        val localFileChoices = remember(currentVideo.path, trackUi.showSelector) { findNearbySrtFiles(currentVideo.path) }
             .filter { it.absolutePath !in pendingDeletePaths }
 
         val subtitleQuickMenuStatusText = when {
             !subtitlesEnabled -> "Subtitles off"
-            selectedSubtitleTrackLabel.isNotBlank() -> "$selectedSubtitleTrackLabel · $selectedSubtitleTrackSource"
+            trackUi.selectedLabel.isNotBlank() -> "$trackUi.selectedLabel · $trackUi.selectedSource"
             hasInternalSubtitles -> "Embedded track active"
             else -> "No subtitle selected"
         }
         SubtitleQuickMenuAndTrackSelector(
             showSubtitleSettings = showSubtitleSettings,
-            showTrackSelector = showTrackSelector,
+            showTrackSelector = trackUi.showSelector,
             subtitlesEnabled = subtitlesEnabled,
             activeTrackStatusText = subtitleQuickMenuStatusText,
             quickMenuBottomPadding = anchoredY(popupBottomPadding, subtitlePopupHeightEstimate),
@@ -2049,11 +2041,11 @@ fun VideoPlayerScreen(
                     performSubtitleSearch(OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path), "", "")
                 }
             },
-            onTracksClick = { showSubtitleSettings = false; showTrackSelector = true; showControls = true; studioUi.menuTouchKey++ },
+            onTracksClick = { showSubtitleSettings = false; trackUi.showSelector = true; showControls = true; studioUi.menuTouchKey++ },
             onToggleSubtitles = {
                 subtitlesEnabled = !subtitlesEnabled
                 trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subtitlesEnabled).build()
-                if (!subtitlesEnabled) { selectedSubtitleTrackKey = "off"; selectedSubtitleTrackLabel = ""; selectedSubtitleTrackSource = "" }
+                if (!subtitlesEnabled) { trackUi.selectedKey = "off"; trackUi.selectedLabel = ""; trackUi.selectedSource = "" }
                 showControls = true; studioUi.menuTouchKey++
             },
             onDismissSettings = { showSubtitleSettings = false; showControls = true },
@@ -2071,11 +2063,11 @@ fun VideoPlayerScreen(
             embeddedTrackChoices = embeddedTrackChoices,
             downloadedTrackChoice = downloadedTrackChoice,
             localFileChoices = localFileChoices,
-            selectedTrackKey = selectedSubtitleTrackKey,
-            onSelectTrack = { choice -> selectSubtitleTrack(choice); showTrackSelector = false; showControls = true },
+            selectedTrackKey = trackUi.selectedKey,
+            onSelectTrack = { choice -> selectSubtitleTrack(choice); trackUi.showSelector = false; showControls = true },
             onDeleteLocalTrack = { file -> requestDeleteSubtitle(file) },
-            onOpenFilePickerFromTrackSelector = { showTrackSelector = false; srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
-            onDismissTrackSelector = { showTrackSelector = false; showControls = true },
+            onOpenFilePickerFromTrackSelector = { trackUi.showSelector = false; srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
+            onDismissTrackSelector = { trackUi.showSelector = false; showControls = true },
             onTrackSelectorUserInteraction = { studioUi.menuTouchKey++ },
         )
 
@@ -2237,7 +2229,7 @@ fun VideoPlayerScreen(
             embeddedTracks = embeddedTrackChoices,
             downloadedTrack = downloadedTrackChoice,
             localFiles = localFileChoices,
-            selectedTrackKey = selectedSubtitleTrackKey,
+            selectedTrackKey = trackUi.selectedKey,
             onSelectTrack = { choice -> selectSubtitleTrack(choice) },
             onDeleteLocalTrack = { file -> requestDeleteSubtitle(file) },
             onOpenFilePicker = { srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
@@ -2269,7 +2261,7 @@ fun VideoPlayerScreen(
             cleaningOptions = subtitleCleaningOptions,
             onCleaningOptionsChange = { subtitleCleaningOptions = it; saveSubtitleCleaningOptions(context, it) },
             dualSubtitlesEnabled = dualUi.enabled,
-            dualCanEnable = primarySubtitleUri != null,
+            dualCanEnable = trackUi.primaryUri != null,
             dualSecondaryLanguage = dualUi.secondaryLanguage,
             dualGapLines = dualUi.gapLines,
             dualStatusText = dualUi.statusText,
@@ -2299,7 +2291,7 @@ fun VideoPlayerScreen(
         // popups (Track Selector, Drift, Appearance, quick menu) which
         // were designed to sit alongside visible controls and still do.
         val hideControlsForLargeSheet = studioUi.showStudio || searchUi.showSearch
-        AnimatedVisibility(visible = (showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || showTrackSelector || driftUi.showDialog || showAppearanceStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu) && !hideControlsForLargeSheet, enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(visible = (showControls || isDraggingSeekbar || showAudioSelector || showSubtitleSettings || trackUi.showSelector || driftUi.showDialog || showAppearanceStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu) && !hideControlsForLargeSheet, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize()) {
 
                 val topRowVisible = !showSeekPreview
@@ -2403,7 +2395,7 @@ fun VideoPlayerScreen(
                     )
                 }
 
-                val anyMenuOpenForIntroSkip = showAudioSelector || showSubtitleSettings || showTrackSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
+                val anyMenuOpenForIntroSkip = showAudioSelector || showSubtitleSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio || dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
                 AnimatedVisibility(visible = showIntroSkip && !showSeekPreview && !isDraggingSeekbar && !anyMenuOpenForIntroSkip, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
                     SkipIntroButton(isLandscape = isLandscape) { val t = 95_000L.coerceAtMost(duration.coerceAtLeast(1L)); exoPlayer.seekTo(t); position = t; showControls = true }
                 }
@@ -2474,7 +2466,7 @@ fun VideoPlayerScreen(
                                     .onGloballyPositioned { subIconX = it.positionInRoot().x + it.size.width / 2f }
                                     .combinedClickable(
                                         onClick = {
-                                            val wasOpen = showSubtitleSettings || showTrackSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio
+                                            val wasOpen = showSubtitleSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio
                                             closeAllMenus(); showSubtitleSettings = !wasOpen; showControls = true; menuTouchKey++
                                         },
                                         onLongClick = {
@@ -2486,7 +2478,7 @@ fun VideoPlayerScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.ClosedCaption, contentDescription = null,
-                                    tint = if (showSubtitleSettings || showTrackSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio) AmberCore else TextBright,
+                                    tint = if (showSubtitleSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || showAppearanceStudio || studioUi.showStudio) AmberCore else TextBright,
                                     modifier = Modifier.size(smallButton * 0.44f)
                                 )
                             }
