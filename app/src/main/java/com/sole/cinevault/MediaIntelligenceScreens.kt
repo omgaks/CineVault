@@ -289,7 +289,15 @@ private fun MediaIntelligenceGridScreen(
             .setTitle("Delete File")
             .setMessage("Delete \"${item.title}\"?\n\nThis cannot be undone.")
             .setPositiveButton("Delete") { _, _ ->
-                if (path.startsWith("content://")) {
+                // FIX: same smb:// gap as the other two deleteVideoFile
+                // implementations (LocalVideoLibraryScreen.kt,
+                // TvShowDetailScreen.kt) — remote delete isn't implemented
+                // anywhere in this codebase, so this fails clearly instead
+                // of falling through to a File()/MediaStore path that was
+                // never going to match a network path anyway.
+                if (path.startsWith("smb://", ignoreCase = true)) {
+                    Toast.makeText(gridContext, "Can't delete files on a network share from CineVault — delete it from the source device instead", Toast.LENGTH_LONG).show()
+                } else if (path.startsWith("content://")) {
                     // SAF-based (e.g. a Select-Folder item) — the app already
                     // holds a persisted permission from when the folder was picked.
                     try {
