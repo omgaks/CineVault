@@ -2,9 +2,12 @@ package com.sole.cinevault
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.media3.ui.PlayerView
 import com.sole.cinevault.subtitles.DriftPoint
+import com.sole.cinevault.subtitles.SubtitleStudioTab
 
 /*
  * PlayerUiState.kt
@@ -54,4 +57,19 @@ class DualSubtitleState {
     var secondaryLanguage by mutableStateOf("hi")
     var gapLines by mutableStateOf(1)
     var statusText by mutableStateOf("")
+}
+
+// Fourth slice: Subtitle Studio's own visibility/tab state, the shared
+// "any menu just got touched" key that resets every popup's auto-hide
+// timer, the gesture-feedback pill text, and the PlayerView reference
+// subtitle styling gets applied through. Grouped together because they're
+// all "Studio-adjacent plumbing" rather than one specific feature's data —
+// unlike the previous three slices, which were each one self-contained
+// flow.
+class SubtitleStudioUiState {
+    var showStudio by mutableStateOf(false)
+    var initialTab by mutableStateOf<SubtitleStudioTab?>(null)
+    var menuTouchKey by mutableIntStateOf(0)
+    var gestureFeedback by mutableStateOf("")
+    var playerView by mutableStateOf<PlayerView?>(null)
 }
