@@ -37,6 +37,30 @@ object SubtitleImportEngine {
 
     private val supportedExtensions = setOf("srt", "vtt", "ass", "ssa", "ttml", "dfxp")
 
+    // FIX: web_subtitles/ only ever had entries ADDED (every import/re-import
+    // gets a fresh UUID-named file) — the only deletion that already existed
+    // was for stray .partial files left behind by an interrupted download.
+    // Every successfully-completed import stayed on disk forever, meaning
+    // this directory could grow unbounded over time with no natural cap.
+    // Called once at app startup (see MainActivity.kt); deletes anything
+    // older than maxAgeDays, silently skipping any file it can't touch
+    // (e.g. mid-write) rather than failing the whole pass.
+    fun cleanOldCache(context: Context, maxAgeDays: Int = 7) {
+        val cutoffMs = System.currentTimeMillis() - (maxAgeDays * 24L * 60L * 60L * 1000L)
+        val dir = File(context.cacheDir, "web_subtitles")
+        val files = dir.listFiles() ?: return
+        for (file in files) {
+            try {
+                if (file.isFile && file.lastModified() < cutoffMs) file.delete()
+            } catch (_: Exception) {
+                // Best-effort cleanup — one stubborn file shouldn't block
+                // the rest of the pass, and this is disposable cache data
+                // either way (Android can reclaim cacheDir on its own if
+                // storage gets tight).
+            }
+        }
+    }
+
     suspend fun import(context: Context, input: InputStream, suggestedName: String?, releaseHint: String, preferredLanguage: String = "en"): SubtitleImportResult = withContext(Dispatchers.IO) {
         val workDir = File(context.cacheDir, "web_subtitles").apply {
             mkdirs()
