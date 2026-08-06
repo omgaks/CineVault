@@ -33,7 +33,14 @@ data class SubtitleBehaviorPrefs(
     // gestures on a region of the video screen carry real collision risk
     // with the existing brightness/volume/seek/zoom gestures already
     // living there, so the person has to deliberately choose this on.
-    val enableSubtitleGestures: Boolean = false
+    val enableSubtitleGestures: Boolean = false,
+    // FIX: previously lived only as remember-scoped Compose state in
+    // VideoPlayerScreen.kt (DualSubtitleState.secondaryLanguage) —
+    // resetting to the "hi" default every time the player screen
+    // recreated (new video, or app restart), even if the person had
+    // deliberately picked a different secondary language. Persisted here
+    // now, alongside the rest of this file's behavior settings.
+    val dualSecondaryLanguage: String = "hi"
 )
 
 private const val BEHAVIOR_PREFS_NAME = "cinevault_subtitle_behavior"
@@ -51,7 +58,8 @@ fun loadSubtitleBehaviorPrefs(context: Context): SubtitleBehaviorPrefs {
         autoDownloadWhenMissing = prefs.getBoolean("autoDownloadWhenMissing", false),
         rememberLastSelectedLanguage = prefs.getBoolean("rememberLastLanguage", true),
         disableWhenAudioMatchesPreferred = prefs.getBoolean("disableWhenAudioMatches", false),
-        enableSubtitleGestures = prefs.getBoolean("enableSubtitleGestures", false)
+        enableSubtitleGestures = prefs.getBoolean("enableSubtitleGestures", false),
+        dualSecondaryLanguage = prefs.getString("dualSecondaryLanguage", "hi") ?: "hi"
     )
 }
 
@@ -66,6 +74,7 @@ fun saveSubtitleBehaviorPrefs(context: Context, prefs: SubtitleBehaviorPrefs) {
         .putBoolean("rememberLastLanguage", prefs.rememberLastSelectedLanguage)
         .putBoolean("disableWhenAudioMatches", prefs.disableWhenAudioMatchesPreferred)
         .putBoolean("enableSubtitleGestures", prefs.enableSubtitleGestures)
+        .putString("dualSecondaryLanguage", prefs.dualSecondaryLanguage)
         .apply()
 }
 
