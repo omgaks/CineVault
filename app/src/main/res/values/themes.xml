@@ -1,5 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.CineVault" parent="android:Theme.Material.Light.NoActionBar" />
+    <!--
+       FIX: this theme previously set nothing beyond the parent, meaning
+       windowBackground fell back to Theme.Material.Light's default —
+       plain white. Android shows a system-drawn "starting window"
+       (the app's launcher icon centered on windowBackground) as a
+       placeholder during certain window-surface transitions, including
+       entering Picture-in-Picture on many devices — this isn't something
+       CineVault's own code controls or triggers, it's an OS-level
+       behavior for any app. Against a white background, that placeholder
+       reads as a jarring flash to a totally different-looking screen;
+       against black — which matches the actual player background — the
+       same brief placeholder should blend in rather than stand out.
+    -->
+    <style name="Theme.CineVault" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
 </resources>
