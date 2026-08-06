@@ -1050,6 +1050,7 @@ fun PosterBox(
         }
     }
 
+    val bitmapSnapshot = localBitmap
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
@@ -1059,8 +1060,8 @@ fun PosterBox(
             !displayImage.isNullOrBlank() -> {
                 AsyncImage(model = displayImage, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }
-            localBitmap != null -> {
-                Image(bitmap = localBitmap!!.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            bitmapSnapshot != null -> {
+                Image(bitmap = bitmapSnapshot.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }
             else -> {
                 Box(modifier = Modifier.fillMaxSize().background(SpaceDeep), contentAlignment = Alignment.Center) {
