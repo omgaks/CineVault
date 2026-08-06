@@ -7,7 +7,7 @@ import android.os.Bundle
 import android.app.Activity
 import android.content.Intent
 import android.content.Context
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.Crossfade
@@ -82,7 +82,14 @@ fun Activity.exitImmersiveModeForPlayer() {
     }
 }
 
-class MainActivity : ComponentActivity() {
+// FIX: was ComponentActivity — changed to FragmentActivity specifically
+// because androidx.biometric's stable BiometricPrompt API (used for Secret
+// Folder's unlock, replacing the deprecated KeyguardManager.
+// createConfirmDeviceCredentialIntent) requires a FragmentActivity host.
+// FragmentActivity extends ComponentActivity, so setContent {} and
+// everything else already working here is unaffected — this is additive,
+// not a behavior change to anything except gaining Fragment support.
+class MainActivity : FragmentActivity() {
 
     private val notificationPermissionLauncher =
         registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { /* no-op either way — the foreground service still runs without it, it just won't show a visible notification until granted */ }
