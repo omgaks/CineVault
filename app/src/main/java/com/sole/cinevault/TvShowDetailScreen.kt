@@ -190,10 +190,27 @@ fun TvShowDetailScreen(
     }
 
     fun deleteVideoFile(item: VideoWithMetadata) {
+        val path = item.video.path
         AlertDialog.Builder(context)
             .setTitle("Delete File")
             .setMessage("Delete \"${item.title}\"?\n\nThis cannot be undone.")
             .setPositiveButton("Delete") { _, _ ->
+                // FIX: same gap as LocalVideoLibraryScreen.kt's identical
+                // duplicate of this function — File(item.video.path) and a
+                // MediaStore DATA-column lookup only make sense for a real
+                // local filesystem path, silently failing for content://
+                // (restricted-folder) and smb:// (network share) items.
+                if (path.startsWith("smb://", ignoreCase = true)) {
+                    Toast.makeText(context, "Can't delete files on a network share from CineVault — delete it from the source device instead", Toast.LENGTH_LONG).show()
+                } else if (path.startsWith("content://")) {
+                    try {
+                        val deleted = androidx.documentfile.provider.DocumentFile.fromSingleUri(context, Uri.parse(path))?.delete() == true
+                        if (deleted) finishDeleteSuccess(item)
+                        else activeError = ErrorBannerState("Could not delete \"${item.title}\"") { deleteVideoFile(item) }
+                    } catch (e: Exception) {
+                        activeError = ErrorBannerState("Delete failed: ${e.message}") { deleteVideoFile(item) }
+                    }
+                } else {
                 val f = File(item.video.path)
                 val mediaUri = findMediaStoreUri(item.video.path)
 
@@ -231,6 +248,7 @@ fun TvShowDetailScreen(
                     } catch (e: Exception) {
                         activeError = ErrorBannerState("Delete failed: ${e.message}") { deleteVideoFile(item) }
                     }
+                }
                 }
             }
             .setNegativeButton("Cancel", null)
