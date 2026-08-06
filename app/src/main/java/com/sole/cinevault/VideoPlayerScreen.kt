@@ -1547,6 +1547,20 @@ fun VideoPlayerScreen(
                 AutoSyncStatus.Failed("Not enough available memory for Auto-Sync right now. Close other apps and try again.")
             }
             autoSyncStatus = result
+            // FIX: this used to fire in the same instant as the line
+            // above — meaning the result UI rendering (Slider/Text in the
+            // Timing sheet) and kicking off regenerating up to 72 preview
+            // thumbnails were competing for memory at the exact moment
+            // the heap is most fragile, right after a memory-intensive
+            // analysis pass. GC isn't necessarily finished reclaiming the
+            // analysis buffers by this point even though they're already
+            // unreferenced — two real device crash logs showed OOM deep
+            // in Compose's drawing pipeline (Slider, Text) shortly after
+            // Auto-Sync completed, not inside the analysis itself. A
+            // short delay here gives the collector breathing room before
+            // starting the next memory-hungry operation, and lets the
+            // result UI render first without competing for memory.
+            delay(1500)
             previewReloadKey++
         }
     }
