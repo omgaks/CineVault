@@ -229,6 +229,7 @@ private fun FreshInstallWelcomeContent(
             Text(
                 text = "Welcome to CineVault",
                 color = TextBright, fontSize = dims.headingSize, fontWeight = FontWeight.Bold,
+                fontFamily = CinzelFontFamily,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
             Spacer(modifier = Modifier.height(6.dp))
