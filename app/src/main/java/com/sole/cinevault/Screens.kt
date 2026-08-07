@@ -16,6 +16,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.Crossfade
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import android.app.Activity
 import android.content.Context
 import android.os.Build
@@ -36,11 +37,15 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -55,6 +60,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -79,54 +85,225 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.sole.cinevault.ui.theme.*
 
-// The prominent, only-shown-when-empty Scan Library call to action —
-// roughly double the footprint of the old small hero pill, with a
-// heartbeat-style double-pulse scale and a breathing amber glow so it
-// reads as "tap me" the instant the app opens on an empty library. The
-// "spiral" underline was interpreted as a continuously sweeping shimmer
-// rather than a literal circular motion, since a circular spiral doesn't
-// read as an underline under straight text — flag if that's not what was
-// meant and I'll take another pass at it.
-@Composable
-private fun BigScanLibraryButton(onClick: () -> Unit) {
-    // Same breathing-glow treatment as FrostedPlayButton in the player
-    // screen (VideoPlayerScreen.kt) — alpha pulse only, no scale/heartbeat,
-    // so the two amber glowing circles in the app feel like one consistent
-    // visual language rather than two different effects.
-    val infinite = rememberInfiniteTransition(label = "scanGlow")
-    val glowAlpha by infinite.animateFloat(
-        initialValue = 0.45f,
-        targetValue = 0.95f,
-        animationSpec = infiniteRepeatable(animation = tween(1400, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
-        label = "scanGlowAlpha"
-    )
-    val size = 240.dp
-    val density = LocalDensity.current
-    val glowRadiusPx = with(density) { (size / 2f * 1.05f).toPx() }.coerceAtLeast(1f)
+// FEATURE: fresh-install empty-state redesign, phase 1 (structure +
+// responsiveness). Replaces the old single circular "Scan\nLibrary"
+// button with a fuller welcome screen — hero, heading/tagline/
+// description, a prominent scan action, three secondary source options,
+// and a privacy assurance strip. Built from a real design spec, adapted
+// to this codebase's actual proven patterns rather than followed
+// literally:
+// - Hero uses the app's own existing logo (cinevault_circle_logo) with a
+//   simple animated glow ring, not a custom illustrated icon — a
+//   photorealistic hand-built Compose icon wouldn't have matched the
+//   reference mockup's rendered-metal look anyway, and this reuses
+//   something already proven to look right in the app.
+// - Responsive breakpoint uses the same minOf(maxWidth, maxHeight) >=
+//   600.dp technique already proven for Subtitle Studio's sizing, rather
+//   than the spec's more granular 4-6 tier breakdown, which isn't
+//   realistically testable against just two real devices.
+// - Choose Folder / Connect SMB / Open Stream all navigate to the
+//   Library tab for now (same proven fallback the existing Scan button
+//   already uses) rather than deep-linking to a specific dialog — those
+//   entry points live inside LocalVideoLibraryScreen's own internal
+//   state currently, not exposed as callbacks HomeScreen can reach
+//   directly. Worth a follow-up pass if direct deep-linking is wanted.
+// - Landscape-tablet 3-in-a-row tile layout deliberately deferred —
+//   tiles stack vertically regardless of orientation for this first
+//   pass, to verify the core structure on-device before adding a second
+//   layout variant on top of it.
+@Immutable
+private data class WelcomeDimensions(
+    val horizontalPadding: Dp,
+    val heroSize: Dp,
+    val headingSize: androidx.compose.ui.unit.TextUnit,
+    val taglineSize: androidx.compose.ui.unit.TextUnit,
+    val bodySize: androidx.compose.ui.unit.TextUnit,
+    val primaryButtonHeight: Dp,
+    val primaryButtonMaxWidth: Dp,
+    val sourceTileHeight: Dp,
+    val contentMaxWidth: Dp,
+    val sectionGap: Dp
+)
 
-    Box(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(GlassSurfaceStrong)
-            .background(Brush.verticalGradient(0f to GlassHighlight, 0.45f to Color.Transparent, 1f to Color.Transparent))
-            .background(Brush.radialGradient(colors = listOf(AmberGlow.copy(alpha = glowAlpha * 0.55f), Color.Transparent), radius = glowRadiusPx))
-            .border(
-                width = 1.6.dp,
-                brush = Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.75f + 0.2f * glowAlpha), AmberDeep.copy(alpha = 0.30f))),
-                shape = CircleShape
+@Composable
+private fun rememberWelcomeDimensions(isTablet: Boolean): WelcomeDimensions =
+    remember(isTablet) {
+        if (isTablet) {
+            WelcomeDimensions(
+                horizontalPadding = 40.dp, heroSize = 170.dp, headingSize = 32.sp, taglineSize = 17.sp, bodySize = 14.sp,
+                primaryButtonHeight = 64.dp, primaryButtonMaxWidth = 560.dp, sourceTileHeight = 84.dp,
+                contentMaxWidth = 620.dp, sectionGap = 22.dp
             )
-            .clickable { onClick() },
-        contentAlignment = Alignment.Center
+        } else {
+            WelcomeDimensions(
+                horizontalPadding = 20.dp, heroSize = 130.dp, headingSize = 26.sp, taglineSize = 15.sp, bodySize = 13.sp,
+                primaryButtonHeight = 58.dp, primaryButtonMaxWidth = 480.dp, sourceTileHeight = 74.dp,
+                contentMaxWidth = 460.dp, sectionGap = 16.dp
+            )
+        }
+    }
+
+@Composable
+private fun SourceTile(icon: ImageVector, title: String, subtitle: String, height: Dp, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = height)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Brush.verticalGradient(listOf(GlassHighlight.copy(alpha = 0.10f), GlassSurface)))
+            .border(1.dp, Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.45f), AmberGlow.copy(alpha = 0.12f))), RoundedCornerShape(18.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = "Scan\nLibrary",
-            color = AmberCore,
-            fontSize = 26.sp,
-            fontWeight = FontWeight.Black,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            lineHeight = 30.sp
-        )
+        Box(
+            modifier = Modifier.size(46.dp).clip(RoundedCornerShape(14.dp)).background(AmberGlow.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(imageVector = icon, contentDescription = null, tint = AmberCore, modifier = Modifier.size(24.dp))
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Column {
+            Text(text = title, color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(text = subtitle, color = TextMuted, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun FreshInstallWelcomeContent(
+    onScanLibrary: () -> Unit,
+    onChooseFolder: () -> Unit,
+    onConnectSmb: () -> Unit,
+    onOpenStream: () -> Unit
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val isTablet = minOf(maxWidth, maxHeight) >= 600.dp
+        val dims = rememberWelcomeDimensions(isTablet)
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = dims.contentMaxWidth)
+                .align(Alignment.Center)
+                .padding(horizontal = dims.horizontalPadding, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(13.dp))
+                    .background(GlassSurface)
+                    .border(1.dp, AmberCore.copy(alpha = 0.32f), RoundedCornerShape(13.dp))
+                    .padding(horizontal = 12.dp, vertical = 7.dp)
+            ) {
+                Icon(imageVector = Icons.Filled.Shield, contentDescription = null, tint = AmberCore, modifier = Modifier.size(15.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(text = "Private · Local-first", color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
+
+            Spacer(modifier = Modifier.height(dims.sectionGap))
+
+            val heroGlow = rememberInfiniteTransition(label = "heroGlow")
+            val heroGlowAlpha by heroGlow.animateFloat(
+                initialValue = 0.30f, targetValue = 0.55f,
+                animationSpec = infiniteRepeatable(animation = tween(1800, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
+                label = "heroGlowAlpha"
+            )
+            Box(modifier = Modifier.size(dims.heroSize), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Brush.radialGradient(listOf(AmberGlow.copy(alpha = heroGlowAlpha), Color.Transparent)))
+                )
+                Image(
+                    painter = painterResource(id = R.drawable.cinevault_circle_logo),
+                    contentDescription = "CineVault",
+                    modifier = Modifier.size(dims.heroSize * 0.62f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(dims.sectionGap))
+
+            Text(
+                text = "Welcome to CineVault",
+                color = TextBright, fontSize = dims.headingSize, fontWeight = FontWeight.Bold,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Turn your videos into a personal cinema.",
+                color = AmberCore.copy(alpha = 0.85f), fontSize = dims.taglineSize, fontWeight = FontWeight.Medium,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "CineVault finds movies and shows on this device, then adds artwork, ratings and details.",
+                color = TextBright.copy(alpha = 0.70f), fontSize = dims.bodySize,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.widthIn(max = 380.dp)
+            )
+
+            Spacer(modifier = Modifier.height(dims.sectionGap + 6.dp))
+
+            // Same breathing-glow technique as FrostedPlayButton in the
+            // player screen — alpha pulse only, reshaped from circle to
+            // pill so the app's established amber-glow motion language
+            // stays consistent rather than introducing a second, visually
+            // different effect for what's conceptually the same "tap me"
+            // affordance.
+            val glow = rememberInfiniteTransition(label = "scanPillGlow")
+            val glowAlpha by glow.animateFloat(
+                initialValue = 0.45f, targetValue = 0.95f,
+                animationSpec = infiniteRepeatable(animation = tween(1400, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
+                label = "scanPillGlowAlpha"
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = dims.primaryButtonMaxWidth)
+                    .height(dims.primaryButtonHeight)
+                    .shadow(elevation = 14.dp, shape = RoundedCornerShape(50), ambientColor = AmberCore.copy(alpha = 0.35f), spotColor = AmberCore.copy(alpha = 0.45f))
+                    .clip(RoundedCornerShape(50))
+                    .background(Brush.verticalGradient(listOf(AmberCore.copy(alpha = 0.75f + 0.2f * glowAlpha), AmberDeep)))
+                    .clickable { onScanLibrary() }
+                    .padding(horizontal = 22.dp)
+            ) {
+                Icon(imageVector = Icons.Filled.Search, contentDescription = null, tint = Color.Black, modifier = Modifier.size(22.dp))
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(text = "Scan My Library", color = Color.Black, fontSize = if (isTablet) 19.sp else 17.sp, fontWeight = FontWeight.Black)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = "Usually takes less than a minute", color = TextMuted, fontSize = 11.5.sp)
+
+            Spacer(modifier = Modifier.height(dims.sectionGap + 4.dp))
+
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SourceTile(icon = Icons.Filled.Folder, title = "Choose Folder", subtitle = "Scan only what you select", height = dims.sourceTileHeight, onClick = onChooseFolder)
+                SourceTile(icon = Icons.Filled.Dns, title = "Connect SMB", subtitle = "Add a computer or NAS", height = dims.sourceTileHeight, onClick = onConnectSmb)
+                SourceTile(icon = Icons.Filled.Link, title = "Open Stream", subtitle = "Play a direct video link", height = dims.sourceTileHeight, onClick = onOpenStream)
+            }
+
+            Spacer(modifier = Modifier.height(dims.sectionGap))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(GlassSurface)
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
+            ) {
+                Icon(imageVector = Icons.Filled.Shield, contentDescription = null, tint = AmberCore, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "No account · No ads · Your videos stay on your device",
+                    color = TextMuted, fontSize = 12.5.sp, maxLines = 2
+                )
+            }
+        }
     }
 }
 
@@ -428,20 +605,12 @@ fun HomeScreen(
             }
         } else {
             item {
-                Box(
-                    modifier = Modifier.fillParentMaxHeight(0.55f).fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        BigScanLibraryButton(onClick = { scanPermissionLauncher.launch(scanPermission) })
-                        Spacer(modifier = Modifier.height(18.dp))
-                        Text(
-                            text = "Scan your device or add a network share to get started.",
-                            color = TextMuted, fontSize = 13.sp, textAlign = TextAlign.Center,
-                            modifier = Modifier.widthIn(max = 260.dp)
-                        )
-                    }
-                }
+                FreshInstallWelcomeContent(
+                    onScanLibrary = { scanPermissionLauncher.launch(scanPermission) },
+                    onChooseFolder = onScanRequest,
+                    onConnectSmb = onScanRequest,
+                    onOpenStream = onScanRequest
+                )
             }
         }
     }
