@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -86,87 +87,106 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.sole.cinevault.ui.theme.*
 
-// FEATURE: fresh-install empty-state redesign, phase 1 (structure +
-// responsiveness). Replaces the old single circular "Scan\nLibrary"
-// button with a fuller welcome screen — hero, heading/tagline/
-// description, a prominent scan action, three secondary source options,
-// and a privacy assurance strip. Built from a real design spec, adapted
-// to this codebase's actual proven patterns rather than followed
-// literally:
-// - Hero uses the app's own existing logo (cinevault_circle_logo) with a
-//   simple animated glow ring, not a custom illustrated icon — a
-//   photorealistic hand-built Compose icon wouldn't have matched the
-//   reference mockup's rendered-metal look anyway, and this reuses
-//   something already proven to look right in the app.
-// - Responsive breakpoint uses the same minOf(maxWidth, maxHeight) >=
-//   600.dp technique already proven for Subtitle Studio's sizing, rather
-//   than the spec's more granular 4-6 tier breakdown, which isn't
-//   realistically testable against just two real devices.
-// - Choose Folder / Connect SMB / Open Stream all navigate to the
-//   Library tab for now (same proven fallback the existing Scan button
-//   already uses) rather than deep-linking to a specific dialog — those
-//   entry points live inside LocalVideoLibraryScreen's own internal
-//   state currently, not exposed as callbacks HomeScreen can reach
-//   directly. Worth a follow-up pass if direct deep-linking is wanted.
-// - Landscape-tablet 3-in-a-row tile layout deliberately deferred —
-//   tiles stack vertically regardless of orientation for this first
-//   pass, to verify the core structure on-device before adding a second
-//   layout variant on top of it.
+// FEATURE: fresh-install empty-state redesign. Iterated twice — phase 1
+// (structure + responsiveness) and this pass (visual direction: header
+// row, bigger bare logo, rating badges, single-row neon-styled tiles,
+// landscape-specific compacting so nothing needs to scroll on a short
+// phone-landscape screen). Choose Folder / Connect SMB / Open Stream
+// still all navigate to the Library tab for now — those entry points
+// live inside LocalVideoLibraryScreen's own internal state, not exposed
+// as callbacks HomeScreen can reach directly yet.
 @Immutable
 private data class WelcomeDimensions(
     val horizontalPadding: Dp,
+    val headerLogoSize: Dp,
     val heroSize: Dp,
     val headingSize: androidx.compose.ui.unit.TextUnit,
     val taglineSize: androidx.compose.ui.unit.TextUnit,
     val bodySize: androidx.compose.ui.unit.TextUnit,
     val primaryButtonHeight: Dp,
-    val primaryButtonMaxWidth: Dp,
     val sourceTileHeight: Dp,
+    val tileIconSize: Dp,
     val contentMaxWidth: Dp,
-    val sectionGap: Dp
+    val sectionGap: Dp,
+    val tilesSingleLine: Boolean
 )
 
 @Composable
-private fun rememberWelcomeDimensions(isTablet: Boolean): WelcomeDimensions =
-    remember(isTablet) {
-        if (isTablet) {
-            WelcomeDimensions(
-                horizontalPadding = 40.dp, heroSize = 170.dp, headingSize = 32.sp, taglineSize = 17.sp, bodySize = 14.sp,
-                primaryButtonHeight = 64.dp, primaryButtonMaxWidth = 560.dp, sourceTileHeight = 84.dp,
-                contentMaxWidth = 620.dp, sectionGap = 22.dp
+private fun rememberWelcomeDimensions(isTablet: Boolean, isLandscape: Boolean): WelcomeDimensions =
+    remember(isTablet, isLandscape) {
+        when {
+            // Tablet landscape — compact, but tablets have more real
+            // height than phones even sideways, so less aggressive than
+            // phone landscape below.
+            isTablet && isLandscape -> WelcomeDimensions(
+                horizontalPadding = 56.dp, headerLogoSize = 40.dp, heroSize = 150.dp,
+                headingSize = 26.sp, taglineSize = 14.sp, bodySize = 12.sp,
+                primaryButtonHeight = 52.dp, sourceTileHeight = 58.dp, tileIconSize = 24.dp,
+                contentMaxWidth = 680.dp, sectionGap = 10.dp, tilesSingleLine = true
             )
-        } else {
-            WelcomeDimensions(
-                horizontalPadding = 20.dp, heroSize = 130.dp, headingSize = 26.sp, taglineSize = 15.sp, bodySize = 13.sp,
-                primaryButtonHeight = 58.dp, primaryButtonMaxWidth = 480.dp, sourceTileHeight = 74.dp,
-                contentMaxWidth = 460.dp, sectionGap = 16.dp
+            isTablet -> WelcomeDimensions(
+                horizontalPadding = 40.dp, headerLogoSize = 44.dp, heroSize = 300.dp,
+                headingSize = 32.sp, taglineSize = 17.sp, bodySize = 14.sp,
+                primaryButtonHeight = 64.dp, sourceTileHeight = 96.dp, tileIconSize = 36.dp,
+                contentMaxWidth = 620.dp, sectionGap = 18.dp, tilesSingleLine = false
+            )
+            // Phone landscape — the tightest budget by far (short screen
+            // height), so everything shrinks hard here specifically to
+            // fit without scrolling: smaller hero, tighter gaps,
+            // single-line tiles instead of stacked icon-over-text.
+            isLandscape -> WelcomeDimensions(
+                horizontalPadding = 24.dp, headerLogoSize = 28.dp, heroSize = 84.dp,
+                headingSize = 17.sp, taglineSize = 11.sp, bodySize = 10.sp,
+                primaryButtonHeight = 40.dp, sourceTileHeight = 42.dp, tileIconSize = 18.dp,
+                contentMaxWidth = 460.dp, sectionGap = 5.dp, tilesSingleLine = true
+            )
+            else -> WelcomeDimensions(
+                horizontalPadding = 20.dp, headerLogoSize = 34.dp, heroSize = 230.dp,
+                headingSize = 26.sp, taglineSize = 15.sp, bodySize = 13.sp,
+                primaryButtonHeight = 58.dp, sourceTileHeight = 78.dp, tileIconSize = 28.dp,
+                contentMaxWidth = 460.dp, sectionGap = 12.dp, tilesSingleLine = false
             )
         }
     }
 
 @Composable
-private fun SourceTile(icon: ImageVector, title: String, subtitle: String, height: Dp, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
+private fun NeonSourceTile(
+    icon: ImageVector,
+    label: String,
+    accentColor: Color,
+    height: Dp,
+    iconSize: Dp,
+    singleLine: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(14.dp)
+    Box(
+        modifier = modifier
             .heightIn(min = height)
-            .clip(RoundedCornerShape(18.dp))
-            .background(Brush.verticalGradient(listOf(GlassHighlight.copy(alpha = 0.10f), GlassSurface)))
-            .border(1.dp, Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.45f), AmberGlow.copy(alpha = 0.12f))), RoundedCornerShape(18.dp))
+            .shadow(elevation = 8.dp, shape = shape, ambientColor = accentColor.copy(alpha = 0.4f), spotColor = accentColor.copy(alpha = 0.4f))
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(accentColor.copy(alpha = 0.12f), SpaceDeep.copy(alpha = 0.5f))))
+            .border(1.dp, accentColor.copy(alpha = 0.55f), shape)
             .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier.size(46.dp).clip(RoundedCornerShape(14.dp)).background(AmberGlow.copy(alpha = 0.16f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(imageVector = icon, contentDescription = null, tint = AmberCore, modifier = Modifier.size(24.dp))
-        }
-        Spacer(modifier = Modifier.width(14.dp))
-        Column {
-            Text(text = title, color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            Text(text = subtitle, color = TextMuted, fontSize = 12.sp)
+        if (singleLine) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                Icon(imageVector = icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(iconSize))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = label, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            }
+        } else {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(imageVector = icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(iconSize))
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = label, color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 2
+                )
+            }
         }
     }
 }
@@ -180,130 +200,188 @@ private fun FreshInstallWelcomeContent(
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         val isTablet = minOf(maxWidth, maxHeight) >= 600.dp
-        val dims = rememberWelcomeDimensions(isTablet)
+        val isLandscapeMode = maxWidth > maxHeight
+        val dims = rememberWelcomeDimensions(isTablet, isLandscapeMode)
 
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .widthIn(max = dims.contentMaxWidth)
                 .align(Alignment.Center)
-                .padding(horizontal = dims.horizontalPadding, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(horizontal = dims.horizontalPadding, vertical = 10.dp)
         ) {
+            // Header row — the one part of this screen NOT center-aligned:
+            // logo + wordmark pinned left, privacy chip pinned right.
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(13.dp))
-                    .background(GlassSurface)
-                    .border(1.dp, AmberCore.copy(alpha = 0.32f), RoundedCornerShape(13.dp))
-                    .padding(horizontal = 12.dp, vertical = 7.dp)
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(imageVector = Icons.Filled.Shield, contentDescription = null, tint = AmberCore, modifier = Modifier.size(15.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(text = "Private · Local-first", color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            }
-
-            Spacer(modifier = Modifier.height(dims.sectionGap))
-
-            val heroGlow = rememberInfiniteTransition(label = "heroGlow")
-            val heroGlowAlpha by heroGlow.animateFloat(
-                initialValue = 0.30f, targetValue = 0.55f,
-                animationSpec = infiniteRepeatable(animation = tween(1800, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
-                label = "heroGlowAlpha"
-            )
-            Box(modifier = Modifier.size(dims.heroSize), contentAlignment = Alignment.Center) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Brush.radialGradient(listOf(AmberGlow.copy(alpha = heroGlowAlpha), Color.Transparent)))
-                )
                 Image(
                     painter = painterResource(id = R.drawable.cinevault_circle_logo),
                     contentDescription = "CineVault",
-                    modifier = Modifier.size(dims.heroSize * 0.62f)
+                    modifier = Modifier.size(dims.headerLogoSize)
                 )
-            }
-
-            Spacer(modifier = Modifier.height(dims.sectionGap))
-
-            Text(
-                text = "Welcome to CineVault",
-                color = TextBright, fontSize = dims.headingSize, fontWeight = FontWeight.Bold,
-                fontFamily = CinzelFontFamily,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "Turn your videos into a personal cinema.",
-                color = AmberCore.copy(alpha = 0.85f), fontSize = dims.taglineSize, fontWeight = FontWeight.Medium,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            Text(
-                text = "CineVault finds movies and shows on this device, then adds artwork, ratings and details.",
-                color = TextBright.copy(alpha = 0.70f), fontSize = dims.bodySize,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                modifier = Modifier.widthIn(max = 380.dp)
-            )
-
-            Spacer(modifier = Modifier.height(dims.sectionGap + 6.dp))
-
-            // Same breathing-glow technique as FrostedPlayButton in the
-            // player screen — alpha pulse only, reshaped from circle to
-            // pill so the app's established amber-glow motion language
-            // stays consistent rather than introducing a second, visually
-            // different effect for what's conceptually the same "tap me"
-            // affordance.
-            val glow = rememberInfiniteTransition(label = "scanPillGlow")
-            val glowAlpha by glow.animateFloat(
-                initialValue = 0.45f, targetValue = 0.95f,
-                animationSpec = infiniteRepeatable(animation = tween(1400, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
-                label = "scanPillGlowAlpha"
-            )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = dims.primaryButtonMaxWidth)
-                    .height(dims.primaryButtonHeight)
-                    .shadow(elevation = 14.dp, shape = RoundedCornerShape(50), ambientColor = AmberCore.copy(alpha = 0.35f), spotColor = AmberCore.copy(alpha = 0.45f))
-                    .clip(RoundedCornerShape(50))
-                    .background(Brush.verticalGradient(listOf(AmberCore.copy(alpha = 0.75f + 0.2f * glowAlpha), AmberDeep)))
-                    .clickable { onScanLibrary() }
-                    .padding(horizontal = 22.dp)
-            ) {
-                Icon(imageVector = Icons.Filled.Search, contentDescription = null, tint = Color.Black, modifier = Modifier.size(22.dp))
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(text = "Scan My Library", color = Color.Black, fontSize = if (isTablet) 19.sp else 17.sp, fontWeight = FontWeight.Black)
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(text = "Usually takes less than a minute", color = TextMuted, fontSize = 11.5.sp)
-
-            Spacer(modifier = Modifier.height(dims.sectionGap + 4.dp))
-
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SourceTile(icon = Icons.Filled.Folder, title = "Choose Folder", subtitle = "Scan only what you select", height = dims.sourceTileHeight, onClick = onChooseFolder)
-                SourceTile(icon = Icons.Filled.Dns, title = "Connect SMB", subtitle = "Add a computer or NAS", height = dims.sourceTileHeight, onClick = onConnectSmb)
-                SourceTile(icon = Icons.Filled.Link, title = "Open Stream", subtitle = "Play a direct video link", height = dims.sourceTileHeight, onClick = onOpenStream)
-            }
-
-            Spacer(modifier = Modifier.height(dims.sectionGap))
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(GlassSurface)
-                    .padding(horizontal = 16.dp, vertical = 14.dp)
-            ) {
-                Icon(imageVector = Icons.Filled.Shield, contentDescription = null, tint = AmberCore, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "No account · No ads · Your videos stay on your device",
-                    color = TextMuted, fontSize = 12.5.sp, maxLines = 2
+                    text = "CineVault", color = TextBright, fontWeight = FontWeight.SemiBold,
+                    fontSize = (dims.headerLogoSize.value * 0.42f).sp
                 )
+                Spacer(modifier = Modifier.weight(1f))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(GlassSurface)
+                        .border(1.dp, AmberCore.copy(alpha = 0.32f), RoundedCornerShape(13.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Icon(imageVector = Icons.Filled.Shield, contentDescription = null, tint = AmberCore, modifier = Modifier.size(12.dp))
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text(text = "Private · Local-first", color = TextBright, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(dims.sectionGap))
+
+            // Everything below the header is center-aligned, as requested.
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Bare logo — no glow, no background box, just the round
+                // logo itself, bigger and moved up (i.e. immediately below
+                // the header rather than deep in the middle of the screen).
+                Image(
+                    painter = painterResource(id = R.drawable.cinevault_circle_logo),
+                    contentDescription = "CineVault",
+                    modifier = Modifier.size(dims.heroSize)
+                )
+
+                Spacer(modifier = Modifier.height(dims.sectionGap))
+
+                Text(
+                    text = "Welcome to CineVault",
+                    color = TextBright, fontSize = dims.headingSize, fontWeight = FontWeight.Bold,
+                    fontFamily = CinzelFontFamily,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Turn your videos into a personal cinema.",
+                    color = AmberCore.copy(alpha = 0.85f), fontSize = dims.taglineSize, fontWeight = FontWeight.Medium,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                // FIX: kept to one line as requested — was wrapping across
+                // two lines before. Ellipsis is the safety valve on the
+                // narrowest phones rather than silently wrapping anyway.
+                Text(
+                    text = "CineVault finds movies and shows on this device, then adds artwork, ratings and details.",
+                    color = TextBright.copy(alpha = 0.70f), fontSize = dims.bodySize,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Rating-source badges — text-only, no TMDB/IMDb/RT logo
+                // graphics (those are trademarked; a personal project
+                // reusing them isn't something to do without you
+                // knowing). Matches the amber-pill-plus-star style
+                // confirmed in preview.
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("TMDB", "IMDb", "RT").forEach { label ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(AmberGlow.copy(alpha = 0.12f))
+                                .border(1.dp, AmberCore.copy(alpha = 0.4f), RoundedCornerShape(20.dp))
+                                .padding(horizontal = 11.dp, vertical = 4.dp)
+                        ) {
+                            Icon(imageVector = Icons.Filled.Star, contentDescription = null, tint = AmberCore, modifier = Modifier.size(10.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(text = label, color = AmberCore, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(dims.sectionGap + 4.dp))
+
+                // Same breathing-glow technique as FrostedPlayButton in the
+                // player screen. Auto-width now (was fillMaxWidth up to a
+                // cap before) — hugs the icon+text with padding, not
+                // edge-to-edge.
+                val glow = rememberInfiniteTransition(label = "scanPillGlow")
+                val glowAlpha by glow.animateFloat(
+                    initialValue = 0.45f, targetValue = 0.95f,
+                    animationSpec = infiniteRepeatable(animation = tween(1400, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
+                    label = "scanPillGlowAlpha"
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier
+                        .height(dims.primaryButtonHeight)
+                        .shadow(elevation = 14.dp, shape = RoundedCornerShape(50), ambientColor = AmberCore.copy(alpha = 0.35f), spotColor = AmberCore.copy(alpha = 0.45f))
+                        .clip(RoundedCornerShape(50))
+                        .background(Brush.verticalGradient(listOf(AmberCore.copy(alpha = 0.75f + 0.2f * glowAlpha), AmberDeep)))
+                        .clickable { onScanLibrary() }
+                        .padding(horizontal = 22.dp)
+                ) {
+                    Icon(imageVector = Icons.Filled.Search, contentDescription = null, tint = Color.Black, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(9.dp))
+                    Text(text = "Scan My Library", color = Color.Black, fontSize = if (isTablet) 18.sp else 16.sp, fontWeight = FontWeight.Black)
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(text = "Usually takes less than a minute", color = TextMuted, fontSize = 11.sp)
+
+                Spacer(modifier = Modifier.height(dims.sectionGap))
+
+                // Single row on both orientations, as requested — Connect
+                // SMB in the center, directly under the Scan button.
+                // Neon-cyberpunk treatment: three different accent colors
+                // (cyan/magenta/amber) so the tiles stay distinguishable
+                // at a glance rather than all competing in one hue.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    NeonSourceTile(
+                        icon = Icons.Filled.Link, label = "Open Stream", accentColor = Color(0xFF00E5FF),
+                        height = dims.sourceTileHeight, iconSize = dims.tileIconSize, singleLine = dims.tilesSingleLine,
+                        modifier = Modifier.weight(1f), onClick = onOpenStream
+                    )
+                    NeonSourceTile(
+                        icon = Icons.Filled.Dns, label = "Connect SMB", accentColor = Color(0xFFFF2EC7),
+                        height = dims.sourceTileHeight, iconSize = dims.tileIconSize, singleLine = dims.tilesSingleLine,
+                        modifier = Modifier.weight(1f), onClick = onConnectSmb
+                    )
+                    NeonSourceTile(
+                        icon = Icons.Filled.Folder, label = "Choose Folder", accentColor = AmberCore,
+                        height = dims.sourceTileHeight, iconSize = dims.tileIconSize, singleLine = dims.tilesSingleLine,
+                        modifier = Modifier.weight(1f), onClick = onChooseFolder
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(dims.sectionGap))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(GlassSurface)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    Icon(imageVector = Icons.Filled.Shield, contentDescription = null, tint = AmberCore, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "No account · No ads · Your videos stay on your device",
+                        color = TextMuted, fontSize = 12.sp, maxLines = 2
+                    )
+                }
             }
         }
     }
@@ -488,6 +566,7 @@ fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(bottom = 30.dp)
     ) {
+        if (videos.isNotEmpty()) {
         item {
             Box(
                 modifier = Modifier
@@ -593,6 +672,7 @@ fun HomeScreen(
                     }
                 )
             }
+        }
         }
 
         if (videos.isNotEmpty()) {
