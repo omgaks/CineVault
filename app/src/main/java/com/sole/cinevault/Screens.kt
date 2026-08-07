@@ -112,39 +112,55 @@ private data class WelcomeDimensions(
 )
 
 @Composable
-private fun rememberWelcomeDimensions(isTablet: Boolean, isLandscape: Boolean): WelcomeDimensions =
-    remember(isTablet, isLandscape) {
-        when {
-            // Tablet landscape — compact, but tablets have more real
-            // height than phones even sideways, so less aggressive than
-            // phone landscape below.
+private fun rememberWelcomeDimensions(isTablet: Boolean, isLandscape: Boolean, maxHeight: Dp): WelcomeDimensions =
+    remember(isTablet, isLandscape, maxHeight) {
+        // FIX: bottom tiles were getting cut off — the outer LazyColumn
+        // this content sits in will happily scroll if it overflows, but
+        // the ask is for this to fit in one screen with no scroll at all.
+        // Two changes make that reliable instead of another guess:
+        // 1. tilesSingleLine = true everywhere now, not just landscape —
+        //    icon+text side-by-side is meaningfully shorter than stacked
+        //    icon-over-text, and tablet portrait (this app's own
+        //    screenshot) was the one tier still using the taller stacked
+        //    style.
+        // 2. A height-aware shrink pass at the end: if the ACTUAL
+        //    available height is tighter than a rough "should comfortably
+        //    fit" reference, hero size and every gap shrink further on
+        //    top of the already-tighter baselines below — adapts to the
+        //    real device instead of assuming one fixed screen size.
+        val base = when {
             isTablet && isLandscape -> WelcomeDimensions(
-                horizontalPadding = 56.dp, headerLogoSize = 40.dp, heroSize = 150.dp,
-                headingSize = 26.sp, taglineSize = 14.sp, bodySize = 12.sp,
-                primaryButtonHeight = 52.dp, sourceTileHeight = 58.dp, tileIconSize = 24.dp,
-                contentMaxWidth = 680.dp, sectionGap = 10.dp, tilesSingleLine = true
+                horizontalPadding = 56.dp, headerLogoSize = 34.dp, heroSize = 96.dp,
+                headingSize = 22.sp, taglineSize = 12.sp, bodySize = 11.sp,
+                primaryButtonHeight = 44.dp, sourceTileHeight = 46.dp, tileIconSize = 20.dp,
+                contentMaxWidth = 680.dp, sectionGap = 7.dp, tilesSingleLine = true
             )
             isTablet -> WelcomeDimensions(
-                horizontalPadding = 40.dp, headerLogoSize = 44.dp, heroSize = 300.dp,
-                headingSize = 32.sp, taglineSize = 17.sp, bodySize = 14.sp,
-                primaryButtonHeight = 64.dp, sourceTileHeight = 96.dp, tileIconSize = 36.dp,
-                contentMaxWidth = 620.dp, sectionGap = 18.dp, tilesSingleLine = false
+                horizontalPadding = 40.dp, headerLogoSize = 38.dp, heroSize = 130.dp,
+                headingSize = 25.sp, taglineSize = 13.sp, bodySize = 12.sp,
+                primaryButtonHeight = 50.dp, sourceTileHeight = 56.dp, tileIconSize = 24.dp,
+                contentMaxWidth = 620.dp, sectionGap = 8.dp, tilesSingleLine = true
             )
-            // Phone landscape — the tightest budget by far (short screen
-            // height), so everything shrinks hard here specifically to
-            // fit without scrolling: smaller hero, tighter gaps,
-            // single-line tiles instead of stacked icon-over-text.
             isLandscape -> WelcomeDimensions(
-                horizontalPadding = 24.dp, headerLogoSize = 28.dp, heroSize = 84.dp,
-                headingSize = 17.sp, taglineSize = 11.sp, bodySize = 10.sp,
-                primaryButtonHeight = 40.dp, sourceTileHeight = 42.dp, tileIconSize = 18.dp,
-                contentMaxWidth = 460.dp, sectionGap = 5.dp, tilesSingleLine = true
+                horizontalPadding = 20.dp, headerLogoSize = 22.dp, heroSize = 56.dp,
+                headingSize = 14.sp, taglineSize = 10.sp, bodySize = 9.sp,
+                primaryButtonHeight = 34.dp, sourceTileHeight = 34.dp, tileIconSize = 15.dp,
+                contentMaxWidth = 460.dp, sectionGap = 4.dp, tilesSingleLine = true
             )
             else -> WelcomeDimensions(
-                horizontalPadding = 20.dp, headerLogoSize = 34.dp, heroSize = 230.dp,
-                headingSize = 26.sp, taglineSize = 15.sp, bodySize = 13.sp,
-                primaryButtonHeight = 58.dp, sourceTileHeight = 78.dp, tileIconSize = 28.dp,
-                contentMaxWidth = 460.dp, sectionGap = 12.dp, tilesSingleLine = false
+                horizontalPadding = 20.dp, headerLogoSize = 28.dp, heroSize = 96.dp,
+                headingSize = 20.sp, taglineSize = 12.sp, bodySize = 11.sp,
+                primaryButtonHeight = 46.dp, sourceTileHeight = 52.dp, tileIconSize = 21.dp,
+                contentMaxWidth = 460.dp, sectionGap = 7.dp, tilesSingleLine = true
+            )
+        }
+        val comfortableHeight = if (isTablet) 640.dp else 560.dp
+        if (maxHeight >= comfortableHeight) base else {
+            val shrink = (maxHeight / comfortableHeight).coerceIn(0.6f, 1f)
+            base.copy(
+                heroSize = (base.heroSize.value * shrink).dp,
+                sectionGap = (base.sectionGap.value * shrink).dp.coerceAtLeast(3.dp),
+                sourceTileHeight = (base.sourceTileHeight.value * shrink).dp.coerceAtLeast(34.dp)
             )
         }
     }
@@ -193,15 +209,23 @@ private fun NeonSourceTile(
 
 @Composable
 private fun FreshInstallWelcomeContent(
+    availableHeight: Dp,
     onScanLibrary: () -> Unit,
     onChooseFolder: () -> Unit,
     onConnectSmb: () -> Unit,
     onOpenStream: () -> Unit
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        val isTablet = minOf(maxWidth, maxHeight) >= 600.dp
-        val isLandscapeMode = maxWidth > maxHeight
-        val dims = rememberWelcomeDimensions(isTablet, isLandscapeMode)
+        // FIX: isTablet/isLandscapeMode used to compare against this
+        // Box's own maxHeight — unreliable here since this composable
+        // sits inside a LazyColumn item (see HomeScreen's outer
+        // BoxWithConstraints for why). Width from this inner Box is
+        // still fine (LazyColumn items ARE width-bound by
+        // fillMaxWidth()); only height needed to come from the real,
+        // passed-in screen measurement instead.
+        val isTablet = minOf(maxWidth, availableHeight) >= 600.dp
+        val isLandscapeMode = maxWidth > availableHeight
+        val dims = rememberWelcomeDimensions(isTablet, isLandscapeMode, availableHeight)
 
         Column(
             modifier = Modifier
@@ -219,7 +243,8 @@ private fun FreshInstallWelcomeContent(
                 Image(
                     painter = painterResource(id = R.drawable.cinevault_circle_logo),
                     contentDescription = "CineVault",
-                    modifier = Modifier.size(dims.headerLogoSize)
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(dims.headerLogoSize).clip(CircleShape)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -251,10 +276,15 @@ private fun FreshInstallWelcomeContent(
                 // Bare logo — no glow, no background box, just the round
                 // logo itself, bigger and moved up (i.e. immediately below
                 // the header rather than deep in the middle of the screen).
+                // FIX: clipped to CircleShape — the source PNG's own square
+                // canvas was showing as a visible dark square behind the
+                // round artwork. Cropping to an inscribed circle hides the
+                // square corners while keeping the circular logo art intact.
                 Image(
                     painter = painterResource(id = R.drawable.cinevault_circle_logo),
                     contentDescription = "CineVault",
-                    modifier = Modifier.size(dims.heroSize)
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(dims.heroSize).clip(CircleShape)
                 )
 
                 Spacer(modifier = Modifier.height(dims.sectionGap))
@@ -369,6 +399,7 @@ private fun FreshInstallWelcomeContent(
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(16.dp))
@@ -379,7 +410,8 @@ private fun FreshInstallWelcomeContent(
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = "No account · No ads · Your videos stay on your device",
-                        color = TextMuted, fontSize = 12.sp, maxLines = 2
+                        color = TextMuted, fontSize = 12.sp, maxLines = 2,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
             }
@@ -557,7 +589,17 @@ fun HomeScreen(
             .collect { (i, o) -> HomeScrollState.index = i; HomeScrollState.offset = o }
     }
 
-    androidx.compose.foundation.lazy.LazyColumn(
+    // FIX: wraps the LazyColumn specifically to capture the REAL,
+    // reliable viewport height. A BoxWithConstraints placed inside a
+    // LazyColumn item (which FreshInstallWelcomeContent used to rely on
+    // for its own height-aware sizing) doesn't give a trustworthy
+    // maxHeight — LazyColumn items are measured with effectively
+    // unbounded height by design, since that's what lets the column
+    // scroll. This outer one, wrapping the LazyColumn itself, sees the
+    // actual on-screen space instead.
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val screenMaxHeight = maxHeight
+        androidx.compose.foundation.lazy.LazyColumn(
         state = homeListState,
         modifier = Modifier
             .fillMaxSize()
@@ -688,6 +730,7 @@ fun HomeScreen(
         } else {
             item {
                 FreshInstallWelcomeContent(
+                    availableHeight = screenMaxHeight,
                     onScanLibrary = { scanPermissionLauncher.launch(scanPermission) },
                     onChooseFolder = onScanRequest,
                     onConnectSmb = onScanRequest,
@@ -695,6 +738,7 @@ fun HomeScreen(
                 )
             }
         }
+    }
     }
 }
 
