@@ -169,6 +169,14 @@ dependencies {
     // it's fine to call from Kotlin).
     implementation("androidx.biometric:biometric:1.1.0")
 
+    // Downloadable Fonts API — used for Cinzel on the fresh-install welcome
+    // screen's heading (see CinzelFontFamily in Type.kt). Fetches the real
+    // Google Font at runtime via Google Play Services rather than bundling
+    // a font file, since there's no font asset in this repo to bundle.
+    // 1.11.4 is current per Android's own official documentation
+    // (verified — not guessed).
+    implementation("androidx.compose.ui:ui-text-google-fonts:1.11.4")
+
     // FragmentActivity (MainActivity's new base class, needed for
     // BiometricPrompt above) lives in this artifact. Would likely also
     // arrive transitively via androidx.biometric itself, but declared
