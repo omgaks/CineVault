@@ -4,6 +4,8 @@ import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontLoadingStrategy
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.R
@@ -16,7 +18,7 @@ import com.sole.cinevault.R
 // network fetch delay. Font file downloaded directly from
 // fonts.google.com/specimen/Cinzel.
 val CinzelFontFamily = FontFamily(
-    Font(R.font.cinzel_bold, FontWeight.Bold)
+    Font(resId = R.font.cinzel_bold, weight = FontWeight.Bold, style = FontStyle.Normal, loadingStrategy = FontLoadingStrategy.Blocking)
 )
 
 // Set of Material typography styles for CineVault. Only bodyLarge was
