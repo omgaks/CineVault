@@ -2794,13 +2794,6 @@ private fun TopIconCluster(
     }
 }
 
-// Icon + text label, with a persistent amber-glass glow border (same
-// visual language as the always-visible lock button, just a border/glow
-// treatment rather than a solid fill so active/inactive state — e.g.
-// playback speed != 1x, sleep timer running — still reads clearly through
-// tint and glow intensity). Labels sit below the icon so PiP/Sleep/Speed
-// don't need to be guessed from silhouette alone.
-@Composable
 // FEATURE: matches the lock/unlock button's exact styling (solid amber
 // pill, black icon, no text label) rather than the glass-surface +
 // label look LabeledGlowIcon uses — requested specifically for PiP and
@@ -2835,6 +2828,12 @@ private fun AmberPillIcon(icon: ImageVector, contentDescription: String, activeD
     }
 }
 
+// Icon + text label, with a persistent amber-glass glow border (same
+// visual language as the always-visible lock button, just a border/glow
+// treatment rather than a solid fill so active/inactive state — e.g.
+// playback speed != 1x, sleep timer running — still reads clearly through
+// tint and glow intensity). Labels sit below the icon so PiP/Sleep/Speed
+// don't need to be guessed from silhouette alone.
 @Composable
 private fun LabeledGlowIcon(icon: ImageVector, label: String, size: Dp, tint: Color = TextBright, active: Boolean = false, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
