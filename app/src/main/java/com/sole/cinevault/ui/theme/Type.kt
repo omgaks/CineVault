@@ -1,37 +1,22 @@
 package com.sole.cinevault.ui.theme
 
 import androidx.compose.material3.Typography
-import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.R
 
 // FEATURE: Cinzel, used for the fresh-install welcome screen's "Welcome to
 // CineVault" heading (see FreshInstallWelcomeContent in Screens.kt).
-// Downloaded at runtime via Android's Downloadable Fonts API rather than
-// bundled as a font file — there's no font asset in this repo to bundle,
-// and this is the standard, Google-documented way to use a real Google
-// Font without needing one. Falls back to the system default font
-// automatically if the download ever fails (no device Google Play
-// Services, offline on first launch, etc.) — never a crash, worst case
-// it silently looks like the "before" version of the heading.
-// Certificates are Google's own, publicly documented values for
-// verifying the Fonts Provider's identity — see font_certs.xml, copied
-// verbatim from the official Jetpack Compose Jetchat sample.
-@OptIn(ExperimentalTextApi::class)
-private val googleFontProvider = GoogleFont.Provider(
-    providerAuthority = "com.google.android.gms.fonts",
-    providerPackage = "com.google.android.gms",
-    certificates = R.array.com_google_android_gms_fonts_certs
-)
-
-@OptIn(ExperimentalTextApi::class)
+// Bundled locally (app/src/main/res/font/cinzel_bold.ttf) rather than
+// fetched at runtime via Google Play Services' Downloadable Fonts API —
+// simpler, no dependency on Play Services being available, no first-launch
+// network fetch delay. Font file downloaded directly from
+// fonts.google.com/specimen/Cinzel.
 val CinzelFontFamily = FontFamily(
-    Font(googleFont = GoogleFont("Cinzel"), fontProvider = googleFontProvider, weight = FontWeight.Bold)
+    Font(R.font.cinzel_bold, FontWeight.Bold)
 )
 
 // Set of Material typography styles for CineVault. Only bodyLarge was
