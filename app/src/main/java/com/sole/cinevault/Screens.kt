@@ -98,7 +98,6 @@ import com.sole.cinevault.ui.theme.*
 @Immutable
 private data class WelcomeDimensions(
     val horizontalPadding: Dp,
-    val headerLogoSize: Dp,
     val heroSize: Dp,
     val headingSize: androidx.compose.ui.unit.TextUnit,
     val taglineSize: androidx.compose.ui.unit.TextUnit,
@@ -107,102 +106,89 @@ private data class WelcomeDimensions(
     val sourceTileHeight: Dp,
     val tileIconSize: Dp,
     val contentMaxWidth: Dp,
-    val sectionGap: Dp,
-    val tilesSingleLine: Boolean
+    val sectionGap: Dp
 )
 
 @Composable
 private fun rememberWelcomeDimensions(isTablet: Boolean, isLandscape: Boolean, maxHeight: Dp): WelcomeDimensions =
     remember(isTablet, isLandscape, maxHeight) {
-        // FIX: bottom tiles were getting cut off — the outer LazyColumn
-        // this content sits in will happily scroll if it overflows, but
-        // the ask is for this to fit in one screen with no scroll at all.
-        // Two changes make that reliable instead of another guess:
-        // 1. tilesSingleLine = true everywhere now, not just landscape —
-        //    icon+text side-by-side is meaningfully shorter than stacked
-        //    icon-over-text, and tablet portrait (this app's own
-        //    screenshot) was the one tier still using the taller stacked
-        //    style.
-        // 2. A height-aware shrink pass at the end: if the ACTUAL
-        //    available height is tighter than a rough "should comfortably
-        //    fit" reference, hero size and every gap shrink further on
-        //    top of the already-tighter baselines below — adapts to the
-        //    real device instead of assuming one fixed screen size.
         val base = when {
             isTablet && isLandscape -> WelcomeDimensions(
-                horizontalPadding = 56.dp, headerLogoSize = 34.dp, heroSize = 96.dp,
-                headingSize = 22.sp, taglineSize = 12.sp, bodySize = 11.sp,
-                primaryButtonHeight = 44.dp, sourceTileHeight = 46.dp, tileIconSize = 20.dp,
-                contentMaxWidth = 680.dp, sectionGap = 7.dp, tilesSingleLine = true
+                horizontalPadding = 56.dp, heroSize = 84.dp,
+                headingSize = 20.sp, taglineSize = 11.sp, bodySize = 10.sp,
+                primaryButtonHeight = 40.dp, sourceTileHeight = 42.dp, tileIconSize = 24.dp,
+                contentMaxWidth = 680.dp, sectionGap = 6.dp
             )
             isTablet -> WelcomeDimensions(
-                horizontalPadding = 40.dp, headerLogoSize = 38.dp, heroSize = 130.dp,
-                headingSize = 25.sp, taglineSize = 13.sp, bodySize = 12.sp,
-                primaryButtonHeight = 50.dp, sourceTileHeight = 56.dp, tileIconSize = 24.dp,
-                contentMaxWidth = 620.dp, sectionGap = 8.dp, tilesSingleLine = true
+                horizontalPadding = 40.dp, heroSize = 120.dp,
+                headingSize = 24.sp, taglineSize = 13.sp, bodySize = 12.sp,
+                primaryButtonHeight = 48.dp, sourceTileHeight = 50.dp, tileIconSize = 28.dp,
+                contentMaxWidth = 620.dp, sectionGap = 8.dp
             )
             isLandscape -> WelcomeDimensions(
-                horizontalPadding = 20.dp, headerLogoSize = 22.dp, heroSize = 56.dp,
-                headingSize = 14.sp, taglineSize = 10.sp, bodySize = 9.sp,
-                primaryButtonHeight = 34.dp, sourceTileHeight = 34.dp, tileIconSize = 15.dp,
-                contentMaxWidth = 460.dp, sectionGap = 4.dp, tilesSingleLine = true
+                horizontalPadding = 20.dp, heroSize = 48.dp,
+                headingSize = 13.sp, taglineSize = 9.sp, bodySize = 9.sp,
+                primaryButtonHeight = 32.dp, sourceTileHeight = 32.dp, tileIconSize = 18.dp,
+                contentMaxWidth = 460.dp, sectionGap = 3.dp
             )
             else -> WelcomeDimensions(
-                horizontalPadding = 20.dp, headerLogoSize = 28.dp, heroSize = 96.dp,
-                headingSize = 20.sp, taglineSize = 12.sp, bodySize = 11.sp,
-                primaryButtonHeight = 46.dp, sourceTileHeight = 52.dp, tileIconSize = 21.dp,
-                contentMaxWidth = 460.dp, sectionGap = 7.dp, tilesSingleLine = true
+                horizontalPadding = 20.dp, heroSize = 90.dp,
+                headingSize = 19.sp, taglineSize = 12.sp, bodySize = 11.sp,
+                primaryButtonHeight = 44.dp, sourceTileHeight = 48.dp, tileIconSize = 26.dp,
+                contentMaxWidth = 460.dp, sectionGap = 6.dp
             )
         }
-        val comfortableHeight = if (isTablet) 640.dp else 560.dp
-        if (maxHeight >= comfortableHeight) base else {
-            val shrink = (maxHeight / comfortableHeight).coerceIn(0.6f, 1f)
+        // FIX: landscape was still reported cut off after the first
+        // height-fix pass. Two changes here specifically address that:
+        // 1. Subtracting a fixed buffer up front for space this content
+        //    never actually gets — the outer Column's own vertical
+        //    padding (20dp) plus the LazyColumn's bottom contentPadding
+        //    (30dp) were previously invisible to this comparison, making
+        //    it think there was ~50dp more room than there really was.
+        // 2. A wider, more aggressive shrink range (down to 0.4x instead
+        //    of 0.6x) and a lower trigger threshold, so tight tablet-
+        //    landscape heights actually get compacted rather than assumed
+        //    to already fit.
+        val usableHeight = maxHeight - 50.dp
+        val comfortableHeight = if (isTablet) 560.dp else 520.dp
+        if (usableHeight >= comfortableHeight) base else {
+            val shrink = (usableHeight / comfortableHeight).coerceIn(0.4f, 1f)
             base.copy(
-                heroSize = (base.heroSize.value * shrink).dp,
-                sectionGap = (base.sectionGap.value * shrink).dp.coerceAtLeast(3.dp),
-                sourceTileHeight = (base.sourceTileHeight.value * shrink).dp.coerceAtLeast(34.dp)
+                heroSize = (base.heroSize.value * shrink).dp.coerceAtLeast(36.dp),
+                sectionGap = (base.sectionGap.value * shrink).dp.coerceAtLeast(2.dp),
+                sourceTileHeight = (base.sourceTileHeight.value * shrink).dp.coerceAtLeast(30.dp)
             )
         }
     }
 
 @Composable
-private fun NeonSourceTile(
+private fun AmberSourceTile(
     icon: ImageVector,
-    label: String,
-    accentColor: Color,
+    title: String,
+    subtitle: String,
     height: Dp,
     iconSize: Dp,
-    singleLine: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(14.dp)
-    Box(
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .heightIn(min = height)
-            .shadow(elevation = 8.dp, shape = shape, ambientColor = accentColor.copy(alpha = 0.4f), spotColor = accentColor.copy(alpha = 0.4f))
+            .shadow(elevation = 6.dp, shape = shape, ambientColor = AmberGlow.copy(alpha = 0.3f), spotColor = AmberGlow.copy(alpha = 0.3f))
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(accentColor.copy(alpha = 0.12f), SpaceDeep.copy(alpha = 0.5f))))
-            .border(1.dp, accentColor.copy(alpha = 0.55f), shape)
+            .background(GlassSurfaceStrong)
+            .background(Brush.verticalGradient(0f to GlassHighlight, 0.45f to Color.Transparent, 1f to Color.Transparent))
+            .border(1.dp, Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.65f), AmberDeep.copy(alpha = 0.25f))), shape)
             .clickable { onClick() }
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center
+            .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
-        if (singleLine) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                Icon(imageVector = icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(iconSize))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = label, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-            }
-        } else {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(imageVector = icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(iconSize))
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = label, color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 2
-                )
-            }
+        Icon(imageVector = icon, contentDescription = null, tint = AmberCore, modifier = Modifier.size(iconSize))
+        Spacer(modifier = Modifier.width(10.dp))
+        Column {
+            Text(text = title, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text(text = subtitle, color = TextMuted, fontSize = 10.sp, maxLines = 1)
         }
     }
 }
@@ -234,24 +220,17 @@ private fun FreshInstallWelcomeContent(
                 .align(Alignment.Center)
                 .padding(horizontal = dims.horizontalPadding, vertical = 10.dp)
         ) {
-            // Header row — the one part of this screen NOT center-aligned:
-            // logo + wordmark pinned left, privacy chip pinned right.
+            // FIX: was a Row with logo+wordmark pinned left and the privacy
+            // chip pinned right — the one part of this screen that wasn't
+            // center-aligned. Logo removed entirely (redundant with the
+            // much larger hero logo right below), so there's nothing left
+            // needing a left/right split — just the privacy chip, centered
+            // like everything else.
             Row(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Image(
-                    painter = painterResource(id = R.drawable.cinevault_circle_logo),
-                    contentDescription = "CineVault",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(dims.headerLogoSize).clip(CircleShape)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "CineVault", color = TextBright, fontWeight = FontWeight.SemiBold,
-                    fontSize = (dims.headerLogoSize.value * 0.42f).sp
-                )
-                Spacer(modifier = Modifier.weight(1f))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
@@ -339,30 +318,40 @@ private fun FreshInstallWelcomeContent(
 
                 Spacer(modifier = Modifier.height(dims.sectionGap + 4.dp))
 
-                // Same breathing-glow technique as FrostedPlayButton in the
-                // player screen. Auto-width now (was fillMaxWidth up to a
-                // cap before) — hugs the icon+text with padding, not
-                // edge-to-edge.
+                // FIX: was a solid amber gradient fill with a black icon —
+                // matches this app's OTHER amber-filled pills (like the
+                // lock button), but not the play button specifically,
+                // which is glass + radial glow + gradient border rather
+                // than a flat fill. Replicating that exact recipe here
+                // since that's what was actually asked for.
                 val glow = rememberInfiniteTransition(label = "scanPillGlow")
                 val glowAlpha by glow.animateFloat(
                     initialValue = 0.45f, targetValue = 0.95f,
                     animationSpec = infiniteRepeatable(animation = tween(1400, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
                     label = "scanPillGlowAlpha"
                 )
+                val density = LocalDensity.current
+                val glowRadiusPx = with(density) { (dims.primaryButtonHeight.value * 1.6f).dp.toPx() }.coerceAtLeast(1f)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center,
                     modifier = Modifier
                         .height(dims.primaryButtonHeight)
-                        .shadow(elevation = 14.dp, shape = RoundedCornerShape(50), ambientColor = AmberCore.copy(alpha = 0.35f), spotColor = AmberCore.copy(alpha = 0.45f))
                         .clip(RoundedCornerShape(50))
-                        .background(Brush.verticalGradient(listOf(AmberCore.copy(alpha = 0.75f + 0.2f * glowAlpha), AmberDeep)))
+                        .background(GlassSurfaceStrong)
+                        .background(Brush.verticalGradient(0f to GlassHighlight, 0.45f to Color.Transparent, 1f to Color.Transparent))
+                        .background(Brush.radialGradient(colors = listOf(AmberGlow.copy(alpha = glowAlpha * 0.5f), Color.Transparent), radius = glowRadiusPx))
+                        .border(
+                            width = 1.4.dp,
+                            brush = Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.75f + 0.2f * glowAlpha), AmberDeep.copy(alpha = 0.30f))),
+                            shape = RoundedCornerShape(50)
+                        )
                         .clickable { onScanLibrary() }
                         .padding(horizontal = 22.dp)
                 ) {
-                    Icon(imageVector = Icons.Filled.Search, contentDescription = null, tint = Color.Black, modifier = Modifier.size(20.dp))
+                    Icon(imageVector = Icons.Filled.Search, contentDescription = null, tint = AmberCore, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(9.dp))
-                    Text(text = "Scan My Library", color = Color.Black, fontSize = if (isTablet) 18.sp else 16.sp, fontWeight = FontWeight.Black)
+                    Text(text = "Scan My Library", color = TextBright, fontSize = if (isTablet) 18.sp else 16.sp, fontWeight = FontWeight.Black)
                 }
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(text = "Usually takes less than a minute", color = TextMuted, fontSize = 11.sp)
@@ -371,27 +360,24 @@ private fun FreshInstallWelcomeContent(
 
                 // Single row on both orientations, as requested — Connect
                 // SMB in the center, directly under the Scan button.
-                // Neon-cyberpunk treatment: three different accent colors
-                // (cyan/magenta/amber) so the tiles stay distinguishable
-                // at a glance rather than all competing in one hue.
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    NeonSourceTile(
-                        icon = Icons.Filled.Link, label = "Open Stream", accentColor = Color(0xFF00E5FF),
-                        height = dims.sourceTileHeight, iconSize = dims.tileIconSize, singleLine = dims.tilesSingleLine,
-                        modifier = Modifier.weight(1f), onClick = onOpenStream
+                // Compact, sized to content rather than stretched to fill
+                // the row — amber/glass theme throughout, matching
+                // FrostedPlayButton's actual recipe rather than a flat
+                // color fill. Row itself isn't fillMaxWidth, so it centers
+                // as a unit within the parent's centered column instead of
+                // spanning edge to edge.
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AmberSourceTile(
+                        icon = Icons.Filled.Link, title = "Open Stream", subtitle = "Play a direct video link",
+                        height = dims.sourceTileHeight, iconSize = dims.tileIconSize, onClick = onOpenStream
                     )
-                    NeonSourceTile(
-                        icon = Icons.Filled.Dns, label = "Connect SMB", accentColor = Color(0xFFFF2EC7),
-                        height = dims.sourceTileHeight, iconSize = dims.tileIconSize, singleLine = dims.tilesSingleLine,
-                        modifier = Modifier.weight(1f), onClick = onConnectSmb
+                    AmberSourceTile(
+                        icon = Icons.Filled.Dns, title = "Connect SMB", subtitle = "Add a computer or NAS",
+                        height = dims.sourceTileHeight, iconSize = dims.tileIconSize, onClick = onConnectSmb
                     )
-                    NeonSourceTile(
-                        icon = Icons.Filled.Folder, label = "Choose Folder", accentColor = AmberCore,
-                        height = dims.sourceTileHeight, iconSize = dims.tileIconSize, singleLine = dims.tilesSingleLine,
-                        modifier = Modifier.weight(1f), onClick = onChooseFolder
+                    AmberSourceTile(
+                        icon = Icons.Filled.Folder, title = "Choose Folder", subtitle = "Scan only what you select",
+                        height = dims.sourceTileHeight, iconSize = dims.tileIconSize, onClick = onChooseFolder
                     )
                 }
 
@@ -478,46 +464,69 @@ fun CineBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
         Triple(Icons.Filled.Settings, "Settings", 3)
     )
 
-    NavigationBar(
-        containerColor = SpaceDeep,
-        tonalElevation = 0.dp
-    ) {
-        tabs.forEach { (icon, label, index) ->
-            val selected = selectedTab == index
-            NavigationBarItem(
-                selected = selected,
-                onClick = { onTabSelected(index) },
-                label = {
-                    Text(
-                        text = label,
-                        color = if (selected) AmberGlow else TextFaint,
-                        fontSize = 11.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+    // FIX: was a flat NavigationBar with a solid containerColor — no
+    // glass or glow treatment at all. Kept NavigationBar itself rather
+    // than replacing it with a fully custom layout, since it handles
+    // system bottom-bar insets (gesture nav areas etc.) automatically —
+    // that's real, easy-to-silently-break behavior not worth risking for
+    // a purely visual change. Instead layered a glowing amber gradient
+    // line along the top edge (matching the reference image) and made
+    // the container itself semi-transparent so it reads as glass sitting
+    // over the content behind it, rather than a flat opaque bar. Size
+    // and placement both unchanged.
+    Box {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.5.dp)
+                .align(Alignment.TopCenter)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(Color.Transparent, AmberGlow.copy(alpha = 0.9f), AmberCore, AmberGlow.copy(alpha = 0.9f), Color.Transparent)
                     )
-                },
-                icon = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = label,
-                            tint = if (selected) AmberGlow else TextFaint,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        if (selected) {
-                            Spacer(Modifier.height(3.dp))
-                            Box(
-                                modifier = Modifier
-                                    .size(4.dp)
-                                    .clip(RoundedCornerShape(50))
-                                    .background(AmberGlow)
-                            )
-                        }
-                    }
-                },
-                colors = NavigationBarItemDefaults.colors(
-                    indicatorColor = Color.Transparent
                 )
-            )
+        )
+        NavigationBar(
+            containerColor = SpaceDeep.copy(alpha = 0.88f),
+            tonalElevation = 0.dp
+        ) {
+            tabs.forEach { (icon, label, index) ->
+                val selected = selectedTab == index
+                NavigationBarItem(
+                    selected = selected,
+                    onClick = { onTabSelected(index) },
+                    label = {
+                        Text(
+                            text = label,
+                            color = if (selected) AmberGlow else TextFaint,
+                            fontSize = 11.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    icon = {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = label,
+                                tint = if (selected) AmberGlow else TextFaint,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            if (selected) {
+                                Spacer(Modifier.height(3.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(4.dp)
+                                        .clip(RoundedCornerShape(50))
+                                        .background(AmberGlow)
+                                )
+                            }
+                        }
+                    },
+                    colors = NavigationBarItemDefaults.colors(
+                        indicatorColor = Color.Transparent
+                    )
+                )
+            }
         }
     }
 }
