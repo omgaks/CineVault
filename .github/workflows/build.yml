@@ -28,7 +28,7 @@ jobs:
       # removing anything that was already working.
 
       - name: Run unit tests
-        run: ./gradlew testReleaseUnitTest --no-daemon
+        run: ./gradlew test --no-daemon
 
       # Lint is genuinely useful, but this app has never run it in CI
       # before today — there's no way to know how many pre-existing
