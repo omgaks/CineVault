@@ -116,6 +116,17 @@
 -keep class jcifs.** { *; }
 -dontwarn jcifs.**
 
+# jcifs-ng transitively pulls in SLF4J for optional logging. SLF4J's
+# StaticLoggerBinder is intentionally absent unless the app also bundles
+# an actual logging backend (Logback, Log4j, etc.) — SLF4J's own
+# LoggerFactory handles that absence gracefully at runtime (falls back to
+# a no-op logger). R8 in full mode treats any referenced-but-missing
+# class as a hard build error by default, which this isn't — it's the
+# documented, expected pattern for SLF4J specifically, not a real problem.
+# Confirmed via an actual failed build: "R8: Missing class
+# org.slf4j.impl.StaticLoggerBinder" — this isn't a defensive guess.
+-dontwarn org.slf4j.**
+
 # ── coroutines / kotlinx.serialization internals ────────────────────────
 # Standard defensive rules for Kotlin coroutines' own internal use of
 # reflection for continuation state machines — a widely-documented
