@@ -1257,6 +1257,21 @@ fun SearchScreen(
     onVideoClick: (VideoWithMetadata) -> Unit
 ) {
     ForceCineVaultBrightness()
+    val context = LocalContext.current
+
+    // FIX: search received the exact same unfiltered library list as the
+    // main Library screen, but — unlike Library, which explicitly filters
+    // both individually-hidden paths and whole secret folders before
+    // displaying anything — had no secret-folder awareness at all. A
+    // video correctly hidden from browsing was still fully searchable and
+    // clickable straight through to Detail/Player, defeating the point
+    // of hiding it in the first place. Same filtering logic as
+    // LocalVideoLibraryScreen, applied here too.
+    val hiddenPaths = remember { loadSecretVideoPaths(context) }
+    val hiddenFolders = remember { loadSecretFolderPaths(context) }
+    val searchableVideos = remember(videos, hiddenPaths, hiddenFolders) {
+        videos.filter { !hiddenPaths.contains(it.video.path) && !videoIsInsideSecretFolder(it, hiddenFolders) }
+    }
 
     // Expanded beyond title/filename to also match genre, director, and
     // year — e.g. "horror" or "nolan" or "2010" now actually finds
@@ -1264,8 +1279,8 @@ fun SearchScreen(
     // Deliberately NOT fuzzy/typo-tolerant matching (that's real edit-
     // distance scoring, a separate feature on its own merits) — this is
     // still exact substring matching, just against more fields.
-    val filteredVideos = remember(videos, query) {
-        if (query.isBlank()) videos else videos.filter { v ->
+    val filteredVideos = remember(searchableVideos, query) {
+        if (query.isBlank()) searchableVideos else searchableVideos.filter { v ->
             v.title.contains(query, ignoreCase = true) ||
                 v.video.name.contains(query, ignoreCase = true) ||
                 v.genres.any { it.contains(query, ignoreCase = true) } ||
