@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   FIX: previously no networkSecurityConfig existed at all — meaning
+   cleartext (http://) traffic was governed only by Android's own
+   platform default (blocked since API 28, allowed on older devices),
+   never something this app explicitly decided and documented itself.
+   This makes that policy explicit rather than implicit.
+
+   Only affects the STANDARD Android networking stack — OkHttp (TMDB/
+   OMDB/OpenSubtitles/SubDL API calls), WebView (the subtitle website
+   fallback), HttpURLConnection. Does NOT affect SMB — SmbDataSource/
+   SmbVideoScanner talk to jcifs-ng directly over raw sockets, which is
+   a separate protocol implementation entirely outside Android's HTTP(S)
+   stack and this config's scope. SMB's own protection (message signing)
+   is unrelated and unaffected either way.
+
+   The manifest's http:// intent-filters (for "Open with CineVault" on
+   direct stream links) were already non-functional for actual playback
+   under Android's own default cleartext blocking on modern devices —
+   this doesn't change that behavior, just makes it an explicit,
+   intentional app policy instead of an implicit platform default.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>
