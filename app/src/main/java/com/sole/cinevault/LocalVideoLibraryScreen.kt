@@ -706,7 +706,7 @@ fun LocalVideoLibraryScreen(
     // now (visibleSortedVideos already excludes Secret-hidden entries) —
     // duplicate detection has no business surfacing anything from Secret
     // outside of it, same boundary every other category already respects.
-    val duplicateGroups = remember(visibleSortedVideos) { findDuplicateGroups(visibleSortedVideos) }
+    val duplicateGroups = remember(visibleSortedVideos) { findDuplicateGroups(context, visibleSortedVideos) }
 
     val filteredVideos = when (selectedCategory) {
         "Secret" -> if (secretUnlocked) secretVideos.filter { it.video.path !in secretGroupedPaths } else emptyList()
