@@ -80,7 +80,18 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // FIX: was false — proguard-rules.pro was the untouched
+            // default template with nothing kept, which was fine ONLY
+            // because minification was off. Now genuinely populated with
+            // rules covering every reflection/JNI-dependent library this
+            // app actually uses (see that file for the full reasoning
+            // behind each one) before turning this on.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             val ksFile = rootProject.file("cinevault-release.jks")
             if (ksFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
