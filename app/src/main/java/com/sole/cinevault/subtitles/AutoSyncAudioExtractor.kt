@@ -1,6 +1,7 @@
 package com.sole.cinevault.subtitles
 
 import android.content.Context
+import android.media.AudioFormat
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
@@ -74,6 +75,17 @@ object AutoSyncAudioExtractor {
 
             var sourceSampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE, 44100)
             var sourceChannelCount = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT, 2)
+            // FIX: outputBuffer.asShortBuffer() was called unconditionally,
+            // assuming every decoder always outputs 16-bit PCM. That's true
+            // by default (this code never requests KEY_PCM_ENCODING on the
+            // input format, and Android's own documented default for that
+            // case IS 16-bit) — but some devices/codecs can still deviate.
+            // Tracked here so a genuine mismatch fails gracefully (returns
+            // null, same as any other unexpected decode failure) instead of
+            // silently reinterpreting the wrong byte layout as audio
+            // samples, which would produce garbage without ever throwing.
+            var pcmEncoding = AudioFormat.ENCODING_PCM_16BIT
+            var encodingMismatch = false
             val pcmChunks = mutableListOf<ShortArray>()
 
             // FIX: codec.stop()/release() previously only ran on the
@@ -117,14 +129,28 @@ object AutoSyncAudioExtractor {
                             iterationsWithoutProgress = 0
                             lastPresentationUs = bufferInfo.presentationTimeUs
                             val outputBuffer = codec.getOutputBuffer(outIndex)
-                            if (outputBuffer != null && bufferInfo.size > 0) {
-                                outputBuffer.order(ByteOrder.LITTLE_ENDIAN)
-                                outputBuffer.position(bufferInfo.offset)
-                                outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
-                                val shortBuf = outputBuffer.asShortBuffer()
-                                val chunk = ShortArray(shortBuf.remaining())
-                                shortBuf.get(chunk)
-                                pcmChunks.add(chunk)
+                            // FIX: every decoded buffer used to get included
+                            // unconditionally. SEEK_TO_CLOSEST_SYNC can (and
+                            // does) land on a keyframe BEFORE the requested
+                            // startUs, meaning the first several decoded
+                            // buffers can carry audio from before the
+                            // intended window — biasing whatever offset
+                            // Auto-Sync computes from this window's content.
+                            // Buffers before startUs are now dropped
+                            // entirely rather than included.
+                            if (outputBuffer != null && bufferInfo.size > 0 && bufferInfo.presentationTimeUs >= startUs) {
+                                if (pcmEncoding != AudioFormat.ENCODING_PCM_16BIT) {
+                                    encodingMismatch = true
+                                    sawOutputEOS = true
+                                } else {
+                                    outputBuffer.order(ByteOrder.LITTLE_ENDIAN)
+                                    outputBuffer.position(bufferInfo.offset)
+                                    outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
+                                    val shortBuf = outputBuffer.asShortBuffer()
+                                    val chunk = ShortArray(shortBuf.remaining())
+                                    shortBuf.get(chunk)
+                                    pcmChunks.add(chunk)
+                                }
                             }
                             codec.releaseOutputBuffer(outIndex, false)
                             if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) sawOutputEOS = true
@@ -133,6 +159,19 @@ object AutoSyncAudioExtractor {
                             val newFormat = codec.outputFormat
                             sourceSampleRate = newFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE, sourceSampleRate)
                             sourceChannelCount = newFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT, sourceChannelCount)
+                            // FIX: KEY_PCM_ENCODING was never inspected —
+                            // this codec never requests anything but the
+                            // platform default (16-bit) on the input side,
+                            // so this is a genuine edge case rather than an
+                            // expected path, but worth knowing about rather
+                            // than silently misreading the bytes on
+                            // whatever device/codec combination does differ.
+                            // Absent key (most devices) is treated as
+                            // 16-bit, matching the prior unconditional
+                            // assumption for the common case.
+                            if (newFormat.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
+                                pcmEncoding = newFormat.getInteger(MediaFormat.KEY_PCM_ENCODING)
+                            }
                         }
                         else -> {
                             // Neither an input nor output buffer was ready
@@ -151,6 +190,8 @@ object AutoSyncAudioExtractor {
                 try { codec.stop() } catch (_: Exception) {}
                 codec.release()
             }
+
+            if (encodingMismatch) return null
 
             val mono = downmixToMono(pcmChunks, sourceChannelCount)
             // FIX: pcmChunks (the raw decoded PCM — often the single
