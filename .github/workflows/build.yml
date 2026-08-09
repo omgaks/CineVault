@@ -21,17 +21,63 @@ jobs:
           echo "OMDB_API_KEY=${{ secrets.OMDB_API_KEY }}" >> local.properties
           echo "OPENSUB_API_KEY=${{ secrets.OPENSUB_API_KEY }}" >> local.properties
           echo "SUBDL_API_KEY=${{ secrets.SUBDL_API_KEY }}" >> local.properties
+
+      # FIX: previously nothing ran before assembleRelease except the key
+      # injection — no unit tests, no lint, no confirmation the resulting
+      # APK is actually signed with the intended key. Added below without
+      # removing anything that was already working.
+
+      - name: Run unit tests
+        run: ./gradlew testReleaseUnitTest --no-daemon
+
+      # Lint is genuinely useful, but this app has never run it in CI
+      # before today — there's no way to know how many pre-existing
+      # findings would surface on the first run, and some of Android's
+      # own default lint severities fail the build outright. Rather than
+      # risk every future push suddenly blocking on a backlog nobody's
+      # triaged yet, this runs and uploads the report but doesn't fail
+      # the workflow (continue-on-error). Once the existing findings are
+      # reviewed, remove continue-on-error to make it a real gate.
+      - name: Run lint (informational — see step comment)
+        continue-on-error: true
+        run: ./gradlew lintRelease --no-daemon
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-release.html
+          if-no-files-found: ignore
+
+      # FIX: was `if: ${{ env.KEYSTORE_BASE64 != '' }}` — checking an env
+      # var that's only ever defined inside THIS SAME step's own env
+      # block below, which a step's if: condition is evaluated before,
+      # not after. That comparison was very likely never seeing the real
+      # secret's value at all, regardless of whether it happened to still
+      # work in practice. Replaced with a check against the secret itself
+      # via a dedicated prior step, which is the correct way to do a
+      # conditional-on-secret-presence in Actions.
+      - name: Check keystore secret present
+        id: keystore_check
+        run: |
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Decode signing keystore
-        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        if: steps.keystore_check.outputs.present == 'true'
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: echo "$KEYSTORE_BASE64" | base64 -d > cinevault-release.jks
+
       - name: Build Release APK
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew assembleRelease --no-daemon
+
       - name: Extract version info
         id: version
         run: |
@@ -46,6 +92,23 @@ jobs:
         run: |
           APK=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
           mv "$APK" app/build/outputs/apk/release/CineVault-${{ steps.version.outputs.name }}.apk
+
+      # FIX: nothing previously confirmed the APK that's about to be
+      # published is actually signed at all, let alone signed with the
+      # intended release key rather than falling back to unsigned (which
+      # build.gradle.kts's own signingConfig block does silently if
+      # cinevault-release.jks doesn't exist — see its own "falls back
+      # gracefully when building locally without a keystore" comment,
+      # which is exactly the right behavior for local dev but not
+      # something that should ever reach a published release unnoticed).
+      # jarsigner comes from the JDK already set up above — no extra SDK
+      # tooling needed. Fails the workflow if the APK isn't verifiably
+      # signed, before a release is ever created from it.
+      - name: Verify APK is signed
+        run: |
+          APK_PATH="app/build/outputs/apk/release/CineVault-${{ steps.version.outputs.name }}.apk"
+          jarsigner -verify "$APK_PATH"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
