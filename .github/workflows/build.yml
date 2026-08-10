@@ -87,7 +87,17 @@ jobs:
           echo "name=${VERSION_NAME}" >> $GITHUB_OUTPUT
           echo "code=${VERSION_CODE}" >> $GITHUB_OUTPUT
           echo "date=${BUILD_DATE}" >> $GITHUB_OUTPUT
-          echo "tag=v${VERSION_NAME}-b${VERSION_CODE}" >> $GITHUB_OUTPUT
+          # FIX: was "v${VERSION_NAME}-b${VERSION_CODE}" alone — with
+          # versionName/versionCode unchanged across many pushes in a row
+          # (a normal thing during a run of small fixes, not itself a
+          # mistake), every one of those builds targeted the exact same
+          # release tag and tried to overwrite the exact same asset file.
+          # That's precisely the scenario softprops/action-gh-release has
+          # documented sporadic "Not Found" failures under. Appending the
+          # run number (always unique, auto-incrementing, provided by
+          # GitHub itself) means every push gets its own fresh release
+          # instead of repeatedly colliding on the same one.
+          echo "tag=v${VERSION_NAME}-b${VERSION_CODE}-r${{ github.run_number }}" >> $GITHUB_OUTPUT
       - name: Find and rename APK
         run: |
           APK=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
