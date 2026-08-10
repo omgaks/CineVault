@@ -569,7 +569,13 @@ fun LocalVideoLibraryScreen(
         clearPlaybackPosition(context, item.video.path)
         val updated = videos.filter { it.video.path != item.video.path }
         onVideosLoaded(updated)
-        saveLibraryCache(context, updated)
+        // FIX: saveLibraryCache is now suspend (see PlaybackMemory.kt) —
+        // this function itself is called from raw dialog/ActivityResult
+        // callbacks, not coroutines, so the call needs its own launch.
+        // Fire-and-forget is fine here: the rest of this function (the
+        // Toast, the onVideosLoaded update above) doesn't need to wait
+        // for the cache write to finish.
+        scope.launch { saveLibraryCache(context, updated) }
         Toast.makeText(context, "File deleted", Toast.LENGTH_SHORT).show()
     }
 
@@ -858,7 +864,7 @@ fun LocalVideoLibraryScreen(
                             contentDescription = "Refresh / Clear Cache",
                             label = "Refresh",
                             enabled = !LibraryScanController.isScanning,
-                            onClick = { clearLibraryCache(context); onVideosLoaded(emptyList()); LibraryScanController.status = "Cache cleared. Scan again." }
+                            onClick = { scope.launch { clearLibraryCache(context) }; onVideosLoaded(emptyList()); LibraryScanController.status = "Cache cleared. Scan again." }
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         LibraryToolIconButton(
@@ -871,7 +877,17 @@ fun LocalVideoLibraryScreen(
                         )
                     }
 
-                    loadLibraryCache(context)?.let {
+                    // FIX: loadLibraryCache is now suspend (see
+                    // PlaybackMemory.kt) — was called directly here,
+                    // synchronously, on every recomposition. produceState
+                    // loads it asynchronously instead; the timestamp
+                    // simply doesn't render until the read completes
+                    // (typically near-instant), rather than blocking
+                    // composition to get it immediately.
+                    val lastScanCache by produceState<CachedLibrary?>(initialValue = null, context) {
+                        value = loadLibraryCache(context)
+                    }
+                    lastScanCache?.let {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(text = "Last Scan: " + java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(it.timestamp)), color = TextFaint, fontSize = 11.sp)
                     }
