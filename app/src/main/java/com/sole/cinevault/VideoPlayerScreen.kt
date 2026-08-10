@@ -600,63 +600,34 @@ fun VideoPlayerScreen(
         showSleepMenu = false; showControls = true
     }
 
-    fun playPrevious() {
-        val idx = episodeList.indexOfFirst { it.video.path == currentVideo.path }
-        val prev = episodeList.getOrNull(idx - 1)
-        if (prev != null) { currentMediaType = prev.type; currentVideo = prev.video; onPlayNext(prev); edgeSwipeHint = "◀ Previous" }
-        else edgeSwipeHint = "No previous video"
-        scope.launch { delay(1200); edgeSwipeHint = "" }
+    // FIX: these three functions used to be plain local functions defined
+    // right here — now orchestration glue calling into
+    // PlaybackNavigationCoordinator (see that file for the full
+    // reasoning). Every one of the 13+ call sites elsewhere in this file
+    // continues to work unchanged.
+    val playbackNavigationCoordinator = remember(exoPlayer) {
+        PlaybackNavigationCoordinator(
+            context = context,
+            scope = scope,
+            exoPlayer = exoPlayer,
+            trackUi = trackUi,
+            coreUi = coreUi,
+            getEpisodeList = { episodeList },
+            getCurrentVideo = { currentVideo },
+            getIsStreamMedia = { isStreamMedia },
+            getPlaybackSpeed = { playbackSpeed },
+            setCurrentVideo = { currentVideo = it },
+            setCurrentMediaType = { currentMediaType = it },
+            setEdgeSwipeHint = { edgeSwipeHint = it },
+            setPlayerErrorMessage = { playerErrorMessage = it },
+            setIsVideoEnded = { isVideoEnded = it },
+            onPlayNext = onPlayNext
+        )
     }
-
-    fun playNext() {
-        val idx = episodeList.indexOfFirst { it.video.path == currentVideo.path }
-        val next = episodeList.getOrNull(idx + 1)
-        if (next != null) { currentMediaType = next.type; currentVideo = next.video; onPlayNext(next); edgeSwipeHint = "Next ▶" }
-        else edgeSwipeHint = "No next video"
-        scope.launch { delay(1200); edgeSwipeHint = "" }
-    }
-
-    fun playCurrentVideoWithSubtitle(subtitleUri: Uri? = null, resumePosition: Long = 0L, isOriginalSubtitle: Boolean = true) {
-        val isSmbMedia = currentVideo.path.startsWith("smb://", ignoreCase = true)
-        val isContentUriMedia = currentVideo.path.startsWith("content://", ignoreCase = true)
-        if (!isStreamMedia && !isSmbMedia && !isContentUriMedia && !java.io.File(currentVideo.path).exists()) {
-            playerErrorMessage = "File not found. It may have been moved, renamed, or the drive it's on was disconnected."
-            return
-        }
-        try {
-            playerErrorMessage = null
-            if (subtitleUri != null && isOriginalSubtitle) {
-                trackUi.originalUri = subtitleUri
-                trackUi.appliedOffsetMs = 0L
-                coreUi.syncOffset = 0f
-            }
-            val mediaItemBuilder = MediaItem.Builder().setUri(currentVideo.path)
-            if (subtitleUri != null) {
-                // MIME type now reflects the SUBTITLE FILE'S actual format
-                // rather than always claiming SubRip — files our own sync/
-                // clean/dual pipeline generates (cinevault_synced_subtitle,
-                // cinevault_cleaned_subtitle, cinevault_dual_merged) are
-                // always genuine SRT regardless of the original source
-                // format, since those pipelines only operate on SRT text,
-                // so they still correctly report as SRT here.
-                val detectedFormat = detectSubtitleFormat(subtitleUri)
-                val subtitleMimeType = detectedFormat.mimeType ?: MimeTypes.APPLICATION_SUBRIP
-                mediaItemBuilder.setSubtitleConfigurations(listOf(
-                    MediaItem.SubtitleConfiguration.Builder(subtitleUri)
-                        .setMimeType(subtitleMimeType).setLanguage("en")
-                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
-                ))
-            }
-            exoPlayer.setMediaItem(mediaItemBuilder.build())
-            exoPlayer.prepare()
-            exoPlayer.seekTo(resumePosition.coerceAtLeast(0L))
-            exoPlayer.playWhenReady = true; exoPlayer.play()
-            exoPlayer.playbackParameters = PlaybackParameters(playbackSpeed)
-            isVideoEnded = false
-        } catch (e: Exception) {
-            playerErrorMessage = "Couldn't start playback: ${e.message ?: e.javaClass.simpleName}"
-        }
-    }
+    fun playPrevious() = playbackNavigationCoordinator.playPrevious()
+    fun playNext() = playbackNavigationCoordinator.playNext()
+    fun playCurrentVideoWithSubtitle(subtitleUri: Uri? = null, resumePosition: Long = 0L, isOriginalSubtitle: Boolean = true) =
+        playbackNavigationCoordinator.playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
 
     // Validated handoff for both the website-fallback flow and the
     // (now-validated) local file picker below — reuses the exact same
