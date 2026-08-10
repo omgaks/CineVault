@@ -34,3 +34,27 @@ fun computeDriftTransform(pointA: DriftPoint, pointB: DriftPoint): Pair<Float, L
     val shift = c1 - scale * t1
     return scale.toFloat() to shift.toLong()
 }
+
+// Added proactively (not after another failed build this time) — needed
+// by the subtitle-search extraction, and was heading toward the exact
+// same "private function still in VideoPlayerScreen.kt, needed from a
+// different file" shape that caused real recurring problems earlier
+// tonight. Belongs here for the same reason readTextFromUri/
+// computeDriftTransform do.
+fun buildCleanedSubtitleFile(context: Context, sourceUri: Uri, options: SubtitleCleaningOptions): Uri? {
+    if (!options.isAnyEnabled) return sourceUri
+    if (!supportsCustomTextPipeline(detectSubtitleFormat(sourceUri))) return sourceUri
+    val original = readTextFromUri(context, sourceUri) ?: return null
+    val cleaned = cleanSrtText(original, options)
+    return try {
+        // Unique per source file + the exact cleaning options applied —
+        // avoids a shared fixed filename racing between overlapping
+        // requests.
+        val uniqueName = "cinevault_cleaned_${sourceUri.hashCode()}_${options.hashCode()}.srt"
+        val outFile = java.io.File(context.cacheDir, uniqueName)
+        outFile.writeText(cleaned)
+        Uri.fromFile(outFile)
+    } catch (e: Exception) {
+        null
+    }
+}
