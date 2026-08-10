@@ -74,49 +74,70 @@ fun clearPlaybackFolderPositions(
         .forEach { dao.delete(it) }
 }
 
-fun saveLibraryCache(
+// FIX: the fuller restructuring for library_cache — see
+// LibraryCacheDatabase.kt for the full reasoning. Genuinely suspend this
+// time (unlike Phases 2/3/4's synchronous approach), matching the real,
+// previously-documented main-thread-hitch risk this specific store
+// carries. Same one-time migration pattern as every other phase.
+private const val LIBRARY_CACHE_MIGRATION_DONE_KEY = "library_cache_room_migration_done"
+private var libraryCacheMigrationChecked = false
+
+private suspend fun ensureLibraryCacheMigratedToRoom(context: Context) {
+    if (libraryCacheMigrationChecked) return
+    libraryCacheMigrationChecked = true
+    val settingsPrefs = context.getSharedPreferences("library_cache_settings", Context.MODE_PRIVATE)
+    if (settingsPrefs.getBoolean(LIBRARY_CACHE_MIGRATION_DONE_KEY, false)) return
+
+    val legacyPrefs = context.getSharedPreferences("library_cache", Context.MODE_PRIVATE)
+    val raw = legacyPrefs.getString("cached_library", null)
+    if (!raw.isNullOrBlank()) {
+        try {
+            val cacheType = object : TypeToken<CachedLibrary>() {}.type
+            val legacy: CachedLibrary? = Gson().fromJson(raw, cacheType)
+            if (legacy != null && legacy.videos.isNotEmpty()) {
+                val dao = LibraryCacheDatabase.getInstance(context).libraryCacheDao()
+                val entities = legacy.videos.map { LibraryCacheVideoEntity(it.video.path, Gson().toJson(it)) }
+                dao.replaceLibraryCache(entities, legacy.timestamp)
+            }
+        } catch (_: Exception) {
+            // Skip a corrupted legacy blob rather than fail startup over it.
+        }
+    }
+    legacyPrefs.edit().clear().apply()
+    settingsPrefs.edit().putBoolean(LIBRARY_CACHE_MIGRATION_DONE_KEY, true).apply()
+}
+
+suspend fun saveLibraryCache(
     context: Context,
     videos: List<VideoWithMetadata>
 ) {
-    val cache =
-        CachedLibrary(
-            videos = videos,
-            timestamp = System.currentTimeMillis()
-        )
-
-    val json =
-        Gson().toJson(cache)
-
-    context
-        .getSharedPreferences("library_cache", Context.MODE_PRIVATE)
-        .edit()
-        .putString("cached_library", json)
-        .apply()
+    ensureLibraryCacheMigratedToRoom(context)
+    val dao = LibraryCacheDatabase.getInstance(context).libraryCacheDao()
+    val entities = videos.map { LibraryCacheVideoEntity(it.video.path, Gson().toJson(it)) }
+    dao.replaceLibraryCache(entities, System.currentTimeMillis())
 }
 
-fun loadLibraryCache(
+suspend fun loadLibraryCache(
     context: Context
 ): CachedLibrary? {
-    val json =
-        context
-            .getSharedPreferences("library_cache", Context.MODE_PRIVATE)
-            .getString("cached_library", null)
-            ?: return null
-
-    return try {
-        val cacheType =
-            object : TypeToken<CachedLibrary>() {}.type
-
-        Gson().fromJson(json, cacheType)
-    } catch (e: Exception) {
-        null
+    ensureLibraryCacheMigratedToRoom(context)
+    val dao = LibraryCacheDatabase.getInstance(context).libraryCacheDao()
+    val meta = dao.getMeta() ?: return null
+    val videoJsonList = dao.getAllVideoJson()
+    if (videoJsonList.isEmpty()) return null
+    val videos = videoJsonList.mapNotNull { json ->
+        try {
+            Gson().fromJson(json, VideoWithMetadata::class.java)
+        } catch (_: Exception) {
+            // Skip a corrupted individual video entry rather than fail
+            // the whole cache load over one bad row.
+            null
+        }
     }
+    return CachedLibrary(videos = videos, timestamp = meta.timestamp)
 }
 
-fun clearLibraryCache(context: Context) {
-    context
-        .getSharedPreferences("library_cache", Context.MODE_PRIVATE)
-        .edit()
-        .clear()
-        .apply()
+suspend fun clearLibraryCache(context: Context) {
+    ensureLibraryCacheMigratedToRoom(context)
+    LibraryCacheDatabase.getInstance(context).libraryCacheDao().clearLibraryCache()
 }
