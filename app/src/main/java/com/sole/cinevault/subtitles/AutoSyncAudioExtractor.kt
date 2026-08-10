@@ -23,6 +23,18 @@ import java.nio.ByteOrder
 // simpler direct MediaExtractor+MediaCodec approach below. Gated off for
 // smb:// paths at the call site in AutoSyncEngine.kt rather than failing
 // silently.
+// FIX: MediaFormat.getInteger(key, default) — the 2-arg overload — only
+// exists since API 29. This app's minSdk is 24, so on an Android 7.0-8.1
+// device (API 24-28) every call to that overload would throw
+// NoSuchMethodError the instant Auto-Sync tried to extract audio — a
+// real crash, caught by lint rather than by device testing, since
+// neither of this app's two real test devices run anything close to
+// that range. Uses the 1-arg overload (available since API 16, safe for
+// this app's whole supported range) plus an explicit containsKey check,
+// which is exactly equivalent to what the 2-arg version does internally.
+private fun MediaFormat.getIntegerOrDefault(key: String, default: Int): Int =
+    if (containsKey(key)) getInteger(key) else default
+
 object AutoSyncAudioExtractor {
 
     data class ExtractedAudio(val samples: FloatArray, val sampleRate: Int)
@@ -73,8 +85,8 @@ object AutoSyncAudioExtractor {
             val endUs = startUs + durationMs * 1000L
             extractor.seekTo(startUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
 
-            var sourceSampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE, 44100)
-            var sourceChannelCount = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT, 2)
+            var sourceSampleRate = format.getIntegerOrDefault(MediaFormat.KEY_SAMPLE_RATE, 44100)
+            var sourceChannelCount = format.getIntegerOrDefault(MediaFormat.KEY_CHANNEL_COUNT, 2)
             // FIX: outputBuffer.asShortBuffer() was called unconditionally,
             // assuming every decoder always outputs 16-bit PCM. That's true
             // by default (this code never requests KEY_PCM_ENCODING on the
@@ -157,8 +169,8 @@ object AutoSyncAudioExtractor {
                         }
                         outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                             val newFormat = codec.outputFormat
-                            sourceSampleRate = newFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE, sourceSampleRate)
-                            sourceChannelCount = newFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT, sourceChannelCount)
+                            sourceSampleRate = newFormat.getIntegerOrDefault(MediaFormat.KEY_SAMPLE_RATE, sourceSampleRate)
+                            sourceChannelCount = newFormat.getIntegerOrDefault(MediaFormat.KEY_CHANNEL_COUNT, sourceChannelCount)
                             // FIX: KEY_PCM_ENCODING was never inspected —
                             // this codec never requests anything but the
                             // platform default (16-bit) on the input side,
