@@ -430,6 +430,11 @@ sealed class Destination {
 @Composable
 fun CineVaultApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
+    // Needed now that loadLibraryCache/saveLibraryCache/clearLibraryCache
+    // are suspend (see PlaybackMemory.kt) — several call sites below are
+    // plain callback lambdas (onClick, onSecretChanged), not coroutines
+    // themselves.
+    val scope = rememberCoroutineScope()
 
     var backStack by remember { mutableStateOf<List<Destination>>(listOf(Destination.Tab(0))) }
     var libraryVideos by remember { mutableStateOf<List<VideoWithMetadata>>(emptyList()) }
@@ -457,7 +462,7 @@ fun CineVaultApp() {
         push(Destination.Player(video, if (isNetworkStream) "stream" else "local", emptyList()))
     }
 
-    fun reloadAfterSecretChange() {
+    suspend fun reloadAfterSecretChange() {
         val cached = loadLibraryCache(context)
         if (cached != null) libraryVideos = cached.videos
     }
@@ -557,7 +562,7 @@ fun CineVaultApp() {
                         onEpisodeClick = { episode ->
                             push(Destination.Player(episode.video, episode.type, dest.group.episodes))
                         },
-                        onSecretChanged = { reloadAfterSecretChange() }
+                        onSecretChanged = { scope.launch { reloadAfterSecretChange() } }
                     )
                 }
 
@@ -680,12 +685,20 @@ fun CineVaultApp() {
                             videos = libraryVideos,
                             onVideosLoaded = { loadedVideos ->
                                 libraryVideos = loadedVideos
-                                saveLibraryCache(context = context, videos = loadedVideos)
+                                // FIX: saveLibraryCache is now suspend
+                                // (see PlaybackMemory.kt) — onVideosLoaded
+                                // itself is a plain non-suspend callback
+                                // type, invoked from both coroutine and
+                                // non-coroutine contexts depending on the
+                                // caller, so this specific call needs its
+                                // own launch rather than relying on
+                                // whatever context invoked the lambda.
+                                scope.launch { saveLibraryCache(context = context, videos = loadedVideos) }
                             },
                             onItemClick = { item -> push(Destination.Detail(item)) },
                             onPlayClick = { item -> push(Destination.Player(item.video, item.type, libraryVideos)) },
                             onTvGroupClick = { group -> push(Destination.TvShow(group)) },
-                            onSecretChanged = { reloadAfterSecretChange() },
+                            onSecretChanged = { scope.launch { reloadAfterSecretChange() } },
                             onGenreClick = { genreName -> push(Destination.GenrePage(genreName)) },
                             onNativeCollectionClick = { id, name -> push(Destination.NativeCollectionPage(id, name)) },
                             onCuratedCollectionClick = { name -> push(Destination.CuratedCollectionPage(name)) },
@@ -704,7 +717,7 @@ fun CineVaultApp() {
                             // of just navigating to an empty Library screen.
                             onVideosLoaded = { loadedVideos ->
                                 libraryVideos = loadedVideos
-                                saveLibraryCache(context = context, videos = loadedVideos)
+                                scope.launch { saveLibraryCache(context = context, videos = loadedVideos) }
                             }
                         )
                     }
