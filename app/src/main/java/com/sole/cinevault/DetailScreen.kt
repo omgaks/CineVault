@@ -628,11 +628,55 @@ private fun formatRating(rating: Double?): String = if (rating == null || rating
 
 private fun castCacheKey(tmdbId: Int?, type: String) = "cast_${type}_${tmdbId ?: 0}"
 
+// FIX: Phase 4 of the SharedPreferences-as-database migration — see
+// CastCacheDatabase.kt for the full reasoning. Same one-time migration
+// pattern as previous phases: guarded by a persisted flag so the legacy
+// prefs file only ever gets scanned once.
+private const val CAST_CACHE_MIGRATION_DONE_KEY = "cast_cache_room_migration_done"
+private var castCacheMigrationChecked = false
+
+private fun ensureCastCacheMigratedToRoom(context: Context) {
+    if (castCacheMigrationChecked) return
+    castCacheMigrationChecked = true
+    val settingsPrefs = context.getSharedPreferences("cinevault_cast_cache_settings", Context.MODE_PRIVATE)
+    if (settingsPrefs.getBoolean(CAST_CACHE_MIGRATION_DONE_KEY, false)) return
+
+    val legacyPrefs = context.getSharedPreferences("cinevault_cast_cache", Context.MODE_PRIVATE)
+    val legacyEntries = legacyPrefs.all
+    if (legacyEntries.isNotEmpty()) {
+        val dao = CastCacheDatabase.getInstance(context).castCacheDao()
+        val migrated = legacyEntries.mapNotNull { (cacheKey, rawValue) ->
+            val json = rawValue as? String ?: return@mapNotNull null
+            try {
+                val cast = Gson().fromJson<List<TmdbCastMember>>(json, object : TypeToken<List<TmdbCastMember>>() {}.type)
+                CastCacheEntity(cacheKey, cast ?: emptyList())
+            } catch (_: Exception) {
+                // Skip a corrupted individual entry rather than fail the
+                // whole migration over one bad row.
+                null
+            }
+        }
+        if (migrated.isNotEmpty()) dao.upsertAll(migrated)
+        legacyPrefs.edit().clear().apply()
+    }
+    settingsPrefs.edit().putBoolean(CAST_CACHE_MIGRATION_DONE_KEY, true).apply()
+}
+
 private fun saveCastCache(context: Context, tmdbId: Int, type: String, cast: List<TmdbCastMember>) {
-    try { context.getSharedPreferences("cinevault_cast_cache", Context.MODE_PRIVATE).edit().putString(castCacheKey(tmdbId, type), Gson().toJson(cast)).apply() } catch (_: Exception) {}
+    ensureCastCacheMigratedToRoom(context)
+    try {
+        CastCacheDatabase.getInstance(context).castCacheDao()
+            .upsert(CastCacheEntity(castCacheKey(tmdbId, type), cast))
+    } catch (_: Exception) {
+    }
 }
 
 private fun loadCastCache(context: Context, tmdbId: Int?, type: String): List<TmdbCastMember> {
     if (tmdbId == null) return emptyList()
-    return try { val json = context.getSharedPreferences("cinevault_cast_cache", Context.MODE_PRIVATE).getString(castCacheKey(tmdbId, type), null) ?: return emptyList(); Gson().fromJson(json, object : TypeToken<List<TmdbCastMember>>() {}.type) } catch (_: Exception) { emptyList() }
+    ensureCastCacheMigratedToRoom(context)
+    return try {
+        CastCacheDatabase.getInstance(context).castCacheDao().getCast(castCacheKey(tmdbId, type)) ?: emptyList()
+    } catch (_: Exception) {
+        emptyList()
+    }
 }
