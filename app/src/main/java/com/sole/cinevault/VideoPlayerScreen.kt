@@ -1423,134 +1423,35 @@ fun VideoPlayerScreen(
     // HEAR that same line spoken. The additional correction needed is just
     // (where they tapped) - (where the subtitle visually appeared),
     // stacked on top of whatever sync offset was already active.
-    fun armDialogueSync() {
-        coreUi.dialogueSyncReferenceMs = exoPlayer.currentPosition.coerceAtLeast(0L)
-        coreUi.dialogueSyncArmed = true
-        exoPlayer.play()
-        coreUi.showSettings = false
-    }
-    fun cancelDialogueSync() {
-        coreUi.dialogueSyncArmed = false
-        coreUi.dialogueSyncReferenceMs = null
-    }
-    fun confirmDialogueSyncTap() {
-        val reference = coreUi.dialogueSyncReferenceMs
-        if (reference != null) {
-            val deltaMs = exoPlayer.currentPosition - reference
-            coreUi.syncOffset = (coreUi.syncOffset + deltaMs / 1000f).coerceIn(-10f, 10f)
-            Toast.makeText(context, "Sync adjusted by ${if (deltaMs >= 0) "+" else ""}${String.format("%.1f", deltaMs / 1000f)}s", Toast.LENGTH_SHORT).show()
-        }
-        coreUi.dialogueSyncArmed = false
-        coreUi.dialogueSyncReferenceMs = null
-    }
-
-    // ── Progressive Drift Correction ─────────────────────────────────
-    fun markDriftPointA(correctionSeconds: Float) { driftUi.pointA = DriftPoint(exoPlayer.currentPosition.coerceAtLeast(0L), correctionSeconds) }
-    fun markDriftPointB(correctionSeconds: Float) { driftUi.pointB = DriftPoint(exoPlayer.currentPosition.coerceAtLeast(0L), correctionSeconds) }
-    fun applyDriftFix() {
-        val a = driftUi.pointA; val b = driftUi.pointB
-        if (a == null || b == null || a.positionMs == b.positionMs) return
-        val (scale, shiftMs) = computeDriftTransform(a, b)
-        driftUi.scale = scale
-        coreUi.syncOffset = (shiftMs / 1000f).coerceIn(-30f, 30f)
-        driftUi.showDialog = false
-        Toast.makeText(context, "Drift correction applied", Toast.LENGTH_SHORT).show()
-    }
-
-    // ── Dual Subtitles ─────────────────────────────────────────────────
-    // Finds a genuine secondary-language subtitle (not machine-translated
-    // — see SubtitleDualMerge.kt), downloads it to a LANGUAGE-SPECIFIC
-    // cache file (never the primary's cache slot), merges it under the
-    // primary via overlap-join, and applies the merged file as the active
-    // subtitle. Rebuilds automatically if the secondary language changes
-    // while dual mode is already on.
-    fun fetchAndApplyDualSecondary() {
-        val primary = trackUi.primaryUri
-        if (primary == null) {
-            Toast.makeText(context, "Dual subtitles need a downloaded or local subtitle as the primary track", Toast.LENGTH_LONG).show()
-            dualUi.enabled = false
-            return
-        }
-        if (!supportsCustomTextPipeline(detectSubtitleFormat(primary))) {
-            Toast.makeText(context, "Dual subtitles currently only work with .srt as the primary track", Toast.LENGTH_LONG).show()
-            dualUi.enabled = false
-            return
-        }
-        // FIX: previously nothing stopped the secondary language from
-        // being the SAME as the primary — picking, say, English as both
-        // would silently "merge" a subtitle with itself. Now blocked with
-        // a clear message, using the real tracked primary language rather
-        // than guessing from preferences.
-        val normalizedSecondary = SubtitleLanguageRegistry.normalize(dualUi.secondaryLanguage)
-        if (trackUi.primaryLanguage != null && normalizedSecondary != null && trackUi.primaryLanguage == normalizedSecondary) {
-            Toast.makeText(context, "Secondary language can't be the same as the primary (${friendlyLanguageName(trackUi.primaryLanguage)}) — pick a different one", Toast.LENGTH_LONG).show()
-            dualUi.enabled = false
-            return
-        }
-        dualUi.statusText = "Searching ${friendlyLanguageName(dualUi.secondaryLanguage)} subtitles..."
-        scope.launch {
-            val searchQuery = OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path)
-            val searchResult = OpenSubtitlesClient.searchSubtitlesDetailed(searchQuery, language = dualUi.secondaryLanguage)
-            val bestFileId = (searchResult as? SubtitleSearchListResult.Success)?.results?.firstOrNull()?.fileId
-            if (bestFileId == null) {
-                dualUi.statusText = "No ${friendlyLanguageName(dualUi.secondaryLanguage)} subtitle found for this video"
-                Toast.makeText(context, dualUi.statusText, Toast.LENGTH_LONG).show()
-                dualUi.enabled = false
-                return@launch
+    // FIX: these eight functions used to be plain local functions defined
+    // right here, inline — now orchestration glue calling into
+    // SubtitleSyncToolsCoordinator (see that file for the full reasoning).
+    // Every field read/written matches exactly what the original inline
+    // functions touched; only where the code lives changed.
+    val subtitleSyncTools = remember(exoPlayer) {
+        SubtitleSyncToolsCoordinator(
+            context = context,
+            scope = scope,
+            exoPlayer = exoPlayer,
+            coreUi = coreUi,
+            driftUi = driftUi,
+            dualUi = dualUi,
+            trackUi = trackUi,
+            dualSecondaryColorHex = dualSecondaryColorHex,
+            getCurrentVideoPath = { currentVideo.path },
+            playSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle ->
+                playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
             }
-            dualUi.statusText = "Downloading ${friendlyLanguageName(dualUi.secondaryLanguage)} subtitle..."
-            // FIX: secondaryLanguageCacheFile() no longer exists — the main
-            // subtitleCacheFile() is itself language-aware now, so every
-            // language (primary or secondary) gets its own slot by
-            // construction and there's nothing special-case needed here
-            // anymore to avoid a collision.
-            val targetFile = OpenSubtitlesClient.subtitleCacheFile(context, currentVideo.path, dualUi.secondaryLanguage)
-            val downloadResult = OpenSubtitlesClient.downloadSubtitleToFile(targetFile, bestFileId, dualUi.secondaryLanguage)
-            if (downloadResult !is SubtitleDownloadResult.Success) {
-                dualUi.statusText = downloadResult.summary()
-                Toast.makeText(context, dualUi.statusText, Toast.LENGTH_LONG).show()
-                dualUi.enabled = false
-                return@launch
-            }
-            val merged = withContext(Dispatchers.IO) {
-                val primaryText = readTextFromUri(context, primary) ?: return@withContext null
-                val secondaryText = readTextFromUri(context, downloadResult.uri) ?: return@withContext null
-                val mergedText = mergeDualSubtitles(primaryText, secondaryText, dualSecondaryColorHex, dualUi.gapLines)
-                try {
-                    // FIX: was a single fixed filename shared by every video
-                    // and every dual-merge request ("cinevault_dual_merged.
-                    // srt") — rapid changes or overlapping coroutines could
-                    // have one request's write clobber a file another
-                    // request/ExoPlayer was still reading. Now unique per
-                    // video + secondary language, matching the same fix
-                    // applied to the sync/clean temp files below.
-                    val uniqueName = "cinevault_dual_${OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path).hashCode()}_$normalizedSecondary.srt"
-                    val outFile = java.io.File(context.cacheDir, uniqueName)
-                    outFile.writeText(mergedText)
-                    Uri.fromFile(outFile)
-                } catch (e: Exception) { null }
-            }
-            if (merged == null) {
-                dualUi.statusText = "Couldn't merge subtitles"
-                Toast.makeText(context, dualUi.statusText, Toast.LENGTH_LONG).show()
-                dualUi.enabled = false
-                return@launch
-            }
-            val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
-            playCurrentVideoWithSubtitle(subtitleUri = merged, resumePosition = resumeAt, isOriginalSubtitle = false)
-            trackUi.originalUri = merged
-            trackUi.appliedOffsetMs = (coreUi.syncOffset * 1000f).toLong()
-            dualUi.statusText = "Dual subtitles: ${if (trackUi.primaryLanguage != null) friendlyLanguageName(trackUi.primaryLanguage) else "Primary"} + ${friendlyLanguageName(dualUi.secondaryLanguage)}"
-        }
+        )
     }
-
-    fun disableDualSubtitles() {
-        dualUi.enabled = false
-        dualUi.statusText = ""
-        val primary = trackUi.primaryUri ?: return
-        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
-        playCurrentVideoWithSubtitle(subtitleUri = primary, resumePosition = resumeAt)
-    }
+    fun armDialogueSync() = subtitleSyncTools.armDialogueSync()
+    fun cancelDialogueSync() = subtitleSyncTools.cancelDialogueSync()
+    fun confirmDialogueSyncTap() = subtitleSyncTools.confirmDialogueSyncTap()
+    fun markDriftPointA(correctionSeconds: Float) = subtitleSyncTools.markDriftPointA(correctionSeconds)
+    fun markDriftPointB(correctionSeconds: Float) = subtitleSyncTools.markDriftPointB(correctionSeconds)
+    fun applyDriftFix() = subtitleSyncTools.applyDriftFix()
+    fun fetchAndApplyDualSecondary() = subtitleSyncTools.fetchAndApplyDualSecondary()
+    fun disableDualSubtitles() = subtitleSyncTools.disableDualSubtitles()
 
     // ── Auto-Sync (Phase 1: speech-timing only) ──────────────────────────
     // Runs entirely off-main-thread (audio decode + VAD are real CPU work,
@@ -3089,7 +2990,10 @@ private fun buildCleanedSubtitleFile(context: Context, sourceUri: Uri, options: 
 // to be earlier in the video than Point B; if they're passed in reverse
 // order this still works since it solves the two-point line algebraically
 // rather than assuming an order.
-private fun computeDriftTransform(pointA: DriftPoint, pointB: DriftPoint): Pair<Float, Long> {
+// FIX: was private (file-scoped) — SubtitleSyncToolsCoordinator.kt, in
+// a different file, needs this too. Same reasoning as readTextFromUri
+// above.
+internal fun computeDriftTransform(pointA: DriftPoint, pointB: DriftPoint): Pair<Float, Long> {
     val t1 = pointA.positionMs.toDouble()
     val t2 = pointB.positionMs.toDouble()
     val c1 = t1 + pointA.correctionSeconds * 1000.0
