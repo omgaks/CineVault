@@ -125,6 +125,7 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -415,6 +416,24 @@ fun VideoPlayerScreen(
             .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
+            // FIX: was never called at all — meaning Android had no
+            // signal that CineVault wanted to be the active audio
+            // source when playback started. Other apps (Spotify, etc.)
+            // never got told to pause or duck, so they just kept
+            // playing straight through video playback. The `true`
+            // second argument tells ExoPlayer to automatically request
+            // audio focus on play, and automatically pause/duck/resume
+            // CineVault's own playback in response to OTHER apps'
+            // focus changes too (e.g. a phone call) — not just the
+            // one-directional "make other apps stop" behavior this was
+            // actually reported for.
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                    .build(),
+                /* handleAudioFocus= */ true
+            )
             .build()
     }
 
