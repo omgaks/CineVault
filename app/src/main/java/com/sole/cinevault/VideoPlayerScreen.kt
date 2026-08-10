@@ -2835,11 +2835,12 @@ private fun AutoSyncFloatingIndicator(
 // FIX: was private (file-scoped) — AutoSyncCoordinator.kt, in a
 // different file, needs this too. internal keeps it out of any public
 // API surface while making it visible across files in this module.
-internal fun readTextFromUri(context: Context, uri: Uri): String? {
-    return try {
-        context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-    } catch (e: Exception) { null }
-}
+// FIX: readTextFromUri/computeDriftTransform used to be defined right
+// here — moved to SubtitleSharedUtils.kt (see that file for why: this
+// file changes on every slice of the ongoing logic-extraction effort,
+// which made it an unstable place for two small, unrelated coordinator
+// classes to depend on). Already resolves via the existing
+// `import com.sole.cinevault.subtitles.*` at the top of this file.
 
 private fun shiftSrtTimestampMatch(match: MatchResult, offsetMs: Long, scale: Float = 1f): String {
     val h = match.groupValues[1].toLong()
@@ -2907,16 +2908,7 @@ private fun buildCleanedSubtitleFile(context: Context, sourceUri: Uri, options: 
 // FIX: was private (file-scoped) — SubtitleSyncToolsCoordinator.kt, in
 // a different file, needs this too. Same reasoning as readTextFromUri
 // above.
-internal fun computeDriftTransform(pointA: DriftPoint, pointB: DriftPoint): Pair<Float, Long> {
-    val t1 = pointA.positionMs.toDouble()
-    val t2 = pointB.positionMs.toDouble()
-    val c1 = t1 + pointA.correctionSeconds * 1000.0
-    val c2 = t2 + pointB.correctionSeconds * 1000.0
-    if (t2 == t1) return 1f to 0L
-    val scale = (c2 - c1) / (t2 - t1)
-    val shift = c1 - scale * t1
-    return scale.toFloat() to shift.toLong()
-}
+// computeDriftTransform also moved to SubtitleSharedUtils.kt.
 
 @Composable
 fun SrtBrowserPopup(
