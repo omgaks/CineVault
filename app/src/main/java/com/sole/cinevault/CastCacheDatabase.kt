@@ -68,8 +68,19 @@ class CastCacheTypeConverters {
 
 @Dao
 interface CastCacheDao {
-    @Query("SELECT castMembers FROM cast_cache WHERE cacheKey = :cacheKey")
-    fun getCast(cacheKey: String): List<TmdbCastMember>
+    // FIX: was "SELECT castMembers FROM cast_cache WHERE ..." returning
+    // List<TmdbCastMember> directly. Room's List<X> return-type convention
+    // means "map MULTIPLE ROWS, each to one X" — which directly conflicts
+    // with what this actually is: a SINGLE row whose one column already
+    // holds a whole List<TmdbCastMember> via the TypeConverter above. Room
+    // couldn't reconcile the two (it tried to construct a TmdbCastMember —
+    // singular — out of the one castMembers column, and TmdbCastMember
+    // needs four columns: id/name/character/profile_path). Mapping to the
+    // full Entity instead sidesteps the ambiguity entirely — Entity
+    // mapping is Room's actual strength — and the caller just reads the
+    // one field it wants off the result.
+    @Query("SELECT * FROM cast_cache WHERE cacheKey = :cacheKey")
+    fun getEntity(cacheKey: String): CastCacheEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun upsert(entity: CastCacheEntity)
