@@ -9,7 +9,17 @@ interface TmdbApi {
     @GET("search/movie")
     suspend fun searchMovie(
         @Header("Authorization") bearerToken: String,
-        @Query("query") query: String
+        @Query("query") query: String,
+        // FIX: previously no way to filter by year at all — every caller
+        // had to embed a year (if any) directly into the free-text query
+        // string itself, which TMDB's search doesn't handle well (a year
+        // isn't part of a movie's actual title, and mixing it into the
+        // text query can suppress otherwise-good matches rather than
+        // narrow them). TMDB's search endpoint has always supported year
+        // filtering as its OWN separate parameter — this just actually
+        // uses it. Optional/nullable so existing callers that don't pass
+        // a year keep behaving exactly as before.
+        @Query("primary_release_year") primaryReleaseYear: String? = null
     ): TmdbMovieSearchResponse
 
     @GET("search/tv")
