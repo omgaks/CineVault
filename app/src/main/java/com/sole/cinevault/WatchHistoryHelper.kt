@@ -2,7 +2,6 @@ package com.sole.cinevault
 
 import android.content.Context
 import org.json.JSONArray
-import org.json.JSONObject
 
 data class WatchHistoryEntry(
     val videoPath: String,
@@ -10,8 +9,44 @@ data class WatchHistoryEntry(
     val watchedAt: Long
 )
 
-private const val WATCH_HISTORY_PREF = "cinevault_watch_history"
-private const val WATCH_HISTORY_KEY = "items"
+// FIX: Phase 7 of the SharedPreferences-as-database migration — see
+// WatchHistoryDatabase.kt for the full reasoning. WatchHistoryEntry (the
+// public-facing type every call site already uses) is kept completely
+// unchanged — WatchHistoryEntity is purely the internal Room storage
+// shape, converted at the boundary, so nothing calling into this file
+// needs to change at all.
+private const val WATCH_HISTORY_MIGRATION_DONE_KEY = "watch_history_room_migration_done"
+private var watchHistoryMigrationChecked = false
+
+private fun ensureWatchHistoryMigratedToRoom(context: Context) {
+    if (watchHistoryMigrationChecked) return
+    watchHistoryMigrationChecked = true
+    val settingsPrefs = context.getSharedPreferences("cinevault_watch_history_settings", Context.MODE_PRIVATE)
+    if (settingsPrefs.getBoolean(WATCH_HISTORY_MIGRATION_DONE_KEY, false)) return
+
+    val legacyPrefs = context.getSharedPreferences("cinevault_watch_history", Context.MODE_PRIVATE)
+    val raw = legacyPrefs.getString("items", null)
+    if (!raw.isNullOrBlank()) {
+        try {
+            val array = JSONArray(raw)
+            val migrated = buildList {
+                for (i in 0 until array.length()) {
+                    val obj = array.optJSONObject(i) ?: continue
+                    val path = obj.optString("videoPath")
+                    if (path.isBlank()) continue
+                    add(WatchHistoryEntity(videoPath = path, title = obj.optString("title"), watchedAt = obj.optLong("watchedAt", 0L)))
+                }
+            }
+            if (migrated.isNotEmpty()) {
+                WatchHistoryDatabase.getInstance(context).watchHistoryDao().upsertAll(migrated)
+            }
+        } catch (_: Exception) {
+            // Skip a corrupted legacy blob rather than fail startup over it.
+        }
+    }
+    legacyPrefs.edit().clear().apply()
+    settingsPrefs.edit().putBoolean(WATCH_HISTORY_MIGRATION_DONE_KEY, true).apply()
+}
 
 fun recordWatchHistory(
     context: Context,
@@ -19,48 +54,22 @@ fun recordWatchHistory(
     title: String
 ) {
     if (videoPath.isBlank()) return
-
-    val currentItems = loadWatchHistory(context).toMutableList()
-
-    val updatedItems =
-        listOf(
-            WatchHistoryEntry(
-                videoPath = videoPath,
-                title = title.ifBlank { videoPath.substringAfterLast("/") },
-                watchedAt = System.currentTimeMillis()
-            )
-        ) + currentItems.filterNot { it.videoPath == videoPath }
-
-    saveWatchHistory(
-        context = context,
-        items = updatedItems.take(60)
+    ensureWatchHistoryMigratedToRoom(context)
+    val dao = WatchHistoryDatabase.getInstance(context).watchHistoryDao()
+    dao.upsert(
+        WatchHistoryEntity(
+            videoPath = videoPath,
+            title = title.ifBlank { videoPath.substringAfterLast("/") },
+            watchedAt = System.currentTimeMillis()
+        )
     )
+    dao.trimToMostRecent60()
 }
 
 fun loadWatchHistory(context: Context): List<WatchHistoryEntry> {
-    val prefs = context.getSharedPreferences(WATCH_HISTORY_PREF, Context.MODE_PRIVATE)
-    val raw = prefs.getString(WATCH_HISTORY_KEY, "[]") ?: "[]"
-
-    return try {
-        val array = JSONArray(raw)
-        buildList {
-            for (i in 0 until array.length()) {
-                val obj = array.optJSONObject(i) ?: continue
-                val path = obj.optString("videoPath")
-                if (path.isBlank()) continue
-
-                add(
-                    WatchHistoryEntry(
-                        videoPath = path,
-                        title = obj.optString("title"),
-                        watchedAt = obj.optLong("watchedAt", 0L)
-                    )
-                )
-            }
-        }.sortedByDescending { it.watchedAt }
-    } catch (_: Exception) {
-        emptyList()
-    }
+    ensureWatchHistoryMigratedToRoom(context)
+    return WatchHistoryDatabase.getInstance(context).watchHistoryDao().getAll()
+        .map { WatchHistoryEntry(videoPath = it.videoPath, title = it.title, watchedAt = it.watchedAt) }
 }
 
 fun loadWatchHistoryItems(
@@ -68,30 +77,5 @@ fun loadWatchHistoryItems(
     videos: List<VideoWithMetadata>
 ): List<VideoWithMetadata> {
     val videoMap = videos.associateBy { it.video.path }
-
-    return loadWatchHistory(context)
-        .mapNotNull { entry -> videoMap[entry.videoPath] }
-}
-
-private fun saveWatchHistory(
-    context: Context,
-    items: List<WatchHistoryEntry>
-) {
-    val array = JSONArray()
-
-    items.forEach { item ->
-        array.put(
-            JSONObject().apply {
-                put("videoPath", item.videoPath)
-                put("title", item.title)
-                put("watchedAt", item.watchedAt)
-            }
-        )
-    }
-
-    context
-        .getSharedPreferences(WATCH_HISTORY_PREF, Context.MODE_PRIVATE)
-        .edit()
-        .putString(WATCH_HISTORY_KEY, array.toString())
-        .apply()
+    return loadWatchHistory(context).mapNotNull { entry -> videoMap[entry.videoPath] }
 }
