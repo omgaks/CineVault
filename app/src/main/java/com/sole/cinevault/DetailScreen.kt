@@ -675,7 +675,7 @@ private fun loadCastCache(context: Context, tmdbId: Int?, type: String): List<Tm
     if (tmdbId == null) return emptyList()
     ensureCastCacheMigratedToRoom(context)
     return try {
-        CastCacheDatabase.getInstance(context).castCacheDao().getCast(castCacheKey(tmdbId, type))
+        CastCacheDatabase.getInstance(context).castCacheDao().getEntity(castCacheKey(tmdbId, type))?.castMembers ?: emptyList()
     } catch (_: Exception) {
         emptyList()
     }
