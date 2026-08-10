@@ -1571,119 +1571,36 @@ fun VideoPlayerScreen(
         !currentVideo.path.startsWith("smb://", ignoreCase = true) &&
         (currentVideo.path.startsWith("content://", ignoreCase = true) || java.io.File(currentVideo.path).exists())
 
-    fun runAutoSync() {
-        // FIX: SubtitleStudioSheet.kt already swaps the "Start Auto-Sync"
-        // button out for a progress spinner the instant autoSyncStatus
-        // becomes Analyzing, so a normal double-tap can't reach onClick
-        // twice — but that swap happens on the NEXT recomposition, not
-        // synchronously, leaving a narrow window where two taps landing
-        // before that frame renders could both call this function. Two
-        // concurrent analyses would each hold their own extraction
-        // buffers at once, which is exactly the kind of avoidable memory
-        // pressure Auto-Sync can't afford on a 256MB heap. Checked first,
-        // before even reading trackUi.primaryUri, to close that window as
-        // tightly as possible.
-        if (autoSyncStatus is AutoSyncStatus.Analyzing) return
-        val primary = trackUi.primaryUri
-        if (primary == null) {
-            Toast.makeText(context, "Auto-Sync needs a downloaded or local subtitle loaded first", Toast.LENGTH_LONG).show()
-            return
-        }
-        // FEATURE: Studio closes the moment analysis actually starts —
-        // the floating indicator (see AutoSyncFloatingIndicator below)
-        // now shows progress and results on its own, so there's nothing
-        // left to do inside Studio once analysis is running. Reuses
-        // Studio's own existing fade-out (see SubtitleStudioOverlay's
-        // AnimatedVisibility) rather than adding a new animation — this
-        // just triggers the dismiss, same as tapping Studio's own close
-        // button would. Harmless no-op when triggered from the floating
-        // indicator's own "Try Again" (Studio's already closed by then).
-        studioUi.showStudio = false
-        autoSyncStatus = AutoSyncStatus.Analyzing("Extracting audio…")
-        // FIX: this used to only call VideoThumbnailHelper.clearPreviewCache(),
-        // which evicts the LruCache — but the CURRENTLY PLAYING video's own
-        // preview bitmaps are held separately in previewFrames/previewBitmap
-        // (two plain composable state vars), which the cache eviction never
-        // touched. Those are exactly the bitmaps most likely to still be
-        // resident and large (up to 72 dense frames) right when Auto-Sync
-        // needs headroom most, so clearing the cache alone was missing the
-        // single biggest offender. Cleared explicitly here now, and
-        // regenerated afterward via previewReloadKey — the underlying
-        // LaunchedEffect's own keys (currentVideo.path, duration) don't
-        // change mid-playback, so without that reload key these would stay
-        // empty for the rest of the session instead of coming back.
-        previewFrames = emptyList()
-        previewBitmap = null
-        VideoThumbnailHelper.clearPreviewCache()
-        scope.launch {
-            val srtText = withContext(Dispatchers.IO) { readTextFromUri(context, primary) }
-            if (srtText == null) {
-                autoSyncStatus = AutoSyncStatus.Failed("Couldn't read the subtitle file")
-                previewReloadKey++
-                return@launch
-            }
-            autoSyncStatus = AutoSyncStatus.Analyzing("Analysing dialogue…")
-            val audioLang = exoPlayer.currentTracks.groups
-                .firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
-                ?.let { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { idx -> g.getTrackFormat(idx).language } }
-            // FIX: real crash — "Player is accessed on the wrong thread."
-            // exoPlayer.duration was previously read INSIDE the
-            // withContext(Dispatchers.Default) block below, as part of
-            // the argument expression — meaning it evaluated on that
-            // background thread when the lambda actually ran, not before.
-            // ExoPlayer requires every access, even a simple property
-            // read, to happen on the thread it was created on. Read here,
-            // on the main thread, before switching dispatchers.
-            val videoDurationMs = exoPlayer.duration.coerceAtLeast(0L)
-            // FIX: OutOfMemoryError is an Error, not an Exception — the
-            // extraction/VAD path below only ever caught Exception, so a
-            // genuine OOM (a real risk on a 256MB heap doing audio
-            // decode + ONNX inference) skipped every catch block and hit
-            // the app's uncaught-exception handler, crashing the whole
-            // player screen instead of just failing this one analysis.
-            // This is a safety net for whatever memory pressure the
-            // window-size/cache fixes don't fully rule out — not a
-            // substitute for those fixes.
-            val result = try {
-                withContext(Dispatchers.Default) {
-                    AutoSyncEngine.run(context, currentVideo.path, videoDurationMs, audioLang, srtText)
-                }
-            } catch (oom: OutOfMemoryError) {
-                AutoSyncStatus.Failed("Not enough available memory for Auto-Sync right now. Close other apps and try again.")
-            }
-            autoSyncStatus = result
-            // FIX: this used to fire in the same instant as the line
-            // above — meaning the result UI rendering (Slider/Text in the
-            // Timing sheet) and kicking off regenerating up to 72 preview
-            // thumbnails were competing for memory at the exact moment
-            // the heap is most fragile, right after a memory-intensive
-            // analysis pass. GC isn't necessarily finished reclaiming the
-            // analysis buffers by this point even though they're already
-            // unreferenced — two real device crash logs showed OOM deep
-            // in Compose's drawing pipeline (Slider, Text) shortly after
-            // Auto-Sync completed, not inside the analysis itself. A
-            // short delay here gives the collector breathing room before
-            // starting the next memory-hungry operation, and lets the
-            // result UI render first without competing for memory.
-            delay(1500)
-            previewReloadKey++
-        }
+    // FIX: runAutoSync()/applyAutoSyncResult() used to be plain local
+    // functions defined right here, inline in this composable's body —
+    // now just orchestration glue calling into AutoSyncCoordinator (see
+    // that file for the full reasoning on why AutoSync was the first
+    // piece extracted). Every lambda below reads/writes the exact same
+    // state the original inline functions did — nothing about the
+    // actual behavior changed, only where the code that does it lives.
+    // Reads trackUi.primaryUri fresh via the lambda each time, not the
+    // primarySubtitleForAutoSync snapshot above (which is only for the
+    // availability check right above it) — matching exactly what the
+    // original runAutoSync() did.
+    val autoSyncCoordinator = remember(exoPlayer) {
+        AutoSyncCoordinator(
+            context = context,
+            scope = scope,
+            exoPlayer = exoPlayer,
+            getPrimarySubtitleUri = { trackUi.primaryUri },
+            getCurrentVideoPath = { currentVideo.path },
+            getAutoSyncStatus = { autoSyncStatus },
+            setAutoSyncStatus = { autoSyncStatus = it },
+            setStudioVisible = { studioUi.showStudio = it },
+            resetPreviewFrames = { previewFrames = emptyList(); previewBitmap = null },
+            incrementPreviewReloadKey = { previewReloadKey++ },
+            setSyncOffsetSeconds = { coreUi.syncOffset = it },
+            setDriftScale = { driftUi.scale = it },
+            incrementStudioMenuTouchKey = { studioUi.menuTouchKey++ }
+        )
     }
-
-    fun applyAutoSyncResult(result: SubtitleSyncResult) {
-        // FIX: previously only ever applied initialOffsetMs — a drift
-        // result (timeScale != 1.0) would compute correctly but then
-        // silently have its scale discarded on Apply, leaving only the
-        // flat-offset portion in effect. Now applies both, through the
-        // exact same driftUi.scale state the manual "Fix Gradual
-        // Drift" tool already uses, so it goes through the identical
-        // reactive rebuild path.
-        coreUi.syncOffset = (result.initialOffsetMs / 1000f).coerceIn(-10f, 10f)
-        driftUi.scale = result.timeScale.toFloat()
-        autoSyncStatus = AutoSyncStatus.Idle
-        studioUi.menuTouchKey++
-        Toast.makeText(context, if (result.timeScale != 1.0) "Auto-Sync applied (drift correction)" else "Auto-Sync applied", Toast.LENGTH_SHORT).show()
-    }
+    fun runAutoSync() = autoSyncCoordinator.runAutoSync()
+    fun applyAutoSyncResult(result: SubtitleSyncResult) = autoSyncCoordinator.applyAutoSyncResult(result)
 
     LaunchedEffect(showNextEpisodeOverlay, pendingNextEpisode) {
         if (showNextEpisodeOverlay && pendingNextEpisode != null) {
@@ -3100,7 +3017,10 @@ private fun AutoSyncFloatingIndicator(
     }
 }
 
-private fun readTextFromUri(context: Context, uri: Uri): String? {
+// FIX: was private (file-scoped) — AutoSyncCoordinator.kt, in a
+// different file, needs this too. internal keeps it out of any public
+// API surface while making it visible across files in this module.
+internal fun readTextFromUri(context: Context, uri: Uri): String? {
     return try {
         context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
     } catch (e: Exception) { null }
