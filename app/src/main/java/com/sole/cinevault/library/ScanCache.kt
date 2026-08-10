@@ -1,52 +1,49 @@
 package com.sole.cinevault.library
 
 import android.content.Context
-import androidx.room.Dao
-import androidx.room.Database
-import androidx.room.Entity
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
-import androidx.room.PrimaryKey
-import androidx.room.Query
-import androidx.room.Room
-import androidx.room.RoomDatabase
 
-// FIX: Phase 6 — cinevault_favorites. Same shape and same reasoning as
-// Phase 5's scan cache — a single Set<String>, migrated for consistency
-// rather than a growth-risk concern.
-@Entity(tableName = "favorite_paths")
-data class FavoritePathEntity(@PrimaryKey val path: String)
+// FIX: Phase 5 of the SharedPreferences-as-database migration — see
+// ScannedPathDatabase.kt for the full reasoning. Same one-time migration
+// pattern as previous phases.
+private const val SCAN_MIGRATION_DONE_KEY = "scan_cache_room_migration_done"
+private var scanMigrationChecked = false
 
-@Dao
-interface FavoritePathDao {
-    @Query("SELECT path FROM favorite_paths")
-    fun getAll(): List<String>
+private fun ensureScanCacheMigratedToRoom(context: Context) {
+    if (scanMigrationChecked) return
+    scanMigrationChecked = true
+    val settingsPrefs = context.getSharedPreferences("cinevault_scan_cache_settings", Context.MODE_PRIVATE)
+    if (settingsPrefs.getBoolean(SCAN_MIGRATION_DONE_KEY, false)) return
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insertAll(paths: List<FavoritePathEntity>)
-
-    @Query("DELETE FROM favorite_paths")
-    fun clear()
+    val legacyPrefs = context.getSharedPreferences("cinevault_scan_cache", Context.MODE_PRIVATE)
+    val legacyPaths = legacyPrefs.getStringSet("scanned_paths", null)
+    if (!legacyPaths.isNullOrEmpty()) {
+        ScannedPathDatabase.getInstance(context).scannedPathDao()
+            .insertAll(legacyPaths.map { ScannedPathEntity(it) })
+    }
+    legacyPrefs.edit().clear().apply()
+    settingsPrefs.edit().putBoolean(SCAN_MIGRATION_DONE_KEY, true).apply()
 }
 
-@Database(entities = [FavoritePathEntity::class], version = 1, exportSchema = false)
-abstract class FavoritePathDatabase : RoomDatabase() {
-    abstract fun favoritePathDao(): FavoritePathDao
+fun saveScannedVideoPaths(
+    context: Context,
+    paths: Set<String>
+) {
+    ensureScanCacheMigratedToRoom(context)
+    val dao = ScannedPathDatabase.getInstance(context).scannedPathDao()
+    dao.clear()
+    dao.insertAll(paths.map { ScannedPathEntity(it) })
+}
 
-    companion object {
-        @Volatile private var INSTANCE: FavoritePathDatabase? = null
+fun loadScannedVideoPaths(
+    context: Context
+): Set<String> {
+    ensureScanCacheMigratedToRoom(context)
+    return ScannedPathDatabase.getInstance(context).scannedPathDao().getAll().toSet()
+}
 
-        fun getInstance(context: Context): FavoritePathDatabase {
-            return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: Room.databaseBuilder(
-                    context.applicationContext,
-                    FavoritePathDatabase::class.java,
-                    "cinevault_favorite_paths.db"
-                )
-                    .allowMainThreadQueries()
-                    .build()
-                    .also { INSTANCE = it }
-            }
-        }
-    }
+fun clearScannedVideoCache(
+    context: Context
+) {
+    ensureScanCacheMigratedToRoom(context)
+    ScannedPathDatabase.getInstance(context).scannedPathDao().clear()
 }
