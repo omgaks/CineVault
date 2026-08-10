@@ -548,45 +548,22 @@ fun VideoPlayerScreen(
 
     // Performs the actual deletion — only ever called once the undo window
     // (deleteWithUndo, below) has expired without the person tapping Undo.
-    fun finalizeSubtitleDeletion(file: java.io.File) {
-        pendingConsentFile = file
-        FileManagementHelper.deleteFile(
+    // FIX: these functions used to be plain local functions defined right
+    // here — now orchestration glue calling into
+    // SubtitleDeletionCoordinator (see that file for the full reasoning).
+    val subtitleDeletionCoordinator = remember {
+        SubtitleDeletionCoordinator(
             context = context,
-            file = file,
-            onNeedsConsent = { intentSender -> deleteConsentLauncher.launch(IntentSenderRequest.Builder(intentSender).build()) },
-            onDeleted = { pendingConsentFile = null },
-            onFailed = { e ->
-                pendingDeletePaths.remove(file.absolutePath)
-                pendingConsentFile = null
-                Toast.makeText(context, "Couldn't delete: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
+            scope = scope,
+            pendingDeletePaths = pendingDeletePaths,
+            snackbarHostState = snackbarHostState,
+            deleteConsentLauncher = deleteConsentLauncher,
+            setPendingConsentFile = { pendingConsentFile = it },
+            setPendingDeleteConfirmFile = { pendingDeleteConfirmFile = it }
         )
     }
-
-    // Hides the file immediately and shows the amber Undo snackbar. Real
-    // deletion only happens if the snackbar times out or is dismissed
-    // without the person tapping Undo.
-    fun deleteWithUndo(file: java.io.File) {
-        pendingDeletePaths.add(file.absolutePath)
-        scope.launch {
-            val result = snackbarHostState.showSnackbar(
-                message = "Subtitle deleted",
-                actionLabel = "UNDO",
-                duration = SnackbarDuration.Short
-            )
-            if (result == SnackbarResult.ActionPerformed) {
-                pendingDeletePaths.remove(file.absolutePath)
-            } else {
-                finalizeSubtitleDeletion(file)
-            }
-        }
-    }
-
-    // Entry point every delete button in this screen now calls — opens the
-    // styled warning dialog rather than deleting immediately.
-    fun requestDeleteSubtitle(file: java.io.File) {
-        pendingDeleteConfirmFile = file
-    }
+    fun deleteWithUndo(file: java.io.File) = subtitleDeletionCoordinator.deleteWithUndo(file)
+    fun requestDeleteSubtitle(file: java.io.File) = subtitleDeletionCoordinator.requestDeleteSubtitle(file)
 
     LaunchedEffect(sleepTimerActive, sleepTimerRemainingMs) {
         if (sleepTimerActive && sleepTimerRemainingMs > 0) {
