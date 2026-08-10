@@ -646,8 +646,10 @@ fun VideoPlayerScreen(
             coreUi = coreUi,
             trackUi = trackUi,
             searchUi = searchUi,
+            studioUi = studioUi,
             getCurrentVideoPath = { currentVideo.path },
             setShowControls = { showControls = it },
+            setPendingSrtUri = { pendingSrtUri = it },
             playSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle ->
                 playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
             }
@@ -1085,49 +1087,7 @@ fun VideoPlayerScreen(
     // which is exactly how the Downloaded case would have silently NOT
     // gotten cleaning applied in one of the two copies if edited by hand.
     // One function, both call sites use it.
-    fun selectSubtitleTrack(choice: SubtitleTrackChoice) {
-        studioUi.menuTouchKey++
-        when (choice) {
-            is SubtitleTrackChoice.Off -> {
-                coreUi.subtitlesEnabled = false
-                trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
-                trackUi.selectedKey = choice.key; trackUi.selectedLabel = ""; trackUi.selectedSource = ""
-            }
-            is SubtitleTrackChoice.Embedded -> {
-                coreUi.subtitlesEnabled = true
-                val group = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.getOrNull(choice.groupIndex)
-                if (group != null) {
-                    trackSelector.parameters = trackSelector.buildUponParameters()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                        .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, listOf(choice.trackIndexInGroup)))
-                        .build()
-                }
-                trackUi.selectedKey = choice.key
-                trackUi.selectedLabel = friendlyLanguageName(choice.language)
-                trackUi.selectedSource = "Embedded"
-                if (coreUi.behaviorPrefs.rememberLastSelectedLanguage && choice.language.isNotBlank() && choice.language != "und") {
-                    coreUi.behaviorPrefs = promoteLanguageToFront(coreUi.behaviorPrefs, choice.language.take(2).lowercase())
-                    saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
-                }
-            }
-            is SubtitleTrackChoice.Downloaded -> {
-                coreUi.subtitlesEnabled = true
-                trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-                val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
-                scope.launch {
-                    val cleaned = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, Uri.fromFile(choice.file), coreUi.cleaningOptions) } ?: Uri.fromFile(choice.file)
-                    trackUi.primaryUri = cleaned
-                    trackUi.primaryLanguage = SubtitleLanguageRegistry.normalize(choice.language)
-                    playCurrentVideoWithSubtitle(subtitleUri = cleaned, resumePosition = resumeAt)
-                }
-                trackUi.selectedKey = choice.key
-                trackUi.selectedLabel = friendlyLanguageName(choice.language); trackUi.selectedSource = "OpenSubtitles"
-            }
-            is SubtitleTrackChoice.Local -> {
-                pendingSrtUri = Uri.fromFile(choice.file)
-            }
-        }
-    }
+    fun selectSubtitleTrack(choice: SubtitleTrackChoice) = subtitleSearchCoordinator.selectSubtitleTrack(choice)
 
     LaunchedEffect(pendingSrtUri) {
         val uri = pendingSrtUri ?: return@LaunchedEffect
