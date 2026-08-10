@@ -37,7 +37,14 @@ import com.sole.cinevault.metadata.TmdbCastMember
 @Entity(tableName = "cast_cache")
 data class CastCacheEntity(
     @PrimaryKey val cacheKey: String,
-    val cast: List<TmdbCastMember>
+    // FIX: was named "cast" — SQLite treats CAST as a reserved keyword
+    // (the CAST(expr AS type) function), so "SELECT cast FROM ..." gets
+    // misparsed as the start of that function call rather than a column
+    // reference, causing a genuine SQL syntax error at KSP's query-
+    // validation step. Renamed to sidestep the collision entirely rather
+    // than escape the identifier with quotes/backticks everywhere it's
+    // referenced.
+    val castMembers: List<TmdbCastMember>
 )
 
 // Room needs an explicit converter for the cast list column — reuses
@@ -61,8 +68,8 @@ class CastCacheTypeConverters {
 
 @Dao
 interface CastCacheDao {
-    @Query("SELECT cast FROM cast_cache WHERE cacheKey = :cacheKey")
-    fun getCast(cacheKey: String): List<TmdbCastMember>?
+    @Query("SELECT castMembers FROM cast_cache WHERE cacheKey = :cacheKey")
+    fun getCast(cacheKey: String): List<TmdbCastMember>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun upsert(entity: CastCacheEntity)
