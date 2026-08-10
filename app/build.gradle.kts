@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.devtools.ksp")
 }
 
 val localProperties = Properties()
@@ -186,6 +187,19 @@ dependencies {
     // explicitly here rather than leave that to chance — 1.8.9 is current
     // stable (verified).
     implementation("androidx.fragment:fragment-ktx:1.8.9")
+
+    // Room — Phase 1 of migrating SharedPreferences-as-database usage to
+    // a real database (see CachedVideoMetadataDatabase.kt), starting with
+    // cinevault_metadata_cache specifically: one SharedPreferences KEY
+    // per video, unbounded growth as the library grows, the one store of
+    // several with a genuine ANR/TransactionTooLargeException risk rather
+    // than just being an awkward fit. Room 2.8.4 — current stable 2.x
+    // (verified). Room 3.0 exists but is a brand-new major rewrite still
+    // in early alpha as of this writing, under different package
+    // coordinates (androidx.room3) — not appropriate to build on yet.
+    implementation("androidx.room:room-runtime:2.8.4")
+    implementation("androidx.room:room-ktx:2.8.4")
+    ksp("androidx.room:room-compiler:2.8.4")
 
     // Custom Tabs — used by the subtitle website fallback (SubtitleWebFallback.kt)
     // to open OpenSubtitles as the recommended/default route: a real browser
