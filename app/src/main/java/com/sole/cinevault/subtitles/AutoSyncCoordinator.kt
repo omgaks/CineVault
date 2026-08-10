@@ -6,7 +6,6 @@ import android.widget.Toast
 import androidx.media3.common.C
 import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.library.VideoThumbnailHelper
-import com.sole.cinevault.readTextFromUri
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
