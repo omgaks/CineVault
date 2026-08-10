@@ -6,6 +6,8 @@ import com.sole.cinevault.VideoWithMetadata
 import com.sole.cinevault.CastEntry
 
 import android.content.Context
+import androidx.room.Entity
+import androidx.room.PrimaryKey
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
@@ -38,7 +40,17 @@ fun saveMetadataFetchEnabled(context: Context, enabled: Boolean) {
         .apply()
 }
 
+// FIX: this is now the Room Entity backing cinevault_metadata_cache's
+// replacement (see CachedVideoMetadataDatabase.kt) — one SharedPreferences
+// KEY per video was the single worst SharedPreferences-as-database offender
+// in the app (genuinely unbounded key count as a library grows, the real
+// ANR/TransactionTooLargeException risk, not just an awkward fit). videoPath
+// is new — previously it only existed as the external SharedPreferences
+// key, never as a field inside the stored value itself; Room needs it as an
+// actual column to serve as the primary key.
+@Entity(tableName = "cached_video_metadata")
 data class CachedVideoMetadata(
+    @PrimaryKey val videoPath: String,
     val title: String,
     val subtitle: String,
     val posterUrl: String?,
@@ -59,6 +71,9 @@ data class CachedVideoMetadata(
     // declared here. Keeping them nullable and normalizing on read (see
     // applyCachedVideoMetadata below) avoids a crash the first time an
     // old cached entry (from before this feature existed) gets loaded.
+    // Room itself doesn't have this same bypass-the-constructor issue —
+    // kept nullable anyway for consistency with the values already on
+    // disk from the SharedPreferences era, migrated as-is.
     val genres: List<String>? = null,
     val director: String? = null,
     val collectionId: Int? = null,
@@ -67,30 +82,69 @@ data class CachedVideoMetadata(
     val cast: List<CastEntry>? = null
 )
 
-fun loadCachedVideoMetadata(
-    context: Context,
-    videoPath: String
-): CachedVideoMetadata? {
-    val json =
-        context
-            .getSharedPreferences(METADATA_PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(videoPath, null)
-            ?: return null
+// FIX: one-time migration off cinevault_metadata_cache (one
+// SharedPreferences key per video — the genuine unbounded-growth risk,
+// not just an awkward fit) into Room. Guarded by a persisted flag in the
+// existing settings store (not the cache store itself, same reasoning as
+// the disable-metadata toggle above — a migration-done marker is a
+// setting, not cache data) so this only ever actually scans the legacy
+// prefs file once per install, not on every single video load. An
+// in-memory flag alone wouldn't survive a process restart; this does.
+private const val METADATA_ROOM_MIGRATION_DONE_KEY = "metadata_room_migration_done"
 
-    return try {
-        Gson().fromJson(json, CachedVideoMetadata::class.java)
-    } catch (e: Exception) {
-        null
+private suspend fun ensureMetadataMigratedToRoom(context: Context) = withContext(Dispatchers.IO) {
+    val settingsPrefs = context.getSharedPreferences(METADATA_SETTINGS_PREFS_NAME, Context.MODE_PRIVATE)
+    if (settingsPrefs.getBoolean(METADATA_ROOM_MIGRATION_DONE_KEY, false)) return@withContext
+
+    val legacyPrefs = context.getSharedPreferences(METADATA_PREFS_NAME, Context.MODE_PRIVATE)
+    val legacyEntries = legacyPrefs.all
+    if (legacyEntries.isNotEmpty()) {
+        val dao = CachedVideoMetadataDatabase.getInstance(context).cachedVideoMetadataDao()
+        val migrated = mutableListOf<CachedVideoMetadata>()
+        for ((videoPath, rawValue) in legacyEntries) {
+            val json = rawValue as? String ?: continue
+            try {
+                // Old cached JSON has no videoPath field at all — it only
+                // ever existed as the SharedPreferences KEY, never as
+                // part of the stored value. Gson's reflection-based
+                // deserialization (see the Entity's own doc comment)
+                // would leave the new non-nullable videoPath field as an
+                // unreliable value here regardless — copy() overwrites
+                // it with the trusted value from the legacy key itself
+                // immediately after, so that unreliable intermediate
+                // value is never actually used for anything.
+                val parsed = Gson().fromJson(json, CachedVideoMetadata::class.java)
+                migrated.add(parsed.copy(videoPath = videoPath))
+            } catch (_: Exception) {
+                // Skip a corrupted individual entry rather than fail the
+                // whole migration over one bad row — same "don't lose
+                // everything over one bad apple" reasoning as everywhere
+                // else data gets migrated in this app.
+            }
+        }
+        if (migrated.isNotEmpty()) dao.upsertAll(migrated)
+        legacyPrefs.edit().clear().apply()
     }
+    settingsPrefs.edit().putBoolean(METADATA_ROOM_MIGRATION_DONE_KEY, true).apply()
 }
 
-fun saveCachedVideoMetadata(
+suspend fun loadCachedVideoMetadata(
+    context: Context,
+    videoPath: String
+): CachedVideoMetadata? = withContext(Dispatchers.IO) {
+    ensureMetadataMigratedToRoom(context)
+    CachedVideoMetadataDatabase.getInstance(context).cachedVideoMetadataDao().getByPath(videoPath)
+}
+
+suspend fun saveCachedVideoMetadata(
     context: Context,
     videoPath: String,
     item: VideoWithMetadata
-) {
+) = withContext(Dispatchers.IO) {
+    ensureMetadataMigratedToRoom(context)
     val cached =
         CachedVideoMetadata(
+            videoPath = videoPath,
             title = item.title,
             subtitle = item.subtitle,
             posterUrl = item.posterUrl,
@@ -109,12 +163,7 @@ fun saveCachedVideoMetadata(
             curatedCollections = item.curatedCollections,
             cast = item.cast
         )
-
-    context
-        .getSharedPreferences(METADATA_PREFS_NAME, Context.MODE_PRIVATE)
-        .edit()
-        .putString(videoPath, Gson().toJson(cached))
-        .apply()
+    CachedVideoMetadataDatabase.getInstance(context).cachedVideoMetadataDao().upsert(cached)
 }
 
 // Upgrades any backdrop URL that still points at TMDB's oversized "original"
@@ -152,7 +201,7 @@ fun applyCachedVideoMetadata(
     )
 }
 
-fun applyCachedMetadataIfAvailable(
+suspend fun applyCachedMetadataIfAvailable(
     context: Context,
     item: VideoWithMetadata
 ): VideoWithMetadata {
