@@ -33,12 +33,41 @@ data class MatchCandidate(
 suspend fun searchMovieCandidates(query: String): List<MatchCandidate> =
     withContext(Dispatchers.IO) {
         try {
-            TmdbClient.api
-                .searchMovie(
-                    bearerToken = BuildConfig.TMDB_TOKEN,
-                    query = query
-                )
+            // FIX: a query like "wall E 2008" was being sent to TMDB
+            // completely as-is — including the year as part of the free-
+            // text search string, which TMDB's search doesn't handle
+            // well (a year isn't part of a movie's actual title). The
+            // automatic matching path already avoids this via
+            // tmdbMovieSearchQuery() stripping the year before search;
+            // this manual path just never had the same treatment.
+            val yearHint = extractYearHint(query)
+            val titleOnlyQuery = query.replace(Regex("\\b(19\\d{2}|20\\d{2})\\b"), "").replace(Regex("\\s+"), " ").trim()
+            val finalQuery = titleOnlyQuery.ifBlank { query }
+
+            val yearFiltered = TmdbClient.api
+                .searchMovie(bearerToken = BuildConfig.TMDB_TOKEN, query = finalQuery, primaryReleaseYear = yearHint)
                 .results
+
+            // FIX: primary_release_year filters strictly against TMDB's
+            // single registered "primary" release date for a film — which
+            // can genuinely differ from the year most people know a film
+            // by (a festival premiere registered as primary instead of
+            // the wide release, for example). That mismatch would zero
+            // out results for a search typed with the commonly-known
+            // year, for a film that unambiguously exists on TMDB. Retried
+            // without the year filter specifically when a year was
+            // provided AND it returned nothing — a plain query with no
+            // year hint at all was already unfiltered, nothing to fall
+            // back from there.
+            val results = if (yearFiltered.isEmpty() && yearHint != null) {
+                TmdbClient.api
+                    .searchMovie(bearerToken = BuildConfig.TMDB_TOKEN, query = finalQuery, primaryReleaseYear = null)
+                    .results
+            } else {
+                yearFiltered
+            }
+
+            results
                 .mapNotNull { movie ->
                     val id = movie.id ?: return@mapNotNull null
                     MatchCandidate(
