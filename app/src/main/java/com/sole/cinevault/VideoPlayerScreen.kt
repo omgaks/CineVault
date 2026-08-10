@@ -633,34 +633,27 @@ fun VideoPlayerScreen(
     // (now-validated) local file picker below — reuses the exact same
     // cleaning + playback pipeline every other subtitle source already
     // goes through, so this isn't a parallel/divergent code path.
-    fun applyImportedWebsiteSubtitle(imported: ImportedSubtitle) {
-        scope.launch {
-            val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
-            val cleanedUri = withContext(Dispatchers.IO) {
-                if (supportsCustomTextPipeline(imported.format)) {
-                    buildCleanedSubtitleFile(context, imported.uri, coreUi.cleaningOptions)
-                } else {
-                    null
-                }
-            } ?: imported.uri
-
-            coreUi.subtitlesEnabled = true
-            trackSelector.parameters = trackSelector.buildUponParameters()
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                .build()
-            trackUi.primaryUri = cleanedUri
-            trackUi.primaryLanguage = imported.language
-            trackUi.selectedKey = "downloaded"
-            trackUi.selectedLabel = friendlyLanguageName(imported.language ?: "en")
-            trackUi.selectedSource = "Website import"
-            playCurrentVideoWithSubtitle(cleanedUri, resumeAt)
-            searchUi.showFallback = false
-            searchUi.showEmbeddedBrowser = false
-            searchUi.pendingImportCandidates = null
-            showControls = true
-            Toast.makeText(context, "Subtitle loaded", Toast.LENGTH_SHORT).show()
-        }
+    // FIX: these three functions used to be plain local functions defined
+    // right here — now orchestration glue calling into
+    // SubtitleSearchCoordinator (see that file for the full reasoning).
+    // Every call site elsewhere in this file continues to work unchanged.
+    val subtitleSearchCoordinator = remember(exoPlayer, trackSelector) {
+        SubtitleSearchCoordinator(
+            context = context,
+            scope = scope,
+            exoPlayer = exoPlayer,
+            trackSelector = trackSelector,
+            coreUi = coreUi,
+            trackUi = trackUi,
+            searchUi = searchUi,
+            getCurrentVideoPath = { currentVideo.path },
+            setShowControls = { showControls = it },
+            playSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle ->
+                playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
+            }
+        )
     }
+    fun applyImportedWebsiteSubtitle(imported: ImportedSubtitle) = subtitleSearchCoordinator.applyImportedWebsiteSubtitle(imported)
 
     // FIX: fresh picks from the system file picker now go through
     // SubtitleImportEngine's real content validation (rejects HTML/binary,
@@ -704,104 +697,9 @@ fun VideoPlayerScreen(
     // needed here, unlike the earlier slices, since these never touched
     // any state to begin with.
 
-    fun performSubtitleSearch(query: String, seasonText: String, episodeText: String, language: String = coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en") {
-        searchUi.searchLoading = true
-        searchUi.searchStatus = ""
-        scope.launch {
-            // Both providers queried concurrently rather than one after
-            // the other — they're independent network calls, no reason to
-            // make the person wait twice as long for a merged list.
-            val openSubsDeferred = async {
-                OpenSubtitlesClient.searchSubtitlesDetailed(
-                    query = query,
-                    season = seasonText.toIntOrNull(),
-                    episode = episodeText.toIntOrNull(),
-                    language = language,
-                    preferForced = coreUi.behaviorPrefs.preferForced,
-                    preferSdh = coreUi.behaviorPrefs.preferSdh
-                )
-            }
-            val subDlDeferred = async {
-                SubDlClient.search(query, seasonText.toIntOrNull(), episodeText.toIntOrNull(), language)
-            }
-            val openSubsResult = openSubsDeferred.await()
-            val subDlResult = subDlDeferred.await()
-
-            searchUi.searchLoading = false
-            val openSubsList = (openSubsResult as? SubtitleSearchListResult.Success)?.results.orEmpty()
-            val subDlList = (subDlResult as? SubtitleSearchListResult.Success)?.results.orEmpty()
-            // OpenSubtitles first (already ranked by its own match-scoring
-            // above), SubDL appended after — the two providers' relevance
-            // scores aren't directly comparable, so concatenating rather
-            // than trying to cross-rank them is the honest choice here.
-            // FIX (B6): SubDL results now sorted to the top of the
-            // combined list — previously appended after all of
-            // OpenSubtitles' (often 40-50) results, effectively burying
-            // them at the bottom where they were easy to miss entirely.
-            val merged = subDlList + openSubsList
-
-            when {
-                merged.isNotEmpty() -> { searchUi.searchResults = merged; searchUi.searchStatus = "" }
-                openSubsResult is SubtitleSearchListResult.HttpError -> { searchUi.searchResults = emptyList(); searchUi.searchStatus = "Search error: ${openSubsResult.detail}" }
-                else -> { searchUi.searchResults = emptyList(); searchUi.searchStatus = "No subtitles found for this search" }
-            }
-        }
-    }
-
-    fun applySearchResult(result: SubtitleSearchResult, alsoPlay: Boolean) {
-        scope.launch {
-            // Provider-specific download flow — OpenSubtitles uses a
-            // numeric file_id needing a separate link-request step, SubDL
-            // hands back a ready-to-use relative URL straight from search.
-            val downloadResult = if (result.provider == "SubDL" && result.subDlDownloadPath != null) {
-                SubDlClient.downloadSubtitle(context, currentVideo.path, result.subDlDownloadPath, result.language)
-            } else {
-                OpenSubtitlesClient.downloadSubtitleByFileId(context, currentVideo.path, result.fileId, result.language, result.provider)
-            }
-            when (downloadResult) {
-                is SubtitleDownloadResult.Success -> {
-                    if (alsoPlay) {
-                        // FIX: active-track state (coreUi.subtitlesEnabled, track
-                        // selector, trackUi.selectedKey/label/source,
-                        // and the remember-last-language promotion) used to
-                        // be set unconditionally above this check — meaning
-                        // "Save only" incorrectly marked this subtitle as
-                        // the ACTIVE one in the UI even though playback was
-                        // never touched. All of that now only happens when
-                        // the person actually chose to apply it.
-                        coreUi.subtitlesEnabled = true
-                        trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-                        trackUi.selectedKey = "downloaded"
-                        // FIX: was hardcoded to "OpenSubtitles" regardless
-                        // of which provider actually supplied this result
-                        // — meaning a successfully-applied SubDL subtitle
-                        // would show up in Track Selector mislabeled as
-                        // OpenSubtitles, with no SubDL entry ever visible.
-                        // From the outside that looks exactly like "SubDL
-                        // apply does nothing," when the download and apply
-                        // may have genuinely worked the whole time.
-                        trackUi.selectedLabel = friendlyLanguageName(result.language); trackUi.selectedSource = result.provider
-                        if (coreUi.behaviorPrefs.rememberLastSelectedLanguage && result.language.isNotBlank()) {
-                            coreUi.behaviorPrefs = promoteLanguageToFront(coreUi.behaviorPrefs, result.language.take(2).lowercase())
-                            saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
-                        }
-                        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
-                        val cleanedApplyUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, downloadResult.uri, coreUi.cleaningOptions) } ?: downloadResult.uri
-                        trackUi.primaryUri = cleanedApplyUri
-                        trackUi.primaryLanguage = SubtitleLanguageRegistry.normalize(result.language)
-                        playCurrentVideoWithSubtitle(subtitleUri = cleanedApplyUri, resumePosition = resumeAt)
-                        searchUi.showSearch = false; showControls = true
-                        Toast.makeText(context, "Subtitle applied", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(context, "Subtitle saved — apply it from Tracks", Toast.LENGTH_SHORT).show()
-                    }
-                }
-                else -> {
-                    Toast.makeText(context, downloadResult.summary(), Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
+    fun performSubtitleSearch(query: String, seasonText: String, episodeText: String, language: String = coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en") =
+        subtitleSearchCoordinator.performSubtitleSearch(query, seasonText, episodeText, language)
+    fun applySearchResult(result: SubtitleSearchResult, alsoPlay: Boolean) = subtitleSearchCoordinator.applySearchResult(result, alsoPlay)
 
 
 
@@ -2855,20 +2753,9 @@ private fun buildShiftedSubtitleFile(context: Context, sourceUri: Uri, offsetMs:
 // shifting only ever touches timestamp lines, running clean-then-shift (in
 // that order, on the cleaned file's own timestamps) composes correctly
 // regardless of what order the person actually adjusts settings in.
-private fun buildCleanedSubtitleFile(context: Context, sourceUri: Uri, options: SubtitleCleaningOptions): Uri? {
-    if (!options.isAnyEnabled) return sourceUri
-    if (!supportsCustomTextPipeline(detectSubtitleFormat(sourceUri))) return sourceUri
-    val original = readTextFromUri(context, sourceUri) ?: return null
-    val cleaned = cleanSrtText(original, options)
-    return try {
-        // FIX: same shared-fixed-filename race as the sync file above —
-        // now unique per source file + the exact cleaning options applied.
-        val uniqueName = "cinevault_cleaned_${sourceUri.hashCode()}_${options.hashCode()}.srt"
-        val outFile = java.io.File(context.cacheDir, uniqueName)
-        outFile.writeText(cleaned)
-        Uri.fromFile(outFile)
-    } catch (e: Exception) { null }
-}
+// buildCleanedSubtitleFile also moved to SubtitleSharedUtils.kt, for the
+// same reason — needed from the subtitle-search extraction, in a
+// different file.
 
 // Given two (position, correction) reference points, derives the linear
 // scale + shift that makes both points land exactly on their intended
