@@ -2,6 +2,8 @@ package com.sole.cinevault
 
 import com.sole.cinevault.library.*
 import com.sole.cinevault.smb.*
+import com.sole.cinevault.glasses.rememberExternalDisplayState
+import com.sole.cinevault.glasses.rememberExternalVideoPresentation
 
 // All subtitle-system files (search, import, sync, appearance, dual-merge,
 // providers) moved to their own package on this pass. Single wildcard
@@ -270,9 +272,9 @@ fun VideoPlayerScreen(
     // done manually every time (the tablet screen is just mirroring the
     // glasses' output, no need for it to be bright too), while keeping the
     // screen genuinely ON and touchable (not locked), so it still works as
-    // a remote/control surface — the tablet only ever LOOKS off. True full
-    // blackout with the glasses continuing to show a distinct feed needs
-    // Phase 2 (Presentation-based separate rendering), not built yet.
+    // a remote/control surface — the tablet only ever LOOKS off. A real
+    // Presentation now supplies the glasses with a distinct video,
+    // subtitle, control and pointer surface.
     // Reverts automatically on disconnect or when leaving the player.
     val externalDisplay by rememberExternalDisplayState()
     var showGlassesConnectedHint by remember { mutableStateOf(false) }
@@ -471,7 +473,8 @@ fun VideoPlayerScreen(
     // tied to the player + physical display ID, so hot-unplug disposes only
     // the external surface and the local PlayerView below immediately takes
     // ownership of the same ExoPlayer again at the same playback position.
-    val externalPlayerView by rememberExternalVideoPresentation(exoPlayer, externalDisplay)
+    val externalPresentation by rememberExternalVideoPresentation(exoPlayer, externalDisplay)
+    val externalPlayerView = externalPresentation?.playerView
 
     LaunchedEffect(externalPlayerView, externalDisplay.isConnected) {
         if (externalDisplay.isConnected && externalPlayerView != null) {
@@ -548,6 +551,7 @@ fun VideoPlayerScreen(
     val pendingDeletePaths = remember { mutableStateListOf<String>() }
     var pendingDeleteConfirmFile by remember { mutableStateOf<java.io.File?>(null) }
     var pendingConsentFile by remember { mutableStateOf<java.io.File?>(null) }
+    var detachedSubtitleForUndo by remember { mutableStateOf<java.io.File?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     val deleteConsentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
@@ -561,25 +565,6 @@ fun VideoPlayerScreen(
         }
         pendingConsentFile = null
     }
-
-    // Performs the actual deletion — only ever called once the undo window
-    // (deleteWithUndo, below) has expired without the person tapping Undo.
-    // FIX: these functions used to be plain local functions defined right
-    // here — now orchestration glue calling into
-    // SubtitleDeletionCoordinator (see that file for the full reasoning).
-    val subtitleDeletionCoordinator = remember {
-        SubtitleDeletionCoordinator(
-            context = context,
-            scope = scope,
-            pendingDeletePaths = pendingDeletePaths,
-            snackbarHostState = snackbarHostState,
-            deleteConsentLauncher = deleteConsentLauncher,
-            setPendingConsentFile = { pendingConsentFile = it },
-            setPendingDeleteConfirmFile = { pendingDeleteConfirmFile = it }
-        )
-    }
-    fun deleteWithUndo(file: java.io.File) = subtitleDeletionCoordinator.deleteWithUndo(file)
-    fun requestDeleteSubtitle(file: java.io.File) = subtitleDeletionCoordinator.requestDeleteSubtitle(file)
 
     LaunchedEffect(sleepTimerActive, sleepTimerRemainingMs) {
         if (sleepTimerActive && sleepTimerRemainingMs > 0) {
@@ -644,6 +629,44 @@ fun VideoPlayerScreen(
     fun playNext() = playbackNavigationCoordinator.playNext()
     fun playCurrentVideoWithSubtitle(subtitleUri: Uri? = null, resumePosition: Long = 0L, isOriginalSubtitle: Boolean = true) =
         playbackNavigationCoordinator.playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
+
+    val subtitleDeletionCoordinator = remember(exoPlayer, playbackNavigationCoordinator) {
+        SubtitleDeletionCoordinator(
+            context = context,
+            scope = scope,
+            pendingDeletePaths = pendingDeletePaths,
+            snackbarHostState = snackbarHostState,
+            deleteConsentLauncher = deleteConsentLauncher,
+            setPendingConsentFile = { pendingConsentFile = it },
+            setPendingDeleteConfirmFile = { pendingDeleteConfirmFile = it },
+            onDeleteRequested = { file ->
+                val isActive = trackUi.selectedKey == "local:${file.absolutePath}" ||
+                    trackUi.selectedKey == "downloaded" || trackUi.originalUri?.path == file.absolutePath ||
+                    trackUi.primaryUri?.path == file.absolutePath
+                if (isActive) {
+                    detachedSubtitleForUndo = file
+                    val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+                    playCurrentVideoWithSubtitle(null, resumeAt, false)
+                    trackUi.primaryUri = null; trackUi.originalUri = null
+                    trackUi.selectedKey = "off"; trackUi.selectedLabel = ""; trackUi.selectedSource = ""
+                    coreUi.subtitlesEnabled = false
+                }
+            },
+            onDeleteUndone = { file ->
+                if (detachedSubtitleForUndo?.absolutePath == file.absolutePath && file.exists()) {
+                    val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+                    coreUi.subtitlesEnabled = true
+                    trackUi.primaryUri = Uri.fromFile(file); trackUi.originalUri = Uri.fromFile(file)
+                    trackUi.selectedKey = "local:${file.absolutePath}"
+                    trackUi.selectedLabel = file.nameWithoutExtension; trackUi.selectedSource = "Local"
+                    playCurrentVideoWithSubtitle(Uri.fromFile(file), resumeAt, true)
+                }
+                detachedSubtitleForUndo = null
+            }
+        )
+    }
+    fun deleteWithUndo(file: java.io.File) = subtitleDeletionCoordinator.deleteWithUndo(file)
+    fun requestDeleteSubtitle(file: java.io.File) = subtitleDeletionCoordinator.requestDeleteSubtitle(file)
 
     // Validated handoff for both the website-fallback flow and the
     // (now-validated) local file picker below — reuses the exact same
@@ -1447,7 +1470,7 @@ fun VideoPlayerScreen(
             update = { pv ->
                 pv.player = if (externalPlayerView == null) exoPlayer else null
                 pv.resizeMode = if (isZoomMode) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                externalPlayerView?.resizeMode = pv.resizeMode
+                externalPresentation?.updateResizeMode(pv.resizeMode)
                 studioUi.playerView = externalPlayerView ?: pv
             }
         )
@@ -1483,7 +1506,15 @@ fun VideoPlayerScreen(
                             showSpeedMenu -> showSpeedMenu = false
                             showSleepMenu -> showSleepMenu = false
                             showSrtBrowser -> showSrtBrowser = false
-                            else -> { val v = !showControls; showControls = v; showTopBar = v }
+                            else -> {
+                                if (externalPresentation != null) {
+                                    externalPresentation?.showControls()
+                                    showControls = false
+                                    showTopBar = false
+                                } else {
+                                    val v = !showControls; showControls = v; showTopBar = v
+                                }
+                            }
                         }
                     },
                     onSeekBack = {
@@ -1531,6 +1562,34 @@ fun VideoPlayerScreen(
                     },
                 )
         )
+
+        // When the controls are visible in the glasses, the black tablet
+        // becomes a relative touchpad. It deliberately captures input only
+        // in this state; when controls are hidden the normal playback
+        // gestures above remain active (tap, double-tap seek, volume, etc.).
+        if (externalPresentation?.controlsVisible?.value == true) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(externalPresentation) {
+                        detectDragGestures(
+                            onDragStart = { externalPresentation?.showControls() },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                externalPresentation?.movePointer(dragAmount.x, dragAmount.y)
+                            }
+                        )
+                    }
+                    .pointerInput(externalPresentation) {
+                        detectTapGestures(
+                            onTap = {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                externalPresentation?.clickPointer()
+                            }
+                        )
+                    }
+            )
+        }
 
         LaunchedEffect(studioUi.gestureFeedback) {
             if (studioUi.gestureFeedback.isBlank()) return@LaunchedEffect
@@ -1802,6 +1861,22 @@ fun VideoPlayerScreen(
             onDismissSettings = { coreUi.showSettings = false; showControls = true },
             onFontSizeChange = { appearanceUi.textSizeSp = it; showControls = true; studioUi.menuTouchKey++ },
             onVerticalPositionChange = { appearanceUi.bottomPadding = it; showControls = true; studioUi.menuTouchKey++ },
+            onResetSubtitleSettings = {
+                clearSubtitleProfileSettings(context, displayProfileType, isLandscape)
+                val defaults = defaultSubtitleProfileSettings(displayProfileType, isLandscape)
+                appearanceUi.textSizeSp = defaults.fontSizeSp
+                appearanceUi.bottomPadding = defaults.bottomPadding
+                appearanceUi.preset = defaults.presetName
+                appearanceUi.appearance = SubtitleAppearance(defaults.foregroundColor, defaults.edgeType, defaults.edgeColor, defaults.backgroundColor)
+                appearanceUi.preserveOriginalStyling = false
+                coreUi.syncOffset = 0f
+                trackUi.appliedOffsetMs = 0L
+                driftUi.scale = 1f; driftUi.appliedScale = 1f
+                driftUi.pointA = null; driftUi.pointB = null
+                AudioSyncHolder.offsetUs = 0L; audioSyncMs = 0
+                Toast.makeText(context, "Subtitle settings reset for ${displayProfileType.label}", Toast.LENGTH_SHORT).show()
+                showControls = true; studioUi.menuTouchKey++
+            },
             onSyncClick = { coreUi.showSettings = false; studioUi.initialTab = SubtitleStudioTab.TIMING; studioUi.showStudio = true; showControls = true },
             onStyleClick = { coreUi.showSettings = false; coreUi.showAppearanceStudio = true; showControls = true },
             onSettingsUserInteraction = { studioUi.menuTouchKey++; showControls = true },
@@ -2044,7 +2119,7 @@ fun VideoPlayerScreen(
         // popups (Track Selector, Drift, Appearance, quick menu) which
         // were designed to sit alongside visible controls and still do.
         val hideControlsForLargeSheet = studioUi.showStudio || searchUi.showSearch
-        AnimatedVisibility(visible = (showControls || isDraggingSeekbar || showAudioSelector || coreUi.showSettings || trackUi.showSelector || driftUi.showDialog || coreUi.showAppearanceStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu) && !hideControlsForLargeSheet && !CineVaultPlayerHolder.isInPipMode, enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(visible = externalPresentation == null && (showControls || isDraggingSeekbar || showAudioSelector || coreUi.showSettings || trackUi.showSelector || driftUi.showDialog || coreUi.showAppearanceStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu) && !hideControlsForLargeSheet && !CineVaultPlayerHolder.isInPipMode, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize()) {
 
                 val topRowVisible = !showSeekPreview
@@ -2317,7 +2392,7 @@ fun VideoPlayerScreen(
         // without ever showing (or unblocking) the other, still-locked
         // controls behind it.
         AnimatedVisibility(
-            visible = (if (controlsLocked) lockButtonVisibleWhileLocked else showControls) && !CineVaultPlayerHolder.isInPipMode,
+            visible = externalPresentation == null && (if (controlsLocked) lockButtonVisibleWhileLocked else showControls) && !CineVaultPlayerHolder.isInPipMode,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.TopEnd)
