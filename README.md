@@ -66,6 +66,10 @@ development—without a conventional desktop IDE or development laptop.
 ### Subtitles
 
 - Concurrent search through OpenSubtitles and SubDL
+- Smart Segments with exact community timestamps for intros, recaps, previews,
+  and credits, cached locally for resilient playback
+- Post-credit scene warnings from TMDB metadata, with precise scene jumping
+  only when a verified timestamp is available
 - Video-hash matching
 - Local subtitle auto-matching before any network request
 - Secure Custom Tab website fallback when automatic search has no result
@@ -164,6 +168,7 @@ See [PRIVACY.md](PRIVACY.md) for the full privacy policy.
 - **OMDb**
 - **OpenSubtitles**
 - **SubDL**
+- **IntroDB** (anonymous read access; no application key required)
 - **GitHub Actions**
 
 ---
@@ -283,12 +288,13 @@ written permission has been granted.
   [OMDb](https://www.omdbapi.com/) for metadata and ratings
 - [OpenSubtitles](https://www.opensubtitles.com/) and
   [SubDL](https://subdl.com/) for subtitle search
+- [IntroDB](https://introdb.app/) for community-verified media segment timestamps
 - [Jellyfin](https://jellyfin.org/) for its Media3 FFmpeg decoder extension
 - [jcifs-ng](https://github.com/AgNO3/jcifs-ng) for SMB support
 - The Android, Kotlin, Jetpack Compose, and Media3 open-source communities
 
 CineVault is not affiliated with or endorsed by IMDb, Rotten Tomatoes, TMDB,
-OMDb, OpenSubtitles, SubDL, Jellyfin, Infuse, or the owners of any referenced
+OMDb, OpenSubtitles, SubDL, IntroDB, Jellyfin, Infuse, or the owners of any referenced
 trademarks.
 
 This product uses the TMDB API but is not endorsed or certified by TMDB.
