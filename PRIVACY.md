@@ -44,11 +44,12 @@ SMB network playback.
 | OMDb | Movie/show title, year, or IMDb identifier where available | IMDb and Rotten Tomatoes ratings |
 | OpenSubtitles | File hash, file size, cleaned title, season/episode, and preferred subtitle language as applicable | Subtitle search and download |
 | SubDL | Cleaned title, season/episode, and preferred subtitle language as applicable | Subtitle search and download |
+| IntroDB | IMDb identifier and, for TV, season and episode numbers | Retrieve community-verified intro, recap, preview, and credits timestamps |
 | User-selected SMB server | Server address, share name, and configured credentials | Browse and stream the user's network library |
 | User-provided stream URL | The requested URL and protocol-required headers | Direct network playback |
 
 CineVault does not send local folder paths or video content to TMDB, OMDb,
-OpenSubtitles, or SubDL. A media hash is a content-derived identifier used for
+OpenSubtitles, SubDL, or IntroDB. A media hash is a content-derived identifier used for
 subtitle matching; it is not the video itself.
 
 These third-party services and user-selected servers operate under their own
