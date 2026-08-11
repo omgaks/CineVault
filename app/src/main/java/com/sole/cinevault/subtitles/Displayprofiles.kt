@@ -43,8 +43,8 @@ fun defaultSubtitleProfileSettings(type: DisplayProfileType, isLandscape: Boolea
     val cineVaultForeground = 0xFFFFF3D6.toInt()
     return when (type) {
         DisplayProfileType.EXTERNAL -> SubtitleProfileSettings(
-            fontSizeSp = 14f,
-            bottomPadding = 0.015f,
+            fontSizeSp = 30f,
+            bottomPadding = 0.10f,
             presetName = "CineVault",
             foregroundColor = cineVaultForeground,
             edgeType = CaptionStyleCompat.EDGE_TYPE_OUTLINE,
@@ -113,4 +113,13 @@ fun saveSubtitleProfileSettings(context: Context, type: DisplayProfileType, isLa
         .putInt("$id.edgeColor", settings.edgeColor)
         .putInt("$id.background", settings.backgroundColor)
         .apply()
+}
+
+/** Clears only the active device/orientation profile; other displays keep their tuning. */
+fun clearSubtitleProfileSettings(context: Context, type: DisplayProfileType, isLandscape: Boolean) {
+    val id = displayProfileId(type, isLandscape)
+    val editor = context.getSharedPreferences(PROFILE_PREFS_NAME, Context.MODE_PRIVATE).edit()
+    listOf("fontSize", "bottomPadding", "presetName", "foreground", "edgeType", "edgeColor", "background")
+        .forEach { editor.remove("$id.$it") }
+    editor.apply()
 }
