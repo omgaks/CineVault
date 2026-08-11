@@ -7,7 +7,7 @@
    This makes that policy explicit rather than implicit.
 
    Only affects the STANDARD Android networking stack — OkHttp (TMDB/
-   OMDB/OpenSubtitles/SubDL API calls), WebView (the subtitle website
+   OMDB/OpenSubtitles/SubDL/IntroDB API calls), WebView (the subtitle website
    fallback), HttpURLConnection. Does NOT affect SMB — SmbDataSource/
    SmbVideoScanner talk to jcifs-ng directly over raw sockets, which is
    a separate protocol implementation entirely outside Android's HTTP(S)
