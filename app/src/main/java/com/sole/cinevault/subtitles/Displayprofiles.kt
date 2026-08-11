@@ -2,6 +2,7 @@ package com.sole.cinevault.subtitles
 
 import android.content.Context
 import android.graphics.Color as AndroidColor
+import androidx.core.content.edit
 import androidx.media3.ui.CaptionStyleCompat
 
 // ── Per-display subtitle profiles ────────────────────────────────────────
@@ -104,22 +105,22 @@ fun loadSubtitleProfileSettings(context: Context, type: DisplayProfileType, isLa
 
 fun saveSubtitleProfileSettings(context: Context, type: DisplayProfileType, isLandscape: Boolean, settings: SubtitleProfileSettings) {
     val id = displayProfileId(type, isLandscape)
-    context.getSharedPreferences(PROFILE_PREFS_NAME, Context.MODE_PRIVATE).edit()
-        .putFloat("$id.fontSize", settings.fontSizeSp)
-        .putFloat("$id.bottomPadding", settings.bottomPadding)
-        .putString("$id.presetName", settings.presetName)
-        .putInt("$id.foreground", settings.foregroundColor)
-        .putInt("$id.edgeType", settings.edgeType)
-        .putInt("$id.edgeColor", settings.edgeColor)
-        .putInt("$id.background", settings.backgroundColor)
-        .apply()
+    context.getSharedPreferences(PROFILE_PREFS_NAME, Context.MODE_PRIVATE).edit {
+        putFloat("$id.fontSize", settings.fontSizeSp)
+        putFloat("$id.bottomPadding", settings.bottomPadding)
+        putString("$id.presetName", settings.presetName)
+        putInt("$id.foreground", settings.foregroundColor)
+        putInt("$id.edgeType", settings.edgeType)
+        putInt("$id.edgeColor", settings.edgeColor)
+        putInt("$id.background", settings.backgroundColor)
+    }
 }
 
 /** Clears only the active device/orientation profile; other displays keep their tuning. */
 fun clearSubtitleProfileSettings(context: Context, type: DisplayProfileType, isLandscape: Boolean) {
     val id = displayProfileId(type, isLandscape)
-    val editor = context.getSharedPreferences(PROFILE_PREFS_NAME, Context.MODE_PRIVATE).edit()
-    listOf("fontSize", "bottomPadding", "presetName", "foreground", "edgeType", "edgeColor", "background")
-        .forEach { editor.remove("$id.$it") }
-    editor.apply()
+    context.getSharedPreferences(PROFILE_PREFS_NAME, Context.MODE_PRIVATE).edit {
+        listOf("fontSize", "bottomPadding", "presetName", "foreground", "edgeType", "edgeColor", "background")
+            .forEach { remove("$id.$it") }
+    }
 }
