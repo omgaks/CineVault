@@ -10,281 +10,310 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import java.nio.ByteOrder
+import java.nio.ShortBuffer
+import kotlin.math.ceil
 
-// ── Auto-Sync: audio extraction ──────────────────────────────────────────
-// Decodes a WINDOW of the video's audio (not the whole file) into 16kHz
-// mono float PCM in [-1, 1], suitable for sherpa-onnx's Silero VAD.
-//
-// LOCAL FILES / SAF (content://) ONLY for this first version — SMB network
-// shares play through CineVault's own jcifs-ng-backed Media3 DataSource,
-// which android.media.MediaExtractor has no way to read from directly.
-// Supporting SMB here would mean tapping ExoPlayer's own decode pipeline
-// instead (a genuinely separate, bigger piece of work) rather than the
-// simpler direct MediaExtractor+MediaCodec approach below. Gated off for
-// smb:// paths at the call site in AutoSyncEngine.kt rather than failing
-// silently.
-// FIX: MediaFormat.getInteger(key, default) — the 2-arg overload — only
-// exists since API 29. This app's minSdk is 24, so on an Android 7.0-8.1
-// device (API 24-28) every call to that overload would throw
-// NoSuchMethodError the instant Auto-Sync tried to extract audio — a
-// real crash, caught by lint rather than by device testing, since
-// neither of this app's two real test devices run anything close to
-// that range. Uses the 1-arg overload (available since API 16, safe for
-// this app's whole supported range) plus an explicit containsKey check,
-// which is exactly equivalent to what the 2-arg version does internally.
-private fun MediaFormat.getIntegerOrDefault(key: String, default: Int): Int =
-    if (containsKey(key)) getInteger(key) else default
-
+/**
+ * Decodes one local/SAF audio window into 16 kHz mono PCM for Silero VAD.
+ *
+ * The conversion is deliberately streaming-memory: every MediaCodec output
+ * buffer is downmixed and resampled directly into the final target-rate
+ * array. Full-rate stereo PCM chunks and a second full-size mono array are
+ * never retained. A five-minute 16 kHz window therefore needs about 19.2 MB
+ * for sample data instead of keeping well over 100 MB alive at once.
+ *
+ * SMB is intentionally unsupported here because MediaExtractor cannot consume
+ * CineVault's jcifs Media3 DataSource. The caller gates SMB AutoSync.
+ */
 object AutoSyncAudioExtractor {
 
     data class ExtractedAudio(val samples: FloatArray, val sampleRate: Int)
 
-    // trackLanguage: the language of the audio track ExoPlayer currently
-    // has SELECTED for playback — extraction must analyze the SAME track
-    // the person is actually listening to, not just "the first audio
-    // track", since a subtitle can be correct for the main audio and wrong
-    // for a commentary track (per the spec's audio-track-selection point).
-    //
-    // FIX: now takes Context and actually handles content:// URIs. This
-    // previously always called extractor.setDataSource(filePath) with the
-    // raw path string regardless of scheme — which silently fails (or
-    // throws) for SAF content:// URIs, since MediaExtractor needs an
-    // actual file descriptor for those, not a path string. The interface
-    // already implied content:// support (AutoSyncEngine.kt explicitly
-    // checked for it); this makes the implementation actually match.
-    // FIX: now suspend and cancellation-aware — the decode loop below can
-    // run for real seconds on a multi-minute audio window, and previously
-    // had no way to notice if the surrounding coroutine was cancelled
-    // (video changed, screen closed mid-analysis), so it would keep
-    // decoding to completion regardless. ensureActive() calls inside the
-    // loop below make it stop promptly instead.
     suspend fun extractWindow(
         context: Context,
         filePath: String,
         trackLanguage: String?,
         startMs: Long,
         durationMs: Long,
-        targetSampleRate: Int = 16000
+        targetSampleRate: Int = 16_000
     ): ExtractedAudio? {
+        if (durationMs <= 0L || targetSampleRate <= 0) return null
+
         val extractor = MediaExtractor()
-        var afd: android.content.res.AssetFileDescriptor? = null
+        var assetFileDescriptor: android.content.res.AssetFileDescriptor? = null
         try {
             if (filePath.startsWith("content://", ignoreCase = true)) {
-                afd = context.contentResolver.openAssetFileDescriptor(Uri.parse(filePath), "r") ?: return null
-                extractor.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                assetFileDescriptor = context.contentResolver
+                    .openAssetFileDescriptor(Uri.parse(filePath), "r") ?: return null
+                extractor.setDataSource(
+                    assetFileDescriptor.fileDescriptor,
+                    assetFileDescriptor.startOffset,
+                    assetFileDescriptor.length
+                )
             } else {
                 extractor.setDataSource(filePath)
             }
 
             val audioTrackIndex = selectAudioTrackIndex(extractor, trackLanguage) ?: return null
             extractor.selectTrack(audioTrackIndex)
-            val format = extractor.getTrackFormat(audioTrackIndex)
-            val mime = format.getString(MediaFormat.KEY_MIME) ?: return null
+            val inputFormat = extractor.getTrackFormat(audioTrackIndex)
+            val mime = inputFormat.getString(MediaFormat.KEY_MIME) ?: return null
 
-            val startUs = startMs * 1000L
-            val endUs = startUs + durationMs * 1000L
+            val startUs = startMs * 1_000L
+            val endUs = startUs + durationMs * 1_000L
             extractor.seekTo(startUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
 
-            var sourceSampleRate = format.getIntegerOrDefault(MediaFormat.KEY_SAMPLE_RATE, 44100)
-            var sourceChannelCount = format.getIntegerOrDefault(MediaFormat.KEY_CHANNEL_COUNT, 2)
-            // FIX: outputBuffer.asShortBuffer() was called unconditionally,
-            // assuming every decoder always outputs 16-bit PCM. That's true
-            // by default (this code never requests KEY_PCM_ENCODING on the
-            // input format, and Android's own documented default for that
-            // case IS 16-bit) — but some devices/codecs can still deviate.
-            // Tracked here so a genuine mismatch fails gracefully (returns
-            // null, same as any other unexpected decode failure) instead of
-            // silently reinterpreting the wrong byte layout as audio
-            // samples, which would produce garbage without ever throwing.
+            var sourceSampleRate = inputFormat.intOrDefault(MediaFormat.KEY_SAMPLE_RATE, 44_100)
+            var sourceChannelCount = inputFormat.intOrDefault(MediaFormat.KEY_CHANNEL_COUNT, 2)
             var pcmEncoding = AudioFormat.ENCODING_PCM_16BIT
-            var encodingMismatch = false
-            val pcmChunks = mutableListOf<ShortArray>()
+            var converter: StreamingPcmConverter? = null
+            var incompatibleOutput = false
 
-            // FIX: codec.stop()/release() previously only ran on the
-            // success path at the end of the decode loop — any exception
-            // thrown mid-decode (corrupt stream, codec error, etc.) skipped
-            // both calls entirely and leaked the native MediaCodec
-            // instance. Now in a finally scoped specifically to the
-            // codec's own lifetime, so every exit path releases it.
             val codec = MediaCodec.createDecoderByType(mime)
             try {
-                codec.configure(format, null, null, 0)
+                codec.configure(inputFormat, null, null, 0)
                 codec.start()
 
                 val bufferInfo = MediaCodec.BufferInfo()
-                var sawInputEOS = false
-                var sawOutputEOS = false
+                var sawInputEnd = false
+                var sawOutputEnd = false
                 var lastPresentationUs = startUs
                 var iterationsWithoutProgress = 0
 
-                while (!sawOutputEOS && lastPresentationUs < endUs) {
+                while (!sawOutputEnd && lastPresentationUs < endUs) {
                     currentCoroutineContext().ensureActive()
-                    if (!sawInputEOS) {
-                        val inIndex = codec.dequeueInputBuffer(10_000)
-                        if (inIndex >= 0) {
-                            val inputBuffer = codec.getInputBuffer(inIndex)
-                            val sampleSize = if (inputBuffer != null) extractor.readSampleData(inputBuffer, 0) else -1
-                            if (sampleSize < 0) {
-                                codec.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                                sawInputEOS = true
+
+                    if (!sawInputEnd) {
+                        val inputIndex = codec.dequeueInputBuffer(10_000)
+                        if (inputIndex >= 0) {
+                            val inputBuffer = codec.getInputBuffer(inputIndex)
+                            val sampleSize = if (inputBuffer != null) {
+                                extractor.readSampleData(inputBuffer, 0)
                             } else {
-                                val pts = extractor.sampleTime
-                                codec.queueInputBuffer(inIndex, 0, sampleSize, pts, 0)
+                                -1
+                            }
+                            if (sampleSize < 0) {
+                                codec.queueInputBuffer(
+                                    inputIndex,
+                                    0,
+                                    0,
+                                    0,
+                                    MediaCodec.BUFFER_FLAG_END_OF_STREAM
+                                )
+                                sawInputEnd = true
+                            } else {
+                                codec.queueInputBuffer(
+                                    inputIndex,
+                                    0,
+                                    sampleSize,
+                                    extractor.sampleTime,
+                                    0
+                                )
                                 extractor.advance()
                             }
                         }
                     }
 
-                    val outIndex = codec.dequeueOutputBuffer(bufferInfo, 10_000)
-                    when {
-                        outIndex >= 0 -> {
+                    when (val outputIndex = codec.dequeueOutputBuffer(bufferInfo, 10_000)) {
+                        MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                            val outputFormat = codec.outputFormat
+                            val newRate = outputFormat.intOrDefault(
+                                MediaFormat.KEY_SAMPLE_RATE,
+                                sourceSampleRate
+                            )
+                            val newChannels = outputFormat.intOrDefault(
+                                MediaFormat.KEY_CHANNEL_COUNT,
+                                sourceChannelCount
+                            )
+                            val newEncoding = outputFormat.intOrDefault(
+                                MediaFormat.KEY_PCM_ENCODING,
+                                AudioFormat.ENCODING_PCM_16BIT
+                            )
+
+                            // A mid-stream format change would invalidate the
+                            // resampling timeline already accumulated. It is
+                            // safer to decline AutoSync than analyze corrupt
+                            // samples.
+                            if (converter != null &&
+                                (newRate != sourceSampleRate || newChannels != sourceChannelCount)
+                            ) {
+                                incompatibleOutput = true
+                                sawOutputEnd = true
+                            }
+                            sourceSampleRate = newRate
+                            sourceChannelCount = newChannels
+                            pcmEncoding = newEncoding
+                        }
+
+                        MediaCodec.INFO_TRY_AGAIN_LATER -> {
+                            iterationsWithoutProgress++
+                            if (iterationsWithoutProgress > 500) sawOutputEnd = true
+                        }
+
+                        else -> if (outputIndex >= 0) {
                             iterationsWithoutProgress = 0
                             lastPresentationUs = bufferInfo.presentationTimeUs
-                            val outputBuffer = codec.getOutputBuffer(outIndex)
-                            // FIX: every decoded buffer used to get included
-                            // unconditionally. SEEK_TO_CLOSEST_SYNC can (and
-                            // does) land on a keyframe BEFORE the requested
-                            // startUs, meaning the first several decoded
-                            // buffers can carry audio from before the
-                            // intended window — biasing whatever offset
-                            // Auto-Sync computes from this window's content.
-                            // Buffers before startUs are now dropped
-                            // entirely rather than included.
-                            if (outputBuffer != null && bufferInfo.size > 0 && bufferInfo.presentationTimeUs >= startUs) {
+                            val outputBuffer = codec.getOutputBuffer(outputIndex)
+
+                            if (outputBuffer != null &&
+                                bufferInfo.size > 0 &&
+                                bufferInfo.presentationTimeUs >= startUs &&
+                                bufferInfo.presentationTimeUs < endUs
+                            ) {
                                 if (pcmEncoding != AudioFormat.ENCODING_PCM_16BIT) {
-                                    encodingMismatch = true
-                                    sawOutputEOS = true
+                                    incompatibleOutput = true
+                                    sawOutputEnd = true
                                 } else {
+                                    if (converter == null) {
+                                        converter = StreamingPcmConverter(
+                                            sourceSampleRate = sourceSampleRate,
+                                            channelCount = sourceChannelCount,
+                                            targetSampleRate = targetSampleRate,
+                                            durationMs = durationMs
+                                        )
+                                    }
                                     outputBuffer.order(ByteOrder.LITTLE_ENDIAN)
                                     outputBuffer.position(bufferInfo.offset)
                                     outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
-                                    val shortBuf = outputBuffer.asShortBuffer()
-                                    val chunk = ShortArray(shortBuf.remaining())
-                                    shortBuf.get(chunk)
-                                    pcmChunks.add(chunk)
+                                    converter?.consume(outputBuffer.slice().order(ByteOrder.LITTLE_ENDIAN).asShortBuffer())
                                 }
                             }
-                            codec.releaseOutputBuffer(outIndex, false)
-                            if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) sawOutputEOS = true
-                        }
-                        outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                            val newFormat = codec.outputFormat
-                            sourceSampleRate = newFormat.getIntegerOrDefault(MediaFormat.KEY_SAMPLE_RATE, sourceSampleRate)
-                            sourceChannelCount = newFormat.getIntegerOrDefault(MediaFormat.KEY_CHANNEL_COUNT, sourceChannelCount)
-                            // FIX: KEY_PCM_ENCODING was never inspected —
-                            // this codec never requests anything but the
-                            // platform default (16-bit) on the input side,
-                            // so this is a genuine edge case rather than an
-                            // expected path, but worth knowing about rather
-                            // than silently misreading the bytes on
-                            // whatever device/codec combination does differ.
-                            // Absent key (most devices) is treated as
-                            // 16-bit, matching the prior unconditional
-                            // assumption for the common case.
-                            if (newFormat.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
-                                pcmEncoding = newFormat.getInteger(MediaFormat.KEY_PCM_ENCODING)
+
+                            codec.releaseOutputBuffer(outputIndex, false)
+                            if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+                                sawOutputEnd = true
                             }
-                        }
-                        else -> {
-                            // Neither an input nor output buffer was ready
-                            // this pass — normal occasionally, but if it
-                            // happens for too many consecutive iterations
-                            // something's stuck (corrupt/truncated stream)
-                            // rather than just slow, and this loop should
-                            // bail instead of spinning forever on a tablet
-                            // with no way to force-kill it.
-                            iterationsWithoutProgress++
-                            if (iterationsWithoutProgress > 500) { sawOutputEOS = true }
                         }
                     }
                 }
             } finally {
-                try { codec.stop() } catch (_: Exception) {}
+                try {
+                    codec.stop()
+                } catch (_: Exception) {
+                    // A codec that failed during configure/decode may reject stop().
+                }
                 codec.release()
             }
 
-            if (encodingMismatch) return null
-
-            val mono = downmixToMono(pcmChunks, sourceChannelCount)
-            // FIX: pcmChunks (the raw decoded PCM — often the single
-            // biggest buffer here, since it's still full stereo/full
-            // sample-rate before downmixing) was staying reachable for the
-            // rest of this function purely because the variable was still
-            // in scope, even though nothing after this point reads it
-            // again. On a long window that's the difference between 2 and
-            // 3 large buffers alive at once during resampleLinear() below
-            // — clearing it here lets the GC reclaim it before that next
-            // allocation instead of after, which is what was pushing this
-            // over the heap ceiling during longer Auto-Sync windows.
-            pcmChunks.clear()
-            val resampled = resampleLinear(mono, sourceSampleRate, targetSampleRate)
-            return ExtractedAudio(resampled, targetSampleRate)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
+            if (incompatibleOutput) return null
+            val samples = converter?.finish() ?: return null
+            if (samples.isEmpty()) return null
+            return ExtractedAudio(samples, targetSampleRate)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
             return null
         } finally {
             extractor.release()
-            try { afd?.close() } catch (_: Exception) {}
+            try {
+                assetFileDescriptor?.close()
+            } catch (_: Exception) {
+                // Nothing else can be done during cleanup.
+            }
         }
     }
 
-    private fun selectAudioTrackIndex(extractor: MediaExtractor, preferredLanguage: String?): Int? {
-        val audioTracks = (0 until extractor.trackCount).filter { i ->
-            extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
+    private fun selectAudioTrackIndex(
+        extractor: MediaExtractor,
+        preferredLanguage: String?
+    ): Int? {
+        val audioTracks = (0 until extractor.trackCount).filter { index ->
+            extractor.getTrackFormat(index)
+                .getString(MediaFormat.KEY_MIME)
+                ?.startsWith("audio/") == true
         }
         if (audioTracks.isEmpty()) return null
-        if (preferredLanguage != null) {
-            audioTracks.firstOrNull { i ->
-                val lang = extractor.getTrackFormat(i).getString(MediaFormat.KEY_LANGUAGE)
-                lang != null && lang.take(2).equals(preferredLanguage.take(2), ignoreCase = true)
+
+        if (!preferredLanguage.isNullOrBlank()) {
+            audioTracks.firstOrNull { index ->
+                extractor.getTrackFormat(index)
+                    .getString(MediaFormat.KEY_LANGUAGE)
+                    ?.take(2)
+                    ?.equals(preferredLanguage.take(2), ignoreCase = true) == true
             }?.let { return it }
         }
         return audioTracks.first()
     }
 
-    private fun downmixToMono(chunks: List<ShortArray>, channelCount: Int): FloatArray {
-        if (channelCount <= 1) {
-            val total = chunks.sumOf { it.size }
-            val out = FloatArray(total)
-            var pos = 0
-            for (chunk in chunks) {
-                for (s in chunk) { out[pos] = s / 32768f; pos++ }
-            }
-            return out
+    /**
+     * Converts interleaved signed 16-bit PCM to mono target-rate floats while
+     * each decoder buffer is still small. Linear interpolation is sufficient
+     * for VAD, which analyzes speech activity rather than audio fidelity.
+     */
+    private class StreamingPcmConverter(
+        private val sourceSampleRate: Int,
+        private val channelCount: Int,
+        targetSampleRate: Int,
+        durationMs: Long
+    ) {
+        private val sourceFramesPerOutput = sourceSampleRate.toDouble() / targetSampleRate.toDouble()
+        private val maximumOutputSamples = ceil(durationMs * targetSampleRate / 1_000.0)
+            .toLong()
+            .coerceAtMost(Int.MAX_VALUE.toLong() - 2L)
+            .toInt() + 2
+        private val output = FloatArray(maximumOutputSamples)
+
+        private var outputSize = 0
+        private var sourceFrameIndex = -1L
+        private var nextOutputSourcePosition = 0.0
+        private var previousMono = 0f
+        private var hasPreviousMono = false
+        private var pendingChannelCount = 0
+        private var pendingChannelSum = 0f
+
+        init {
+            require(sourceSampleRate > 0)
+            require(channelCount > 0)
+            require(targetSampleRate > 0)
         }
-        val totalFrames = chunks.sumOf { it.size / channelCount }
-        val out = FloatArray(totalFrames)
-        var frameIdx = 0
-        for (chunk in chunks) {
-            var i = 0
-            while (i + channelCount <= chunk.size) {
-                var sum = 0f
-                for (c in 0 until channelCount) sum += chunk[i + c]
-                out[frameIdx] = (sum / channelCount) / 32768f
-                frameIdx++
-                i += channelCount
+
+        fun consume(buffer: ShortBuffer) {
+            while (buffer.hasRemaining() && outputSize < maximumOutputSamples) {
+                pendingChannelSum += buffer.get().toFloat()
+                pendingChannelCount++
+                if (pendingChannelCount == channelCount) {
+                    val mono = (pendingChannelSum / channelCount) / 32_768f
+                    pendingChannelSum = 0f
+                    pendingChannelCount = 0
+                    consumeMonoFrame(mono)
+                }
             }
         }
-        return out
+
+        private fun consumeMonoFrame(currentMono: Float) {
+            sourceFrameIndex++
+            if (!hasPreviousMono) {
+                previousMono = currentMono
+                hasPreviousMono = true
+                appendWhileDue(currentMono, currentMono)
+                return
+            }
+
+            val previousIndex = sourceFrameIndex - 1L
+            while (nextOutputSourcePosition <= sourceFrameIndex.toDouble() &&
+                outputSize < maximumOutputSamples
+            ) {
+                val fraction = (nextOutputSourcePosition - previousIndex)
+                    .toFloat()
+                    .coerceIn(0f, 1f)
+                output[outputSize++] = previousMono + (currentMono - previousMono) * fraction
+                nextOutputSourcePosition += sourceFramesPerOutput
+            }
+            previousMono = currentMono
+        }
+
+        private fun appendWhileDue(previous: Float, current: Float) {
+            while (nextOutputSourcePosition <= sourceFrameIndex.toDouble() &&
+                outputSize < maximumOutputSamples
+            ) {
+                output[outputSize++] = previous + (current - previous)
+                nextOutputSourcePosition += sourceFramesPerOutput
+            }
+        }
+
+        fun finish(): FloatArray = output.copyOf(outputSize)
     }
 
-    // Simple linear-interpolation resampler — not audiophile quality, but
-    // more than sufficient for VAD, which only cares about coarse energy/
-    // speech-envelope shape, not fidelity.
-    private fun resampleLinear(input: FloatArray, fromRate: Int, toRate: Int): FloatArray {
-        if (fromRate == toRate || input.isEmpty()) return input
-        val ratio = toRate.toDouble() / fromRate.toDouble()
-        val outLength = (input.size * ratio).toInt()
-        val out = FloatArray(outLength)
-        for (i in out.indices) {
-            val srcPos = i / ratio
-            val idx = srcPos.toInt()
-            val frac = (srcPos - idx).toFloat()
-            val a = input.getOrElse(idx) { input.last() }
-            val b = input.getOrElse(idx + 1) { input.last() }
-            out[i] = a + (b - a) * frac
-        }
-        return out
-    }
+    private fun MediaFormat.intOrDefault(key: String, default: Int): Int =
+        if (containsKey(key)) getInteger(key) else default
 }
