@@ -61,7 +61,7 @@ class SubtitleSyncToolsCoordinator(
         if (reference != null) {
             val deltaMs = exoPlayer.currentPosition - reference
             coreUi.syncOffset = (coreUi.syncOffset + deltaMs / 1000f).coerceIn(-10f, 10f)
-            Toast.makeText(context, "Sync adjusted by ${if (deltaMs >= 0) "+" else ""}${String.format("%.1f", deltaMs / 1000f)}s", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Sync adjusted by ${if (deltaMs >= 0) "+" else ""}${String.format(java.util.Locale.US, "%.1f", deltaMs / 1000f)}s", Toast.LENGTH_SHORT).show()
         }
         coreUi.dialogueSyncArmed = false
         coreUi.dialogueSyncReferenceMs = null
