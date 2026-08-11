@@ -17,7 +17,7 @@ Auto-Sync, progressive drift correction, network-library support, and small
 interaction details that many Android players overlook.
 
 Designed and developed entirely from an Android tablet using AI-assisted
-developmentâ€”without a conventional desktop IDE or development laptop.
+development—without a conventional desktop IDE or development laptop.
 
 > [!NOTE]
 > CineVault is under active development. Playback behavior can vary by device,
@@ -53,13 +53,15 @@ developmentâ€”without a conventional desktop IDE or development laptop.
 - Picture-in-Picture with playback controls
 - Foreground `MediaSessionService` for screen-lock and background playback
 - Lock-screen controls and headset next/previous support
-- External-display mode for USB-C DisplayPort and RayNeo-class glasses:
-  automatic landscape handling, device-screen dimming, and a dedicated
-  subtitle appearance profile
+- Dedicated secondary-display mode for USB-C DisplayPort, HDMI, and
+  RayNeo-class glasses: video and subtitles render through an Android
+  `Presentation` on the external display while the phone/tablet remains a
+  dimmed touch controller. Playback returns to the device automatically when
+  the display is unplugged.
 - Controls lock that remains visible and accessible while the rest of the
   player interface fades out
 - Crash and playback-error logger with an in-app viewer under
-  **Settings â†’ About**
+  **Settings → About**
 
 ### Subtitles
 
@@ -130,7 +132,10 @@ developmentâ€”without a conventional desktop IDE or development laptop.
   third-party service
 - Scoped-storage-aware file operations and Android deletion consent where
   required
-- Secret Folder access uses Android's device-credential confirmation
+- Secret Folder access uses Android's biometric/device-credential prompt
+- Sensitive SMB and Secret Folder records are excluded from Android backup;
+  eligible non-sensitive settings and history may follow the user's Android
+  backup configuration
 
 See [PRIVACY.md](PRIVACY.md) for the full privacy policy.
 
@@ -173,7 +178,8 @@ Actions.
 1. Fork this repository.
 2. Create free API credentials for the services listed below.
 3. Add the credentials to your repository's GitHub Actions secrets.
-4. Configure signing secrets if you want a signed release APK.
+4. Configure all signing secrets before publishing a release APK. The release
+   workflow deliberately refuses to publish an unsigned APK.
 5. Push to the configured build branch or manually run the workflow.
 
 ### API secrets
@@ -237,7 +243,7 @@ the project.
 
 ## License
 
-Copyright Â© 2026 Ashish Kumar Singh
+Copyright © 2026 Ashish Kumar Singh
 
 CineVault's original source code is licensed under the
 [GNU General Public License version 3 only](LICENSE), identified by the SPDX
