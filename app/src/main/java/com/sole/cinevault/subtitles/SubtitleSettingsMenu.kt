@@ -58,6 +58,7 @@ fun SubtitleSettingsMenu(
     onFontSizeChange: (Float) -> Unit,
     currentVerticalPosition: Float,
     onVerticalPositionChange: (Float) -> Unit,
+    onReset: () -> Unit,
     onUserInteraction: () -> Unit
 ) {
     if (!isVisible) return
@@ -132,6 +133,17 @@ fun SubtitleSettingsMenu(
             currentValue = currentVerticalPosition,
             onSelect = { onUserInteraction(); onVerticalPositionChange(it) },
             isLandscape = isLandscape
+        )
+
+        Text(
+            text = "↺  Reset size, position & sync",
+            color = AmberCore,
+            fontSize = if (isLandscape) 9.sp else 10.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                .background(GlassSurface).clickable { onUserInteraction(); onReset() }
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
     }
 }
