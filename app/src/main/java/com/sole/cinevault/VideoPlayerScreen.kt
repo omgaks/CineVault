@@ -9,6 +9,7 @@ import com.sole.cinevault.smb.*
 // cross-reference check confirmed this file is the ONLY outside caller
 // into that package.
 import com.sole.cinevault.subtitles.*
+import com.sole.cinevault.segments.*
 
 import androidx.compose.ui.graphics.Brush
 import android.app.Activity
@@ -377,7 +378,10 @@ fun VideoPlayerScreen(
     var pendingNextEpisode by remember { mutableStateOf<VideoWithMetadata?>(null) }
     var nextEpisodeCountdown by remember { mutableIntStateOf(0) }
     var showNextEpisodeOverlay by remember { mutableStateOf(false) }
+    var nextEpisodeDismissed by remember { mutableStateOf(false) }
     var autoPlayEnabled by remember { mutableStateOf(true) }
+    val smartSegmentRepository = remember { SmartSegmentRepository(context.applicationContext) }
+    var smartSegmentResult by remember { mutableStateOf(SmartSegmentResult()) }
 
     var isZoomMode by remember { mutableStateOf(false) }
     // FIX (E2): pinch-to-zoom, separate from isZoomMode above — that's a
@@ -724,6 +728,8 @@ fun VideoPlayerScreen(
         searchUi.showFallback = false; searchUi.showEmbeddedBrowser = false; searchUi.pendingImportCandidates = null
         searchUi.searchResults = emptyList(); searchUi.searchStatus = ""; searchUi.searchLoading = false
         pendingNextEpisode = null; nextEpisodeCountdown = 0; showNextEpisodeOverlay = false
+        nextEpisodeDismissed = false
+        smartSegmentResult = SmartSegmentResult()
         previewBitmap = null; previewFrames = emptyList(); isVideoEnded = false
         playerErrorMessage = null; errorRetryCount = 0; stuckBufferingHint = false
         trackUi.originalUri = null; trackUi.appliedOffsetMs = 0L; coreUi.syncOffset = 0.0f
@@ -875,7 +881,7 @@ fun VideoPlayerScreen(
                         val next = episodeList.getOrNull(idx + 1)
                         if (next != null) {
                             if (currentMediaType.equals("tv", ignoreCase = true)) {
-                                pendingNextEpisode = next; nextEpisodeCountdown = 5
+                                pendingNextEpisode = next; nextEpisodeCountdown = 15
                                 showNextEpisodeOverlay = true; showControls = true; showTopBar = true
                             } else {
                                 currentMediaType = next.type; currentVideo = next.video; onPlayNext(next)
@@ -1260,9 +1266,12 @@ fun VideoPlayerScreen(
 
     LaunchedEffect(showNextEpisodeOverlay, pendingNextEpisode) {
         if (showNextEpisodeOverlay && pendingNextEpisode != null) {
-            for (count in 5 downTo 1) {
-                nextEpisodeCountdown = count; delay(1000)
+            var count = 15
+            while (count > 0) {
+                nextEpisodeCountdown = count
+                delay(1000)
                 if (!showNextEpisodeOverlay || pendingNextEpisode == null) return@LaunchedEffect
+                if (isPlaying || isVideoEnded) count--
             }
             val next = pendingNextEpisode
             if (next != null) { showNextEpisodeOverlay = false; pendingNextEpisode = null; currentMediaType = next.type; currentVideo = next.video; onPlayNext(next) }
@@ -1293,7 +1302,6 @@ fun VideoPlayerScreen(
         val sidePadding = if (isCompactLandscape) 8.dp else 16.dp
         val bottomDockPadding = when { isCompactLandscape -> 76.dp; isLandscape -> 90.dp; else -> 152.dp }
         val seekBottomPadding = when { isCompactLandscape -> 13.dp; isLandscape -> 17.dp; else -> 92.dp }
-        val showIntroSkip = isCurrentTvShow && position in 5_000L..95_000L
         val topClusterPaddingTop = if (isLandscape) 10.dp else 18.dp
 
         // ── Per-display subtitle profiles ──────────────────────────────
@@ -1376,6 +1384,37 @@ fun VideoPlayerScreen(
         val currentMeta = remember(currentVideo.path, episodeList) {
             episodeList.firstOrNull { it.video.path == currentVideo.path }
                 ?: episodeList.firstOrNull { it.video.name == currentVideo.name }
+        }
+
+        LaunchedEffect(currentMeta?.video?.path, duration > 60_000L) {
+            val meta = currentMeta ?: return@LaunchedEffect
+            if (duration <= 60_000L || meta.type == "secret") return@LaunchedEffect
+            smartSegmentResult = smartSegmentRepository.load(meta, duration)
+        }
+
+        val activeSmartSegment = smartSegmentResult.segments
+            .filter { it.type == SegmentType.RECAP || it.type == SegmentType.INTRO || it.type == SegmentType.PREVIEW || it.type == SegmentType.COMMERCIAL || it.type == SegmentType.CREDITS }
+            .firstOrNull { it.contains(position) }
+        val exactSceneSegment = smartSegmentResult.segments.firstOrNull {
+            it.type == SegmentType.MID_CREDITS_SCENE || it.type == SegmentType.POST_CREDITS_SCENE
+        }
+        val creditsSegment = smartSegmentResult.segments.firstOrNull { it.type == SegmentType.CREDITS }
+
+        LaunchedEffect(currentVideo.path, position, creditsSegment?.startMs, showNextEpisodeOverlay) {
+            if (!isCurrentTvShow || showNextEpisodeOverlay || nextEpisodeDismissed || creditsSegment == null || position < creditsSegment.startMs) return@LaunchedEffect
+            val index = episodeList.indexOfFirst { it.video.path == currentVideo.path }
+            val next = episodeList.getOrNull(index + 1) ?: return@LaunchedEffect
+            pendingNextEpisode = next
+            nextEpisodeCountdown = 15
+            showNextEpisodeOverlay = true
+        }
+
+        LaunchedEffect(position, creditsSegment?.startMs) {
+            if (showNextEpisodeOverlay && creditsSegment != null && position < creditsSegment.startMs) {
+                showNextEpisodeOverlay = false
+                pendingNextEpisode = null
+                nextEpisodeCountdown = 0
+            }
         }
 
         // Previous/Next availability — shown ONLY for TV episodes and
@@ -2102,16 +2141,36 @@ fun VideoPlayerScreen(
                     )
                 }
 
-                AnimatedVisibility(visible = showNextEpisodeOverlay && pendingNextEpisode != null && !showSeekPreview, enter = fadeIn(animationSpec = tween(140)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.Center)) {
+                AnimatedVisibility(visible = showNextEpisodeOverlay && pendingNextEpisode != null && !showSeekPreview, enter = fadeIn(animationSpec = tween(140)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
                     NextEpisodeCountdownOverlay(nextEpisode = pendingNextEpisode, countdown = nextEpisodeCountdown, isLandscape = isLandscape,
                         onPlayNow = { val n = pendingNextEpisode; if (n != null) { showNextEpisodeOverlay = false; pendingNextEpisode = null; currentMediaType = n.type; currentVideo = n.video; onPlayNext(n) } },
-                        onCancel = { showNextEpisodeOverlay = false; pendingNextEpisode = null; nextEpisodeCountdown = 0; showControls = true }
+                        onCancel = { showNextEpisodeOverlay = false; pendingNextEpisode = null; nextEpisodeCountdown = 0; nextEpisodeDismissed = true; showControls = true }
                     )
                 }
 
-                val anyMenuOpenForIntroSkip = showAudioSelector || coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
-                AnimatedVisibility(visible = showIntroSkip && !showSeekPreview && !isDraggingSeekbar && !anyMenuOpenForIntroSkip, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
-                    SkipIntroButton(isLandscape = isLandscape) { val t = 95_000L.coerceAtMost(duration.coerceAtLeast(1L)); exoPlayer.seekTo(t); position = t; showControls = true }
+                val anyMenuOpenForSmartSkip = showAudioSelector || coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
+                val suppressCreditsPillForScene = activeSmartSegment?.type == SegmentType.CREDITS &&
+                    (smartSegmentResult.hasMidCreditsScene || smartSegmentResult.hasPostCreditsScene)
+                AnimatedVisibility(visible = activeSmartSegment != null && !suppressCreditsPillForScene && !showNextEpisodeOverlay && !showSeekPreview && !isDraggingSeekbar && !anyMenuOpenForSmartSkip, enter = fadeIn(animationSpec = tween(180)), exit = fadeOut(animationSpec = tween(140)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
+                    activeSmartSegment?.let { segment ->
+                        SmartSkipPill(segment, segment.endMs - position) {
+                            exoPlayer.seekTo(segment.endMs)
+                            position = segment.endMs
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            showControls = true
+                        }
+                    }
+                }
+
+                val creditNoticeVisible = !isCurrentTvShow && creditsSegment != null && position >= creditsSegment.startMs &&
+                    (smartSegmentResult.hasMidCreditsScene || smartSegmentResult.hasPostCreditsScene) &&
+                    (exactSceneSegment == null || position < exactSceneSegment.startMs)
+                AnimatedVisibility(visible = creditNoticeVisible && !showSeekPreview && !anyMenuOpenForSmartSkip, enter = fadeIn(tween(180)), exit = fadeOut(tween(140)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
+                    PostCreditNotice(
+                        hasExactTimestamp = exactSceneSegment != null,
+                        isMidCredits = smartSegmentResult.hasMidCreditsScene && !smartSegmentResult.hasPostCreditsScene,
+                        onJump = exactSceneSegment?.let { scene -> { exoPlayer.seekTo(scene.startMs); position = scene.startMs } }
+                    )
                 }
 
                 AnimatedVisibility(visible = isZoomMode && !showSeekPreview, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.TopCenter).padding(top = if (isLandscape) 54.dp else 90.dp)) {
@@ -3228,26 +3287,21 @@ private fun cleanEpisodeDisplayName(fileName: String): String {
 }
 
 @Composable
-private fun SkipIntroButton(isLandscape: Boolean, onClick: () -> Unit) {
-    Text(text = "SKIP INTRO", color = Color.Black, fontSize = if (isLandscape) 11.sp else 12.sp, fontWeight = FontWeight.Black,
-        modifier = Modifier.clip(RoundedCornerShape(50)).background(Brush.horizontalGradient(colors = listOf(AmberCore, AmberGlow))).clickable { onClick() }.padding(horizontal = if (isLandscape) 13.dp else 15.dp, vertical = if (isLandscape) 7.dp else 8.dp))
-}
-
-@Composable
 private fun NextEpisodeCountdownOverlay(nextEpisode: VideoWithMetadata?, countdown: Int, isLandscape: Boolean, onPlayNow: () -> Unit, onCancel: () -> Unit) {
     if (nextEpisode == null) return
-    Column(modifier = Modifier.width(if (isLandscape) 310.dp else 300.dp)
-        .glassPanel(cornerRadius = 26.dp, fill = GlassSurfaceStrong)
-        .padding(horizontal = 18.dp, vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = "Next episode starts in", color = TextBright.copy(alpha = 0.82f), fontSize = if (isLandscape) 13.sp else 14.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(text = countdown.coerceAtLeast(1).toString(), color = AmberCore, fontSize = if (isLandscape) 38.sp else 42.sp, fontWeight = FontWeight.Black)
-        Spacer(modifier = Modifier.height(4.dp))
+    Column(modifier = Modifier.widthIn(min = if (isLandscape) 260.dp else 270.dp, max = if (isLandscape) 330.dp else 310.dp)
+        .glassPanel(cornerRadius = 22.dp, fill = GlassSurfaceStrong)
+        .padding(horizontal = 16.dp, vertical = 14.dp), horizontalAlignment = Alignment.Start) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(text = "UP NEXT", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Black)
+            Text(text = "${countdown.coerceAtLeast(1)}s", color = AmberCore, fontSize = 17.sp, fontWeight = FontWeight.Black)
+        }
+        Spacer(modifier = Modifier.height(7.dp))
         Text(text = nextEpisode.subtitle.ifBlank { cleanEpisodeDisplayName(nextEpisode.video.name) }, color = TextBright, fontSize = if (isLandscape) 13.sp else 14.sp, fontWeight = FontWeight.Bold, maxLines = 2)
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(11.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(text = "Cancel", color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable { onCancel() }.padding(horizontal = 15.dp, vertical = 8.dp))
             Text(text = "Play Now", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore).clickable { onPlayNow() }.padding(horizontal = 15.dp, vertical = 8.dp))
+            Text(text = "Cancel", color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable { onCancel() }.padding(horizontal = 15.dp, vertical = 8.dp))
         }
     }
 }
