@@ -82,7 +82,7 @@ fun Modifier.videoPlaybackGestures(
     .onGloballyPositioned { coordinates ->
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val bounds = coordinates.boundsInWindow()
-            val rightEdgeStart = bounds.left + (bounds.width * 0.85f)
+            val rightEdgeStart = bounds.left + (bounds.width * 0.70f)
             view.systemGestureExclusionRects = listOf(
                 Rect(
                     rightEdgeStart.roundToInt(),
@@ -132,7 +132,11 @@ fun Modifier.videoPlaybackGestures(
                 val absX = abs(dragAmount.x); val absY = abs(dragAmount.y)
                 val gestureIsVertical = abs(dragTotalY) >= abs(dragTotalX)
                 if (gestureIsVertical && absY > absX) {
-                    if (x < w * 0.50f) onBrightnessDrag(dragAmount.y) else onVolumeDrag(dragAmount.y)
+                    // Wider, easier-to-reach vertical zones for a dark host
+                    // used as a glasses controller. The centre 30% remains
+                    // free for seeking/pointer movement.
+                    if (x < w * 0.35f) onBrightnessDrag(dragAmount.y)
+                    else if (x > w * 0.65f) onVolumeDrag(dragAmount.y)
                 }
             }
         )
