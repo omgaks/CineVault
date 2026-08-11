@@ -463,6 +463,18 @@ fun VideoPlayerScreen(
             .build()
     }
 
+    // This is the real secondary-display surface. Presentation creation is
+    // tied to the player + physical display ID, so hot-unplug disposes only
+    // the external surface and the local PlayerView below immediately takes
+    // ownership of the same ExoPlayer again at the same playback position.
+    val externalPlayerView by rememberExternalVideoPresentation(exoPlayer, externalDisplay)
+
+    LaunchedEffect(externalPlayerView, externalDisplay.isConnected) {
+        if (externalDisplay.isConnected && externalPlayerView != null) {
+            studioUi.playerView = externalPlayerView
+        }
+    }
+
     val canDownloadExternalSubtitles = currentMediaType.equals("movie", ignoreCase = true) || currentMediaType.equals("tv", ignoreCase = true) || currentMediaType.equals("restricted", ignoreCase = true)
     val isCurrentTvShow = currentMediaType.equals("tv", ignoreCase = true)
     val isStreamMedia = currentMediaType.equals("stream", ignoreCase = true)
@@ -1383,16 +1395,21 @@ fun VideoPlayerScreen(
                 .graphicsLayer(scaleX = videoScale, scaleY = videoScale, translationX = videoOffsetX, translationY = videoOffsetY),
             factory = { ctx ->
                 PlayerView(ctx).apply {
-                    player = exoPlayer; useController = false
+                    // ExoPlayer may own only one video surface. While the
+                    // Presentation is active this local view intentionally
+                    // remains black beneath the touch controls.
+                    player = if (externalPlayerView == null) exoPlayer else null
+                    useController = false
                     resizeMode = if (isZoomMode) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                     subtitleView?.setViewType(SubtitleView.VIEW_TYPE_CANVAS)
-                    studioUi.playerView = this
+                    studioUi.playerView = externalPlayerView ?: this
                 }
             },
             update = { pv ->
-                pv.player = exoPlayer
+                pv.player = if (externalPlayerView == null) exoPlayer else null
                 pv.resizeMode = if (isZoomMode) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                studioUi.playerView = pv
+                externalPlayerView?.resizeMode = pv.resizeMode
+                studioUi.playerView = externalPlayerView ?: pv
             }
         )
 
