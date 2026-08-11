@@ -135,10 +135,14 @@ dependencies {
 
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
 
-    // Media3 — 4K / HEVC / AV1 / HDR tone-mapping era
-    implementation("androidx.media3:media3-exoplayer:1.10.0")
-    implementation("androidx.media3:media3-exoplayer-hls:1.10.0")
-    implementation("androidx.media3:media3-ui:1.10.0")
+    // Keep the complete Media3 runtime on 1.9.0. Jellyfin's
+    // media3-ffmpeg-decoder:1.9.0+1 is compiled against Media3 1.9.0;
+    // mixing it with 1.10.x can produce binary-incompatible decoder calls at
+    // runtime even when Gradle resolves the project successfully.
+    val media3Version = "1.9.0"
+    implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
+    implementation("androidx.media3:media3-ui:$media3Version")
 
     // Media3 session — MediaSession/MediaSessionService for
     // CineVaultPlaybackService.kt (lock-screen playback survival, media
@@ -146,7 +150,7 @@ dependencies {
     // the other media3-* artifacts above — mixing Media3 artifact versions
     // is a common source of runtime crashes, so this must always be bumped
     // together with media3-exoplayer/media3-ui, never independently.
-    implementation("androidx.media3:media3-session:1.10.0")
+    implementation("androidx.media3:media3-session:$media3Version")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-gif:2.7.0")
