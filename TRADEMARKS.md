@@ -32,10 +32,10 @@ project.
 
 You may make truthful, non-misleading references such as:
 
-- â€œForked from CineVaultâ€
-- â€œBased on CineVaultâ€
-- â€œCompatible with CineVaultâ€
-- â€œUses code from the CineVault projectâ€
+- “Forked from CineVault”
+- “Based on CineVault”
+- “Compatible with CineVault”
+- “Uses code from the CineVault project”
 
 Such references should not be more visually prominent than the fork's own
 name and should not imply official status or endorsement.
@@ -87,5 +87,5 @@ No permission should be assumed from silence.
 
 ---
 
-Copyright Â© 2026 Ashish Kumar Singh. All rights reserved in the CineVault
+Copyright © 2026 Ashish Kumar Singh. All rights reserved in the CineVault
 project name and official brand identity to the extent permitted by law.
