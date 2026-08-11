@@ -551,7 +551,6 @@ fun VideoPlayerScreen(
     val pendingDeletePaths = remember { mutableStateListOf<String>() }
     var pendingDeleteConfirmFile by remember { mutableStateOf<java.io.File?>(null) }
     var pendingConsentFile by remember { mutableStateOf<java.io.File?>(null) }
-    var detachedSubtitleForUndo by remember { mutableStateOf<java.io.File?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     val deleteConsentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
@@ -565,6 +564,24 @@ fun VideoPlayerScreen(
         }
         pendingConsentFile = null
     }
+
+    // Keep deletion wired to the coordinator API that exists in the
+    // repository this replacement file targets. Active/dual-track detach
+    // handling requires coordinated changes in the subtitle layer and is
+    // intentionally left pending for that separate update.
+    val subtitleDeletionCoordinator = remember {
+        SubtitleDeletionCoordinator(
+            context = context,
+            scope = scope,
+            pendingDeletePaths = pendingDeletePaths,
+            snackbarHostState = snackbarHostState,
+            deleteConsentLauncher = deleteConsentLauncher,
+            setPendingConsentFile = { pendingConsentFile = it },
+            setPendingDeleteConfirmFile = { pendingDeleteConfirmFile = it }
+        )
+    }
+    fun deleteWithUndo(file: java.io.File) = subtitleDeletionCoordinator.deleteWithUndo(file)
+    fun requestDeleteSubtitle(file: java.io.File) = subtitleDeletionCoordinator.requestDeleteSubtitle(file)
 
     LaunchedEffect(sleepTimerActive, sleepTimerRemainingMs) {
         if (sleepTimerActive && sleepTimerRemainingMs > 0) {
@@ -629,44 +646,6 @@ fun VideoPlayerScreen(
     fun playNext() = playbackNavigationCoordinator.playNext()
     fun playCurrentVideoWithSubtitle(subtitleUri: Uri? = null, resumePosition: Long = 0L, isOriginalSubtitle: Boolean = true) =
         playbackNavigationCoordinator.playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
-
-    val subtitleDeletionCoordinator = remember(exoPlayer, playbackNavigationCoordinator) {
-        SubtitleDeletionCoordinator(
-            context = context,
-            scope = scope,
-            pendingDeletePaths = pendingDeletePaths,
-            snackbarHostState = snackbarHostState,
-            deleteConsentLauncher = deleteConsentLauncher,
-            setPendingConsentFile = { pendingConsentFile = it },
-            setPendingDeleteConfirmFile = { pendingDeleteConfirmFile = it },
-            onDeleteRequested = { file ->
-                val isActive = trackUi.selectedKey == "local:${file.absolutePath}" ||
-                    trackUi.selectedKey == "downloaded" || trackUi.originalUri?.path == file.absolutePath ||
-                    trackUi.primaryUri?.path == file.absolutePath
-                if (isActive) {
-                    detachedSubtitleForUndo = file
-                    val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
-                    playCurrentVideoWithSubtitle(null, resumeAt, false)
-                    trackUi.primaryUri = null; trackUi.originalUri = null
-                    trackUi.selectedKey = "off"; trackUi.selectedLabel = ""; trackUi.selectedSource = ""
-                    coreUi.subtitlesEnabled = false
-                }
-            },
-            onDeleteUndone = { file ->
-                if (detachedSubtitleForUndo?.absolutePath == file.absolutePath && file.exists()) {
-                    val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
-                    coreUi.subtitlesEnabled = true
-                    trackUi.primaryUri = Uri.fromFile(file); trackUi.originalUri = Uri.fromFile(file)
-                    trackUi.selectedKey = "local:${file.absolutePath}"
-                    trackUi.selectedLabel = file.nameWithoutExtension; trackUi.selectedSource = "Local"
-                    playCurrentVideoWithSubtitle(Uri.fromFile(file), resumeAt, true)
-                }
-                detachedSubtitleForUndo = null
-            }
-        )
-    }
-    fun deleteWithUndo(file: java.io.File) = subtitleDeletionCoordinator.deleteWithUndo(file)
-    fun requestDeleteSubtitle(file: java.io.File) = subtitleDeletionCoordinator.requestDeleteSubtitle(file)
 
     // Validated handoff for both the website-fallback flow and the
     // (now-validated) local file picker below — reuses the exact same
@@ -1861,22 +1840,6 @@ fun VideoPlayerScreen(
             onDismissSettings = { coreUi.showSettings = false; showControls = true },
             onFontSizeChange = { appearanceUi.textSizeSp = it; showControls = true; studioUi.menuTouchKey++ },
             onVerticalPositionChange = { appearanceUi.bottomPadding = it; showControls = true; studioUi.menuTouchKey++ },
-            onResetSubtitleSettings = {
-                clearSubtitleProfileSettings(context, displayProfileType, isLandscape)
-                val defaults = defaultSubtitleProfileSettings(displayProfileType, isLandscape)
-                appearanceUi.textSizeSp = defaults.fontSizeSp
-                appearanceUi.bottomPadding = defaults.bottomPadding
-                appearanceUi.preset = defaults.presetName
-                appearanceUi.appearance = SubtitleAppearance(defaults.foregroundColor, defaults.edgeType, defaults.edgeColor, defaults.backgroundColor)
-                appearanceUi.preserveOriginalStyling = false
-                coreUi.syncOffset = 0f
-                trackUi.appliedOffsetMs = 0L
-                driftUi.scale = 1f; driftUi.appliedScale = 1f
-                driftUi.pointA = null; driftUi.pointB = null
-                AudioSyncHolder.offsetUs = 0L; audioSyncMs = 0
-                Toast.makeText(context, "Subtitle settings reset for ${displayProfileType.label}", Toast.LENGTH_SHORT).show()
-                showControls = true; studioUi.menuTouchKey++
-            },
             onSyncClick = { coreUi.showSettings = false; studioUi.initialTab = SubtitleStudioTab.TIMING; studioUi.showStudio = true; showControls = true },
             onStyleClick = { coreUi.showSettings = false; coreUi.showAppearanceStudio = true; showControls = true },
             onSettingsUserInteraction = { studioUi.menuTouchKey++; showControls = true },
