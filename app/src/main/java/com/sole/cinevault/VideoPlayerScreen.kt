@@ -315,7 +315,20 @@ fun VideoPlayerScreen(
     var showTopBar by remember { mutableStateOf(true) }
     var isDraggingSeekbar by remember { mutableStateOf(false) }
 
-    var volumePercent by remember { mutableIntStateOf(70) }
+    // FIX: was hardcoded to 70 regardless of the device's actual current
+    // volume, meaning CineVault silently overrode whatever level the
+    // person had already set the moment the player opened. Reads the
+    // real starting level instead. A separate, local system-service
+    // lookup is used here rather than the audioManager val declared
+    // later in this function — this runs before that point in
+    // composition, and Kotlin doesn't allow referencing a local variable
+    // before its declaration.
+    val initialMusicVolumePercent = remember {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val maximum = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        ((am.getStreamVolume(AudioManager.STREAM_MUSIC) * 100f) / maximum).toInt()
+    }
+    var volumePercent by remember { mutableIntStateOf(initialMusicVolumePercent) }
     var brightnessPercent by remember { mutableIntStateOf(90) }
     var showVolumeCircle by remember { mutableStateOf(false) }
     var showBrightnessCircle by remember { mutableStateOf(false) }
@@ -473,7 +486,22 @@ fun VideoPlayerScreen(
     // tied to the player + physical display ID, so hot-unplug disposes only
     // the external surface and the local PlayerView below immediately takes
     // ownership of the same ExoPlayer again at the same playback position.
-    val externalPresentation by rememberExternalVideoPresentation(exoPlayer, externalDisplay)
+    val externalRatingText = remember(currentVideo.path, episodeList) {
+        episodeList.firstOrNull { it.video.path == currentVideo.path }?.let { meta ->
+            buildList {
+                meta.imdbRating?.takeIf { it.isNotBlank() && it != "N/A" }?.let { add("IMDb $it") }
+                meta.rottenTomatoesRating?.takeIf { it.isNotBlank() && it != "N/A" }?.let { add("RT $it") }
+                meta.rating?.takeIf { it > 0.0 }?.let { add("TMDB ${String.format("%.1f", it)}") }
+            }.joinToString("  •  ").ifBlank { null }
+        }
+    }
+    val externalPresentation by rememberExternalVideoPresentation(
+        player = exoPlayer,
+        externalDisplay = externalDisplay,
+        title = currentVideo.name,
+        ratingText = externalRatingText,
+        onBack = onBack
+    )
     val externalPlayerView = externalPresentation?.playerView
 
     LaunchedEffect(externalPlayerView, externalDisplay.isConnected) {
@@ -551,6 +579,7 @@ fun VideoPlayerScreen(
     val pendingDeletePaths = remember { mutableStateListOf<String>() }
     var pendingDeleteConfirmFile by remember { mutableStateOf<java.io.File?>(null) }
     var pendingConsentFile by remember { mutableStateOf<java.io.File?>(null) }
+    var detachedSubtitleForUndo by remember { mutableStateOf<java.io.File?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     val deleteConsentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
@@ -564,24 +593,6 @@ fun VideoPlayerScreen(
         }
         pendingConsentFile = null
     }
-
-    // Keep deletion wired to the coordinator API that exists in the
-    // repository this replacement file targets. Active/dual-track detach
-    // handling requires coordinated changes in the subtitle layer and is
-    // intentionally left pending for that separate update.
-    val subtitleDeletionCoordinator = remember {
-        SubtitleDeletionCoordinator(
-            context = context,
-            scope = scope,
-            pendingDeletePaths = pendingDeletePaths,
-            snackbarHostState = snackbarHostState,
-            deleteConsentLauncher = deleteConsentLauncher,
-            setPendingConsentFile = { pendingConsentFile = it },
-            setPendingDeleteConfirmFile = { pendingDeleteConfirmFile = it }
-        )
-    }
-    fun deleteWithUndo(file: java.io.File) = subtitleDeletionCoordinator.deleteWithUndo(file)
-    fun requestDeleteSubtitle(file: java.io.File) = subtitleDeletionCoordinator.requestDeleteSubtitle(file)
 
     LaunchedEffect(sleepTimerActive, sleepTimerRemainingMs) {
         if (sleepTimerActive && sleepTimerRemainingMs > 0) {
@@ -646,6 +657,44 @@ fun VideoPlayerScreen(
     fun playNext() = playbackNavigationCoordinator.playNext()
     fun playCurrentVideoWithSubtitle(subtitleUri: Uri? = null, resumePosition: Long = 0L, isOriginalSubtitle: Boolean = true) =
         playbackNavigationCoordinator.playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
+
+    val subtitleDeletionCoordinator = remember(exoPlayer, playbackNavigationCoordinator) {
+        SubtitleDeletionCoordinator(
+            context = context,
+            scope = scope,
+            pendingDeletePaths = pendingDeletePaths,
+            snackbarHostState = snackbarHostState,
+            deleteConsentLauncher = deleteConsentLauncher,
+            setPendingConsentFile = { pendingConsentFile = it },
+            setPendingDeleteConfirmFile = { pendingDeleteConfirmFile = it },
+            onDeleteRequested = { file ->
+                val isActive = trackUi.selectedKey == "local:${file.absolutePath}" ||
+                    trackUi.selectedKey == "downloaded" || trackUi.originalUri?.path == file.absolutePath ||
+                    trackUi.primaryUri?.path == file.absolutePath
+                if (isActive) {
+                    detachedSubtitleForUndo = file
+                    val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+                    playCurrentVideoWithSubtitle(null, resumeAt, false)
+                    trackUi.primaryUri = null; trackUi.originalUri = null
+                    trackUi.selectedKey = "off"; trackUi.selectedLabel = ""; trackUi.selectedSource = ""
+                    coreUi.subtitlesEnabled = false
+                }
+            },
+            onDeleteUndone = { file ->
+                if (detachedSubtitleForUndo?.absolutePath == file.absolutePath && file.exists()) {
+                    val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+                    coreUi.subtitlesEnabled = true
+                    trackUi.primaryUri = Uri.fromFile(file); trackUi.originalUri = Uri.fromFile(file)
+                    trackUi.selectedKey = "local:${file.absolutePath}"
+                    trackUi.selectedLabel = file.nameWithoutExtension; trackUi.selectedSource = "Local"
+                    playCurrentVideoWithSubtitle(Uri.fromFile(file), resumeAt, true)
+                }
+                detachedSubtitleForUndo = null
+            }
+        )
+    }
+    fun deleteWithUndo(file: java.io.File) = subtitleDeletionCoordinator.deleteWithUndo(file)
+    fun requestDeleteSubtitle(file: java.io.File) = subtitleDeletionCoordinator.requestDeleteSubtitle(file)
 
     // Validated handoff for both the website-fallback flow and the
     // (now-validated) local file picker below — reuses the exact same
@@ -1552,7 +1601,12 @@ fun VideoPlayerScreen(
                     .fillMaxSize()
                     .pointerInput(externalPresentation) {
                         detectDragGestures(
-                            onDragStart = { externalPresentation?.showControls() },
+                            onDragStart = {
+                                externalPresentation?.showControls()
+                                externalPresentation?.beginPointerDrag()
+                            },
+                            onDragEnd = { externalPresentation?.endPointerDrag() },
+                            onDragCancel = { externalPresentation?.endPointerDrag() },
                             onDrag = { change, dragAmount ->
                                 change.consume()
                                 externalPresentation?.movePointer(dragAmount.x, dragAmount.y)
@@ -1840,6 +1894,22 @@ fun VideoPlayerScreen(
             onDismissSettings = { coreUi.showSettings = false; showControls = true },
             onFontSizeChange = { appearanceUi.textSizeSp = it; showControls = true; studioUi.menuTouchKey++ },
             onVerticalPositionChange = { appearanceUi.bottomPadding = it; showControls = true; studioUi.menuTouchKey++ },
+            onResetSubtitleSettings = {
+                clearSubtitleProfileSettings(context, displayProfileType, isLandscape)
+                val defaults = defaultSubtitleProfileSettings(displayProfileType, isLandscape)
+                appearanceUi.textSizeSp = defaults.fontSizeSp
+                appearanceUi.bottomPadding = defaults.bottomPadding
+                appearanceUi.preset = defaults.presetName
+                appearanceUi.appearance = SubtitleAppearance(defaults.foregroundColor, defaults.edgeType, defaults.edgeColor, defaults.backgroundColor)
+                appearanceUi.preserveOriginalStyling = false
+                coreUi.syncOffset = 0f
+                trackUi.appliedOffsetMs = 0L
+                driftUi.scale = 1f; driftUi.appliedScale = 1f
+                driftUi.pointA = null; driftUi.pointB = null
+                AudioSyncHolder.offsetUs = 0L; audioSyncMs = 0
+                Toast.makeText(context, "Subtitle settings reset for ${displayProfileType.label}", Toast.LENGTH_SHORT).show()
+                showControls = true; studioUi.menuTouchKey++
+            },
             onSyncClick = { coreUi.showSettings = false; studioUi.initialTab = SubtitleStudioTab.TIMING; studioUi.showStudio = true; showControls = true },
             onStyleClick = { coreUi.showSettings = false; coreUi.showAppearanceStudio = true; showControls = true },
             onSettingsUserInteraction = { studioUi.menuTouchKey++; showControls = true },
