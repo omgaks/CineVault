@@ -2,8 +2,11 @@ package com.sole.cinevault
 
 import com.sole.cinevault.library.*
 import com.sole.cinevault.smb.*
-import com.sole.cinevault.glasses.rememberExternalDisplayState
-import com.sole.cinevault.glasses.rememberExternalVideoPresentation
+// Explicit aliases so an obsolete root-package Externaldisplayhelper.kt
+// cannot silently win Kotlin name resolution if a future update is ever
+// copied over an older checkout instead of replacing it cleanly.
+import com.sole.cinevault.glasses.rememberExternalDisplayState as rememberGlassesDisplayState
+import com.sole.cinevault.glasses.rememberExternalVideoPresentation as rememberGlassesVideoPresentation
 
 // All subtitle-system files (search, import, sync, appearance, dual-merge,
 // providers) moved to their own package on this pass. Single wildcard
@@ -276,7 +279,7 @@ fun VideoPlayerScreen(
     // Presentation now supplies the glasses with a distinct video,
     // subtitle, control and pointer surface.
     // Reverts automatically on disconnect or when leaving the player.
-    val externalDisplay by rememberExternalDisplayState()
+    val externalDisplay by rememberGlassesDisplayState()
     var showGlassesConnectedHint by remember { mutableStateOf(false) }
     LaunchedEffect(externalDisplay.isConnected) {
         if (externalDisplay.isConnected) {
@@ -495,7 +498,7 @@ fun VideoPlayerScreen(
             }.joinToString("  •  ").ifBlank { null }
         }
     }
-    val externalPresentation by rememberExternalVideoPresentation(
+    val externalPresentation by rememberGlassesVideoPresentation(
         player = exoPlayer,
         externalDisplay = externalDisplay,
         title = currentVideo.name,
