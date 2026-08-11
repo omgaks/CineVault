@@ -66,6 +66,7 @@ fun BoxScope.SubtitleQuickMenuAndTrackSelector(
     onDismissSettings: () -> Unit,
     onFontSizeChange: (Float) -> Unit,
     onVerticalPositionChange: (Float) -> Unit,
+    onResetSubtitleSettings: () -> Unit,
     onSyncClick: () -> Unit,
     onStyleClick: () -> Unit,
     onSettingsUserInteraction: () -> Unit,
@@ -102,6 +103,7 @@ fun BoxScope.SubtitleQuickMenuAndTrackSelector(
             onDismiss = onDismissSettings,
             currentFontSize = subtitleTextSizeSp, onFontSizeChange = onFontSizeChange,
             currentVerticalPosition = subtitleBottomPadding, onVerticalPositionChange = onVerticalPositionChange,
+            onReset = onResetSubtitleSettings,
             onSyncClick = onSyncClick,
             onStyleClick = onStyleClick,
             onUserInteraction = onSettingsUserInteraction
