@@ -33,7 +33,9 @@ class SubtitleDeletionCoordinator(
     private val snackbarHostState: SnackbarHostState,
     private val deleteConsentLauncher: ActivityResultLauncher<IntentSenderRequest>,
     private val setPendingConsentFile: (File?) -> Unit,
-    private val setPendingDeleteConfirmFile: (File?) -> Unit
+    private val setPendingDeleteConfirmFile: (File?) -> Unit,
+    private val onDeleteRequested: (File) -> Unit = {},
+    private val onDeleteUndone: (File) -> Unit = {}
 ) {
     private fun finalizeSubtitleDeletion(file: File) {
         setPendingConsentFile(file)
@@ -45,6 +47,7 @@ class SubtitleDeletionCoordinator(
             onFailed = { e ->
                 pendingDeletePaths.remove(file.absolutePath)
                 setPendingConsentFile(null)
+                onDeleteUndone(file)
                 Toast.makeText(context, "Couldn't delete: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         )
@@ -54,6 +57,7 @@ class SubtitleDeletionCoordinator(
     // deletion only happens if the snackbar times out or is dismissed
     // without the person tapping Undo.
     fun deleteWithUndo(file: File) {
+        onDeleteRequested(file)
         pendingDeletePaths.add(file.absolutePath)
         scope.launch {
             val result = snackbarHostState.showSnackbar(
@@ -63,6 +67,7 @@ class SubtitleDeletionCoordinator(
             )
             if (result == SnackbarResult.ActionPerformed) {
                 pendingDeletePaths.remove(file.absolutePath)
+                onDeleteUndone(file)
             } else {
                 finalizeSubtitleDeletion(file)
             }
