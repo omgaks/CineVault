@@ -228,12 +228,15 @@ fun Modifier.rayNeoTouchpadGestures(
                     startX < w * 0.10f || startX > w * 0.90f -> Unit
                     startX < w / 3f && vertical -> { change.consume(); onBrightnessDrag(drag.y) }
                     startX > w * 2f / 3f && vertical -> { change.consume(); onVolumeDrag(drag.y) }
+                    // Visible controls turn the centre into a true pointer
+                    // surface. This check must precede direct seeking or a
+                    // normal attempt to reach a button scrubs the movie.
+                    controlsVisible() -> { change.consume(); onPointerMove(drag) }
                     startX in (w / 3f)..(w * 2f / 3f) && horizontal -> {
                         change.consume()
                         if (!seeking) { seeking = true; onSeekStart() }
                         onSeekDelta(drag.x / w)
                     }
-                    controlsVisible() -> { change.consume(); onPointerMove(drag) }
                 }
             }
         )
