@@ -3,6 +3,7 @@ package com.sole.cinevault.glasses
 import android.app.Presentation
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Bitmap
 import android.graphics.drawable.GradientDrawable
 import android.hardware.display.DisplayManager
 import android.os.Bundle
@@ -17,6 +18,7 @@ import android.view.WindowManager
 import android.view.LayoutInflater
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
@@ -55,9 +57,16 @@ class ExternalPresentationHandle internal constructor(
     fun showControls() = presentation.showControls()
     fun hideControls() = presentation.hideControls()
     fun movePointer(deltaX: Float, deltaY: Float) = presentation.movePointer(deltaX, deltaY)
-    fun clickPointer() = presentation.clickPointer()
+    fun clickPointer(): Boolean = presentation.clickPointer()
     fun beginPointerDrag() = presentation.beginPointerDrag()
     fun endPointerDrag() = presentation.endPointerDrag()
+    fun toggleControls() = presentation.toggleControls()
+    fun openQuickSubtitles() = presentation.openQuickSubtitles()
+    fun openGestureGuide() = presentation.openGestureGuide()
+    fun updateSeekPreview(bitmap: Bitmap?, positionMs: Long, visible: Boolean) =
+        presentation.updateSeekPreview(bitmap, positionMs, visible)
+    fun applyViewportTransform(zoom: Float, panX: Float, panY: Float) =
+        presentation.applyViewportTransform(zoom, panX, panY)
     fun updateResizeMode(resizeMode: Int) { playerView.resizeMode = resizeMode }
 }
 
@@ -155,6 +164,11 @@ internal class CineVaultVideoPresentation(
     private var pointer: View? = null
     private var seekBar: SeekBar? = null
     private var timeLabel: TextView? = null
+    private var previewCard: LinearLayout? = null
+    private var previewImage: ImageView? = null
+    private var previewTime: TextView? = null
+    private var quickSubtitlePanel: LinearLayout? = null
+    private var gestureGuidePanel: LinearLayout? = null
     private var playButton: ImageButton? = null
     private var pointerX = 0f
     private var pointerY = 0f
@@ -162,6 +176,11 @@ internal class CineVaultVideoPresentation(
     private var subtitlesDisabled = false
     private var sleepMinutes = 0
     private var sleepRunnable: Runnable? = null
+    private var controlsPinned = false
+    private var subtitleTextSizeSp = 26f
+    private var viewportScale = 1f
+    private var viewportOffsetX = 0f
+    private var viewportOffsetY = 0f
 
     private val hideRunnable = Runnable { hideControls() }
     private val progressRunnable = object : Runnable {
@@ -199,15 +218,16 @@ internal class CineVaultVideoPresentation(
             setShutterBackgroundColor(Color.BLACK)
             subtitleView?.setViewType(SubtitleView.VIEW_TYPE_CANVAS)
             layoutParams = FrameLayout.LayoutParams(-1, -1)
-            // Do not attach here. The host screen atomically transfers the
-            // player from its local PlayerView with PlayerView.switchTargetView.
-            // Attaching this view first and detaching the old view afterwards
-            // can clear the newly-created secondary-display video surface on
-            // some USB-C display stacks while subtitles continue to render.
+            // The host screen transfers ownership atomically with
+            // PlayerView.switchTargetView; attaching here can clear the
+            // secondary-display video surface during the handoff.
             player = null
         }
         container.addView(video)
         container.addView(buildControlDock())
+        container.addView(buildSeekPreview())
+        container.addView(buildQuickSubtitlePanel())
+        container.addView(buildGestureGuidePanel())
         container.addView(buildPointer())
         setContentView(container)
         root = container
@@ -291,6 +311,7 @@ internal class CineVaultVideoPresentation(
             }
             scheduleHide()
         })
+        quickActions.addView(textButton("GESTURES") { openGestureGuide() })
         dock.addView(quickActions)
         seekBar = SeekBar(context).apply {
             progressTintList = android.content.res.ColorStateList.valueOf(amber)
@@ -315,6 +336,99 @@ internal class CineVaultVideoPresentation(
         elevation = dp(8).toFloat()
         layoutParams = FrameLayout.LayoutParams(dp(24), dp(24))
         pointer = this
+    }
+
+    private fun buildSeekPreview(): View = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+        setPadding(dp(8), dp(8), dp(8), dp(8))
+        background = roundedBackground(Color.argb(230, 10, 10, 16), amber, dp(14).toFloat())
+        visibility = View.GONE
+        layoutParams = FrameLayout.LayoutParams(dp(240), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+        addView(ImageView(context).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            layoutParams = LinearLayout.LayoutParams(dp(224), dp(126))
+            previewImage = this
+        })
+        addView(TextView(context).apply {
+            setTextColor(Color.WHITE); textSize = 15f; gravity = Gravity.CENTER
+            setPadding(0, dp(6), 0, 0)
+            previewTime = this
+        })
+        previewCard = this
+    }
+
+    private fun buildQuickSubtitlePanel(): View = LinearLayout(context).apply quickPanel@ {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+        setPadding(dp(18), dp(16), dp(18), dp(16))
+        background = roundedBackground(Color.argb(235, 12, 12, 18), amber, dp(20).toFloat())
+        visibility = View.GONE
+        layoutParams = FrameLayout.LayoutParams(dp(410), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+        addView(TextView(context).apply {
+            text = "QUICK SUBTITLES"; setTextColor(Color.WHITE); textSize = 15f; gravity = Gravity.CENTER
+        })
+        addView(LinearLayout(context).apply {
+            gravity = Gravity.CENTER
+            addView(textButton("ON / OFF") {
+                subtitlesDisabled = !subtitlesDisabled
+                player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subtitlesDisabled).build()
+            })
+            addView(textButton("TEXT -") {
+                subtitleTextSizeSp = (subtitleTextSizeSp - 2f).coerceAtLeast(14f)
+                playerView?.subtitleView?.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, subtitleTextSizeSp)
+            })
+            addView(textButton("TEXT +") {
+                subtitleTextSizeSp = (subtitleTextSizeSp + 2f).coerceAtMost(54f)
+                playerView?.subtitleView?.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, subtitleTextSizeSp)
+            })
+        })
+        addView(LinearLayout(context).apply {
+            gravity = Gravity.CENTER
+            addView(textButton("PIN") { controlsPinned = !controlsPinned; if (!controlsPinned) scheduleHide() })
+            addView(textButton("CLOSE") { this@quickPanel.visibility = View.GONE; scheduleHide() })
+        })
+        quickSubtitlePanel = this
+    }
+
+    private fun buildGestureGuidePanel(): View = LinearLayout(context).apply guide@ {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+        setPadding(dp(24), dp(20), dp(24), dp(20))
+        background = roundedBackground(Color.argb(242, 10, 10, 16), amber, dp(22).toFloat())
+        visibility = View.GONE
+        layoutParams = FrameLayout.LayoutParams(dp(590), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+        addView(TextView(context).apply {
+            text = "RAYNEO TOUCHPAD GESTURES"
+            setTextColor(amber); textSize = 17f; gravity = Gravity.CENTER
+            setPadding(0, 0, 0, dp(12))
+        })
+        addView(TextView(context).apply {
+            text = listOf(
+                "Single tap  •  Play / Pause",
+                "Double tap  •  Show / hide controls",
+                "Centre horizontal drag  •  Precision seek",
+                "Left vertical drag  •  Tablet brightness",
+                "Right vertical drag  •  Media volume",
+                "Two-finger pinch / pan  •  Video scale and position",
+                "Long-press  •  Quick Subtitles",
+                "Swipe inward from left / right edge  •  Previous / next episode",
+                "Five-finger spread  •  Emergency return to tablet"
+            ).joinToString("\n")
+            setTextColor(Color.WHITE); textSize = 14f
+            setLineSpacing(0f, 1.18f)
+        })
+        addView(TextView(context).apply {
+            text = "The five-finger escape ends only this Glasses Mode session. Playback continues on the tablet."
+            setTextColor(Color.LTGRAY); textSize = 12f; gravity = Gravity.CENTER
+            setPadding(0, dp(14), 0, dp(8))
+        })
+        addView(textButton("GOT IT") {
+            this@guide.visibility = View.GONE
+            showControls()
+        })
+        gestureGuidePanel = this
     }
 
     private fun iconButton(icon: Int, action: () -> Unit) = ImageButton(context).apply {
@@ -355,10 +469,63 @@ internal class CineVaultVideoPresentation(
     }
 
     fun hideControls() {
+        if (controlsPinned) return
         controls?.visibility = View.GONE
         pointer?.visibility = View.GONE
         visibleState.value = false
         handler.removeCallbacks(hideRunnable)
+    }
+
+    fun toggleControls() {
+        if (visibleState.value) {
+            quickSubtitlePanel?.visibility = View.GONE
+            val pinned = controlsPinned
+            controlsPinned = false
+            hideControls()
+            controlsPinned = pinned
+        } else showControls()
+    }
+
+    fun openQuickSubtitles() {
+        gestureGuidePanel?.visibility = View.GONE
+        showControls()
+        quickSubtitlePanel?.visibility = View.VISIBLE
+        pointer?.visibility = View.VISIBLE
+        handler.removeCallbacks(hideRunnable)
+    }
+
+    fun openGestureGuide() {
+        quickSubtitlePanel?.visibility = View.GONE
+        showControls()
+        controls?.visibility = View.GONE
+        pointer?.visibility = View.GONE
+        visibleState.value = true
+        handler.removeCallbacks(hideRunnable)
+        gestureGuidePanel?.visibility = View.VISIBLE
+    }
+
+    fun updateSeekPreview(bitmap: Bitmap?, positionMs: Long, visible: Boolean) {
+        previewCard?.visibility = if (visible) View.VISIBLE else View.GONE
+        if (visible) {
+            previewImage?.setImageBitmap(bitmap)
+            previewTime?.text = formatTime(positionMs)
+        }
+    }
+
+    fun applyViewportTransform(zoom: Float, panX: Float, panY: Float) {
+        val video = playerView ?: return
+        viewportScale = (viewportScale * zoom).coerceIn(1f, 3f)
+        val maxX = video.width * (viewportScale - 1f) / 2f
+        val maxY = video.height * (viewportScale - 1f) / 2f
+        viewportOffsetX = (viewportOffsetX + panX).coerceIn(-maxX, maxX)
+        viewportOffsetY = (viewportOffsetY + panY).coerceIn(-maxY, maxY)
+        if (viewportScale <= 1.02f) {
+            viewportScale = 1f; viewportOffsetX = 0f; viewportOffsetY = 0f
+        }
+        video.scaleX = viewportScale
+        video.scaleY = viewportScale
+        video.translationX = viewportOffsetX
+        video.translationY = viewportOffsetY
     }
 
     fun movePointer(deltaX: Float, deltaY: Float) {
@@ -378,18 +545,18 @@ internal class CineVaultVideoPresentation(
         pointer?.y = pointerY
     }
 
-    fun clickPointer() {
-        val r = root ?: return
+    fun clickPointer(): Boolean {
+        val r = root ?: return false
         val x = pointerX + dp(12)
         val y = pointerY + dp(12)
         if (findClickableAt(r, x, y) == null) {
-            hideControls()
-            return
+            return false
         }
         val now = android.os.SystemClock.uptimeMillis()
         r.dispatchTouchEvent(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0))
         r.dispatchTouchEvent(MotionEvent.obtain(now, now + 40, MotionEvent.ACTION_UP, x, y, 0))
         scheduleHide()
+        return true
     }
 
     private fun findClickableAt(parent: ViewGroup, x: Float, y: Float): View? {
@@ -438,7 +605,9 @@ internal class CineVaultVideoPresentation(
 
     private fun scheduleHide() {
         handler.removeCallbacks(hideRunnable)
-        handler.postDelayed(hideRunnable, 6_000L)
+        if (!controlsPinned && quickSubtitlePanel?.visibility != View.VISIBLE) {
+            handler.postDelayed(hideRunnable, 6_000L)
+        }
     }
 
     fun detachPlayer() {
