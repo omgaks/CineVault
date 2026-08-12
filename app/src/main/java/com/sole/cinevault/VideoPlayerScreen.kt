@@ -506,10 +506,31 @@ fun VideoPlayerScreen(
         onBack = onBack
     )
     val externalPlayerView = externalPresentation?.playerView
+    var localPlayerView by remember { mutableStateOf<PlayerView?>(null) }
 
-    LaunchedEffect(externalPlayerView, externalDisplay.isConnected) {
-        if (externalDisplay.isConnected && externalPlayerView != null) {
-            studioUi.playerView = externalPlayerView
+    // FIX: was a simple "if external view exists, point studioUi at it" —
+    // did nothing to actually move the video surface itself, and the
+    // AndroidView update block below was separately, unconditionally
+    // reassigning exoPlayer to whichever view it saw on every
+    // recomposition. Together those could race: the local tablet view
+    // reclaiming the surface right after the external Presentation had
+    // just been given it (or vice versa on disconnect), leaving one
+    // display genuinely blank while subtitles still rendered.
+    // PlayerView.switchTargetView is Media3's own API for exactly this —
+    // moving a player's video output from one PlayerView to another as a
+    // single atomic operation, avoiding that race entirely.
+    LaunchedEffect(externalPlayerView, localPlayerView) {
+        val localView = localPlayerView
+        val externalView = externalPlayerView
+        when {
+            externalView != null && externalView.player !== exoPlayer -> {
+                PlayerView.switchTargetView(exoPlayer, localView, externalView)
+                studioUi.playerView = externalView
+            }
+            externalView == null && localView != null && localView.player !== exoPlayer -> {
+                localView.player = exoPlayer
+                studioUi.playerView = localView
+            }
         }
     }
 
@@ -1490,19 +1511,29 @@ fun VideoPlayerScreen(
                 PlayerView(ctx).apply {
                     // ExoPlayer may own only one video surface. While the
                     // Presentation is active this local view intentionally
-                    // remains black beneath the touch controls.
-                    player = if (externalPlayerView == null) exoPlayer else null
+                    // remains black beneath the touch controls. Ownership
+                    // is decided by the LaunchedEffect above via
+                    // PlayerView.switchTargetView, not assigned eagerly
+                    // here — assigning it directly on every recomposition
+                    // is exactly what could race against that atomic
+                    // handoff.
                     useController = false
                     resizeMode = if (isZoomMode) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                     subtitleView?.setViewType(SubtitleView.VIEW_TYPE_CANVAS)
-                    studioUi.playerView = externalPlayerView ?: this
+                    localPlayerView = this
                 }
             },
             update = { pv ->
-                pv.player = if (externalPlayerView == null) exoPlayer else null
                 pv.resizeMode = if (isZoomMode) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                 externalPresentation?.updateResizeMode(pv.resizeMode)
-                studioUi.playerView = externalPlayerView ?: pv
+                localPlayerView = pv
+                // Ownership is transferred atomically by the effect above.
+                // Avoid a later Compose update detaching one PlayerView
+                // after Media3 has already attached the other display's
+                // surface.
+                if (externalPlayerView == null && pv.player !== exoPlayer) {
+                    pv.player = exoPlayer
+                }
             }
         )
 
