@@ -1550,7 +1550,9 @@ fun VideoPlayerScreen(
         val playbackGestureModifier = if (externalPlayerView != null) {
             Modifier.rayNeoTouchpadGestures(
                     view = view,
-                    gestureKey = currentVideo.path,
+                    // Recreate the controller when the tablet rotates so
+                    // left/centre/right zones follow the current screen.
+                    gestureKey = currentVideo.path to isLandscape,
                     controlsVisible = { externalPresentation?.controlsVisible?.value == true },
                     canChangeEpisode = { showPrevNextButtons },
                     onSingleTap = {
