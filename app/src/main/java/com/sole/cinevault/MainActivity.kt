@@ -40,6 +40,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.sole.cinevault.subtitles.SubtitleImportEngine
+import com.sole.cinevault.glasses.AppWideGlassesPointer
+import com.sole.cinevault.glasses.rememberExternalDisplayState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -442,6 +444,8 @@ fun CineVaultApp() {
 
     val current = backStack.last()
     val activeTabIndex = (backStack.firstOrNull() as? Destination.Tab)?.index ?: 0
+    val externalDisplay by rememberExternalDisplayState()
+    var appWideGlassesPointerDisabled by remember(externalDisplay.displayId) { mutableStateOf(false) }
 
     fun push(dest: Destination) { backStack = backStack + dest }
     fun pop() { if (backStack.size > 1) backStack = backStack.dropLast(1) }
@@ -722,6 +726,18 @@ fun CineVaultApp() {
                         )
                     }
                 }
+            }
+
+            // Outside playback Android mirrors CineVault to the glasses.
+            // This transparent layer turns the tablet into a relative
+            // focus-navigation pad and draws the amber halo in that mirrored
+            // output. The dedicated player owns its own richer controller.
+            if (externalDisplay.isConnected && !isPlayerActive && !appWideGlassesPointerDisabled) {
+                AppWideGlassesPointer(
+                    activity = activity,
+                    sessionKey = externalDisplay.displayId,
+                    onEmergencyReturnToTablet = { appWideGlassesPointerDisabled = true }
+                )
             }
         }
     }
