@@ -68,6 +68,11 @@ class ExternalPresentationHandle internal constructor(
     fun applyViewportTransform(zoom: Float, panX: Float, panY: Float) =
         presentation.applyViewportTransform(zoom, panX, panY)
     fun updateResizeMode(resizeMode: Int) { playerView.resizeMode = resizeMode }
+    fun showGestureHud(label: String, value: String? = null, progress: Int? = null) =
+        presentation.showGestureHud(label, value, progress)
+    fun showTouchPulse() = presentation.showTouchPulse()
+    fun dismissForTabletReturn() = presentation.dismissForTabletReturn()
+    fun enterTabletStandby() = presentation.enterTabletStandby()
 }
 
 @Composable
@@ -178,7 +183,12 @@ internal class CineVaultVideoPresentation(
     private var previewTime: TextView? = null
     private var quickSubtitlePanel: LinearLayout? = null
     private var gestureGuidePanel: LinearLayout? = null
+    private var gestureHud: LinearLayout? = null
+    private var gestureHudLabel: TextView? = null
+    private var gestureHudValue: TextView? = null
+    private var gestureHudBar: View? = null
     private var playButton: TextView? = null
+    private var brandMark: View? = null
     private var pointerX = 0f
     private var pointerY = 0f
     private var draggingSeek = false
@@ -192,6 +202,19 @@ internal class CineVaultVideoPresentation(
     private var viewportOffsetY = 0f
 
     private val hideRunnable = Runnable { hideControls() }
+    private val hideHudRunnable = Runnable { gestureHud?.visibility = View.GONE }
+    private val hideGuideRunnable = Runnable {
+        gestureGuidePanel?.visibility = View.GONE
+        if (visibleState.value) showControls()
+    }
+    private val glowRunnable = object : Runnable {
+        private var bright = false
+        override fun run() {
+            bright = !bright
+            brandMark?.animate()?.alpha(if (bright) 1f else 0.62f)?.setDuration(1_100L)?.start()
+            handler.postDelayed(this, 1_150L)
+        }
+    }
     private val progressRunnable = object : Runnable {
         override fun run() {
             val p = player
@@ -237,11 +260,13 @@ internal class CineVaultVideoPresentation(
         container.addView(buildSeekPreview())
         container.addView(buildQuickSubtitlePanel())
         container.addView(buildGestureGuidePanel())
+        container.addView(buildGestureHud())
         container.addView(buildPointer())
         setContentView(container)
         root = container
         playerView = video
         handler.post(progressRunnable)
+        handler.post(glowRunnable)
         onReady(ExternalPresentationHandle(video, visibleState, this))
     }
 
@@ -265,30 +290,17 @@ internal class CineVaultVideoPresentation(
             hideControls()
             onBack()
         })
-        header.addView(LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
+        header.addView(TextView(context).apply {
+            text = title
+            setTextColor(textBright); textSize = 16f; typeface = Typeface.DEFAULT_BOLD
+            maxLines = 1
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, dp(52), 1f).apply { marginStart = dp(12) }
-            addView(TextView(context).apply {
-                text = "CINEVAULT  •  GLASSES MODE"
-                setTextColor(amber); textSize = 9f; typeface = Typeface.DEFAULT_BOLD
-                letterSpacing = 0.12f
-            })
-            addView(TextView(context).apply {
-                text = title
-                setTextColor(textBright); textSize = 15f; typeface = Typeface.DEFAULT_BOLD
-                maxLines = 1
-            })
         })
-        ratingText?.takeIf { it.isNotBlank() }?.let { score ->
-            header.addView(TextView(context).apply {
-                text = score
-                setTextColor(amber)
-                textSize = 11f; typeface = Typeface.DEFAULT_BOLD
+        ratingText?.takeIf { it.isNotBlank() }?.let { scores ->
+            header.addView(LinearLayout(context).apply {
                 gravity = Gravity.CENTER
-                setPadding(dp(13), 0, dp(13), 0)
-                background = roundedBackground(Color.argb(75, 255, 194, 77), amberDeep, dp(16).toFloat())
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32))
+                scores.split("  •  ").forEach { score -> addView(ratingPill(score)) }
             })
         }
         dock.addView(header)
@@ -297,6 +309,7 @@ internal class CineVaultVideoPresentation(
             gravity = Gravity.CENTER
             setPadding(0, dp(2), 0, dp(2))
         }
+        transport.addView(buildBrandMark())
         transport.addView(symbolButton("↶ 10", "Seek back 10 seconds") { player.seekTo((player.currentPosition - 10_000L).coerceAtLeast(0L)); scheduleHide() })
         playButton = symbolButton("Ⅱ", "Play or pause", primary = true) {
             if (player.isPlaying) player.pause() else player.play()
@@ -362,9 +375,39 @@ internal class CineVaultVideoPresentation(
     private fun buildPointer(): View = View(context).apply {
         background = roundedBackground(Color.argb(95, 255, 194, 77), amber, dp(12).toFloat())
         visibility = View.GONE
-        elevation = dp(8).toFloat()
-        layoutParams = FrameLayout.LayoutParams(dp(24), dp(24))
+        elevation = dp(100).toFloat()
+        layoutParams = FrameLayout.LayoutParams(dp(28), dp(28))
         pointer = this
+    }
+
+    private fun buildGestureHud(): View = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+        setPadding(dp(22), dp(14), dp(22), dp(14))
+        background = glassBackground(Color.argb(238, 16, 19, 28), dp(22).toFloat())
+        visibility = View.GONE
+        elevation = dp(70).toFloat()
+        layoutParams = FrameLayout.LayoutParams(dp(270), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(42) }
+        addView(TextView(context).apply {
+            setTextColor(amber); textSize = 11f; typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER; letterSpacing = 0.12f
+            gestureHudLabel = this
+        })
+        addView(TextView(context).apply {
+            setTextColor(textBright); textSize = 22f; typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER; setPadding(0, dp(3), 0, dp(7))
+            gestureHudValue = this
+        })
+        addView(FrameLayout(context).apply {
+            background = roundedBackground(Color.argb(70, 255, 255, 255), Color.TRANSPARENT, dp(3).toFloat())
+            layoutParams = LinearLayout.LayoutParams(-1, dp(6))
+            addView(View(context).apply {
+                background = roundedBackground(amber, amber, dp(3).toFloat())
+                layoutParams = FrameLayout.LayoutParams(0, -1)
+                gestureHudBar = this
+            })
+        })
+        gestureHud = this
     }
 
     private fun buildSeekPreview(): View = LinearLayout(context).apply {
@@ -435,10 +478,10 @@ internal class CineVaultVideoPresentation(
         })
         addView(TextView(context).apply {
             text = listOf(
-                "Single tap  •  Play / Pause",
-                "Double tap  •  Show / hide controls",
+                "Single tap  •  Show controls / select highlighted item",
+                "Double tap  •  Play / Pause",
                 "Centre horizontal drag  •  Precision seek",
-                "Left vertical drag  •  Tablet brightness",
+                "Left vertical drag  •  Tablet brightness (with HUD)",
                 "Right vertical drag  •  Media volume",
                 "Two-finger pinch / pan  •  Video scale and position",
                 "Long-press  •  Quick Subtitles",
@@ -472,6 +515,22 @@ internal class CineVaultVideoPresentation(
         setOnClickListener { action() }
     }
 
+    private fun buildBrandMark(): View = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+        layoutParams = LinearLayout.LayoutParams(dp(132), dp(58)).apply { marginEnd = dp(8) }
+        addView(TextView(context).apply {
+            text = "CINEVAULT"; setTextColor(amber); textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; letterSpacing = 0.13f
+            setShadowLayer(dp(8).toFloat(), 0f, 0f, amber)
+        })
+        addView(TextView(context).apply {
+            text = "GLASSES MODE"; setTextColor(textBright); textSize = 8f
+            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; letterSpacing = 0.12f
+        })
+        brandMark = this
+    }
+
     private fun textButton(icon: String, label: String = icon, action: () -> Unit) = LinearLayout(context).apply button@ {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER
@@ -488,6 +547,28 @@ internal class CineVaultVideoPresentation(
             text = label.uppercase(); setTextColor(textBright); textSize = 9f; typeface = Typeface.DEFAULT_BOLD
             letterSpacing = 0.08f; gravity = Gravity.CENTER
             setPadding(dp(7), 0, 0, 0)
+        })
+    }
+
+    private fun ratingPill(score: String) = LinearLayout(context).apply {
+        gravity = Gravity.CENTER
+        setPadding(dp(8), 0, dp(8), 0)
+        background = roundedBackground(Color.argb(75, 255, 194, 77), amberDeep, dp(16).toFloat())
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply { marginStart = dp(5) }
+        val (iconRes, value) = when {
+            score.startsWith("IMDb ") -> R.drawable.ic_imdb to score.removePrefix("IMDb ")
+            score.startsWith("TMDB ") -> R.drawable.ic_tmdb to score.removePrefix("TMDB ")
+            score.startsWith("RT ") -> R.drawable.ic_rotten_tomatoes to score.removePrefix("RT ")
+            else -> 0 to score
+        }
+        if (iconRes != 0) addView(ImageView(context).apply {
+            setImageResource(iconRes)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            layoutParams = LinearLayout.LayoutParams(dp(30), dp(20)).apply { marginEnd = dp(5) }
+        })
+        addView(TextView(context).apply {
+            text = value; setTextColor(textBright); textSize = 11f
+            typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
         })
     }
 
@@ -538,10 +619,40 @@ internal class CineVaultVideoPresentation(
         quickSubtitlePanel?.visibility = View.GONE
         showControls()
         controls?.visibility = View.GONE
-        pointer?.visibility = View.GONE
+        pointer?.visibility = View.VISIBLE
         visibleState.value = true
         handler.removeCallbacks(hideRunnable)
+        handler.removeCallbacks(hideGuideRunnable)
         gestureGuidePanel?.visibility = View.VISIBLE
+        root?.bringChildToFront(pointer)
+        handler.postDelayed(hideGuideRunnable, 15_000L)
+    }
+
+    fun showGestureHud(label: String, value: String?, progress: Int?) {
+        gestureHudLabel?.text = label.uppercase()
+        gestureHudValue?.text = value.orEmpty()
+        val bar = gestureHudBar ?: return
+        val parent = bar.parent as? View ?: return
+        parent.post {
+            val fraction = (progress ?: 0).coerceIn(0, 100) / 100f
+            bar.layoutParams = (bar.layoutParams as FrameLayout.LayoutParams).apply {
+                width = (parent.width * fraction).roundToInt()
+            }
+            bar.requestLayout()
+        }
+        gestureHud?.visibility = View.VISIBLE
+        handler.removeCallbacks(hideHudRunnable)
+        handler.postDelayed(hideHudRunnable, 1_200L)
+    }
+
+    fun showTouchPulse() {
+        pointer?.animate()?.cancel()
+        pointer?.scaleX = 1f
+        pointer?.scaleY = 1f
+        pointer?.alpha = 1f
+        pointer?.animate()?.scaleX(1.7f)?.scaleY(1.7f)?.alpha(0.45f)?.setDuration(120L)?.withEndAction {
+            pointer?.animate()?.scaleX(1f)?.scaleY(1f)?.alpha(1f)?.setDuration(140L)?.start()
+        }?.start()
     }
 
     fun updateSeekPreview(bitmap: Bitmap?, positionMs: Long, visible: Boolean) {
@@ -583,6 +694,7 @@ internal class CineVaultVideoPresentation(
     private fun updatePointerPosition() {
         pointer?.x = pointerX
         pointer?.y = pointerY
+        root?.bringChildToFront(pointer)
     }
 
     fun clickPointer(): Boolean {
@@ -656,8 +768,27 @@ internal class CineVaultVideoPresentation(
         playerView = null
     }
 
+    fun dismissForTabletReturn() {
+        detachPlayer()
+        try { dismiss() } catch (_: Exception) { }
+    }
+
+    fun enterTabletStandby() {
+        playerView?.player = null
+        controls?.visibility = View.GONE
+        quickSubtitlePanel?.visibility = View.GONE
+        gestureGuidePanel?.visibility = View.GONE
+        gestureHud?.visibility = View.GONE
+        pointer?.visibility = View.GONE
+        visibleState.value = false
+        root?.setBackgroundColor(Color.BLACK)
+    }
+
     override fun onDisplayRemoved() { detachPlayer(); onDismissed(); super.onDisplayRemoved() }
-    override fun onStop() { detachPlayer(); onDismissed(); super.onStop() }
+    // Locking the tablet also stops the Presentation window. Detaching the
+    // video surface here caused glasses video to turn black while audio kept
+    // playing. Real cleanup is owned by onDisplayRemoved()/DisposableEffect.
+    override fun onStop() { super.onStop() }
 
     private fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).roundToInt()
     private fun roundedBackground(fill: Int, stroke: Int, radius: Float) = GradientDrawable().apply {
