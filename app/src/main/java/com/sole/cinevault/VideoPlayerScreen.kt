@@ -1592,7 +1592,7 @@ fun VideoPlayerScreen(
                     onPrevious = { playPrevious() },
                     onNext = { playNext() },
                     onPointerMove = { externalPresentation?.movePointer(it.x, it.y) },
-                    onPointerClick = { externalPresentation?.clickPointer() },
+                    onPointerClick = { externalPresentation?.clickPointer() ?: false },
                     onPinchZoomPan = { zoom, pan ->
                         externalPresentation?.applyViewportTransform(zoom, pan.x, pan.y)
                     },
