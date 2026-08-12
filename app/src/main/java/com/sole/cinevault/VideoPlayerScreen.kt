@@ -2,9 +2,6 @@ package com.sole.cinevault
 
 import com.sole.cinevault.library.*
 import com.sole.cinevault.smb.*
-// Explicit aliases so an obsolete root-package Externaldisplayhelper.kt
-// cannot silently win Kotlin name resolution if a future update is ever
-// copied over an older checkout instead of replacing it cleanly.
 import com.sole.cinevault.glasses.rememberExternalDisplayState as rememberGlassesDisplayState
 import com.sole.cinevault.glasses.rememberExternalVideoPresentation as rememberGlassesVideoPresentation
 
@@ -498,27 +495,20 @@ fun VideoPlayerScreen(
             }.joinToString("  •  ").ifBlank { null }
         }
     }
+    var localPlayerView by remember { mutableStateOf<PlayerView?>(null) }
+    var glassesSessionDisabled by remember(externalDisplay.displayId) { mutableStateOf(false) }
+    val activeExternalDisplay = if (glassesSessionDisabled) {
+        externalDisplay.copy(isConnected = false, displayId = null)
+    } else externalDisplay
     val externalPresentation by rememberGlassesVideoPresentation(
         player = exoPlayer,
-        externalDisplay = externalDisplay,
+        externalDisplay = activeExternalDisplay,
         title = currentVideo.name,
         ratingText = externalRatingText,
         onBack = onBack
     )
     val externalPlayerView = externalPresentation?.playerView
-    var localPlayerView by remember { mutableStateOf<PlayerView?>(null) }
 
-    // FIX: was a simple "if external view exists, point studioUi at it" —
-    // did nothing to actually move the video surface itself, and the
-    // AndroidView update block below was separately, unconditionally
-    // reassigning exoPlayer to whichever view it saw on every
-    // recomposition. Together those could race: the local tablet view
-    // reclaiming the surface right after the external Presentation had
-    // just been given it (or vice versa on disconnect), leaving one
-    // display genuinely blank while subtitles still rendered.
-    // PlayerView.switchTargetView is Media3's own API for exactly this —
-    // moving a player's video output from one PlayerView to another as a
-    // single atomic operation, avoiding that race entirely.
     LaunchedEffect(externalPlayerView, localPlayerView) {
         val localView = localPlayerView
         val externalView = externalPlayerView
@@ -603,7 +593,6 @@ fun VideoPlayerScreen(
     val pendingDeletePaths = remember { mutableStateListOf<String>() }
     var pendingDeleteConfirmFile by remember { mutableStateOf<java.io.File?>(null) }
     var pendingConsentFile by remember { mutableStateOf<java.io.File?>(null) }
-    var detachedSubtitleForUndo by remember { mutableStateOf<java.io.File?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     val deleteConsentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
@@ -617,6 +606,14 @@ fun VideoPlayerScreen(
         }
         pendingConsentFile = null
     }
+
+    // Keep deletion wired to the coordinator API that exists in the
+    // repository this replacement file targets. Active/dual-track detach
+    // handling requires coordinated changes in the subtitle layer and is
+    // intentionally left pending for that separate update.
+    // subtitleDeletionCoordinator is declared further below, after
+    // playCurrentVideoWithSubtitle exists — its detach/restore callbacks
+    // need to call it directly.
 
     LaunchedEffect(sleepTimerActive, sleepTimerRemainingMs) {
         if (sleepTimerActive && sleepTimerRemainingMs > 0) {
@@ -682,6 +679,16 @@ fun VideoPlayerScreen(
     fun playCurrentVideoWithSubtitle(subtitleUri: Uri? = null, resumePosition: Long = 0L, isOriginalSubtitle: Boolean = true) =
         playbackNavigationCoordinator.playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
 
+    // FIX: deleting the currently-active subtitle used to leave it
+    // playing from memory even after the file was gone — Media3 keeps
+    // rendering whatever cues it already parsed until something
+    // explicitly tells the player to drop them. onDeleteRequested fires
+    // the moment deletion is requested (before the file is actually
+    // gone, so Undo can cleanly restore it), detaching the subtitle
+    // immediately and clearing every piece of "this is the active
+    // track" state. onDeleteUndone reverses all of it if Undo is tapped
+    // in time, or if the underlying file deletion itself fails.
+    var detachedSubtitleForUndo by remember { mutableStateOf<java.io.File?>(null) }
     val subtitleDeletionCoordinator = remember(exoPlayer, playbackNavigationCoordinator) {
         SubtitleDeletionCoordinator(
             context = context,
@@ -1511,29 +1518,23 @@ fun VideoPlayerScreen(
                 PlayerView(ctx).apply {
                     // ExoPlayer may own only one video surface. While the
                     // Presentation is active this local view intentionally
-                    // remains black beneath the touch controls. Ownership
-                    // is decided by the LaunchedEffect above via
-                    // PlayerView.switchTargetView, not assigned eagerly
-                    // here — assigning it directly on every recomposition
-                    // is exactly what could race against that atomic
-                    // handoff.
+                    // remains black beneath the touch controls.
+                    player = if (externalPlayerView == null) exoPlayer else null
                     useController = false
                     resizeMode = if (isZoomMode) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                     subtitleView?.setViewType(SubtitleView.VIEW_TYPE_CANVAS)
+                    studioUi.playerView = externalPlayerView ?: this
                     localPlayerView = this
                 }
             },
             update = { pv ->
-                pv.resizeMode = if (isZoomMode) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                externalPresentation?.updateResizeMode(pv.resizeMode)
                 localPlayerView = pv
-                // Ownership is transferred atomically by the effect above.
-                // Avoid a later Compose update detaching one PlayerView
-                // after Media3 has already attached the other display's
-                // surface.
                 if (externalPlayerView == null && pv.player !== exoPlayer) {
                     pv.player = exoPlayer
                 }
+                pv.resizeMode = if (isZoomMode) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                externalPresentation?.updateResizeMode(pv.resizeMode)
+                studioUi.playerView = externalPlayerView ?: pv
             }
         )
 
@@ -1548,9 +1549,65 @@ fun VideoPlayerScreen(
             }
         }
 
-        Box(
-            modifier = Modifier.fillMaxSize()
-                .videoPlaybackGestures(
+        val playbackGestureModifier = if (externalPresentation != null) {
+            Modifier.rayNeoTouchpadGestures(
+                    view = view,
+                    gestureKey = currentVideo.path,
+                    controlsVisible = { externalPresentation?.controlsVisible?.value == true },
+                    canChangeEpisode = { showPrevNextButtons },
+                    onSingleTap = {
+                        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                    },
+                    onDoubleTap = { externalPresentation?.toggleControls() },
+                    onLongPress = { externalPresentation?.openQuickSubtitles() },
+                    onSeekStart = {
+                        isDraggingSeekbar = true
+                        previewPosition = exoPlayer.currentPosition
+                        previewBitmap = VideoThumbnailHelper.nearestPreviewFrame(previewFrames, previewPosition)
+                        externalPresentation?.updateSeekPreview(previewBitmap, previewPosition, true)
+                    },
+                    onSeekDelta = { fraction ->
+                        val safeDuration = exoPlayer.duration.coerceAtLeast(1L)
+                        previewPosition = (previewPosition + (fraction * safeDuration).toLong()).coerceIn(0L, safeDuration)
+                        previewBitmap = VideoThumbnailHelper.nearestPreviewFrame(previewFrames, previewPosition)
+                        externalPresentation?.updateSeekPreview(previewBitmap, previewPosition, true)
+                    },
+                    onSeekEnd = {
+                        exoPlayer.seekTo(previewPosition)
+                        position = previewPosition
+                        isDraggingSeekbar = false
+                        externalPresentation?.updateSeekPreview(previewBitmap, previewPosition, false)
+                    },
+                    onBrightnessDrag = { deltaY ->
+                        brightnessPercent = (brightnessPercent - deltaY.toInt() / 8).coerceIn(5, 100)
+                        activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = brightnessPercent / 100f }
+                        showBrightnessCircle = true
+                    },
+                    onVolumeDrag = { deltaY ->
+                        volumePercent = (volumePercent - deltaY.toInt() / 8).coerceIn(0, 100)
+                        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, ((volumePercent / 100f) * maxVol).toInt(), 0)
+                        showVolumeCircle = true
+                    },
+                    onPrevious = { playPrevious() },
+                    onNext = { playNext() },
+                    onPointerMove = { externalPresentation?.movePointer(it.x, it.y) },
+                    onPointerClick = { externalPresentation?.clickPointer() },
+                    onPinchZoomPan = { zoom, pan ->
+                        externalPresentation?.applyViewportTransform(zoom, pan.x, pan.y)
+                    },
+                    onEmergencyReturnToTablet = {
+                        glassesSessionDisabled = true
+                        android.widget.Toast.makeText(
+                            context,
+                            "Glasses Mode ended — playback returned to tablet",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    },
+                    onGestureEnd = { brightnessGestureKey++; volumeGestureKey++ }
+                )
+        } else {
+            Modifier.videoPlaybackGestures(
                     view = view,
                     videoPathKey = currentVideo.path,
                     episodeListKey = episodeList,
@@ -1623,40 +1680,9 @@ fun VideoPlayerScreen(
                         }
                     },
                 )
-        )
-
-        // When the controls are visible in the glasses, the black tablet
-        // becomes a relative touchpad. It deliberately captures input only
-        // in this state; when controls are hidden the normal playback
-        // gestures above remain active (tap, double-tap seek, volume, etc.).
-        if (externalPresentation?.controlsVisible?.value == true) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(externalPresentation) {
-                        detectDragGestures(
-                            onDragStart = {
-                                externalPresentation?.showControls()
-                                externalPresentation?.beginPointerDrag()
-                            },
-                            onDragEnd = { externalPresentation?.endPointerDrag() },
-                            onDragCancel = { externalPresentation?.endPointerDrag() },
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                externalPresentation?.movePointer(dragAmount.x, dragAmount.y)
-                            }
-                        )
-                    }
-                    .pointerInput(externalPresentation) {
-                        detectTapGestures(
-                            onTap = {
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                externalPresentation?.clickPointer()
-                            }
-                        )
-                    }
-            )
         }
+
+        Box(modifier = Modifier.fillMaxSize().then(playbackGestureModifier))
 
         LaunchedEffect(studioUi.gestureFeedback) {
             if (studioUi.gestureFeedback.isBlank()) return@LaunchedEffect
@@ -1928,6 +1954,8 @@ fun VideoPlayerScreen(
             onDismissSettings = { coreUi.showSettings = false; showControls = true },
             onFontSizeChange = { appearanceUi.textSizeSp = it; showControls = true; studioUi.menuTouchKey++ },
             onVerticalPositionChange = { appearanceUi.bottomPadding = it; showControls = true; studioUi.menuTouchKey++ },
+            onSyncClick = { coreUi.showSettings = false; studioUi.initialTab = SubtitleStudioTab.TIMING; studioUi.showStudio = true; showControls = true },
+            onStyleClick = { coreUi.showSettings = false; coreUi.showAppearanceStudio = true; showControls = true },
             onResetSubtitleSettings = {
                 clearSubtitleProfileSettings(context, displayProfileType, isLandscape)
                 val defaults = defaultSubtitleProfileSettings(displayProfileType, isLandscape)
@@ -1944,8 +1972,6 @@ fun VideoPlayerScreen(
                 Toast.makeText(context, "Subtitle settings reset for ${displayProfileType.label}", Toast.LENGTH_SHORT).show()
                 showControls = true; studioUi.menuTouchKey++
             },
-            onSyncClick = { coreUi.showSettings = false; studioUi.initialTab = SubtitleStudioTab.TIMING; studioUi.showStudio = true; showControls = true },
-            onStyleClick = { coreUi.showSettings = false; coreUi.showAppearanceStudio = true; showControls = true },
             onSettingsUserInteraction = { studioUi.menuTouchKey++; showControls = true },
             trackSelectorBottomPadding = anchoredY(popupBottomPadding, trackSelectorMaxHeight),
             trackSelectorOffsetX = anchoredX(subIconX, trackSelectorWidth),
