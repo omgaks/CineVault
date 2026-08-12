@@ -93,6 +93,7 @@ fun Modifier.videoPlaybackGestures(
             )
         }
     }
+
     .pointerInput(videoPathKey) {
         detectTapGestures(
             onTap = { onTap() },
@@ -154,6 +155,108 @@ fun Modifier.videoPlaybackGestures(
                 if (event.changes.size >= 2) {
                     val zoom = event.calculateZoom()
                     val pan = event.calculatePan()
+                    if (zoom != 1f || pan != Offset.Zero) {
+                        event.changes.forEach { if (it.positionChanged()) it.consume() }
+                        onPinchZoomPan(zoom, pan)
+                    }
+                }
+            } while (event.changes.any { it.pressed })
+        }
+    }
+
+/** Stable, zone-based controller used only while a secondary RayNeo display is active. */
+fun Modifier.rayNeoTouchpadGestures(
+    view: View,
+    gestureKey: Any?,
+    controlsVisible: () -> Boolean,
+    canChangeEpisode: () -> Boolean,
+    onSingleTap: () -> Unit,
+    onDoubleTap: () -> Unit,
+    onLongPress: () -> Unit,
+    onSeekStart: () -> Unit,
+    onSeekDelta: (fractionDelta: Float) -> Unit,
+    onSeekEnd: () -> Unit,
+    onBrightnessDrag: (Float) -> Unit,
+    onVolumeDrag: (Float) -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onPointerMove: (Offset) -> Unit,
+    onPointerClick: () -> Boolean,
+    onPinchZoomPan: (Float, Offset) -> Unit,
+    onEmergencyReturnToTablet: () -> Unit,
+    onGestureEnd: () -> Unit,
+): Modifier = this
+    .onGloballyPositioned { coordinates ->
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val b = coordinates.boundsInWindow()
+            view.systemGestureExclusionRects = listOf(Rect(b.left.roundToInt(), b.top.roundToInt(), b.right.roundToInt(), b.bottom.roundToInt()))
+        }
+    }
+    .pointerInput(gestureKey) {
+        detectTapGestures(
+            onTap = {
+                if (!controlsVisible() || !onPointerClick()) onSingleTap()
+            },
+            onDoubleTap = { onDoubleTap() },
+            onLongPress = { onLongPress() }
+        )
+    }
+    .pointerInput(gestureKey) {
+        var startX = 0f
+        var totalX = 0f
+        var totalY = 0f
+        var seeking = false
+        detectDragGestures(
+            onDragStart = { startX = it.x; totalX = 0f; totalY = 0f; seeking = false },
+            onDragEnd = {
+                val w = size.width.toFloat()
+                val horizontal = abs(totalX) > abs(totalY) * 1.35f && abs(totalX) > 48.dp.toPx()
+                when {
+                    startX < w * 0.10f && horizontal && totalX > 0f && canChangeEpisode() -> onPrevious()
+                    startX > w * 0.90f && horizontal && totalX < 0f && canChangeEpisode() -> onNext()
+                    seeking -> onSeekEnd()
+                }
+                onGestureEnd()
+            },
+            onDragCancel = { if (seeking) onSeekEnd(); onGestureEnd() },
+            onDrag = { change, drag ->
+                totalX += drag.x; totalY += drag.y
+                val w = size.width.toFloat()
+                val vertical = abs(totalY) > abs(totalX) * 1.15f
+                val horizontal = abs(totalX) > abs(totalY) * 1.15f
+                when {
+                    startX < w * 0.10f || startX > w * 0.90f -> Unit
+                    startX < w / 3f && vertical -> { change.consume(); onBrightnessDrag(drag.y) }
+                    startX > w * 2f / 3f && vertical -> { change.consume(); onVolumeDrag(drag.y) }
+                    startX in (w / 3f)..(w * 2f / 3f) && horizontal -> {
+                        change.consume()
+                        if (!seeking) { seeking = true; onSeekStart() }
+                        onSeekDelta(drag.x / w)
+                    }
+                    controlsVisible() -> { change.consume(); onPointerMove(drag) }
+                }
+            }
+        )
+    }
+    .pointerInput(gestureKey) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false)
+            var fiveFingerSpread = 1f
+            var emergencyTriggered = false
+            do {
+                val event = awaitPointerEvent()
+                if (event.changes.count { it.pressed } >= 5) {
+                    fiveFingerSpread *= event.calculateZoom()
+                    event.changes.forEach { if (it.positionChanged()) it.consume() }
+                    // A deliberate 35% five-finger spread is the emergency
+                    // escape hatch. Two-finger viewport zoom can never enter
+                    // this branch, and the one-shot guard prevents repeats.
+                    if (!emergencyTriggered && fiveFingerSpread >= 1.35f) {
+                        emergencyTriggered = true
+                        onEmergencyReturnToTablet()
+                    }
+                } else if (event.changes.size >= 2 && !emergencyTriggered) {
+                    val zoom = event.calculateZoom(); val pan = event.calculatePan()
                     if (zoom != 1f || pan != Offset.Zero) {
                         event.changes.forEach { if (it.positionChanged()) it.consume() }
                         onPinchZoomPan(zoom, pan)
