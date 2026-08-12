@@ -497,17 +497,15 @@ fun VideoPlayerScreen(
     }
     var localPlayerView by remember { mutableStateOf<PlayerView?>(null) }
     var glassesSessionDisabled by remember(externalDisplay.displayId) { mutableStateOf(false) }
-    val activeExternalDisplay = if (glassesSessionDisabled) {
-        externalDisplay.copy(isConnected = false, displayId = null)
-    } else externalDisplay
+    val activeExternalDisplay = externalDisplay
     val externalPresentation by rememberGlassesVideoPresentation(
         player = exoPlayer,
         externalDisplay = activeExternalDisplay,
-        title = currentVideo.name,
+        title = if (currentMediaType.equals("stream", ignoreCase = true)) currentVideo.name else cleanVideoTitle(currentVideo.path),
         ratingText = externalRatingText,
         onBack = onBack
     )
-    val externalPlayerView = externalPresentation?.playerView
+    val externalPlayerView = if (glassesSessionDisabled) null else externalPresentation?.playerView
 
     LaunchedEffect(externalPlayerView, localPlayerView) {
         val localView = localPlayerView
@@ -1549,16 +1547,24 @@ fun VideoPlayerScreen(
             }
         }
 
-        val playbackGestureModifier = if (externalPresentation != null) {
+        val playbackGestureModifier = if (externalPlayerView != null) {
             Modifier.rayNeoTouchpadGestures(
                     view = view,
                     gestureKey = currentVideo.path,
                     controlsVisible = { externalPresentation?.controlsVisible?.value == true },
                     canChangeEpisode = { showPrevNextButtons },
                     onSingleTap = {
-                        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                        externalPresentation?.showTouchPulse()
+                        if (externalPresentation?.controlsVisible?.value == true) {
+                            if (externalPresentation?.clickPointer() != true) externalPresentation?.showControls()
+                        } else {
+                            externalPresentation?.showControls()
+                        }
                     },
-                    onDoubleTap = { externalPresentation?.toggleControls() },
+                    onDoubleTap = {
+                        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                        externalPresentation?.showGestureHud("Playback", if (exoPlayer.isPlaying) "PLAY" else "PAUSE")
+                    },
                     onLongPress = { externalPresentation?.openQuickSubtitles() },
                     onSeekStart = {
                         isDraggingSeekbar = true
@@ -1582,21 +1588,31 @@ fun VideoPlayerScreen(
                         brightnessPercent = (brightnessPercent - deltaY.toInt() / 8).coerceIn(5, 100)
                         activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = brightnessPercent / 100f }
                         showBrightnessCircle = true
+                        externalPresentation?.showGestureHud("Tablet brightness", "$brightnessPercent%", brightnessPercent)
                     },
                     onVolumeDrag = { deltaY ->
                         volumePercent = (volumePercent - deltaY.toInt() / 8).coerceIn(0, 100)
                         val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
                         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, ((volumePercent / 100f) * maxVol).toInt(), 0)
                         showVolumeCircle = true
+                        externalPresentation?.showGestureHud("Volume", "$volumePercent%", volumePercent)
                     },
-                    onPrevious = { playPrevious() },
-                    onNext = { playNext() },
+                    onPrevious = { externalPresentation?.showGestureHud("Episode", "PREVIOUS"); playPrevious() },
+                    onNext = { externalPresentation?.showGestureHud("Episode", "NEXT"); playNext() },
                     onPointerMove = { externalPresentation?.movePointer(it.x, it.y) },
-                    onPointerClick = { externalPresentation?.clickPointer() ?: false },
+                    onPointerClick = {
+                        externalPresentation?.showTouchPulse()
+                        externalPresentation?.clickPointer() ?: false
+                    },
                     onPinchZoomPan = { zoom, pan ->
                         externalPresentation?.applyViewportTransform(zoom, pan.x, pan.y)
+                        val shownZoom = (videoScale * zoom).coerceIn(1f, 3f)
+                        videoScale = shownZoom
+                        externalPresentation?.showGestureHud("Screen size", "${(shownZoom * 100).toInt()}%", (((shownZoom - 1f) / 2f) * 100).toInt())
                     },
                     onEmergencyReturnToTablet = {
+                        externalPresentation?.showGestureHud("Emergency return", "TABLET")
+                        externalPresentation?.enterTabletStandby()
                         glassesSessionDisabled = true
                         android.widget.Toast.makeText(
                             context,
@@ -1626,7 +1642,7 @@ fun VideoPlayerScreen(
                             showSleepMenu -> showSleepMenu = false
                             showSrtBrowser -> showSrtBrowser = false
                             else -> {
-                                if (externalPresentation != null) {
+                                if (externalPlayerView != null) {
                                     externalPresentation?.showControls()
                                     showControls = false
                                     showTopBar = false
@@ -2212,7 +2228,7 @@ fun VideoPlayerScreen(
         // popups (Track Selector, Drift, Appearance, quick menu) which
         // were designed to sit alongside visible controls and still do.
         val hideControlsForLargeSheet = studioUi.showStudio || searchUi.showSearch
-        AnimatedVisibility(visible = externalPresentation == null && (showControls || isDraggingSeekbar || showAudioSelector || coreUi.showSettings || trackUi.showSelector || driftUi.showDialog || coreUi.showAppearanceStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu) && !hideControlsForLargeSheet && !CineVaultPlayerHolder.isInPipMode, enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(visible = externalPlayerView == null && (showControls || isDraggingSeekbar || showAudioSelector || coreUi.showSettings || trackUi.showSelector || driftUi.showDialog || coreUi.showAppearanceStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu) && !hideControlsForLargeSheet && !CineVaultPlayerHolder.isInPipMode, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize()) {
 
                 val topRowVisible = !showSeekPreview
@@ -2485,7 +2501,7 @@ fun VideoPlayerScreen(
         // without ever showing (or unblocking) the other, still-locked
         // controls behind it.
         AnimatedVisibility(
-            visible = externalPresentation == null && (if (controlsLocked) lockButtonVisibleWhileLocked else showControls) && !CineVaultPlayerHolder.isInPipMode,
+            visible = externalPlayerView == null && (if (controlsLocked) lockButtonVisibleWhileLocked else showControls) && !CineVaultPlayerHolder.isInPipMode,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.TopEnd)
