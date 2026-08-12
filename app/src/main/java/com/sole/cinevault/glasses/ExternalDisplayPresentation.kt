@@ -178,10 +178,12 @@ internal class CineVaultVideoPresentation(
     private var pointer: View? = null
     private var seekBar: SeekBar? = null
     private var timeLabel: TextView? = null
+    private var timePill: View? = null
     private var previewCard: LinearLayout? = null
     private var previewImage: ImageView? = null
     private var previewTime: TextView? = null
     private var quickSubtitlePanel: LinearLayout? = null
+    private var speedPanel: LinearLayout? = null
     private var gestureGuidePanel: LinearLayout? = null
     private var gestureHud: LinearLayout? = null
     private var gestureHudLabel: TextView? = null
@@ -257,8 +259,10 @@ internal class CineVaultVideoPresentation(
         }
         container.addView(video)
         container.addView(buildControlDock())
+        container.addView(buildTimePill())
         container.addView(buildSeekPreview())
         container.addView(buildQuickSubtitlePanel())
+        container.addView(buildSpeedPanel())
         container.addView(buildGestureGuidePanel())
         container.addView(buildGestureHud())
         container.addView(buildPointer())
@@ -286,16 +290,17 @@ internal class CineVaultVideoPresentation(
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
+        header.addView(buildBrandMark())
         header.addView(symbolButton("‹", "Back") {
             hideControls()
             onBack()
         })
         header.addView(TextView(context).apply {
             text = title
-            setTextColor(textBright); textSize = 16f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(textBright); textSize = 18f; typeface = Typeface.DEFAULT_BOLD
             maxLines = 1
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, dp(52), 1f).apply { marginStart = dp(12) }
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(0, dp(58), 1f).apply { marginStart = dp(8); marginEnd = dp(8) }
         })
         ratingText?.takeIf { it.isNotBlank() }?.let { scores ->
             header.addView(LinearLayout(context).apply {
@@ -309,13 +314,12 @@ internal class CineVaultVideoPresentation(
             gravity = Gravity.CENTER
             setPadding(0, dp(2), 0, dp(2))
         }
-        transport.addView(buildBrandMark())
-        transport.addView(symbolButton("↶ 10", "Seek back 10 seconds") { player.seekTo((player.currentPosition - 10_000L).coerceAtLeast(0L)); scheduleHide() })
+        transport.addView(symbolButton("↶10", "Seek back 10 seconds") { player.seekTo((player.currentPosition - 10_000L).coerceAtLeast(0L)); scheduleHide() })
         playButton = symbolButton("Ⅱ", "Play or pause", primary = true) {
             if (player.isPlaying) player.pause() else player.play()
             scheduleHide()
         }.also { transport.addView(it) }
-        transport.addView(symbolButton("10 ↷", "Seek forward 10 seconds") { player.seekTo((player.currentPosition + 10_000L).coerceAtMost(player.duration.coerceAtLeast(0L))); scheduleHide() })
+        transport.addView(symbolButton("10↷", "Seek forward 10 seconds") { player.seekTo((player.currentPosition + 10_000L).coerceAtMost(player.duration.coerceAtLeast(0L))); scheduleHide() })
         dock.addView(transport)
         seekBar = SeekBar(context).apply {
             progressTintList = android.content.res.ColorStateList.valueOf(amber)
@@ -328,48 +332,31 @@ internal class CineVaultVideoPresentation(
                 override fun onStopTrackingTouch(seekBar: SeekBar) { player.seekTo(seekBar.progress * 1000L); draggingSeek = false; scheduleHide() }
             })
         }.also { dock.addView(it) }
-        timeLabel = TextView(context).apply {
-            setTextColor(textMuted); textSize = 11f; gravity = Gravity.CENTER
-            typeface = Typeface.MONOSPACE
-        }.also { dock.addView(it) }
         dock.addView(divider())
         val quickActions = LinearLayout(context).apply {
             gravity = Gravity.CENTER
             setPadding(0, dp(4), 0, 0)
         }
-        quickActions.addView(textButton("CC", "Subtitles") {
-            subtitlesDisabled = !subtitlesDisabled
-            player.trackSelectionParameters = player.trackSelectionParameters
-                .buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subtitlesDisabled)
-                .build()
-            scheduleHide()
-        })
-        quickActions.addView(textButton("1×", "Speed") {
-            val next = when {
-                player.playbackParameters.speed < 1.24f -> 1.25f
-                player.playbackParameters.speed < 1.49f -> 1.5f
-                player.playbackParameters.speed < 1.99f -> 2f
-                else -> 1f
-            }
-            player.setPlaybackSpeed(next)
-            scheduleHide()
-        })
-        quickActions.addView(textButton("◷", "Sleep") {
-            sleepMinutes = when (sleepMinutes) { 0 -> 30; 30 -> 60; 60 -> 90; else -> 0 }
-            sleepRunnable?.let(handler::removeCallbacks)
-            sleepRunnable = null
-            if (sleepMinutes > 0) {
-                sleepRunnable = Runnable { player.pause(); sleepMinutes = 0 }.also {
-                    handler.postDelayed(it, sleepMinutes * 60_000L)
-                }
-            }
-            scheduleHide()
-        })
+        quickActions.addView(textButton("CC", "Sub Studio") { openQuickSubtitles() })
+        quickActions.addView(textButton("${player.playbackParameters.speed}×", "Speed") { openSpeedPanel() })
         quickActions.addView(textButton("✦", "Gestures") { openGestureGuide() })
         dock.addView(quickActions)
         controls = dock
         return dock
+    }
+
+    private fun buildTimePill(): View = TextView(context).apply {
+            setTextColor(textBright); textSize = 12f; gravity = Gravity.CENTER
+            typeface = Typeface.MONOSPACE
+            background = roundedBackground(Color.argb(165, 20, 24, 34), amberDeep, dp(16).toFloat())
+            setPadding(dp(16), dp(5), dp(16), dp(5))
+            visibility = View.GONE
+            elevation = dp(30).toFloat()
+            layoutParams = FrameLayout.LayoutParams(dp(190), dp(34), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+                bottomMargin = dp(330)
+            }
+            timeLabel = this
+            timePill = this
     }
 
     private fun buildPointer(): View = View(context).apply {
@@ -436,17 +423,21 @@ internal class CineVaultVideoPresentation(
         setPadding(dp(18), dp(16), dp(18), dp(16))
         background = glassBackground(glassStrong, dp(22).toFloat())
         visibility = View.GONE
-        layoutParams = FrameLayout.LayoutParams(dp(410), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
-        addView(TextView(context).apply {
-            text = "SUBTITLE STUDIO  •  QUICK TOOLS"; setTextColor(amber); textSize = 14f; gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD
-        })
+        layoutParams = FrameLayout.LayoutParams(dp(620), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
         addView(LinearLayout(context).apply {
-            gravity = Gravity.CENTER
+            gravity = Gravity.CENTER_VERTICAL
+            addView(TextView(context).apply {
+                text = "SUBTITLE STUDIO"; setTextColor(amber); textSize = 16f; gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD
+                layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f)
+            })
             addView(textButton("ON / OFF") {
                 subtitlesDisabled = !subtitlesDisabled
                 player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subtitlesDisabled).build()
             })
+        })
+        addView(LinearLayout(context).apply {
+            gravity = Gravity.CENTER
             addView(textButton("TEXT -") {
                 subtitleTextSizeSp = (subtitleTextSizeSp - 2f).coerceAtLeast(14f)
                 playerView?.subtitleView?.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, subtitleTextSizeSp)
@@ -455,13 +446,52 @@ internal class CineVaultVideoPresentation(
                 subtitleTextSizeSp = (subtitleTextSizeSp + 2f).coerceAtMost(54f)
                 playerView?.subtitleView?.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, subtitleTextSizeSp)
             })
+            addView(textButton("SUB ↑") {
+                val view = playerView?.subtitleView ?: return@textButton
+                view.setBottomPaddingFraction(0.18f)
+            })
+            addView(textButton("SUB ↓") {
+                val view = playerView?.subtitleView ?: return@textButton
+                view.setBottomPaddingFraction(0.04f)
+            })
         })
         addView(LinearLayout(context).apply {
             gravity = Gravity.CENTER
-            addView(textButton("PIN") { controlsPinned = !controlsPinned; if (!controlsPinned) scheduleHide() })
-            addView(textButton("CLOSE") { this@quickPanel.visibility = View.GONE; scheduleHide() })
+            addView(textButton("×", "Close") { this@quickPanel.visibility = View.GONE; hideControls() })
+            addView(textButton("↩", "Back") { this@quickPanel.visibility = View.GONE; showControls() })
         })
         quickSubtitlePanel = this
+    }
+
+    private fun buildSpeedPanel(): View = LinearLayout(context).apply panel@ {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+        setPadding(dp(18), dp(16), dp(18), dp(16))
+        background = glassBackground(glassStrong, dp(22).toFloat())
+        visibility = View.GONE
+        layoutParams = FrameLayout.LayoutParams(dp(610), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+        addView(TextView(context).apply {
+            text = "PLAYBACK SPEED"; setTextColor(amber); textSize = 16f; gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, 0, 0, dp(10))
+        })
+        addView(LinearLayout(context).apply {
+            gravity = Gravity.CENTER
+            listOf(0.5f, 1f, 1.5f, 2f).forEach { speed ->
+                addView(textButton(if (speed == 1f) "RESET" else "${speed}×") {
+                    player.setPlaybackSpeed(speed); this@panel.visibility = View.GONE; showControls()
+                })
+            }
+        })
+        addView(LinearLayout(context).apply {
+            gravity = Gravity.CENTER
+            listOf(2.5f, 3f, 4f, 5f).forEach { speed ->
+                addView(textButton("${speed}×") {
+                    player.setPlaybackSpeed(speed); this@panel.visibility = View.GONE; showControls()
+                })
+            }
+        })
+        addView(textButton("↩", "Back") { this@panel.visibility = View.GONE; showControls() })
+        speedPanel = this
     }
 
     private fun buildGestureGuidePanel(): View = LinearLayout(context).apply guide@ {
@@ -505,11 +535,11 @@ internal class CineVaultVideoPresentation(
 
     private fun symbolButton(symbol: String, description: String, primary: Boolean = false, action: () -> Unit) = TextView(context).apply {
         text = symbol
-        setTextColor(if (primary) spaceBlack else textBright)
-        textSize = if (primary) 24f else 17f
+        setTextColor(if (primary) amber else textBright)
+        textSize = if (primary) 48f else 24f
         typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
-        background = if (primary) roundedBackground(amber, amber, dp(34).toFloat()) else glassBackground(glassSoft, dp(28).toFloat())
+        background = if (primary) roundedBackground(Color.argb(82, 255, 194, 77), amber, dp(34).toFloat()) else roundedBackground(Color.argb(75, 255, 194, 77), amberDeep, dp(20).toFloat())
         contentDescription = description
         layoutParams = LinearLayout.LayoutParams(if (primary) dp(68) else dp(62), if (primary) dp(68) else dp(56)).apply { marginStart = dp(9); marginEnd = dp(9) }
         setOnClickListener { action() }
@@ -518,7 +548,9 @@ internal class CineVaultVideoPresentation(
     private fun buildBrandMark(): View = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
-        layoutParams = LinearLayout.LayoutParams(dp(132), dp(58)).apply { marginEnd = dp(8) }
+        background = roundedBackground(Color.argb(75, 255, 194, 77), amber, dp(18).toFloat())
+        setPadding(dp(10), 0, dp(10), 0)
+        layoutParams = LinearLayout.LayoutParams(dp(138), dp(54)).apply { marginEnd = dp(8) }
         addView(TextView(context).apply {
             text = "CINEVAULT"; setTextColor(amber); textSize = 14f
             typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; letterSpacing = 0.13f
@@ -580,6 +612,7 @@ internal class CineVaultVideoPresentation(
     fun showControls() {
         val r = root ?: return
         controls?.visibility = View.VISIBLE
+        timePill?.visibility = View.VISIBLE
         pointer?.visibility = View.VISIBLE
         visibleState.value = true
         if (pointerX == 0f && pointerY == 0f) {
@@ -592,7 +625,10 @@ internal class CineVaultVideoPresentation(
     fun hideControls() {
         if (controlsPinned) return
         controls?.visibility = View.GONE
-        pointer?.visibility = View.GONE
+        timePill?.visibility = View.GONE
+        if (quickSubtitlePanel?.visibility != View.VISIBLE &&
+            gestureGuidePanel?.visibility != View.VISIBLE &&
+            speedPanel?.visibility != View.VISIBLE) pointer?.visibility = View.GONE
         visibleState.value = false
         handler.removeCallbacks(hideRunnable)
     }
@@ -609,7 +645,10 @@ internal class CineVaultVideoPresentation(
 
     fun openQuickSubtitles() {
         gestureGuidePanel?.visibility = View.GONE
+        speedPanel?.visibility = View.GONE
         showControls()
+        controls?.visibility = View.GONE
+        timePill?.visibility = View.GONE
         quickSubtitlePanel?.visibility = View.VISIBLE
         pointer?.visibility = View.VISIBLE
         handler.removeCallbacks(hideRunnable)
@@ -617,8 +656,10 @@ internal class CineVaultVideoPresentation(
 
     fun openGestureGuide() {
         quickSubtitlePanel?.visibility = View.GONE
+        speedPanel?.visibility = View.GONE
         showControls()
         controls?.visibility = View.GONE
+        timePill?.visibility = View.GONE
         pointer?.visibility = View.VISIBLE
         visibleState.value = true
         handler.removeCallbacks(hideRunnable)
@@ -626,6 +667,18 @@ internal class CineVaultVideoPresentation(
         gestureGuidePanel?.visibility = View.VISIBLE
         root?.bringChildToFront(pointer)
         handler.postDelayed(hideGuideRunnable, 15_000L)
+    }
+
+    private fun openSpeedPanel() {
+        quickSubtitlePanel?.visibility = View.GONE
+        gestureGuidePanel?.visibility = View.GONE
+        showControls()
+        controls?.visibility = View.GONE
+        timePill?.visibility = View.GONE
+        speedPanel?.visibility = View.VISIBLE
+        pointer?.visibility = View.VISIBLE
+        handler.removeCallbacks(hideRunnable)
+        root?.bringChildToFront(pointer)
     }
 
     fun showGestureHud(label: String, value: String?, progress: Int?) {
@@ -681,7 +734,10 @@ internal class CineVaultVideoPresentation(
 
     fun movePointer(deltaX: Float, deltaY: Float) {
         val r = root ?: return
-        showControls()
+        if (controls?.visibility != View.VISIBLE &&
+            quickSubtitlePanel?.visibility != View.VISIBLE &&
+            gestureGuidePanel?.visibility != View.VISIBLE &&
+            speedPanel?.visibility != View.VISIBLE) showControls()
         pointerX = (pointerX + deltaX * 1.45f).coerceIn(0f, (r.width - dp(24)).toFloat())
         pointerY = (pointerY + deltaY * 1.45f).coerceIn(0f, (r.height - dp(24)).toFloat())
         updatePointerPosition()
@@ -707,7 +763,7 @@ internal class CineVaultVideoPresentation(
         val now = android.os.SystemClock.uptimeMillis()
         r.dispatchTouchEvent(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0))
         r.dispatchTouchEvent(MotionEvent.obtain(now, now + 40, MotionEvent.ACTION_UP, x, y, 0))
-        scheduleHide()
+        if (controls?.visibility == View.VISIBLE) scheduleHide()
         return true
     }
 
@@ -757,7 +813,10 @@ internal class CineVaultVideoPresentation(
 
     private fun scheduleHide() {
         handler.removeCallbacks(hideRunnable)
-        if (!controlsPinned && quickSubtitlePanel?.visibility != View.VISIBLE) {
+        if (!controlsPinned &&
+            quickSubtitlePanel?.visibility != View.VISIBLE &&
+            gestureGuidePanel?.visibility != View.VISIBLE &&
+            speedPanel?.visibility != View.VISIBLE) {
             handler.postDelayed(hideRunnable, 6_000L)
         }
     }
@@ -776,7 +835,9 @@ internal class CineVaultVideoPresentation(
     fun enterTabletStandby() {
         playerView?.player = null
         controls?.visibility = View.GONE
+        timePill?.visibility = View.GONE
         quickSubtitlePanel?.visibility = View.GONE
+        speedPanel?.visibility = View.GONE
         gestureGuidePanel?.visibility = View.GONE
         gestureHud?.visibility = View.GONE
         pointer?.visibility = View.GONE
