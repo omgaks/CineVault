@@ -41,7 +41,9 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.sole.cinevault.subtitles.SubtitleImportEngine
 import com.sole.cinevault.glasses.AppWideGlassesPointer
+import com.sole.cinevault.glasses.appWideGlassesInput
 import com.sole.cinevault.glasses.rememberExternalDisplayState
+import com.sole.cinevault.glasses.rememberAppWidePointerState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -446,6 +448,7 @@ fun CineVaultApp() {
     val activeTabIndex = (backStack.firstOrNull() as? Destination.Tab)?.index ?: 0
     val externalDisplay by rememberExternalDisplayState()
     var appWideGlassesPointerDisabled by remember(externalDisplay.displayId) { mutableStateOf(false) }
+    val appWidePointerState = rememberAppWidePointerState(externalDisplay.displayId)
 
     fun push(dest: Destination) { backStack = backStack + dest }
     fun pop() { if (backStack.size > 1) backStack = backStack.dropLast(1) }
@@ -527,6 +530,20 @@ fun CineVaultApp() {
         }
     }
 
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .then(
+                if (externalDisplay.isConnected && !isPlayerActive && !appWideGlassesPointerDisabled) {
+                    Modifier.appWideGlassesInput(
+                        activity = activity,
+                        sessionKey = externalDisplay.displayId,
+                        state = appWidePointerState,
+                        onEmergencyReturnToTablet = { appWideGlassesPointerDisabled = true }
+                    )
+                } else Modifier
+            )
+    ) {
     Scaffold(
         containerColor = Color(0xFF080808),
         bottomBar = {
@@ -732,13 +749,10 @@ fun CineVaultApp() {
             // This transparent layer turns the tablet into a relative
             // focus-navigation pad and draws the amber halo in that mirrored
             // output. The dedicated player owns its own richer controller.
-            if (externalDisplay.isConnected && !isPlayerActive && !appWideGlassesPointerDisabled) {
-                AppWideGlassesPointer(
-                    activity = activity,
-                    sessionKey = externalDisplay.displayId,
-                    onEmergencyReturnToTablet = { appWideGlassesPointerDisabled = true }
-                )
-            }
+        }
+    }
+        if (externalDisplay.isConnected && !isPlayerActive && !appWideGlassesPointerDisabled) {
+            AppWideGlassesPointer(appWidePointerState)
         }
     }
 }
