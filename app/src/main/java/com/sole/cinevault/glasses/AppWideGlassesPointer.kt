@@ -68,7 +68,7 @@ fun Modifier.appWideGlassesInput(
             }
             pressed.firstOrNull()?.let { change ->
                 state.position = change.position
-                state.scrolling = change.positionChanged()
+                state.scrolling = change.position != change.previousPosition
             }
         } while (event.changes.any { it.pressed })
 
