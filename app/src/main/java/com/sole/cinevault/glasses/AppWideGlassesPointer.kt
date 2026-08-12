@@ -53,7 +53,7 @@ fun Modifier.appWideGlassesInput(
     state: AppWidePointerState,
     onEmergencyReturnToTablet: () -> Unit
 ): Modifier = pointerInput(sessionKey, activity) {
-    fun ready() = state.position.isSpecified
+    fun ready() = state.position.x.isFinite() && state.position.y.isFinite()
 
     fun dispatch(action: Int, x: Float, y: Float, downTime: Long, eventTime: Long = SystemClock.uptimeMillis()) {
         val host = activity ?: return
@@ -163,7 +163,11 @@ fun Modifier.appWideGlassesInput(
 @Composable
 fun BoxScope.AppWideGlassesPointer(state: AppWidePointerState) {
     Canvas(Modifier.fillMaxSize()) {
-        val p = if (state.position.isSpecified) state.position else center
+        val p = if (state.position.x.isFinite() && state.position.y.isFinite()) {
+            state.position
+        } else {
+            center
+        }
         val radius = when {
             state.scrolling -> 21f
             state.pressed -> 19f
