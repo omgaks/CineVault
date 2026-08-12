@@ -179,6 +179,7 @@ internal class CineVaultVideoPresentation(
     private var seekBar: SeekBar? = null
     private var timeLabel: TextView? = null
     private var timePill: View? = null
+    private var speedActionButton: LinearLayout? = null
     private var previewCard: LinearLayout? = null
     private var previewImage: ImageView? = null
     private var previewTime: TextView? = null
@@ -227,6 +228,7 @@ internal class CineVaultVideoPresentation(
                 timeLabel?.text = "${formatTime(p.currentPosition)}  /  ${formatTime(duration)}"
             }
             playButton?.text = if (p.isPlaying) "Ⅱ" else "▶"
+            updateSpeedActionLabel(p.playbackParameters.speed)
             handler.postDelayed(this, 500)
         }
     }
@@ -269,6 +271,7 @@ internal class CineVaultVideoPresentation(
         setContentView(container)
         root = container
         playerView = video
+        container.post { alignTimePillToDock() }
         handler.post(progressRunnable)
         handler.post(glowRunnable)
         onReady(ExternalPresentationHandle(video, visibleState, this))
@@ -338,7 +341,8 @@ internal class CineVaultVideoPresentation(
             setPadding(0, dp(4), 0, 0)
         }
         quickActions.addView(textButton("CC", "Sub Studio") { openQuickSubtitles() })
-        quickActions.addView(textButton("${player.playbackParameters.speed}×", "Speed") { openSpeedPanel() })
+        speedActionButton = textButton(formatSpeed(player.playbackParameters.speed), "Speed") { openSpeedPanel() }
+            .also { quickActions.addView(it) }
         quickActions.addView(textButton("✦", "Gestures") { openGestureGuide() })
         dock.addView(quickActions)
         controls = dock
@@ -352,7 +356,7 @@ internal class CineVaultVideoPresentation(
             setPadding(dp(16), dp(5), dp(16), dp(5))
             visibility = View.GONE
             elevation = dp(30).toFloat()
-            layoutParams = FrameLayout.LayoutParams(dp(190), dp(34), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+            layoutParams = FrameLayout.LayoutParams(dp(190), dp(34), Gravity.BOTTOM or Gravity.START).apply {
                 bottomMargin = dp(330)
             }
             timeLabel = this
@@ -457,6 +461,13 @@ internal class CineVaultVideoPresentation(
         })
         addView(LinearLayout(context).apply {
             gravity = Gravity.CENTER
+            addView(textButton("RESET") {
+                subtitleTextSizeSp = 26f
+                playerView?.subtitleView?.apply {
+                    setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, subtitleTextSizeSp)
+                    setBottomPaddingFraction(0.08f)
+                }
+            })
             addView(textButton("×", "Close") { this@quickPanel.visibility = View.GONE; hideControls() })
             addView(textButton("↩", "Back") { this@quickPanel.visibility = View.GONE; showControls() })
         })
@@ -478,7 +489,8 @@ internal class CineVaultVideoPresentation(
             gravity = Gravity.CENTER
             listOf(0.5f, 1f, 1.5f, 2f).forEach { speed ->
                 addView(textButton(if (speed == 1f) "RESET" else "${speed}×") {
-                    player.setPlaybackSpeed(speed); this@panel.visibility = View.GONE; showControls()
+                    player.setPlaybackSpeed(speed); updateSpeedActionLabel(speed)
+                    this@panel.visibility = View.GONE; showControls()
                 })
             }
         })
@@ -486,7 +498,8 @@ internal class CineVaultVideoPresentation(
             gravity = Gravity.CENTER
             listOf(2.5f, 3f, 4f, 5f).forEach { speed ->
                 addView(textButton("${speed}×") {
-                    player.setPlaybackSpeed(speed); this@panel.visibility = View.GONE; showControls()
+                    player.setPlaybackSpeed(speed); updateSpeedActionLabel(speed)
+                    this@panel.visibility = View.GONE; showControls()
                 })
             }
         })
@@ -751,6 +764,22 @@ internal class CineVaultVideoPresentation(
         pointer?.x = pointerX
         pointer?.y = pointerY
         root?.bringChildToFront(pointer)
+    }
+
+    private fun alignTimePillToDock() {
+        val dock = controls ?: return
+        val pill = timePill ?: return
+        pill.x = (dock.right - pill.width).toFloat()
+    }
+
+    private fun updateSpeedActionLabel(speed: Float) {
+        val icon = speedActionButton?.getChildAt(0) as? TextView ?: return
+        icon.text = formatSpeed(speed)
+    }
+
+    private fun formatSpeed(speed: Float): String {
+        val value = if (speed % 1f == 0f) speed.toInt().toString() else speed.toString().trimEnd('0').trimEnd('.')
+        return "${value}×"
     }
 
     fun clickPointer(): Boolean {
