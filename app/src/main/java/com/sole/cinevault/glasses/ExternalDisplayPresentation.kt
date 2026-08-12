@@ -199,7 +199,12 @@ internal class CineVaultVideoPresentation(
             setShutterBackgroundColor(Color.BLACK)
             subtitleView?.setViewType(SubtitleView.VIEW_TYPE_CANVAS)
             layoutParams = FrameLayout.LayoutParams(-1, -1)
-            player = this@CineVaultVideoPresentation.player
+            // Do not attach here. The host screen atomically transfers the
+            // player from its local PlayerView with PlayerView.switchTargetView.
+            // Attaching this view first and detaching the old view afterwards
+            // can clear the newly-created secondary-display video surface on
+            // some USB-C display stacks while subtitles continue to render.
+            player = null
         }
         container.addView(video)
         container.addView(buildControlDock())
