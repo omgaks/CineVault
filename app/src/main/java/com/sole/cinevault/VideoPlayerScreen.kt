@@ -292,7 +292,13 @@ fun VideoPlayerScreen(
             delay(2200)
             showGlassesConnectedHint = false
         } else {
-            try { activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED } catch (_: Exception) {}
+            // While the normal on-device player is open, actively follow the
+            // device sensor. SCREEN_ORIENTATION_UNSPECIFIED can leave the
+            // Activity fixed in whichever orientation launched playback on
+            // some tablet builds (including HyperOS), so rotating the tablet
+            // would not rebuild the player layout. The DisposableEffect below
+            // still restores UNSPECIFIED when playback is actually closed.
+            try { activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR } catch (_: Exception) {}
             activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
         }
     }
