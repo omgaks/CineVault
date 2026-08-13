@@ -128,7 +128,6 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -136,10 +135,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
-import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
@@ -149,44 +145,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-// Duration cache — saves real video duration so progress % is accurate.
-// FIX: was one SharedPreferences key per video (see VideoDurationDatabase.kt
-// for the full reasoning) — now Room-backed. One-time migration off the old
-// store, guarded by a persisted flag so it only ever scans the legacy prefs
-// file once, same pattern as Phase 1's metadata cache migration.
-private const val DURATIONS_MIGRATION_DONE_KEY = "durations_room_migration_done"
-private var durationsMigrationChecked = false
-
-private fun ensureDurationsMigratedToRoom(context: Context) {
-    if (durationsMigrationChecked) return
-    durationsMigrationChecked = true
-    val settingsPrefs = context.getSharedPreferences("cinevault_durations_settings", Context.MODE_PRIVATE)
-    if (settingsPrefs.getBoolean(DURATIONS_MIGRATION_DONE_KEY, false)) return
-
-    val legacyPrefs = context.getSharedPreferences("cinevault_durations", Context.MODE_PRIVATE)
-    val legacyEntries = legacyPrefs.all
-    if (legacyEntries.isNotEmpty()) {
-        val dao = VideoDurationDatabase.getInstance(context).videoDurationDao()
-        val migrated = legacyEntries.mapNotNull { (videoPath, rawValue) ->
-            (rawValue as? Long)?.takeIf { it > 0L }?.let { VideoDurationEntity(videoPath, it) }
-        }
-        if (migrated.isNotEmpty()) dao.upsertAll(migrated)
-        legacyPrefs.edit().clear().apply()
-    }
-    settingsPrefs.edit().putBoolean(DURATIONS_MIGRATION_DONE_KEY, true).apply()
-}
-
-private fun saveDuration(context: Context, videoPath: String, durationMs: Long) {
-    if (durationMs <= 0L) return
-    ensureDurationsMigratedToRoom(context)
-    VideoDurationDatabase.getInstance(context).videoDurationDao().upsert(VideoDurationEntity(videoPath, durationMs))
-}
-
-fun loadDuration(context: Context, videoPath: String): Long {
-    ensureDurationsMigratedToRoom(context)
-    return VideoDurationDatabase.getInstance(context).videoDurationDao().getDuration(videoPath) ?: 0L
-}
 
 @OptIn(UnstableApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 // Reusable floating-window wrapper for popups whose own composable body
@@ -430,56 +388,13 @@ fun VideoPlayerScreen(
 
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
-    val trackSelector = remember {
-        DefaultTrackSelector(context).apply {
-            parameters = buildUponParameters()
-                .setPreferredAudioLanguage(coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en")
-                .setPreferredTextLanguage(coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en")
-                .setSelectUndeterminedTextLanguage(true)
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !coreUi.behaviorPrefs.autoEnableEmbeddedSubtitles).build()
-        }
-    }
-
-    val loadControl = remember {
-        DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                /* minBufferMs = */ 15_000,
-                /* maxBufferMs = */ 50_000,
-                /* bufferForPlaybackMs = */ 1_500,
-                /* bufferForPlaybackAfterRebufferMs = */ 3_000
-            )
-            .setBackBuffer(30_000, true)
-            .build()
-    }
-
-    val mediaSourceFactory = remember { cineVaultMediaSourceFactory(context) }
-
-    val exoPlayer: ExoPlayer = remember {
-        ExoPlayer.Builder(context)
-            .setRenderersFactory(CineRenderersFactory(context).setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON))
-            .setTrackSelector(trackSelector)
-            .setLoadControl(loadControl)
-            .setMediaSourceFactory(mediaSourceFactory)
-            // FIX: was never called at all — meaning Android had no
-            // signal that CineVault wanted to be the active audio
-            // source when playback started. Other apps (Spotify, etc.)
-            // never got told to pause or duck, so they just kept
-            // playing straight through video playback. The `true`
-            // second argument tells ExoPlayer to automatically request
-            // audio focus on play, and automatically pause/duck/resume
-            // CineVault's own playback in response to OTHER apps'
-            // focus changes too (e.g. a phone call) — not just the
-            // one-directional "make other apps stop" behavior this was
-            // actually reported for.
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                    .build(),
-                /* handleAudioFocus= */ true
-            )
-            .build()
-    }
+    val playerRuntime = rememberPlayerRuntime(
+        context = context,
+        preferredLanguage = coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en",
+        autoEnableEmbeddedSubtitles = coreUi.behaviorPrefs.autoEnableEmbeddedSubtitles
+    )
+    val trackSelector = playerRuntime.trackSelector
+    val exoPlayer = playerRuntime.player
 
     // This is the real secondary-display surface. Presentation creation is
     // tied to the player + physical display ID, so hot-unplug disposes only
@@ -928,7 +843,7 @@ fun VideoPlayerScreen(
                     playerErrorMessage = null
                     val realDuration = exoPlayer.duration
                     if (realDuration > 0L && !isStreamMedia) {
-                        saveDuration(context, currentVideo.path, realDuration)
+                        savePlayerDuration(context, currentVideo.path, realDuration)
                     }
                     // "Disable subtitles when audio matches preferred
                     // language" — checked once per video (guarded by
