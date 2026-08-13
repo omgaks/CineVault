@@ -1,7 +1,9 @@
-name: Build & Release CineVault APK
+name: Build CineVault APK
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -87,17 +89,6 @@ jobs:
           echo "name=${VERSION_NAME}" >> $GITHUB_OUTPUT
           echo "code=${VERSION_CODE}" >> $GITHUB_OUTPUT
           echo "date=${BUILD_DATE}" >> $GITHUB_OUTPUT
-          # FIX: was "v${VERSION_NAME}-b${VERSION_CODE}" alone — with
-          # versionName/versionCode unchanged across many pushes in a row
-          # (a normal thing during a run of small fixes, not itself a
-          # mistake), every one of those builds targeted the exact same
-          # release tag and tried to overwrite the exact same asset file.
-          # That's precisely the scenario softprops/action-gh-release has
-          # documented sporadic "Not Found" failures under. Appending the
-          # run number (always unique, auto-incrementing, provided by
-          # GitHub itself) means every push gets its own fresh release
-          # instead of repeatedly colliding on the same one.
-          echo "tag=v${VERSION_NAME}-b${VERSION_CODE}-r${{ github.run_number }}" >> $GITHUB_OUTPUT
       - name: Find and rename APK
         run: |
           APK=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
@@ -119,10 +110,23 @@ jobs:
           APK_PATH="app/build/outputs/apk/release/CineVault-${{ steps.version.outputs.name }}.apk"
           jarsigner -verify "$APK_PATH"
 
+      # Every successful branch build remains downloadable for device testing
+      # from the workflow run without creating a permanent public Release/tag.
+      - name: Upload test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CineVault-${{ steps.version.outputs.name }}-run-${{ github.run_number }}
+          path: app/build/outputs/apk/release/CineVault-${{ steps.version.outputs.name }}.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      # A permanent GitHub Release is intentional: push a version tag such as
+      # v1.2.0. Ordinary commits to main only produce the temporary artifact.
       - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
+          tag_name: ${{ github.ref_name }}
           name: "CineVault ${{ steps.version.outputs.name }}"
           body: |
             ## CineVault ${{ steps.version.outputs.name }}
@@ -138,4 +142,4 @@ jobs:
           draft: false
           prerelease: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_
