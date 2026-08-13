@@ -11,6 +11,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.common.util.UnstableApi
+import com.sole.cinevault.smb.cineVaultMediaSourceFactory
 
 internal data class PlayerRuntime(
     val player: ExoPlayer,
