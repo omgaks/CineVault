@@ -5,6 +5,8 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Bitmap
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
+import android.graphics.drawable.Drawable
 import android.graphics.Typeface
 import android.hardware.display.DisplayManager
 import android.os.Bundle
@@ -190,7 +192,7 @@ internal class CineVaultVideoPresentation(
     private var gestureHudLabel: TextView? = null
     private var gestureHudValue: TextView? = null
     private var gestureHudBar: View? = null
-    private var playButton: TextView? = null
+    private var playButton: ImageView? = null
     private var brandMark: View? = null
     private var pointerX = 0f
     private var pointerY = 0f
@@ -227,7 +229,7 @@ internal class CineVaultVideoPresentation(
                 seekBar?.progress = (p.currentPosition / 1000L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
                 timeLabel?.text = "${formatTime(p.currentPosition)}  /  ${formatTime(duration)}"
             }
-            playButton?.text = if (p.isPlaying) "Ⅱ" else "▶"
+            playButton?.setImageResource(if (p.isPlaying) R.drawable.ic_pause else R.drawable.ic_play_arrow)
             updateSpeedActionLabel(p.playbackParameters.speed)
             handler.postDelayed(this, 500)
         }
@@ -242,6 +244,19 @@ internal class CineVaultVideoPresentation(
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE
 
         val container = FrameLayout(context).apply { setBackgroundColor(spaceBlack) }
+        // FIX: the real app's every screen has SpaceGlassBackground() —
+        // two soft, blurred radial amber glows, top-left and bottom-
+        // right, described in its own comment as "like light spilling
+        // from a projector." Glasses Mode's background was flat
+        // spaceBlack with no ambience at all — likely the single reason
+        // this reads as "CineVault's colors" rather than "genuinely a
+        // CineVault screen." Added before the video layer so it shows
+        // through letterboxed edges and the standby blackout state,
+        // while being naturally covered by actual video content when
+        // it fills the screen — the same relationship the real
+        // background effect has with foreground content elsewhere in
+        // the app.
+        container.addView(buildAmbientGlow())
         // A TextureView is deliberately used on the secondary display.
         // Several USB-C display stacks (including the tested RayNeo route)
         // accepted subtitle/canvas output from PlayerView while leaving its
@@ -294,7 +309,7 @@ internal class CineVaultVideoPresentation(
             layoutParams = LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         header.addView(buildBrandMark())
-        header.addView(symbolButton("‹", "Back") {
+        header.addView(iconButton(R.drawable.ic_arrow_back, "Back") {
             hideControls()
             onBack()
         })
@@ -318,7 +333,7 @@ internal class CineVaultVideoPresentation(
             setPadding(0, dp(2), 0, dp(2))
         }
         transport.addView(symbolButton("↶10", "Seek back 10 seconds") { player.seekTo((player.currentPosition - 10_000L).coerceAtLeast(0L)); scheduleHide() })
-        playButton = symbolButton("Ⅱ", "Play or pause", primary = true) {
+        playButton = iconButton(R.drawable.ic_pause, "Play or pause", primary = true) {
             if (player.isPlaying) player.pause() else player.play()
             scheduleHide()
         }.also { transport.addView(it) }
@@ -546,16 +561,111 @@ internal class CineVaultVideoPresentation(
         gestureGuidePanel = this
     }
 
+    // FIX: replaces raw Unicode symbol glyphs / the old-style Android
+    // system drawable (android.R.drawable.ic_menu_revert) with real
+    // vector icons matching the app's actual icon language — every
+    // real screen uses Material Icons' filled, rounded style
+    // (Icons.Filled.* in Compose). A Presentation is View-based, so
+    // those Compose ImageVector objects can't be referenced directly;
+    // this uses hand-authored vector drawables with the same standard
+    // Material path data instead, tinted the same way symbolButton's
+    // text was. Used only for icons simple and standard enough to be
+    // confident the path data is exactly right (back, play, pause) —
+    // the seek ±10s buttons keep their existing text form rather than
+    // risk a hand-typed path for a more complex icon shape being subtly
+    // wrong.
+    private fun iconButton(iconRes: Int, description: String, primary: Boolean = false, action: () -> Unit) = ImageView(context).apply {
+        setImageResource(iconRes)
+        setColorFilter(if (primary) amber else textBright)
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
+        background = if (primary) primaryButtonBackground() else roundedBackground(Color.argb(75, 255, 194, 77), amberDeep, dp(20).toFloat())
+        contentDescription = description
+        val glowExtent = if (primary) 10 else 0
+        val iconPadding = dp(if (primary) 20 + glowExtent else 15)
+        setPadding(iconPadding, iconPadding, iconPadding, iconPadding)
+        layoutParams = LinearLayout.LayoutParams(
+            if (primary) dp(68 + glowExtent * 2) else dp(62),
+            if (primary) dp(68 + glowExtent * 2) else dp(56)
+        ).apply { marginStart = dp(if (primary) 9 - glowExtent else 9); marginEnd = dp(if (primary) 9 - glowExtent else 9) }
+        setOnClickListener { action() }
+    }
+
     private fun symbolButton(symbol: String, description: String, primary: Boolean = false, action: () -> Unit) = TextView(context).apply {
         text = symbol
         setTextColor(if (primary) amber else textBright)
         textSize = if (primary) 48f else 24f
         typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
-        background = if (primary) roundedBackground(Color.argb(82, 255, 194, 77), amber, dp(34).toFloat()) else roundedBackground(Color.argb(75, 255, 194, 77), amberDeep, dp(20).toFloat())
+        // FIX: the primary (play/pause) button previously had no glow at
+        // all — just an amber-tinted pill. The real design system calls
+        // its amberGlow() modifier "the signature glow" and uses it
+        // specifically behind active/primary elements like this one.
+        // primaryButtonBackground() reproduces it: a soft radial amber
+        // gradient extending beyond the button's own bounds, with the
+        // actual pill shape layered on top.
+        background = if (primary) primaryButtonBackground() else roundedBackground(Color.argb(75, 255, 194, 77), amberDeep, dp(20).toFloat())
         contentDescription = description
-        layoutParams = LinearLayout.LayoutParams(if (primary) dp(68) else dp(62), if (primary) dp(68) else dp(56)).apply { marginStart = dp(9); marginEnd = dp(9) }
+        // Primary button's overall bounds are larger than its visual pill
+        // size specifically to leave room for the glow around it — see
+        // primaryButtonBackground(). The pill itself still renders at
+        // the original 68dp; glowExtent below must match what's inset
+        // there.
+        val glowExtent = 10
+        layoutParams = LinearLayout.LayoutParams(
+            if (primary) dp(68 + glowExtent * 2) else dp(62),
+            if (primary) dp(68 + glowExtent * 2) else dp(56)
+        ).apply { marginStart = dp(if (primary) 9 - glowExtent else 9); marginEnd = dp(if (primary) 9 - glowExtent else 9) }
         setOnClickListener { action() }
+    }
+
+    // Glow extends into the full (larger) button bounds; the pill is
+    // inset inward by the same amount so it keeps its original 68dp
+    // visual size, centered within the extra space the glow occupies.
+    private fun primaryButtonBackground(): Drawable {
+        val glowExtent = dp(10)
+        val glow = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            gradientType = GradientDrawable.RADIAL_GRADIENT
+            colors = intArrayOf(Color.argb(90, 232, 160, 32), Color.argb(30, 110, 74, 16), Color.TRANSPARENT)
+            gradientRadius = dp(56).toFloat()
+        }
+        val pill = roundedBackground(Color.argb(82, 255, 194, 77), amber, dp(34).toFloat())
+        return LayerDrawable(arrayOf(glow, pill)).apply {
+            setLayerInset(1, glowExtent, glowExtent, glowExtent, glowExtent)
+        }
+    }
+
+    // Two large, soft radial-gradient circles positioned top-left and
+    // bottom-right — same technique as the primary button's glow, just
+    // sized for the whole screen and positioned via layout gravity
+    // instead of LayerDrawable insets. Sized relative to a typical
+    // external display's resolution; RayNeo-class glasses commonly
+    // report a 1920×1080-class virtual display, so these are sized in
+    // dp against that assumption rather than the tablet's own screen.
+    private fun buildAmbientGlow(): View = FrameLayout(context).apply {
+        addView(View(context).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                gradientType = GradientDrawable.RADIAL_GRADIENT
+                colors = intArrayOf(Color.argb(40, 232, 160, 32), Color.TRANSPARENT)
+                gradientRadius = dp(260).toFloat()
+            }
+            layoutParams = FrameLayout.LayoutParams(dp(520), dp(520), Gravity.TOP or Gravity.START).apply {
+                leftMargin = dp(-160); topMargin = dp(-140)
+            }
+        })
+        addView(View(context).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                gradientType = GradientDrawable.RADIAL_GRADIENT
+                colors = intArrayOf(Color.argb(32, 110, 74, 16), Color.TRANSPARENT)
+                gradientRadius = dp(220).toFloat()
+            }
+            layoutParams = FrameLayout.LayoutParams(dp(440), dp(440), Gravity.BOTTOM or Gravity.END).apply {
+                rightMargin = dp(-130); bottomMargin = dp(-120)
+            }
+        })
+        layoutParams = FrameLayout.LayoutParams(-1, -1)
     }
 
     private fun buildBrandMark(): View = LinearLayout(context).apply {
@@ -884,13 +994,46 @@ internal class CineVaultVideoPresentation(
     private fun roundedBackground(fill: Int, stroke: Int, radius: Float) = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE; setColor(fill); setStroke(dp(1), stroke); cornerRadius = radius
     }
-    private fun glassBackground(fill: Int, radius: Float) = GradientDrawable(
-        GradientDrawable.Orientation.TOP_BOTTOM,
-        intArrayOf(Color.argb(245, 31, 35, 48), fill, Color.argb(238, 12, 14, 21))
-    ).apply {
-        shape = GradientDrawable.RECTANGLE
-        setStroke(dp(1), Color.argb(115, 255, 194, 77))
-        cornerRadius = radius
+    // FIX: was a single GradientDrawable with a flat amber stroke — every
+    // real glass panel in the app (glassPanel() in Glass.kt) uses a WHITE
+    // gradient border instead — bright at the top where light would
+    // naturally catch an edge, fading to almost nothing at the bottom —
+    // which is what actually reads as "glass" rather than "a panel with
+    // a colored outline." GradientDrawable.setStroke() only accepts one
+    // flat color; it can't do a gradient stroke directly, so this layers
+    // three drawables instead: an outer one gradient-filled with the
+    // border colors (visible only at the edge, since the inner layers
+    // sit on top inset by the border width), the actual panel fill in
+    // the middle, and a semi-transparent white sheen on top that fades
+    // out over the top ~half — the same two-layer "fill plus separate
+    // highlight" split the real glassPanel() modifier uses, rather than
+    // baking everything into one fixed gradient the way this used to.
+    private fun glassBackground(fill: Int, radius: Float): Drawable {
+        val borderWidth = dp(1)
+        val innerRadius = (radius - borderWidth).coerceAtLeast(0f)
+        val border = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(Color.argb(102, 255, 255, 255), Color.argb(18, 255, 255, 255))
+        ).apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = radius
+        }
+        val fillLayer = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(fill)
+            cornerRadius = innerRadius
+        }
+        val sheen = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(Color.argb(20, 255, 255, 255), Color.TRANSPARENT, Color.TRANSPARENT)
+        ).apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = innerRadius
+        }
+        return LayerDrawable(arrayOf(border, fillLayer, sheen)).apply {
+            setLayerInset(1, borderWidth, borderWidth, borderWidth, borderWidth)
+            setLayerInset(2, borderWidth, borderWidth, borderWidth, borderWidth)
+        }
     }
     private fun formatTime(ms: Long): String {
         val total = (ms.coerceAtLeast(0L) / 1000L)
