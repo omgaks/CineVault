@@ -1,6 +1,10 @@
 package com.sole.cinevault.glasses
 
 import android.app.Activity
+import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
+import android.view.View
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -18,9 +22,16 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.math.abs
 
-/** Visual state for the app-wide RayNeo touch indicator. */
+private const val POINTER_SENSITIVITY = 1.15f
+private const val POINTER_MARGIN_PX = 12f
+private const val MOVE_SLOP_PX = 8f
+private const val EMERGENCY_SPREAD = 1.35f
+
+/** State shared by the full-window trackpad surface and its draw-only halo. */
 @Stable
 class AppWidePointerState internal constructor() {
     var position by mutableStateOf(Offset.Unspecified)
@@ -28,19 +39,20 @@ class AppWidePointerState internal constructor() {
     var scrolling by mutableStateOf(false)
 }
 
+/** The display id is the session key, so navigation never resets the halo. */
 @Composable
 fun rememberAppWidePointerState(sessionKey: Any?): AppWidePointerState =
     remember(sessionKey) { AppWidePointerState() }
 
 /**
- * Observes normal tablet touch without consuming it.
+ * App-wide RayNeo trackpad input used outside playback.
  *
- * The earlier implementation consumed the real event and tried to inject a
- * second synthetic event through Activity.dispatchTouchEvent. Compose then
- * routed that event back through this same parent modifier, leaving ordinary
- * cards and lazy lists with no dependable click/scroll stream. Here the real
- * Android event remains authoritative: one-finger taps, drags and flings reach
- * CineVault unchanged while the halo simply mirrors the contact in RayNeo.
+ * One finger moves a persistent relative pointer; a stationary one-finger tap
+ * clicks at that pointer. Two-finger movement is replayed as a normal drag at
+ * the pointer, allowing existing Compose lazy lists, rows and detail pages to
+ * keep their native scrolling behaviour. Physical touch events are consumed.
+ * Replayed events use the mouse source and therefore bypass this detector while
+ * continuing through the real content hierarchy below it.
  */
 fun Modifier.appWideGlassesInput(
     activity: Activity?,
@@ -48,47 +60,178 @@ fun Modifier.appWideGlassesInput(
     state: AppWidePointerState,
     onEmergencyReturnToTablet: () -> Unit
 ): Modifier = pointerInput(sessionKey, activity) {
+    fun pointerReady(): Boolean =
+        state.position.x.isFinite() && state.position.y.isFinite()
+
+    fun clamp(point: Offset): Offset = Offset(
+        point.x.coerceIn(POINTER_MARGIN_PX, (size.width - POINTER_MARGIN_PX).coerceAtLeast(POINTER_MARGIN_PX)),
+        point.y.coerceIn(POINTER_MARGIN_PX, (size.height - POINTER_MARGIN_PX).coerceAtLeast(POINTER_MARGIN_PX))
+    )
+
+    fun dispatchSynthetic(
+        action: Int,
+        point: Offset,
+        downTime: Long,
+        eventTime: Long = SystemClock.uptimeMillis()
+    ) {
+        val host = activity ?: return
+        val content = host.findViewById<View>(android.R.id.content)
+        val origin = IntArray(2)
+        content?.getLocationInWindow(origin)
+        MotionEvent.obtain(
+            downTime,
+            eventTime,
+            action,
+            point.x + origin[0],
+            point.y + origin[1],
+            0
+        ).also { event ->
+            event.source = InputDevice.SOURCE_MOUSE
+            try {
+                host.dispatchTouchEvent(event)
+            } finally {
+                event.recycle()
+            }
+        }
+    }
+
     awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-        state.position = down.position
+        val firstDown = awaitFirstDown(
+            requireUnconsumed = false,
+            pass = PointerEventPass.Initial
+        )
+
+        // Synthetic clicks and drags must reach the actual content unchanged.
+        if (firstDown.type == PointerType.Mouse) return@awaitEachGesture
+
+        if (!pointerReady()) {
+            state.position = Offset(size.width / 2f, size.height / 2f)
+        } else {
+            state.position = clamp(state.position)
+        }
+
+        firstDown.consume()
         state.pressed = true
         state.scrolling = false
-        var spread = 1f
+
+        var lastOneFingerPosition = firstDown.position
+        var lastTwoFingerCentroid = Offset.Unspecified
+        var oneFingerTravel = 0f
+        var maximumPointerCount = 1
+        var emergencySpread = 1f
         var emergencyTriggered = false
+        var syntheticDragDownTime = 0L
+        var syntheticDragPoint = state.position
 
         do {
-            val event = awaitPointerEvent(PointerEventPass.Final)
-            val pressed = event.changes.filter { it.pressed }
-            if (pressed.size >= 5) {
-                spread *= event.calculateZoom()
-                if (!emergencyTriggered && spread >= 1.35f) {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            val pressedChanges = event.changes.filter { it.pressed }
+            maximumPointerCount = maxOf(maximumPointerCount, pressedChanges.size)
+
+            if (pressedChanges.size >= 5) {
+                emergencySpread *= event.calculateZoom()
+                if (!emergencyTriggered && emergencySpread >= EMERGENCY_SPREAD) {
                     emergencyTriggered = true
                     onEmergencyReturnToTablet()
                 }
+                event.changes.forEach { it.consume() }
+                continue
             }
-            pressed.firstOrNull()?.let { change ->
-                state.position = change.position
-                state.scrolling = change.position != change.previousPosition
+
+            if (pressedChanges.size >= 2) {
+                val centroid = pressedChanges
+                    .fold(Offset.Zero) { total, change -> total + change.position } /
+                    pressedChanges.size.toFloat()
+
+                if (lastTwoFingerCentroid.x.isFinite() && lastTwoFingerCentroid.y.isFinite()) {
+                    val delta = centroid - lastTwoFingerCentroid
+                    if (abs(delta.x) > 0.5f || abs(delta.y) > 0.5f) {
+                        if (syntheticDragDownTime == 0L) {
+                            syntheticDragDownTime = SystemClock.uptimeMillis()
+                            syntheticDragPoint = state.position
+                            dispatchSynthetic(
+                                MotionEvent.ACTION_DOWN,
+                                syntheticDragPoint,
+                                syntheticDragDownTime,
+                                syntheticDragDownTime
+                            )
+                        }
+                        syntheticDragPoint = clamp(syntheticDragPoint + delta)
+                        dispatchSynthetic(
+                            MotionEvent.ACTION_MOVE,
+                            syntheticDragPoint,
+                            syntheticDragDownTime
+                        )
+                        state.scrolling = true
+                    }
+                }
+                lastTwoFingerCentroid = centroid
+                event.changes.forEach { it.consume() }
+            } else if (pressedChanges.size == 1 && maximumPointerCount == 1) {
+                lastTwoFingerCentroid = Offset.Unspecified
+                val change = pressedChanges.first()
+                val delta = change.position - lastOneFingerPosition
+                if (abs(delta.x) > 0.25f || abs(delta.y) > 0.25f) {
+                    oneFingerTravel += delta.getDistance()
+                    state.position = clamp(state.position + delta * POINTER_SENSITIVITY)
+                    lastOneFingerPosition = change.position
+                }
+                change.consume()
+            } else {
+                event.changes.forEach { it.consume() }
             }
         } while (event.changes.any { it.pressed })
+
+        when {
+            syntheticDragDownTime != 0L -> {
+                dispatchSynthetic(
+                    MotionEvent.ACTION_UP,
+                    syntheticDragPoint,
+                    syntheticDragDownTime
+                )
+            }
+
+            maximumPointerCount == 1 && oneFingerTravel < MOVE_SLOP_PX -> {
+                val now = SystemClock.uptimeMillis()
+                dispatchSynthetic(MotionEvent.ACTION_DOWN, state.position, now, now)
+                dispatchSynthetic(MotionEvent.ACTION_UP, state.position, now)
+            }
+        }
 
         state.pressed = false
         state.scrolling = false
     }
 }
 
-/** Draw-only overlay; it never intercepts taps, drags, flings or clicks. */
+/** Draw-only overlay. Input belongs to the parent modifier, so this blocks nothing. */
 @Composable
 fun BoxScope.AppWideGlassesPointer(state: AppWidePointerState) {
     Canvas(Modifier.fillMaxSize()) {
-        val p = if (state.position.x.isFinite() && state.position.y.isFinite()) state.position else center
+        val point = if (state.position.x.isFinite() && state.position.y.isFinite()) {
+            state.position
+        } else {
+            center
+        }
         val radius = when {
             state.scrolling -> 21f
             state.pressed -> 19f
             else -> 16f
         }
-        drawCircle(Color(0x55FFC24D), radius = radius + 6f, center = p)
-        drawCircle(Color(0xFFFFC24D), radius = radius, center = p, style = Stroke(width = 3f))
-        drawCircle(Color.White, radius = 2.5f, center = p)
+        drawCircle(Color(0x55FFC24D), radius = radius + 6f, center = point)
+        drawCircle(
+            Color(0xFFFFC24D),
+            radius = radius,
+            center = point,
+            style = Stroke(width = 3f)
+        )
+        drawCircle(Color.White, radius = 2.5f, center = point)
+        if (state.scrolling) {
+            drawLine(
+                Color(0xFFFFC24D),
+                point - Offset(0f, 30f),
+                point + Offset(0f, 30f),
+                strokeWidth = 3f
+            )
+        }
     }
 }
