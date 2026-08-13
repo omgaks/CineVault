@@ -135,7 +135,6 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
-import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
@@ -487,13 +486,7 @@ fun VideoPlayerScreen(
     // the external surface and the local PlayerView below immediately takes
     // ownership of the same ExoPlayer again at the same playback position.
     val externalRatingText = remember(currentVideo.path, episodeList) {
-        episodeList.firstOrNull { it.video.path == currentVideo.path }?.let { meta ->
-            buildList {
-                meta.imdbRating?.takeIf { it.isNotBlank() && it != "N/A" }?.let { add("IMDb $it") }
-                meta.rottenTomatoesRating?.takeIf { it.isNotBlank() && it != "N/A" }?.let { add("RT $it") }
-                meta.rating?.takeIf { it > 0.0 }?.let { add("TMDB ${String.format("%.1f", it)}") }
-            }.joinToString("  •  ").ifBlank { null }
-        }
+        buildExternalRatingText(currentVideo.path, episodeList)
     }
     var localPlayerView by remember { mutableStateOf<PlayerView?>(null) }
     var glassesSessionDisabled by remember(externalDisplay.displayId) { mutableStateOf(false) }
@@ -1872,17 +1865,19 @@ fun VideoPlayerScreen(
             onDismissSleepMenu = { showSleepMenu = false },
         )
 
-        val srtFiles = remember(currentVideo.path, showSrtBrowser) { findNearbySrtFiles(currentVideo.path) }
-            .filter { it.absolutePath !in pendingDeletePaths }
-        val audioTracksForPopup = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }.flatMap { group ->
-            List(group.length) { i ->
-                val fmt = group.getTrackFormat(i); val lang = friendlyLanguageName(fmt.language)
-                TrackPopupRowData(title = if (lang == "Unknown" || lang == "UND") "Default Audio" else lang, subtitle = "Track ${i+1}", onClick = {
-                    trackSelector.parameters = trackSelector.buildUponParameters().setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, listOf(i))).build()
-                    showAudioSelector = false; showControls = true
-                })
+        val srtFiles = rememberAvailableLocalSubtitleFiles(
+            videoPath = currentVideo.path,
+            selectorVisible = showSrtBrowser,
+            pendingDeletePaths = pendingDeletePaths
+        )
+        val audioTracksForPopup = buildAudioTrackRows(
+            player = exoPlayer,
+            trackSelector = trackSelector,
+            onTrackSelected = {
+                showAudioSelector = false
+                showControls = true
             }
-        }
+        )
         SrtAndAudioTrackPopups(
             showSrtBrowser = showSrtBrowser,
             srtFiles = srtFiles,
@@ -1905,7 +1900,7 @@ fun VideoPlayerScreen(
             onCloseAudioSelector = { showAudioSelector = false; showControls = true },
         )
 
-        val hasInternalSubtitles = exoPlayer.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.length > 0 }
+        val hasInternalSubtitles = hasInternalSubtitleTracks(exoPlayer.currentTracks)
 
         // ── Track Selector data, built fresh from live player + disk state
         // every time it's shown. Embedded tracks read straight off
@@ -1914,29 +1909,20 @@ fun VideoPlayerScreen(
         // way the existing SRT browser and OpenSubtitlesClient cache
         // already do — no new scanning logic, just reused in one place.
         val embeddedTrackChoices = remember(exoPlayer.currentTracks) {
-            exoPlayer.currentTracks.groups
-                .filter { it.type == C.TRACK_TYPE_TEXT }
-                .flatMapIndexed { groupIndex, group ->
-                    (0 until group.length).map { trackIndexInGroup ->
-                        val fmt = group.getTrackFormat(trackIndexInGroup)
-                        SubtitleTrackChoice.Embedded(
-                            groupIndex = groupIndex,
-                            trackIndexInGroup = trackIndexInGroup,
-                            language = fmt.language ?: "und",
-                            isForced = (fmt.selectionFlags and C.SELECTION_FLAG_FORCED) != 0,
-                            isSdh = (fmt.roleFlags and C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND) != 0
-                        )
-                    }
-                }
+            buildEmbeddedSubtitleChoices(exoPlayer.currentTracks)
         }
-        val downloadedTrackChoice = remember(currentVideo.path, trackUi.showSelector) {
-            if (!canDownloadExternalSubtitles) null
-            else OpenSubtitlesClient.findCachedSubtitle(context, currentVideo.path, coreUi.behaviorPrefs.preferredLanguages)?.let { cached ->
-                cached.uri.path?.let { path -> SubtitleTrackChoice.Downloaded(file = java.io.File(path), language = cached.language) }
-            }
-        }
-        val localFileChoices = remember(currentVideo.path, trackUi.showSelector) { findNearbySrtFiles(currentVideo.path) }
-            .filter { it.absolutePath !in pendingDeletePaths }
+        val downloadedTrackChoice = rememberDownloadedSubtitleChoice(
+            context = context,
+            videoPath = currentVideo.path,
+            preferredLanguages = coreUi.behaviorPrefs.preferredLanguages,
+            selectorVisible = trackUi.showSelector,
+            canDownloadExternalSubtitles = canDownloadExternalSubtitles
+        )
+        val localFileChoices = rememberAvailableLocalSubtitleFiles(
+            videoPath = currentVideo.path,
+            selectorVisible = trackUi.showSelector,
+            pendingDeletePaths = pendingDeletePaths
+        )
 
         val subtitleQuickMenuStatusText = when {
             !coreUi.subtitlesEnabled -> "Subtitles off"
