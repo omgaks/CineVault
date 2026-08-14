@@ -744,30 +744,16 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        CineVaultPlayerHolder.currentPlayer = exoPlayer
-        // Bridges hardware media-button next/previous (headset, Bluetooth)
-        // to this screen's own episode-switching logic — see
-        // CineVaultForwardingPlayer.kt for why a direct player command
-        // doesn't work here.
-        CineVaultPlayerHolder.onNextRequested = { playNext() }
-        CineVaultPlayerHolder.onPreviousRequested = { playPrevious() }
-        // Starts (or re-attaches) the foreground playback service — this is
-        // what keeps playback alive and gives lock-screen media controls
-        // once the screen locks or the app backgrounds, instead of the
-        // previous behavior where MainActivity.onStop() unconditionally
-        // paused playback the moment the screen turned off. The service
-        // reads CineVaultPlayerHolder.currentPlayer itself (just set above)
-        // rather than the player being handed to it directly.
-        androidx.core.content.ContextCompat.startForegroundService(
-            context, Intent(context, CineVaultPlaybackService::class.java)
-        )
-        brightnessPercent = try {
-            val raw = android.provider.Settings.System.getInt(context.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS)
-            ((raw / 255f) * 100f).toInt().coerceIn(5, 100)
-        } catch (_: Exception) { 70 }
-        activity?.enterImmersiveModeForPlayer()
-    }
+    PlayerSessionLifecycle(
+        context = context,
+        activity = activity,
+        player = exoPlayer,
+        videoPath = currentVideo.path,
+        isStreamMedia = isStreamMedia,
+        onNextRequested = { playNext() },
+        onPreviousRequested = { playPrevious() },
+        onInitialBrightnessChanged = { brightnessPercent = it },
+    )
 
     DisposableEffect(exoPlayer, currentVideo.path, episodeList) {
         val listener = object : Player.Listener {
@@ -858,32 +844,6 @@ fun VideoPlayerScreen(
         onPreviewBitmapChanged = { previewBitmap = it },
         onSeekPreviewLargeChanged = { isSeekPreviewLarge = it },
     )
-
-    DisposableEffect(Unit) {
-        onDispose {
-            if (!isStreamMedia) savePlaybackPosition(context, currentVideo.path, exoPlayer.currentPosition.coerceAtLeast(0L))
-            exoPlayer.release()
-            AudioSyncHolder.offsetUs = 0L
-            if (CineVaultPlayerHolder.currentPlayer == exoPlayer) CineVaultPlayerHolder.currentPlayer = null
-            CineVaultPlayerHolder.onNextRequested = null
-            CineVaultPlayerHolder.onPreviousRequested = null
-            // Only reached on an actual exit from the player (Back pressed,
-            // navigated away) — NOT fired just because the screen locked or
-            // the app backgrounded, since Compose disposal and Activity
-            // onStop/onPause are different things. Safe to stop the service
-            // here since we've already cleared currentPlayer above.
-            context.stopService(Intent(context, CineVaultPlaybackService::class.java))
-            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
-            // This runs on every exit from the player — button, swipe, or
-            // hardware back — so if setRequestedOrientation() throws here
-            // (see comment above near the glasses-connect effect), it would
-            // crash on literally any way of leaving the player. Wrapped for
-            // the same reason.
-            try { activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED } catch (_: Exception) {}
-            activity?.exitImmersiveModeForPlayer()
-        }
-    }
 
     PlayerPipWindowEffect(
         activity = activity,
