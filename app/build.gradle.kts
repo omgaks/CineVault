@@ -55,25 +55,25 @@ android {
         // sherpa-onnx (VAD, for Auto-Sync Phase 1) only ships jniLibs for
         // arm64-v8a in this project — that's the only ABI actually
         // committed under app/src/main/jniLibs/, matching both of Ash's
-        // real test devices (Xiaomi Pad 7, Vivo X300 Pro).
+        // real test devices (Xiaomi Pad 7, Vivo X300 Pro). Restricting the
+        // ABI filter here keeps the APK from claiming support for
+        // architectures it has no native libs for, and keeps the build
+        // from needing armeabi-v7a/x86/x86_64 .so files we never committed.
         ndk {
             abiFilters += "arm64-v8a"
         }
     }
 
     // Signing config — reads from environment variables set by GitHub Actions,
-    // falling back gracefully when building locally without a keystore.
+    // falls back gracefully when building locally without a keystore
     signingConfigs {
         create("release") {
             val ksFile = rootProject.file("cinevault-release.jks")
             if (ksFile.exists()) {
                 storeFile = ksFile
-                storePassword = System.getenv("KEYSTORE_PASSWORD")
-                    ?: localProperties.getProperty("KEYSTORE_PASSWORD", "")
-                keyAlias = System.getenv("KEY_ALIAS")
-                    ?: localProperties.getProperty("KEY_ALIAS", "")
-                keyPassword = System.getenv("KEY_PASSWORD")
-                    ?: localProperties.getProperty("KEY_PASSWORD", "")
+                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: localProperties.getProperty("KEYSTORE_PASSWORD", "")
+                keyAlias = System.getenv("KEY_ALIAS") ?: localProperties.getProperty("KEY_ALIAS", "")
+                keyPassword = System.getenv("KEY_PASSWORD") ?: localProperties.getProperty("KEY_PASSWORD", "")
             }
         }
     }
@@ -85,13 +85,18 @@ android {
 
     buildTypes {
         release {
+            // FIX: was false — proguard-rules.pro was the untouched
+            // default template with nothing kept, which was fine ONLY
+            // because minification was off. Now genuinely populated with
+            // rules covering every reflection/JNI-dependent library this
+            // app actually uses (see that file for the full reasoning
+            // behind each one) before turning this on.
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-
             val ksFile = rootProject.file("cinevault-release.jks")
             if (ksFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
@@ -104,14 +109,23 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    // The VAD model must remain uncompressed because ONNX Runtime accesses it
-    // directly through memory mapping.
+    // sherpa-onnx's VAD model (assets/silero_vad.onnx) is mmap'd directly
+    // by ONNX Runtime at load time, which requires the file to be stored
+    // UNCOMPRESSED inside the APK — Android compresses assets/ by default,
+    // and reading a compressed file via mmap corrupts the byte alignment
+    // ONNX Runtime expects, causing a native SIGBUS crash on some devices
+    // (reported specifically on some MediaTek chips, but not guaranteed
+    // safe on any device). This is a real, documented failure mode for
+    // this exact library, not a hypothetical — skipping this would likely
+    // not even fail the build, just crash at runtime the first time Auto-
+    // Sync tries to load the model.
     androidResources {
         noCompress += "onnx"
     }
 }
 
 dependencies {
+    // Icons were removed from newer Compose BOMs — must be pinned explicitly
     implementation("androidx.compose.material:material-icons-extended:1.7.8")
 
     implementation("androidx.core:core-ktx:1.16.0")
@@ -125,12 +139,21 @@ dependencies {
 
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
 
-    // Keep all Media3 components on the same version for binary compatibility
-    // with Jellyfin's FFmpeg decoder.
+    // Keep the complete Media3 runtime on 1.9.0. Jellyfin's
+    // media3-ffmpeg-decoder:1.9.0+1 is compiled against Media3 1.9.0;
+    // mixing it with 1.10.x can produce binary-incompatible decoder calls at
+    // runtime even when Gradle resolves the project successfully.
     val media3Version = "1.9.0"
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
     implementation("androidx.media3:media3-ui:$media3Version")
+
+    // Media3 session — MediaSession/MediaSessionService for
+    // CineVaultPlaybackService.kt (lock-screen playback survival, media
+    // notification, system media controls). Pinned to the SAME version as
+    // the other media3-* artifacts above — mixing Media3 artifact versions
+    // is a common source of runtime crashes, so this must always be bumped
+    // together with media3-exoplayer/media3-ui, never independently.
     implementation("androidx.media3:media3-session:$media3Version")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
@@ -141,22 +164,72 @@ dependencies {
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
 
+    // SMB network share scanning (NAS/PC shares) — pure Java, no NDK/native
+    // build step needed, unlike the FFmpeg audio codec work planned later.
     implementation("eu.agno3.jcifs:jcifs-ng:2.1.10")
 
+    // Palette-based dynamic theming on the Detail screen — extracts a
+    // dominant color from each title's poster/backdrop artwork. Small,
+    // stable, official AndroidX artifact (not a third-party dependency).
     implementation("androidx.palette:palette-ktx:1.0.0")
 
+    // Encrypted storage for SMB credentials AND (as of this fix) Secret
+    // Folder's hidden path lists (Android Keystore-backed). NOTE:
+    // 1.1.0-alpha06 is deliberate, not a mistake — AndroidX Security
+    // Crypto has never shipped a stable 1.1 release, and this alpha is the
+    // de facto production-standard version (1.0.0 has known Keystore bugs
+    // on some devices that this release fixed).
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    // BiometricPrompt for Secret Folder's unlock — replaces the deprecated
+    // (since API 30) KeyguardManager.createConfirmDeviceCredentialIntent.
+    // 1.1.0 is the current STABLE release (verified — the -ktx and
+    // -compose variants are still alpha-only as of this writing, so the
+    // plain Java-interop artifact is the correct choice here, same as
+    // it's fine to call from Kotlin).
     implementation("androidx.biometric:biometric:1.1.0")
+
+    // FragmentActivity (MainActivity's new base class, needed for
+    // BiometricPrompt above) lives in this artifact. Would likely also
+    // arrive transitively via androidx.biometric itself, but declared
+    // explicitly here rather than leave that to chance — 1.8.9 is current
+    // stable (verified).
     implementation("androidx.fragment:fragment-ktx:1.8.9")
 
+    // Room — Phase 1 of migrating SharedPreferences-as-database usage to
+    // a real database (see CachedVideoMetadataDatabase.kt), starting with
+    // cinevault_metadata_cache specifically: one SharedPreferences KEY
+    // per video, unbounded growth as the library grows, the one store of
+    // several with a genuine ANR/TransactionTooLargeException risk rather
+    // than just being an awkward fit. Room 2.8.4 — current stable 2.x
+    // (verified). Room 3.0 exists but is a brand-new major rewrite still
+    // in early alpha as of this writing, under different package
+    // coordinates (androidx.room3) — not appropriate to build on yet.
     implementation("androidx.room:room-runtime:2.8.4")
     implementation("androidx.room:room-ktx:2.8.4")
     ksp("androidx.room:room-compiler:2.8.4")
 
+    // Custom Tabs — used by the subtitle website fallback (SubtitleWebFallback.kt)
+    // to open OpenSubtitles as the recommended/default route: a real browser
+    // tab sharing the user's own login/cookie state, not a WebView CineVault
+    // has to maintain and secure itself. Partial-height presentation
+    // (setInitialActivityHeightPx) requires 1.6.0+; 1.10.0 is current stable.
     implementation("androidx.browser:browser:1.10.0")
+
+    // Restricted-folder scanning walks a SAF-picked folder tree via
+    // DocumentFile — not transitively included by anything else here.
     implementation("androidx.documentfile:documentfile:1.0.1")
 
-    // GPL-3.0-compatible FFmpeg audio decoder.
+    // FFmpeg audio decoder for Media3 — broad audio codec coverage
+    // (DTS/DTS-HD, TrueHD, AC3/E-AC3, FLAC multichannel, etc.) that the
+    // device's own built-in hardware/OS decoders often don't support,
+    // which is why some files play with no audio in CineVault but work
+    // fine in players like MX Player that bundle their own decoders.
+    // Prebuilt by the Jellyfin project — no native/NDK build step needed
+    // here, unlike building FFmpeg from source ourselves would require.
+    // LICENSE NOTE: this artifact is GPL-3.0. CineVault itself is licensed
+    // GPL-3.0-only (see LICENSE) specifically so this dependency and the
+    // rest of the app are license-compatible — no conflict to flag.
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.9.0+1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
@@ -170,9 +243,10 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 }
 
-// Test Foundation Batch 1: create HTML and XML coverage reports whenever the
-// debug unit-test suite runs. Coverage is reported but is not yet enforced as
-// a percentage gate.
+// Test Foundation Batch 1: produce an HTML report for people and an XML
+// report for CI/auditing every time the debug unit-test suite runs. Coverage
+// is reported, but deliberately not used as a percentage gate yet: the first
+// goal is a trustworthy baseline that can grow alongside each future slice.
 tasks.withType<Test>().configureEach {
     extensions.configure<JacocoTaskExtension> {
         isIncludeNoLocationClasses = true
@@ -180,14 +254,8 @@ tasks.withType<Test>().configureEach {
     }
 }
 
-// AGP registers variant test tasks lazily. This live task collection discovers
-// the debug tasks when AGP creates them instead of looking them up too early.
-val debugUnitTestTasks = tasks.withType<Test>().matching {
-    name.contains("debug", ignoreCase = true)
-}
-
 val jacocoTestReport by tasks.registering(JacocoReport::class) {
-    dependsOn(debugUnitTestTasks)
+    dependsOn("testDebugUnitTest")
 
     reports {
         xml.required.set(true)
@@ -217,25 +285,15 @@ val jacocoTestReport by tasks.registering(JacocoReport::class) {
             },
         ),
     )
-
-    sourceDirectories.setFrom(
-        files(
-            "src/main/java",
-            "src/main/kotlin",
-        ),
-    )
-
+    sourceDirectories.setFrom(files("src/main/java", "src/main/kotlin"))
     executionData.setFrom(
         fileTree(layout.buildDirectory) {
             include("jacoco/testDebugUnitTest.exec")
-            include(
-                "outputs/unit_test_code_coverage/debugUnitTest/" +
-                    "testDebugUnitTest.exec"
-            )
+            include("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
         },
     )
 }
 
-debugUnitTestTasks.configureEach {
+tasks.named("testDebugUnitTest") {
     finalizedBy(jacocoTestReport)
 }
