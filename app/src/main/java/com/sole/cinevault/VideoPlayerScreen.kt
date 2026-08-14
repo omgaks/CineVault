@@ -755,70 +755,50 @@ fun VideoPlayerScreen(
         onInitialBrightnessChanged = { brightnessPercent = it },
     )
 
-    DisposableEffect(exoPlayer, currentVideo.path, episodeList) {
-        val listener = object : Player.Listener {
-            override fun onPlaybackStateChanged(state: Int) {
-                isBuffering = state == Player.STATE_BUFFERING
-                if (state == Player.STATE_READY) {
-                    errorRetryCount = 0
-                    playerErrorMessage = null
-                    val realDuration = exoPlayer.duration
-                    if (realDuration > 0L && !isStreamMedia) {
-                        savePlayerDuration(context, currentVideo.path, realDuration)
-                    }
-                    // "Disable subtitles when audio matches preferred
-                    // language" — checked once per video (guarded by
-                    // audioLanguageCheckedForPath) right when tracks first
-                    // become available, so it sets the DEFAULT state rather
-                    // than fighting a choice the person makes afterward.
-                    if (coreUi.behaviorPrefs.disableWhenAudioMatchesPreferred && audioLanguageCheckedForPath != currentVideo.path) {
-                        audioLanguageCheckedForPath = currentVideo.path
-                        val audioLang = exoPlayer.currentTracks.groups
-                            .firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
-                            ?.let { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { idx -> g.getTrackFormat(idx).language } }
-                        val preferred = coreUi.behaviorPrefs.preferredLanguages.firstOrNull()
-                        if (audioLang != null && preferred != null && audioLang.take(2).equals(preferred.take(2), ignoreCase = true)) {
-                            coreUi.subtitlesEnabled = false
-                            trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
-                        }
-                    }
-                }
-                if (state == Player.STATE_ENDED) {
-                    isVideoEnded = true
-                    if (autoPlayEnabled && episodeList.isNotEmpty()) {
-                        val idx = episodeList.indexOfFirst { it.video.path == currentVideo.path }
-                        val next = episodeList.getOrNull(idx + 1)
-                        if (next != null) {
-                            if (currentMediaType.equals("tv", ignoreCase = true)) {
-                                pendingNextEpisode = next; nextEpisodeCountdown = 15
-                                showNextEpisodeOverlay = true; showControls = true; showTopBar = true
-                            } else {
-                                currentMediaType = next.type; currentVideo = next.video; onPlayNext(next)
-                            }
-                        }
-                    }
-                    showControls = true; showTopBar = true
-                }
-            }
-            override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
-
-            override fun onPlayerError(error: PlaybackException) {
-                val posAtError = exoPlayer.currentPosition.coerceAtLeast(0L)
-                if (isTransientPlaybackError(error) && errorRetryCount < 2) {
-                    errorRetryCount++
-                    scope.launch {
-                        delay(1000L * errorRetryCount)
-                        playCurrentVideoWithSubtitle(subtitleUri = trackUi.originalUri, resumePosition = posAtError, isOriginalSubtitle = false)
-                    }
-                } else {
-                    playerErrorMessage = friendlyPlaybackError(error)
-                    isPlaying = false
-                }
-            }
-        }
-        exoPlayer.addListener(listener)
-        onDispose { exoPlayer.removeListener(listener) }
-    }
+    PlayerEventListener(
+        context = context,
+        scope = scope,
+        player = exoPlayer,
+        trackSelector = trackSelector,
+        currentVideoPath = currentVideo.path,
+        currentMediaType = currentMediaType,
+        isStreamMedia = isStreamMedia,
+        episodeList = episodeList,
+        autoPlayEnabled = autoPlayEnabled,
+        errorRetryCount = errorRetryCount,
+        coreUi = coreUi,
+        trackUi = trackUi,
+        audioLanguageCheckedForPath = audioLanguageCheckedForPath,
+        onAudioLanguageCheckedForPathChanged = { audioLanguageCheckedForPath = it },
+        onBufferingChanged = { isBuffering = it },
+        onErrorRetryCountChanged = { errorRetryCount = it },
+        onPlayerErrorMessageChanged = { playerErrorMessage = it },
+        onVideoEndedChanged = { isVideoEnded = it },
+        onPlayingChanged = { isPlaying = it },
+        onQueueNextEpisode = { next ->
+            pendingNextEpisode = next
+            nextEpisodeCountdown = 15
+            showNextEpisodeOverlay = true
+            showControls = true
+            showTopBar = true
+        },
+        onAdvanceImmediately = { next ->
+            currentMediaType = next.type
+            currentVideo = next.video
+            onPlayNext(next)
+        },
+        onShowControls = {
+            showControls = true
+            showTopBar = true
+        },
+        onRetryPlayback = { subtitleUri, resumePosition ->
+            playCurrentVideoWithSubtitle(
+                subtitleUri = subtitleUri,
+                resumePosition = resumePosition,
+                isOriginalSubtitle = false,
+            )
+        },
+    )
 
     PlayerTimelineEffects(
         context = context,
