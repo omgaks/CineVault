@@ -1,0 +1,2351 @@
+package com.sole.cinevault
+
+import com.sole.cinevault.library.*
+import com.sole.cinevault.smb.*
+import com.sole.cinevault.glasses.rememberExternalDisplayState as rememberGlassesDisplayState
+import com.sole.cinevault.glasses.rememberExternalVideoPresentation as rememberGlassesVideoPresentation
+
+// All subtitle-system files (search, import, sync, appearance, dual-merge,
+// providers) moved to their own package on this pass. Single wildcard
+// import used deliberately instead of ~45 explicit ones, since the
+// cross-reference check confirmed this file is the ONLY outside caller
+// into that package.
+import com.sole.cinevault.subtitles.*
+import com.sole.cinevault.segments.*
+
+import androidx.compose.ui.graphics.Brush
+import android.app.Activity
+import android.app.PendingIntent
+import android.app.PictureInPictureParams
+import android.app.RemoteAction
+import android.content.Context
+import android.content.Intent
+import android.graphics.drawable.Icon as AndroidIcon
+import android.media.AudioManager
+import android.util.TypedValue
+import android.net.Uri
+import android.os.Build
+import android.util.Rational
+import android.view.WindowManager
+import android.widget.Toast
+import android.graphics.Color as AndroidColor
+import android.graphics.Bitmap
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.IntentSenderRequest
+import androidx.annotation.OptIn
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.BrightnessHigh
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.LockOpen
+import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.Audiotrack
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ClosedCaption
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Tv
+import androidx.compose.material.icons.rounded.AllInclusive
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.Replay
+import androidx.compose.material.icons.rounded.Replay10
+import androidx.compose.material.icons.rounded.Forward10
+import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.CaptionStyleCompat
+import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
+import com.sole.cinevault.ui.theme.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+@Composable
+fun VideoPlayerScreen(
+    video: VideoFile,
+    episodeList: List<VideoWithMetadata>,
+    mediaType: String = "local",
+    onBack: () -> Unit,
+    onPlayNext: (VideoWithMetadata) -> Unit
+) {
+    val context = LocalContext.current
+    val activity = context.findCineActivity()
+    val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+
+    // ── Dedicated glasses mode (Phase 1) ───────────────────────────────────
+    // Detects a USB-C DisplayPort Alt Mode external display (RayNeo glasses
+    // or similar) and locks the player to landscape while it's connected —
+    // these devices render a fixed-aspect virtual screen, so letting the
+    // player sit in portrait while one's attached just produces an
+    // unnecessarily letterboxed picture. Also auto-dims the tablet's own
+    // brightness to near-zero while connected — previously this had to be
+    // done manually every time (the tablet screen is just mirroring the
+    // glasses' output, no need for it to be bright too), while keeping the
+    // screen genuinely ON and touchable (not locked), so it still works as
+    // a remote/control surface — the tablet only ever LOOKS off. A real
+    // Presentation now supplies the glasses with a distinct video,
+    // subtitle, control and pointer surface.
+    // Reverts automatically on disconnect or when leaving the player.
+    val externalDisplay by rememberGlassesDisplayState()
+    var showGlassesConnectedHint by remember { mutableStateOf(false) }
+    LaunchedEffect(externalDisplay.isConnected) {
+        if (externalDisplay.isConnected) {
+            // setRequestedOrientation() throws IllegalStateException if the
+            // Activity isn't in a plain fullscreen state at that moment
+            // (split-screen, floating/free-form window, or a PiP
+            // transition — all real states HyperOS's tablet multitasking
+            // can put an app into). An orientation lock is a nice-to-have,
+            // never something that should be allowed to crash the app.
+            try { activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE } catch (_: Exception) {}
+            activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = 0.02f }
+            showGlassesConnectedHint = true
+            delay(2200)
+            showGlassesConnectedHint = false
+        } else {
+            try { activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR } catch (_: Exception) {}
+            activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
+        }
+    }
+
+    var audioSyncMs by remember { mutableIntStateOf(0) }
+    LaunchedEffect(audioSyncMs) { AudioSyncHolder.offsetUs = audioSyncMs * 1000L }
+
+    var audioIconX by remember { mutableFloatStateOf(0f) }
+    var subIconX by remember { mutableFloatStateOf(0f) }
+    var clusterHeightPx by remember { mutableFloatStateOf(0f) }
+
+    var currentVideo by remember { mutableStateOf(video) }
+    var currentMediaType by remember { mutableStateOf(mediaType) }
+    var showControls by remember { mutableStateOf(true) }
+    var controlsLocked by remember { mutableStateOf(false) }
+    // Separate from showControls specifically for the locked case — see
+    // the AnimatedVisibility/absorber wiring near the lock button below
+    // for the full reasoning.
+    var lockButtonVisibleWhileLocked by remember { mutableStateOf(true) }
+    var showTopBar by remember { mutableStateOf(true) }
+    var isDraggingSeekbar by remember { mutableStateOf(false) }
+
+    // FIX: was hardcoded to 70 regardless of the device's actual current
+    // volume, meaning CineVault silently overrode whatever level the
+    // person had already set the moment the player opened. Reads the
+    // real starting level instead. A separate, local system-service
+    // lookup is used here rather than the audioManager val declared
+    // later in this function — this runs before that point in
+    // composition, and Kotlin doesn't allow referencing a local variable
+    // before its declaration.
+    val initialMusicVolumePercent = remember {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val maximum = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        ((am.getStreamVolume(AudioManager.STREAM_MUSIC) * 100f) / maximum).toInt()
+    }
+    var volumePercent by remember { mutableIntStateOf(initialMusicVolumePercent) }
+    var brightnessPercent by remember { mutableIntStateOf(90) }
+    var showVolumeCircle by remember { mutableStateOf(false) }
+    var showBrightnessCircle by remember { mutableStateOf(false) }
+    var brightnessGestureKey by remember { mutableIntStateOf(0) }
+    var volumeGestureKey by remember { mutableIntStateOf(0) }
+
+    var showAudioSelector by remember { mutableStateOf(false) }
+    val trackUi = remember { SubtitleTrackSelectionState() }
+    val searchUi = remember { SubtitleAcquisitionUiState() }
+
+    var showSpeedMenu by remember { mutableStateOf(false) }
+    var showSleepMenu by remember { mutableStateOf(false) }
+    var showSrtBrowser by remember { mutableStateOf(false) }
+    var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
+
+    var sleepTimerMinutes by remember { mutableIntStateOf(0) }
+    var sleepTimerRemainingMs by remember { mutableLongStateOf(0L) }
+    var sleepTimerActive by remember { mutableStateOf(false) }
+
+    val appearanceUi = remember { SubtitleAppearanceUiState() }
+    val coreUi = remember { SubtitleCoreUiState(context) }
+
+    val driftUi = remember { DriftCorrectionState() }
+    val studioUi = remember { SubtitleStudioUiState() }
+    var autoSyncStatus by remember { mutableStateOf<AutoSyncStatus>(AutoSyncStatus.Idle) }
+    val autoSubtitleFetch = remember { AutoSubtitleFetchState() }
+    var menuTouchKey by remember { mutableIntStateOf(0) }
+
+    // The "true" primary subtitle source — distinct from trackUi.originalUri
+    // (which sync/drift build FROM, and which becomes the DUAL-MERGED file
+    // whenever dual mode is on). Kept separately so turning dual mode back
+    // off can revert to the actual primary instead of getting stuck on a
+    // merged file with nothing to un-merge from.
+    var audioLanguageCheckedForPath by remember { mutableStateOf<String?>(null) }
+    val dualUi = remember { DualSubtitleState().apply { secondaryLanguage = coreUi.behaviorPrefs.dualSecondaryLanguage } }
+    // Secondary line color for dual subtitles. Injected as an HTML
+    // <font color> tag directly into the merged SRT text (see
+    // mergeDualSubtitles) rather than sourced from SubtitleAppearance,
+    // since that governs the PRIMARY line's native CaptionStyleCompat
+    // styling — a fundamentally different rendering path that can't
+    // apply per-line. Chosen for reliable contrast against every built-in
+    // appearance preset's foreground color (CineVault/Netflix/Cinema/
+    // Minimal are white or near-white; HighContrast/ClassicYellow are
+    // pure yellow) — a saturated cyan reads clearly against both without
+    // being mistaken for either. Not genuinely content-aware (true
+    // auto-contrast against arbitrary video would need real-time color
+    // sampling, a much bigger feature) — this is a safer general-purpose
+    // default, not a guarantee for every possible background.
+    val dualSecondaryColorHex = "#00E5FF"
+
+    // Which subtitle source/track is actually active right now — the single
+    // source of truth for both the checkmark in SubtitleTrackSelectorSheet
+    // AND the status line under the quick menu's header. Built with the
+    // exact same key format SubtitleTrackChoice uses (see
+    // SubtitleTrackSelector.kt) so the two files can never silently
+    // disagree about what "selected" means.
+
+    var position by remember { mutableLongStateOf(0L) }
+    var duration by remember { mutableLongStateOf(1L) }
+    var isPlaying by remember { mutableStateOf(true) }
+    var isVideoEnded by remember { mutableStateOf(false) }
+    var pendingNextEpisode by remember { mutableStateOf<VideoWithMetadata?>(null) }
+    var nextEpisodeCountdown by remember { mutableIntStateOf(0) }
+    var showNextEpisodeOverlay by remember { mutableStateOf(false) }
+    var nextEpisodeDismissed by remember { mutableStateOf(false) }
+    var autoPlayEnabled by remember { mutableStateOf(true) }
+    val smartSegmentRepository = remember { SmartSegmentRepository(context.applicationContext) }
+    var smartSegmentResult by remember { mutableStateOf(SmartSegmentResult()) }
+
+    var isZoomMode by remember { mutableStateOf(false) }
+    // FIX (E2): pinch-to-zoom, separate from isZoomMode above — that's a
+    // binary FIT/CROP toggle (double-tap), this is continuous gesture-
+    // driven scale layered on top of whichever base mode is active, same
+    // as how a photo viewer lets you pinch-zoom regardless of its own
+    // fit setting.
+    var videoScale by remember { mutableStateOf(1f) }
+    var videoOffsetX by remember { mutableStateOf(0f) }
+    var videoOffsetY by remember { mutableStateOf(0f) }
+    var showSeekPreview by remember { mutableStateOf(false) }
+    var previewPosition by remember { mutableLongStateOf(0L) }
+    var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var isSeekPreviewLarge by remember { mutableStateOf(false) }
+    var previewFrames by remember { mutableStateOf<List<VideoThumbnailHelper.PreviewFrame>>(emptyList()) }
+    // Bumping this forces the preview-generation LaunchedEffect below to
+    // rerun even when currentVideo.path/duration haven't changed — needed
+    // because Auto-Sync deliberately clears previewFrames/previewBitmap
+    // mid-playback (see runAutoSync) to free memory before analysis, and
+    // that effect's own keys wouldn't otherwise notice anything changed.
+    var previewReloadKey by remember { mutableIntStateOf(0) }
+    var edgeSwipeHint by remember { mutableStateOf("") }
+
+    var isBuffering by remember { mutableStateOf(false) }
+    var showBufferingSpinner by remember { mutableStateOf(false) }
+    var stuckBufferingHint by remember { mutableStateOf(false) }
+    var playerErrorMessage by remember { mutableStateOf<String?>(null) }
+    var errorRetryCount by remember { mutableIntStateOf(0) }
+
+    var droppedFrameNudgeCount by remember { mutableIntStateOf(0) }
+    var lastNudgeAtMs by remember { mutableLongStateOf(0L) }
+
+    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+
+    val playerRuntime = rememberPlayerRuntime(
+        context = context,
+        preferredLanguage = coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en",
+        autoEnableEmbeddedSubtitles = coreUi.behaviorPrefs.autoEnableEmbeddedSubtitles
+    )
+    val trackSelector = playerRuntime.trackSelector
+    val exoPlayer = playerRuntime.player
+
+    // This is the real secondary-display surface. Presentation creation is
+    // tied to the player + physical display ID, so hot-unplug disposes only
+    // the external surface and the local PlayerView below immediately takes
+    // ownership of the same ExoPlayer again at the same playback position.
+    val externalRatingText = remember(currentVideo.path, episodeList) {
+        buildExternalRatingText(currentVideo.path, episodeList)
+    }
+    var localPlayerView by remember { mutableStateOf<PlayerView?>(null) }
+    var glassesSessionDisabled by remember(externalDisplay.displayId) { mutableStateOf(false) }
+    val activeExternalDisplay = externalDisplay
+    val externalPresentation by rememberGlassesVideoPresentation(
+        player = exoPlayer,
+        externalDisplay = activeExternalDisplay,
+        title = if (currentMediaType.equals("stream", ignoreCase = true)) currentVideo.name else cleanVideoTitle(currentVideo.path),
+        ratingText = externalRatingText,
+        onBack = onBack
+    )
+    val externalPlayerView = if (glassesSessionDisabled) null else externalPresentation?.playerView
+
+    LaunchedEffect(externalPlayerView, localPlayerView) {
+        val localView = localPlayerView
+        val externalView = externalPlayerView
+        when {
+            externalView != null && externalView.player !== exoPlayer -> {
+                PlayerView.switchTargetView(exoPlayer, localView, externalView)
+                studioUi.playerView = externalView
+            }
+            externalView == null && localView != null && localView.player !== exoPlayer -> {
+                localView.player = exoPlayer
+                studioUi.playerView = localView
+            }
+        }
+    }
+
+    val canDownloadExternalSubtitles = currentMediaType.equals("movie", ignoreCase = true) || currentMediaType.equals("tv", ignoreCase = true) || currentMediaType.equals("restricted", ignoreCase = true)
+    val isCurrentTvShow = currentMediaType.equals("tv", ignoreCase = true)
+    val isStreamMedia = currentMediaType.equals("stream", ignoreCase = true)
+    val isRestrictedFolderMedia = folderIdFromRestrictedMarker(currentVideo.folderPath) != null
+
+    // Closing the player while something is actively playing now enters
+    // Picture-in-Picture instead of just tearing down the full-screen view
+    // — previously "closing" left the video with no visible window at all
+    // while the foreground service kept it playing audio-only in the
+    // background, which read as the app losing track of what was
+    // happening. Falls back to a normal exit when paused, when PiP isn't
+    // supported (pre-API 26), or if entering PiP throws for any device-
+    // specific reason (same defensive pattern already used elsewhere on
+    // this screen for orientation-lock calls).
+    //
+    // NOT wired to system back anymore (see removed BackHandler below) —
+    // BackHandler fires on EVERY back action, including left-edge swipe
+    // and the hardware back button, which are legitimate "go to the
+    // previous screen" gestures and should never trigger PiP. Only
+    // Home/Recents/task-switch (Activity.onUserLeaveHint(), which lives in
+    // MainActivity.kt, not this file) should ever trigger PiP-on-close.
+    // Left unused here until that's wired up — kept as a plain function so
+    // it's ready to call from the right place once MainActivity exposes
+    // that hook, instead of rebuilding this logic from scratch then.
+    fun handleExitRequest() {
+        if (isPlaying && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val actions = buildPipActions(context, exoPlayer.isPlaying)
+                val entered = activity?.enterPictureInPictureMode(
+                    PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).setActions(actions).build()
+                )
+                if (entered == true) return
+            } catch (_: Exception) {}
+        }
+        onBack()
+    }
+
+    fun closeAllMenus() {
+        showAudioSelector = false
+        coreUi.showSettings = false
+        trackUi.showSelector = false
+        searchUi.showSearch = false
+        driftUi.showDialog = false
+        coreUi.showAppearanceStudio = false
+        studioUi.showStudio = false
+        showSpeedMenu = false
+        showSleepMenu = false
+        showSrtBrowser = false
+        searchUi.showFallback = false
+        searchUi.showEmbeddedBrowser = false
+        searchUi.pendingImportCandidates = null
+    }
+
+    var pendingSrtUri by remember { mutableStateOf<Uri?>(null) }
+
+    // ── Delete confirmation + undo (Security & Privacy checklist item 3) ──
+    // pendingDeletePaths holds files that have been "deleted" from the
+    // person's point of view (removed from every list immediately) but
+    // whose actual disk/MediaStore deletion is still delayed behind the
+    // undo window below. pendingDeleteConfirmFile drives the CineVault-
+    // styled warning dialog that always appears BEFORE that window starts
+    // — this is a full replacement for the plain white system AlertDialog
+    // that used to front this flow. Note the OS-level consent prompt on
+    // API 30+ for files the app doesn't own is a system dialog Android
+    // itself renders — that one can't be reskinned, only pre-empted with
+    // our own warning first, which is what this does.
+    val pendingDeletePaths = remember { mutableStateListOf<String>() }
+    var pendingDeleteConfirmFile by remember { mutableStateOf<java.io.File?>(null) }
+    var pendingConsentFile by remember { mutableStateOf<java.io.File?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    val deleteConsentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        val consentedFile = pendingConsentFile
+        if (result.resultCode != Activity.RESULT_OK) {
+            // Person backed out of the OS consent prompt — the file was
+            // never actually deleted, so bring it back into every list
+            // instead of leaving it permanently hidden.
+            if (consentedFile != null) pendingDeletePaths.remove(consentedFile.absolutePath)
+            Toast.makeText(context, "Delete cancelled", Toast.LENGTH_SHORT).show()
+        }
+        pendingConsentFile = null
+    }
+
+    // Keep deletion wired to the coordinator API that exists in the
+    // repository this replacement file targets. Active/dual-track detach
+    // handling requires coordinated changes in the subtitle layer and is
+    // intentionally left pending for that separate update.
+    // subtitleDeletionCoordinator is declared further below, after
+    // playCurrentVideoWithSubtitle exists — its detach/restore callbacks
+    // need to call it directly.
+
+    LaunchedEffect(sleepTimerActive, sleepTimerRemainingMs) {
+        if (sleepTimerActive && sleepTimerRemainingMs > 0) {
+            delay(1000)
+            sleepTimerRemainingMs -= 1000
+            if (sleepTimerRemainingMs <= 0) {
+                sleepTimerActive = false
+                sleepTimerRemainingMs = 0
+                exoPlayer.pause()
+                Toast.makeText(context, "Sleep timer — playback paused", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun setPlaybackSpeed(speed: Float) {
+        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        playbackSpeed = speed
+        exoPlayer.playbackParameters = PlaybackParameters(speed)
+        showSpeedMenu = false; showControls = true
+        Toast.makeText(context, "${speed}x speed", Toast.LENGTH_SHORT).show()
+    }
+
+    fun setSleepTimer(minutes: Int) {
+        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        sleepTimerMinutes = minutes
+        if (minutes == 0) {
+            sleepTimerActive = false; sleepTimerRemainingMs = 0
+            Toast.makeText(context, "Sleep timer off", Toast.LENGTH_SHORT).show()
+        } else {
+            sleepTimerRemainingMs = minutes * 60 * 1000L
+            sleepTimerActive = true
+            Toast.makeText(context, "Sleep timer: ${minutes}min", Toast.LENGTH_SHORT).show()
+        }
+        showSleepMenu = false; showControls = true
+    }
+
+    // FIX: these three functions used to be plain local functions defined
+    // right here — now orchestration glue calling into
+    // PlaybackNavigationCoordinator (see that file for the full
+    // reasoning). Every one of the 13+ call sites elsewhere in this file
+    // continues to work unchanged.
+    val playbackNavigationCoordinator = remember(exoPlayer) {
+        PlaybackNavigationCoordinator(
+            context = context,
+            scope = scope,
+            exoPlayer = exoPlayer,
+            trackUi = trackUi,
+            coreUi = coreUi,
+            getEpisodeList = { episodeList },
+            getCurrentVideo = { currentVideo },
+            getIsStreamMedia = { isStreamMedia },
+            getPlaybackSpeed = { playbackSpeed },
+            setCurrentVideo = { currentVideo = it },
+            setCurrentMediaType = { currentMediaType = it },
+            setEdgeSwipeHint = { edgeSwipeHint = it },
+            setPlayerErrorMessage = { playerErrorMessage = it },
+            setIsVideoEnded = { isVideoEnded = it },
+            onPlayNext = onPlayNext
+        )
+    }
+    fun playPrevious() = playbackNavigationCoordinator.playPrevious()
+    fun playNext() = playbackNavigationCoordinator.playNext()
+    fun playCurrentVideoWithSubtitle(subtitleUri: Uri? = null, resumePosition: Long = 0L, isOriginalSubtitle: Boolean = true) =
+        playbackNavigationCoordinator.playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
+
+    // FIX: deleting the currently-active subtitle used to leave it
+    // playing from memory even after the file was gone — Media3 keeps
+    // rendering whatever cues it already parsed until something
+    // explicitly tells the player to drop them. onDeleteRequested fires
+    // the moment deletion is requested (before the file is actually
+    // gone, so Undo can cleanly restore it), detaching the subtitle
+    // immediately and clearing every piece of "this is the active
+    // track" state. onDeleteUndone reverses all of it if Undo is tapped
+    // in time, or if the underlying file deletion itself fails.
+    var detachedSubtitleForUndo by remember { mutableStateOf<java.io.File?>(null) }
+    val subtitleDeletionCoordinator = remember(exoPlayer, playbackNavigationCoordinator) {
+        SubtitleDeletionCoordinator(
+            context = context,
+            scope = scope,
+            pendingDeletePaths = pendingDeletePaths,
+            snackbarHostState = snackbarHostState,
+            deleteConsentLauncher = deleteConsentLauncher,
+            setPendingConsentFile = { pendingConsentFile = it },
+            setPendingDeleteConfirmFile = { pendingDeleteConfirmFile = it },
+            onDeleteRequested = { file ->
+                val isActive = trackUi.selectedKey == "local:${file.absolutePath}" ||
+                    trackUi.selectedKey == "downloaded" || trackUi.originalUri?.path == file.absolutePath ||
+                    trackUi.primaryUri?.path == file.absolutePath
+                if (isActive) {
+                    detachedSubtitleForUndo = file
+                    val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+                    playCurrentVideoWithSubtitle(null, resumeAt, false)
+                    trackUi.primaryUri = null; trackUi.originalUri = null
+                    trackUi.selectedKey = "off"; trackUi.selectedLabel = ""; trackUi.selectedSource = ""
+                    coreUi.subtitlesEnabled = false
+                }
+            },
+            onDeleteUndone = { file ->
+                if (detachedSubtitleForUndo?.absolutePath == file.absolutePath && file.exists()) {
+                    val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+                    coreUi.subtitlesEnabled = true
+                    trackUi.primaryUri = Uri.fromFile(file); trackUi.originalUri = Uri.fromFile(file)
+                    trackUi.selectedKey = "local:${file.absolutePath}"
+                    trackUi.selectedLabel = file.nameWithoutExtension; trackUi.selectedSource = "Local"
+                    playCurrentVideoWithSubtitle(Uri.fromFile(file), resumeAt, true)
+                }
+                detachedSubtitleForUndo = null
+            }
+        )
+    }
+    fun deleteWithUndo(file: java.io.File) = subtitleDeletionCoordinator.deleteWithUndo(file)
+    fun requestDeleteSubtitle(file: java.io.File) = subtitleDeletionCoordinator.requestDeleteSubtitle(file)
+
+    // Validated handoff for both the website-fallback flow and the
+    // (now-validated) local file picker below — reuses the exact same
+    // cleaning + playback pipeline every other subtitle source already
+    // goes through, so this isn't a parallel/divergent code path.
+    // FIX: these three functions used to be plain local functions defined
+    // right here — now orchestration glue calling into
+    // SubtitleSearchCoordinator (see that file for the full reasoning).
+    // Every call site elsewhere in this file continues to work unchanged.
+    val subtitleSearchCoordinator = remember(exoPlayer, trackSelector) {
+        SubtitleSearchCoordinator(
+            context = context,
+            scope = scope,
+            exoPlayer = exoPlayer,
+            trackSelector = trackSelector,
+            coreUi = coreUi,
+            trackUi = trackUi,
+            searchUi = searchUi,
+            studioUi = studioUi,
+            getCurrentVideoPath = { currentVideo.path },
+            setShowControls = { showControls = it },
+            setPendingSrtUri = { pendingSrtUri = it },
+            playSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle ->
+                playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
+            }
+        )
+    }
+    fun applyImportedWebsiteSubtitle(imported: ImportedSubtitle) = subtitleSearchCoordinator.applyImportedWebsiteSubtitle(imported)
+
+    // FIX: fresh picks from the system file picker now go through
+    // SubtitleImportEngine's real content validation (rejects HTML/binary,
+    // ranks candidates inside a ZIP) instead of the old flow, which
+    // assumed any picked file was already a trustworthy subtitle. Re-
+    // selecting an ALREADY-KNOWN local file (nearby-discovered or
+    // previously imported) still goes through the simpler pendingSrtUri
+    // path elsewhere in this file — that file doesn't need re-validating.
+    val srtPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
+        scope.launch {
+            val result = context.contentResolver.openInputStream(uri)?.use { stream ->
+                SubtitleImportEngine.import(
+                    context = context,
+                    input = stream,
+                    suggestedName = uri.lastPathSegment,
+                    releaseHint = currentVideo.path,
+                    preferredLanguage = coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en"
+                )
+            } ?: SubtitleImportResult.Failure("CineVault couldn't open that file.")
+
+            when (result) {
+                is SubtitleImportResult.Success -> {
+                    if (result.alternatives.isEmpty()) {
+                        applyImportedWebsiteSubtitle(result.selected)
+                    } else {
+                        searchUi.pendingImportCandidates = result
+                    }
+                }
+                is SubtitleImportResult.Failure -> Toast.makeText(context, result.userMessage, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    // FIX: findHttpStatusDetail/friendlyPlaybackError/isTransientPlaybackError
+    // used to be defined right here — now plain top-level functions in
+    // PlaybackErrorFormatting.kt (see that file for the full reasoning).
+    // Same package (com.sole.cinevault), so every call site below still
+    // resolves with no changes at all — not even a wrapper function was
+    // needed here, unlike the earlier slices, since these never touched
+    // any state to begin with.
+
+    fun performSubtitleSearch(query: String, seasonText: String, episodeText: String, language: String = coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en") =
+        subtitleSearchCoordinator.performSubtitleSearch(query, seasonText, episodeText, language)
+    fun applySearchResult(result: SubtitleSearchResult, alsoPlay: Boolean) = subtitleSearchCoordinator.applySearchResult(result, alsoPlay)
+
+
+
+    LaunchedEffect(currentVideo.path) {
+        val savedPosition = if (isStreamMedia) 0L else loadPlaybackPosition(context, currentVideo.path)
+        position = savedPosition; duration = 1L; showControls = true; showTopBar = true
+        showAudioSelector = false; coreUi.showSettings = false; trackUi.showSelector = false; searchUi.showSearch = false; showSpeedMenu = false; showSleepMenu = false; showSrtBrowser = false
+        searchUi.showFallback = false; searchUi.showEmbeddedBrowser = false; searchUi.pendingImportCandidates = null
+        searchUi.searchResults = emptyList(); searchUi.searchStatus = ""; searchUi.searchLoading = false
+        pendingNextEpisode = null; nextEpisodeCountdown = 0; showNextEpisodeOverlay = false
+        nextEpisodeDismissed = false
+        smartSegmentResult = SmartSegmentResult()
+        previewBitmap = null; previewFrames = emptyList(); isVideoEnded = false
+        playerErrorMessage = null; errorRetryCount = 0; stuckBufferingHint = false
+        trackUi.originalUri = null; trackUi.appliedOffsetMs = 0L; coreUi.syncOffset = 0.0f
+        driftUi.scale = 1.0f; driftUi.appliedScale = 1.0f; driftUi.pointA = null; driftUi.pointB = null
+        coreUi.dialogueSyncArmed = false; coreUi.dialogueSyncReferenceMs = null; driftUi.showDialog = false
+        dualUi.enabled = false; dualUi.statusText = ""; trackUi.primaryUri = null; trackUi.primaryLanguage = null; audioLanguageCheckedForPath = null
+        appearanceUi.preserveOriginalStyling = false
+        studioUi.gestureFeedback = ""
+        autoSyncStatus = AutoSyncStatus.Idle
+        trackUi.selectedKey = null; trackUi.selectedLabel = ""; trackUi.selectedSource = ""
+        droppedFrameNudgeCount = 0; lastNudgeAtMs = 0L
+        if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
+        if (isRestrictedFolderMedia) updateRestrictedFolderLastPlayed(context, currentVideo.path, currentVideo.folderPath)
+
+        // FIX: local-file match is now checked BEFORE the cached network
+        // subtitle, not after — previously an old cached OpenSubtitles
+        // download always won even when a local .srt sitting right next to
+        // the video (almost always more release-accurate) was available.
+        // A local match is also generally free/instant to check, so trying
+        // it first doesn't cost anything even when it doesn't pan out.
+        val localMatch = if (!isStreamMedia && coreUi.behaviorPrefs.autoLoadMatchingLocalFile) {
+            withContext(Dispatchers.IO) { findBestMatchingLocalSubtitle(currentVideo.path, coreUi.behaviorPrefs.preferredLanguages) }
+        } else null
+
+        val cachedSubtitle = if (localMatch == null && !isStreamMedia && canDownloadExternalSubtitles) {
+            withContext(Dispatchers.IO) { OpenSubtitlesClient.findCachedSubtitle(context, currentVideo.path, coreUi.behaviorPrefs.preferredLanguages) }
+        } else null
+
+        when {
+            localMatch != null -> {
+                coreUi.subtitlesEnabled = true
+                trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
+                val localUri = Uri.fromFile(localMatch.file)
+                val cleanedLocalUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, localUri, coreUi.cleaningOptions) } ?: localUri
+                trackUi.primaryUri = cleanedLocalUri
+                trackUi.primaryLanguage = localMatch.languageCode
+                playCurrentVideoWithSubtitle(cleanedLocalUri, savedPosition)
+                autoSubtitleFetch.attemptedForPath = currentVideo.path
+                trackUi.selectedKey = "local:${localMatch.file.absolutePath}"
+                trackUi.selectedLabel = localMatch.file.name; trackUi.selectedSource = "Local file"
+            }
+            cachedSubtitle != null -> {
+                coreUi.subtitlesEnabled = true
+                trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
+                val cleanedCachedUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, cachedSubtitle.uri, coreUi.cleaningOptions) } ?: cachedSubtitle.uri
+                trackUi.primaryUri = cleanedCachedUri
+                trackUi.primaryLanguage = cachedSubtitle.language
+                playCurrentVideoWithSubtitle(cleanedCachedUri, savedPosition)
+                autoSubtitleFetch.attemptedForPath = currentVideo.path
+                trackUi.selectedKey = "downloaded"
+                trackUi.selectedLabel = friendlyLanguageName(cachedSubtitle.language); trackUi.selectedSource = "OpenSubtitles"
+            }
+            else -> {
+                playCurrentVideoWithSubtitle(resumePosition = savedPosition)
+            }
+        }
+
+        if (!isStreamMedia && canDownloadExternalSubtitles && !isRestrictedFolderMedia &&
+            coreUi.behaviorPrefs.autoDownloadWhenMissing && cachedSubtitle == null && localMatch == null &&
+            autoSubtitleFetch.attemptedForPath != currentVideo.path
+        ) {
+            autoSubtitleFetch.attemptedForPath = currentVideo.path
+            scope.launch {
+                delay(1200); if (autoSubtitleFetch.downloadInProgress) return@launch
+                autoSubtitleFetch.downloadInProgress = true
+                autoSubtitleFetch.status = "Searching subtitles..."
+                try {
+                    val result = OpenSubtitlesClient.downloadBestSubtitleDetailed(context, currentVideo.path, coreUi.behaviorPrefs.preferredLanguages)
+                    if (result is SubtitleDownloadResult.Success) {
+                        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+                        coreUi.subtitlesEnabled = true
+                        trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
+                        autoSubtitleFetch.status = "Subtitle loaded"
+                        val cleanedResultUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, result.uri, coreUi.cleaningOptions) } ?: result.uri
+                        trackUi.primaryUri = cleanedResultUri
+                        trackUi.primaryLanguage = SubtitleLanguageRegistry.normalize(result.language)
+                        playCurrentVideoWithSubtitle(cleanedResultUri, resumeAt)
+                        trackUi.selectedKey = "downloaded"
+                        trackUi.selectedLabel = friendlyLanguageName(result.language); trackUi.selectedSource = "OpenSubtitles"
+                        delay(1400); autoSubtitleFetch.status = ""
+                    } else {
+                        autoSubtitleFetch.status = result.summary(); delay(3500); autoSubtitleFetch.status = ""
+                    }
+                } catch (e: Exception) {
+                    autoSubtitleFetch.status = "Subtitle failed: ${e.message ?: e.javaClass.simpleName}"; delay(3500); autoSubtitleFetch.status = ""
+                }
+                finally { autoSubtitleFetch.downloadInProgress = false }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        CineVaultPlayerHolder.currentPlayer = exoPlayer
+        // Bridges hardware media-button next/previous (headset, Bluetooth)
+        // to this screen's own episode-switching logic — see
+        // CineVaultForwardingPlayer.kt for why a direct player command
+        // doesn't work here.
+        CineVaultPlayerHolder.onNextRequested = { playNext() }
+        CineVaultPlayerHolder.onPreviousRequested = { playPrevious() }
+        // Starts (or re-attaches) the foreground playback service — this is
+        // what keeps playback alive and gives lock-screen media controls
+        // once the screen locks or the app backgrounds, instead of the
+        // previous behavior where MainActivity.onStop() unconditionally
+        // paused playback the moment the screen turned off. The service
+        // reads CineVaultPlayerHolder.currentPlayer itself (just set above)
+        // rather than the player being handed to it directly.
+        androidx.core.content.ContextCompat.startForegroundService(
+            context, Intent(context, CineVaultPlaybackService::class.java)
+        )
+        brightnessPercent = try {
+            val raw = android.provider.Settings.System.getInt(context.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS)
+            ((raw / 255f) * 100f).toInt().coerceIn(5, 100)
+        } catch (_: Exception) { 70 }
+        activity?.enterImmersiveModeForPlayer()
+    }
+
+    DisposableEffect(exoPlayer, currentVideo.path, episodeList) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                isBuffering = state == Player.STATE_BUFFERING
+                if (state == Player.STATE_READY) {
+                    errorRetryCount = 0
+                    playerErrorMessage = null
+                    val realDuration = exoPlayer.duration
+                    if (realDuration > 0L && !isStreamMedia) {
+                        savePlayerDuration(context, currentVideo.path, realDuration)
+                    }
+                    // "Disable subtitles when audio matches preferred
+                    // language" — checked once per video (guarded by
+                    // audioLanguageCheckedForPath) right when tracks first
+                    // become available, so it sets the DEFAULT state rather
+                    // than fighting a choice the person makes afterward.
+                    if (coreUi.behaviorPrefs.disableWhenAudioMatchesPreferred && audioLanguageCheckedForPath != currentVideo.path) {
+                        audioLanguageCheckedForPath = currentVideo.path
+                        val audioLang = exoPlayer.currentTracks.groups
+                            .firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
+                            ?.let { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { idx -> g.getTrackFormat(idx).language } }
+                        val preferred = coreUi.behaviorPrefs.preferredLanguages.firstOrNull()
+                        if (audioLang != null && preferred != null && audioLang.take(2).equals(preferred.take(2), ignoreCase = true)) {
+                            coreUi.subtitlesEnabled = false
+                            trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
+                        }
+                    }
+                }
+                if (state == Player.STATE_ENDED) {
+                    isVideoEnded = true
+                    if (autoPlayEnabled && episodeList.isNotEmpty()) {
+                        val idx = episodeList.indexOfFirst { it.video.path == currentVideo.path }
+                        val next = episodeList.getOrNull(idx + 1)
+                        if (next != null) {
+                            if (currentMediaType.equals("tv", ignoreCase = true)) {
+                                pendingNextEpisode = next; nextEpisodeCountdown = 15
+                                showNextEpisodeOverlay = true; showControls = true; showTopBar = true
+                            } else {
+                                currentMediaType = next.type; currentVideo = next.video; onPlayNext(next)
+                            }
+                        }
+                    }
+                    showControls = true; showTopBar = true
+                }
+            }
+            override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+
+            override fun onPlayerError(error: PlaybackException) {
+                val posAtError = exoPlayer.currentPosition.coerceAtLeast(0L)
+                if (isTransientPlaybackError(error) && errorRetryCount < 2) {
+                    errorRetryCount++
+                    scope.launch {
+                        delay(1000L * errorRetryCount)
+                        playCurrentVideoWithSubtitle(subtitleUri = trackUi.originalUri, resumePosition = posAtError, isOriginalSubtitle = false)
+                    }
+                } else {
+                    playerErrorMessage = friendlyPlaybackError(error)
+                    isPlaying = false
+                }
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose { exoPlayer.removeListener(listener) }
+    }
+
+    PlayerTimelineEffects(
+        context = context,
+        player = exoPlayer,
+        videoPath = currentVideo.path,
+        isStreamMedia = isStreamMedia,
+        isDraggingSeekbar = isDraggingSeekbar,
+        isBuffering = isBuffering,
+        showSeekPreview = showSeekPreview,
+        previewPosition = previewPosition,
+        duration = duration,
+        previewReloadKey = previewReloadKey,
+        droppedFrameNudgeCount = droppedFrameNudgeCount,
+        lastNudgeAtMs = lastNudgeAtMs,
+        onPositionChanged = { position = it },
+        onDurationChanged = { duration = it },
+        onPlayingChanged = { isPlaying = it },
+        onBufferingSpinnerChanged = { showBufferingSpinner = it },
+        onStuckBufferingChanged = { stuckBufferingHint = it },
+        onDroppedFrameNudgeCountChanged = { droppedFrameNudgeCount = it },
+        onLastNudgeAtMsChanged = { lastNudgeAtMs = it },
+        onPreviewFramesChanged = { previewFrames = it },
+        onPreviewBitmapChanged = { previewBitmap = it },
+        onSeekPreviewLargeChanged = { isSeekPreviewLarge = it },
+    )
+
+    DisposableEffect(Unit) {
+        onDispose {
+            if (!isStreamMedia) savePlaybackPosition(context, currentVideo.path, exoPlayer.currentPosition.coerceAtLeast(0L))
+            exoPlayer.release()
+            AudioSyncHolder.offsetUs = 0L
+            if (CineVaultPlayerHolder.currentPlayer == exoPlayer) CineVaultPlayerHolder.currentPlayer = null
+            CineVaultPlayerHolder.onNextRequested = null
+            CineVaultPlayerHolder.onPreviousRequested = null
+            // Only reached on an actual exit from the player (Back pressed,
+            // navigated away) — NOT fired just because the screen locked or
+            // the app backgrounded, since Compose disposal and Activity
+            // onStop/onPause are different things. Safe to stop the service
+            // here since we've already cleared currentPlayer above.
+            context.stopService(Intent(context, CineVaultPlaybackService::class.java))
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
+            // This runs on every exit from the player — button, swipe, or
+            // hardware back — so if setRequestedOrientation() throws here
+            // (see comment above near the glasses-connect effect), it would
+            // crash on literally any way of leaving the player. Wrapped for
+            // the same reason.
+            try { activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED } catch (_: Exception) {}
+            activity?.exitImmersiveModeForPlayer()
+        }
+    }
+
+    PlayerPipWindowEffect(
+        activity = activity,
+        context = context,
+        isPlaying = isPlaying
+    )
+
+    // FEATURE: minimal, correct PiP — CineVault's own overlay chrome
+    // (transport controls, lock button, Auto-Sync pill) is now hidden
+    // while in PiP (see the AnimatedVisibility/if conditions gated on
+    // CineVaultPlayerHolder.isInPipMode elsewhere in this file), relying
+    // entirely on Android's own system-drawn PiP controls instead — the
+    // same standard approach most video apps use. This closes out
+    // whatever menus/Studio happened to be open the moment PiP is
+    // entered, so the window is guaranteed to show just clean video no
+    // matter what was on screen right before minimizing.
+    LaunchedEffect(CineVaultPlayerHolder.isInPipMode) {
+        if (CineVaultPlayerHolder.isInPipMode) closeAllMenus()
+    }
+
+    PlayerPipActionReceiverEffect(
+        context = context,
+        player = exoPlayer
+    )
+
+
+    PlayerAutoHideEffects(
+        showControls = showControls,
+        showTopBar = showTopBar,
+        controlsLocked = controlsLocked,
+        lockButtonVisibleWhileLocked = lockButtonVisibleWhileLocked,
+        isDraggingSeekbar = isDraggingSeekbar,
+        showAudioSelector = showAudioSelector,
+        showSpeedMenu = showSpeedMenu,
+        showSleepMenu = showSleepMenu,
+        showSrtBrowser = showSrtBrowser,
+        menuTouchKey = menuTouchKey,
+        brightnessGestureKey = brightnessGestureKey,
+        volumeGestureKey = volumeGestureKey,
+        coreUi = coreUi,
+        trackUi = trackUi,
+        searchUi = searchUi,
+        driftUi = driftUi,
+        studioUi = studioUi,
+        onHideControls = { showControls = false },
+        onHideTopBar = { showTopBar = false },
+        onHideLockedButton = { lockButtonVisibleWhileLocked = false },
+        onHideAudioSelector = { showAudioSelector = false },
+        onHideSpeedMenu = { showSpeedMenu = false },
+        onHideSleepMenu = { showSleepMenu = false },
+        onHideSrtBrowser = { showSrtBrowser = false },
+        onHideBrightnessHud = { showBrightnessCircle = false },
+        onHideVolumeHud = { showVolumeCircle = false },
+    )
+
+    // Shared by both the standalone Track Selector sheet and the Subtitle
+    // Studio's Track tab — previously duplicated verbatim in both places,
+    // which is exactly how the Downloaded case would have silently NOT
+    // gotten cleaning applied in one of the two copies if edited by hand.
+    // One function, both call sites use it.
+    fun selectSubtitleTrack(choice: SubtitleTrackChoice) = subtitleSearchCoordinator.selectSubtitleTrack(choice)
+
+    LaunchedEffect(pendingSrtUri) {
+        val uri = pendingSrtUri ?: return@LaunchedEffect
+        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+        coreUi.subtitlesEnabled = true
+        trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
+        // FIX: previously hardcoded "SRT loaded"/"SRT file loaded" even
+        // when the picked file was .vtt/.ass/.ssa/.ttml — now reflects
+        // what was actually loaded.
+        val pickedFormat = detectSubtitleFormat(uri)
+        val formatLabel = if (pickedFormat == SubtitleFormat.SRT || pickedFormat == SubtitleFormat.UNKNOWN) "Subtitle" else pickedFormat.label.substringBefore(" (")
+        autoSubtitleFetch.status = "$formatLabel loaded"
+        val cleanedSrtUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, uri, coreUi.cleaningOptions) } ?: uri
+        trackUi.primaryUri = cleanedSrtUri
+        val pickedFile = uri.path?.let { java.io.File(it) }
+        // Best-effort language detection from the filename itself (e.g.
+        // "Movie.hi.srt") using the same parser the auto-matcher uses —
+        // stays null (unknown) for a bare "Movie.srt" with no language
+        // token, which is a safe/honest fallback rather than guessing.
+        trackUi.primaryLanguage = pickedFile?.name?.let { name -> parseSubtitleFilename(name).first }
+        playCurrentVideoWithSubtitle(subtitleUri = cleanedSrtUri, resumePosition = resumeAt)
+        trackUi.selectedKey = "local:${pickedFile?.absolutePath ?: uri.toString()}"
+        trackUi.selectedLabel = pickedFile?.name ?: "Subtitle file"; trackUi.selectedSource = "Local file"
+        coreUi.showSettings = false; trackUi.showSelector = false; showControls = true
+        Toast.makeText(context, "$formatLabel file loaded", Toast.LENGTH_SHORT).show()
+        delay(1400); autoSubtitleFetch.status = ""
+        pendingSrtUri = null
+    }
+
+    val activeSubtitleFormat = remember(trackUi.originalUri) { trackUi.originalUri?.let { detectSubtitleFormat(it) } ?: SubtitleFormat.UNKNOWN }
+    val isAssOrSsaFormat = activeSubtitleFormat == SubtitleFormat.ASS || activeSubtitleFormat == SubtitleFormat.SSA
+
+    LaunchedEffect(studioUi.playerView, appearanceUi.textSizeSp, appearanceUi.bottomPadding, appearanceUi.appearance, dualUi.enabled, appearanceUi.preserveOriginalStyling, isAssOrSsaFormat) {
+        val sv = studioUi.playerView?.subtitleView
+        sv?.setUserDefaultStyle()
+        // Embedded styling is enabled in TWO cases: dual mode (needs the
+        // injected <font color> tag to render) or the person explicitly
+        // asked to preserve an ASS/SSA file's own styling. Off otherwise,
+        // so CineVault's own styling stays authoritative for plain SRT/VTT.
+        val useEmbeddedStyles = dualUi.enabled || (appearanceUi.preserveOriginalStyling && isAssOrSsaFormat)
+        sv?.setApplyEmbeddedStyles(useEmbeddedStyles); sv?.setApplyEmbeddedFontSizes(false)
+        sv?.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, appearanceUi.textSizeSp)
+        sv?.setBottomPaddingFraction(appearanceUi.bottomPadding)
+        sv?.setStyle(
+            CaptionStyleCompat(
+                appearanceUi.appearance.foregroundColor,
+                appearanceUi.appearance.backgroundColor,
+                AndroidColor.TRANSPARENT,
+                appearanceUi.appearance.edgeType,
+                appearanceUi.appearance.edgeColor,
+                null
+            )
+        )
+    }
+
+    LaunchedEffect(coreUi.syncOffset, driftUi.scale, trackUi.originalUri) {
+        val baseUri = trackUi.originalUri ?: return@LaunchedEffect
+        if (!coreUi.subtitlesEnabled) return@LaunchedEffect
+        val offsetMs = (coreUi.syncOffset * 1000f).toLong()
+        if (offsetMs == trackUi.appliedOffsetMs && driftUi.scale == driftUi.appliedScale) return@LaunchedEffect
+        delay(350)
+        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+        val shiftedUri = withContext(Dispatchers.IO) { buildShiftedSubtitleFile(context, baseUri, offsetMs, driftUi.scale) }
+        if (shiftedUri != null) {
+            trackUi.appliedOffsetMs = offsetMs
+            driftUi.appliedScale = driftUi.scale
+            playCurrentVideoWithSubtitle(subtitleUri = shiftedUri, resumePosition = resumeAt, isOriginalSubtitle = false)
+        }
+    }
+
+    // ── Dialogue Tap Sync ─────────────────────────────────────────────
+    // Step 1: person pauses on a subtitle line they can read, taps "Start"
+    // (armDialogueSync below) — we record the position they paused at as
+    // the reference, then resume playback automatically.
+    // Step 2: they tap "Tap Now" on DialogueTapSyncBar the instant they
+    // HEAR that same line spoken. The additional correction needed is just
+    // (where they tapped) - (where the subtitle visually appeared),
+    // stacked on top of whatever sync offset was already active.
+    // FIX: these eight functions used to be plain local functions defined
+    // right here, inline — now orchestration glue calling into
+    // SubtitleSyncToolsCoordinator (see that file for the full reasoning).
+    // Every field read/written matches exactly what the original inline
+    // functions touched; only where the code lives changed.
+    val subtitleSyncTools = remember(exoPlayer) {
+        SubtitleSyncToolsCoordinator(
+            context = context,
+            scope = scope,
+            exoPlayer = exoPlayer,
+            coreUi = coreUi,
+            driftUi = driftUi,
+            dualUi = dualUi,
+            trackUi = trackUi,
+            dualSecondaryColorHex = dualSecondaryColorHex,
+            getCurrentVideoPath = { currentVideo.path },
+            playSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle ->
+                playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
+            }
+        )
+    }
+    fun armDialogueSync() = subtitleSyncTools.armDialogueSync()
+    fun cancelDialogueSync() = subtitleSyncTools.cancelDialogueSync()
+    fun confirmDialogueSyncTap() = subtitleSyncTools.confirmDialogueSyncTap()
+    fun markDriftPointA(correctionSeconds: Float) = subtitleSyncTools.markDriftPointA(correctionSeconds)
+    fun markDriftPointB(correctionSeconds: Float) = subtitleSyncTools.markDriftPointB(correctionSeconds)
+    fun applyDriftFix() = subtitleSyncTools.applyDriftFix()
+    fun fetchAndApplyDualSecondary() = subtitleSyncTools.fetchAndApplyDualSecondary()
+    fun disableDualSubtitles() = subtitleSyncTools.disableDualSubtitles()
+
+    // ── Auto-Sync (Phase 1: speech-timing only) ──────────────────────────
+    // Runs entirely off-main-thread (audio decode + VAD are real CPU work,
+    // not something to do on the composition thread). Reads the CURRENTLY
+    // SELECTED audio track's language so analysis matches what's actually
+    // playing, not just track 0 — a subtitle can be right for the main
+    // audio and wrong for a commentary track.
+    // FIX: previously only checked "a primary subtitle exists" + "not
+    // SMB" — didn't verify the subtitle was actually SRT (the ONLY format
+    // AutoSyncEngine's cue parser understands; a .vtt/.ass primary would
+    // silently fail deep inside the engine instead of being caught here)
+    // or that the video itself is a genuinely readable local/content
+    // source rather than some other unplayable state.
+    val primarySubtitleForAutoSync = trackUi.primaryUri
+    val autoSyncAvailable = primarySubtitleForAutoSync != null &&
+        supportsCustomTextPipeline(detectSubtitleFormat(primarySubtitleForAutoSync)) &&
+        !isStreamMedia &&
+        !currentVideo.path.startsWith("smb://", ignoreCase = true) &&
+        (currentVideo.path.startsWith("content://", ignoreCase = true) || java.io.File(currentVideo.path).exists())
+
+    // FIX: runAutoSync()/applyAutoSyncResult() used to be plain local
+    // functions defined right here, inline in this composable's body —
+    // now just orchestration glue calling into AutoSyncCoordinator (see
+    // that file for the full reasoning on why AutoSync was the first
+    // piece extracted). Every lambda below reads/writes the exact same
+    // state the original inline functions did — nothing about the
+    // actual behavior changed, only where the code that does it lives.
+    // Reads trackUi.primaryUri fresh via the lambda each time, not the
+    // primarySubtitleForAutoSync snapshot above (which is only for the
+    // availability check right above it) — matching exactly what the
+    // original runAutoSync() did.
+    val autoSyncCoordinator = remember(exoPlayer) {
+        AutoSyncCoordinator(
+            context = context,
+            scope = scope,
+            exoPlayer = exoPlayer,
+            getPrimarySubtitleUri = { trackUi.primaryUri },
+            getCurrentVideoPath = { currentVideo.path },
+            getAutoSyncStatus = { autoSyncStatus },
+            setAutoSyncStatus = { autoSyncStatus = it },
+            setStudioVisible = { studioUi.showStudio = it },
+            resetPreviewFrames = { previewFrames = emptyList(); previewBitmap = null },
+            incrementPreviewReloadKey = { previewReloadKey++ },
+            setSyncOffsetSeconds = { coreUi.syncOffset = it },
+            setDriftScale = { driftUi.scale = it },
+            incrementStudioMenuTouchKey = { studioUi.menuTouchKey++ }
+        )
+    }
+    fun runAutoSync() = autoSyncCoordinator.runAutoSync()
+    fun applyAutoSyncResult(result: SubtitleSyncResult) = autoSyncCoordinator.applyAutoSyncResult(result)
+
+    LaunchedEffect(showNextEpisodeOverlay, pendingNextEpisode) {
+        if (showNextEpisodeOverlay && pendingNextEpisode != null) {
+            var count = 15
+            while (count > 0) {
+                nextEpisodeCountdown = count
+                delay(1000)
+                if (!showNextEpisodeOverlay || pendingNextEpisode == null) return@LaunchedEffect
+                if (isPlaying || isVideoEnded) count--
+            }
+            val next = pendingNextEpisode
+            if (next != null) { showNextEpisodeOverlay = false; pendingNextEpisode = null; currentMediaType = next.type; currentVideo = next.video; onPlayNext(next) }
+        }
+    }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        // Captured as plain local vals (not referenced as the implicit
+        // BoxWithConstraintsScope receiver) specifically so they can be
+        // used unambiguously from inside further-nested Box {} scopes
+        // later in this composable (e.g. AutoSyncFloatingIndicator's
+        // wrapping Box) — Kotlin's implicit-receiver resolution can
+        // become ambiguous once there's more than one Box-like receiver
+        // in scope at a given point, even though maxWidth/maxHeight are
+        // only actually defined on this outer one.
+        val playerMaxWidth = maxWidth
+        val playerMaxHeight = maxHeight
+        val displayLayout = calculatePlayerDisplayLayout(maxWidth, maxHeight)
+        val isLandscape = displayLayout.isLandscape
+        val isSmallPhone = displayLayout.isSmallPhone
+        val isCompactLandscape = displayLayout.isCompactLandscape
+        val scale = displayLayout.scale
+        val playButton = displayLayout.playButton
+        val smallButton = displayLayout.smallButton
+        val hudSize = displayLayout.hudSize
+        val sidePadding = displayLayout.sidePadding
+        val bottomDockPadding = displayLayout.bottomDockPadding
+        val seekBottomPadding = displayLayout.seekBottomPadding
+        val topClusterPaddingTop = displayLayout.topClusterPaddingTop
+
+        // ── Per-display subtitle profiles ──────────────────────────────
+        // Which profile applies right now — external (RayNeo/DP Alt Mode)
+        // always wins over phone/tablet since it's a distinct viewing
+        // surface, regardless of what the tablet's own screen size says.
+        // TV isn't reachable yet (see DisplayProfiles.kt) so it never
+        // appears here.
+        val displayProfileType = RememberPlayerSubtitleDisplayProfile(
+            context = context,
+            externalDisplayConnected = externalDisplay.isConnected,
+            isSmallPhone = isSmallPhone,
+            isLandscape = isLandscape,
+            appearanceUi = appearanceUi,
+        )
+
+        val uiScale = (maxWidth.value / 400f).coerceIn(0.85f, 1.25f)
+
+        val density = LocalDensity.current
+        val screenWidthPx = with(density) { maxWidth.toPx() }
+        val screenHeightPx = with(density) { maxHeight.toPx() }
+        fun anchoredX(iconCenterX: Float, popupWidth: Dp): Int {
+            val pw = with(density) { popupWidth.toPx() }
+            val pad = with(density) { 8.dp.toPx() }
+            return (iconCenterX - pw / 2f).coerceIn(pad, (screenWidthPx - pw - pad).coerceAtLeast(pad)).roundToInt()
+        }
+        fun anchoredY(desiredBottomPadding: Dp, popupHeightEstimate: Dp): Dp = desiredBottomPadding
+        val popupBottomPadding = bottomDockPadding + playButton + 18.dp
+
+        val subtitlePopupWidthBase = if (isLandscape) (maxWidth.value * 0.30f).dp.coerceIn(210.dp, 270.dp) else (maxWidth.value * 0.62f).dp.coerceIn(220.dp, 300.dp)
+        val subtitlePopupWidth = subtitleMenuWidth(maxWidth.value, isLandscape)
+        val subtitlePopupHeightEstimate = (((if (isCompactLandscape || isLandscape) 220f else 360f) * uiScale).dp).coerceAtMost(maxHeight * 0.45f)
+        val trackSelectorWidth = subtitlePopupWidth
+        val trackSelectorMaxHeight = (((if (isCompactLandscape || isLandscape) 230f else 380f) * uiScale).dp).coerceAtMost(maxHeight * 0.55f)
+        val srtPopupWidth = (subtitlePopupWidthBase.value * uiScale).dp.coerceAtMost(maxWidth * 0.86f)
+        val srtPopupMaxHeight = (((if (isCompactLandscape) 160f else if (isLandscape) 200f else 280f) * uiScale).dp).coerceAtMost(maxHeight * 0.5f)
+        val audioPopupWidth = ((((if (isCompactLandscape) 175f else if (isLandscape) 190f else 205f) * uiScale).dp).coerceAtMost(maxWidth * 0.75f)) * 0.6f
+        val smallMenuWidth = (((165f * uiScale).dp).coerceAtMost(maxWidth * 0.6f)) * 0.6f
+        val smallMenuHeightScale = if (isLandscape) 0.95f else 0.6f
+        val smallMenuMaxHeight = ((((if (isCompactLandscape) 150f else if (isLandscape) 190f else 230f) * uiScale).dp).coerceAtMost(maxHeight * 0.55f)) * smallMenuHeightScale
+        val topIconSize = (44 * uiScale * scale.coerceAtLeast(0.75f)).dp
+
+        val currentMeta = remember(currentVideo.path, episodeList) {
+            episodeList.firstOrNull { it.video.path == currentVideo.path }
+                ?: episodeList.firstOrNull { it.video.name == currentVideo.name }
+        }
+
+        LaunchedEffect(currentMeta?.video?.path, duration > 60_000L) {
+            val meta = currentMeta ?: return@LaunchedEffect
+            if (duration <= 60_000L || meta.type == "secret") return@LaunchedEffect
+            smartSegmentResult = smartSegmentRepository.load(meta, duration)
+        }
+
+        val activeSmartSegment = smartSegmentResult.segments
+            .filter { it.type == SegmentType.RECAP || it.type == SegmentType.INTRO || it.type == SegmentType.PREVIEW || it.type == SegmentType.COMMERCIAL || it.type == SegmentType.CREDITS }
+            .firstOrNull { it.contains(position) }
+        val exactSceneSegment = smartSegmentResult.segments.firstOrNull {
+            it.type == SegmentType.MID_CREDITS_SCENE || it.type == SegmentType.POST_CREDITS_SCENE
+        }
+        val creditsSegment = smartSegmentResult.segments.firstOrNull { it.type == SegmentType.CREDITS }
+
+        LaunchedEffect(currentVideo.path, position, creditsSegment?.startMs, showNextEpisodeOverlay) {
+            if (!isCurrentTvShow || showNextEpisodeOverlay || nextEpisodeDismissed || creditsSegment == null || position < creditsSegment.startMs) return@LaunchedEffect
+            val index = episodeList.indexOfFirst { it.video.path == currentVideo.path }
+            val next = episodeList.getOrNull(index + 1) ?: return@LaunchedEffect
+            pendingNextEpisode = next
+            nextEpisodeCountdown = 15
+            showNextEpisodeOverlay = true
+        }
+
+        LaunchedEffect(position, creditsSegment?.startMs) {
+            if (showNextEpisodeOverlay && creditsSegment != null && position < creditsSegment.startMs) {
+                showNextEpisodeOverlay = false
+                pendingNextEpisode = null
+                nextEpisodeCountdown = 0
+            }
+        }
+
+        // Previous/Next availability — shown ONLY for TV episodes and
+        // Select-Folder videos (where "next in the group" is a meaningful
+        // concept), never for a plain movie played from the general library
+        // list, where episodeList can be the whole library and "next" would
+        // be an unrelated, arbitrary title.
+        val showPrevNextButtons = (isCurrentTvShow || isRestrictedFolderMedia) && episodeList.size > 1
+        val currentEpisodeIndex = remember(currentVideo.path, episodeList) {
+            episodeList.indexOfFirst { it.video.path == currentVideo.path }
+        }
+        val hasNextVideo = episodeList.size > 1 && currentEpisodeIndex in 0 until episodeList.lastIndex
+
+        AndroidView(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(scaleX = videoScale, scaleY = videoScale, translationX = videoOffsetX, translationY = videoOffsetY),
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    // ExoPlayer may own only one video surface. While the
+                    // Presentation is active this local view intentionally
+                    // remains black beneath the touch controls.
+                    player = if (externalPlayerView == null) exoPlayer else null
+                    useController = false
+                    resizeMode = if (isZoomMode) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    subtitleView?.setViewType(SubtitleView.VIEW_TYPE_CANVAS)
+                    studioUi.playerView = externalPlayerView ?: this
+                    localPlayerView = this
+                }
+            },
+            update = { pv ->
+                localPlayerView = pv
+                if (externalPlayerView == null && pv.player !== exoPlayer) {
+                    pv.player = exoPlayer
+                }
+                pv.resizeMode = if (isZoomMode) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                externalPresentation?.updateResizeMode(pv.resizeMode)
+                studioUi.playerView = externalPlayerView ?: pv
+            }
+        )
+
+        val view = LocalView.current
+        // Clears any exclusion rect this screen set once it's gone, so it
+        // never lingers and affects some other screen's back gesture.
+        DisposableEffect(Unit) {
+            onDispose {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    view.systemGestureExclusionRects = emptyList()
+                }
+            }
+        }
+
+        val playbackGestureModifier = if (externalPlayerView != null) {
+            Modifier.rayNeoTouchpadGestures(
+                    view = view,
+                    // Recreate the controller when the tablet rotates so
+                    // left/centre/right zones follow the current screen.
+                    gestureKey = currentVideo.path to isLandscape,
+                    controlsVisible = { externalPresentation?.controlsVisible?.value == true },
+                    canChangeEpisode = { showPrevNextButtons },
+                    onSingleTap = {
+                        externalPresentation?.showTouchPulse()
+                        if (externalPresentation?.controlsVisible?.value == true) {
+                            if (externalPresentation?.clickPointer() != true) externalPresentation?.showControls()
+                        } else {
+                            externalPresentation?.showControls()
+                        }
+                    },
+                    onDoubleTap = {
+                        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                        externalPresentation?.showGestureHud("Playback", if (exoPlayer.isPlaying) "PLAY" else "PAUSE")
+                    },
+                    onLongPress = { externalPresentation?.openQuickSubtitles() },
+                    onSeekStart = {
+                        isDraggingSeekbar = true
+                        previewPosition = exoPlayer.currentPosition
+                        previewBitmap = VideoThumbnailHelper.nearestPreviewFrame(previewFrames, previewPosition)
+                        externalPresentation?.updateSeekPreview(previewBitmap, previewPosition, true)
+                    },
+                    onSeekDelta = { fraction ->
+                        val safeDuration = exoPlayer.duration.coerceAtLeast(1L)
+                        previewPosition = (previewPosition + (fraction * safeDuration).toLong()).coerceIn(0L, safeDuration)
+                        previewBitmap = VideoThumbnailHelper.nearestPreviewFrame(previewFrames, previewPosition)
+                        externalPresentation?.updateSeekPreview(previewBitmap, previewPosition, true)
+                    },
+                    onSeekEnd = {
+                        exoPlayer.seekTo(previewPosition)
+                        position = previewPosition
+                        isDraggingSeekbar = false
+                        externalPresentation?.updateSeekPreview(previewBitmap, previewPosition, false)
+                    },
+                    onBrightnessDrag = { deltaY ->
+                        brightnessPercent = (brightnessPercent - deltaY.toInt() / 8).coerceIn(5, 100)
+                        activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = brightnessPercent / 100f }
+                        showBrightnessCircle = true
+                        externalPresentation?.showGestureHud("Tablet brightness", "$brightnessPercent%", brightnessPercent)
+                    },
+                    onVolumeDrag = { deltaY ->
+                        volumePercent = (volumePercent - deltaY.toInt() / 8).coerceIn(0, 100)
+                        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, ((volumePercent / 100f) * maxVol).toInt(), 0)
+                        showVolumeCircle = true
+                        externalPresentation?.showGestureHud("Volume", "$volumePercent%", volumePercent)
+                    },
+                    onPrevious = { externalPresentation?.showGestureHud("Episode", "PREVIOUS"); playPrevious() },
+                    onNext = { externalPresentation?.showGestureHud("Episode", "NEXT"); playNext() },
+                    onPointerMove = { externalPresentation?.movePointer(it.x, it.y) },
+                    onPointerClick = {
+                        externalPresentation?.showTouchPulse()
+                        externalPresentation?.clickPointer() ?: false
+                    },
+                    onPinchZoomPan = { zoom, pan ->
+                        externalPresentation?.applyViewportTransform(zoom, pan.x, pan.y)
+                        val shownZoom = (videoScale * zoom).coerceIn(1f, 3f)
+                        videoScale = shownZoom
+                        externalPresentation?.showGestureHud("Screen size", "${(shownZoom * 100).toInt()}%", (((shownZoom - 1f) / 2f) * 100).toInt())
+                    },
+                    onEmergencyReturnToTablet = {
+                        externalPresentation?.showGestureHud("Emergency return", "TABLET")
+                        externalPresentation?.enterTabletStandby()
+                        glassesSessionDisabled = true
+                        android.widget.Toast.makeText(
+                            context,
+                            "Glasses Mode ended — playback returned to tablet",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    },
+                    onGestureEnd = { brightnessGestureKey++; volumeGestureKey++ }
+                )
+        } else {
+            Modifier.videoPlaybackGestures(
+                    view = view,
+                    videoPathKey = currentVideo.path,
+                    episodeListKey = episodeList,
+                    edgeSwipeNextEnabled = { showPrevNextButtons },
+                    onTap = {
+                        when {
+                            showAudioSelector -> showAudioSelector = false
+                            coreUi.showSettings -> coreUi.showSettings = false
+                            trackUi.showSelector -> trackUi.showSelector = false
+                            searchUi.showSearch -> searchUi.showSearch = false
+                            driftUi.showDialog -> driftUi.showDialog = false
+                            coreUi.showAppearanceStudio -> coreUi.showAppearanceStudio = false
+                            studioUi.showStudio -> studioUi.showStudio = false
+                            coreUi.dialogueSyncArmed -> {}
+                            showSpeedMenu -> showSpeedMenu = false
+                            showSleepMenu -> showSleepMenu = false
+                            showSrtBrowser -> showSrtBrowser = false
+                            else -> {
+                                if (externalPlayerView != null) {
+                                    externalPresentation?.showControls()
+                                    showControls = false
+                                    showTopBar = false
+                                } else {
+                                    val v = !showControls; showControls = v; showTopBar = v
+                                }
+                            }
+                        }
+                    },
+                    onSeekBack = {
+                        exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0))
+                        position = exoPlayer.currentPosition
+                        showControls = true; showTopBar = true
+                    },
+                    onSeekForward = {
+                        exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration.coerceAtLeast(0)))
+                        position = exoPlayer.currentPosition
+                        showControls = true; showTopBar = true
+                    },
+                    onToggleZoomMode = {
+                        isZoomMode = !isZoomMode; showControls = true; showTopBar = true
+                    },
+                    onDragSettled = { brightnessGestureKey++; volumeGestureKey++ },
+                    onEdgeSwipeNext = { playNext() },
+                    onBrightnessDrag = { deltaY ->
+                        brightnessPercent = (brightnessPercent - deltaY.toInt() / 8).coerceIn(5, 100)
+                        activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = brightnessPercent / 100f }
+                        showBrightnessCircle = true
+                    },
+                    onVolumeDrag = { deltaY ->
+                        volumePercent = (volumePercent - deltaY.toInt() / 8).coerceIn(0, 150)
+                        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, ((volumePercent.coerceAtMost(100) / 100f) * maxVol).toInt(), 0)
+                        showVolumeCircle = true
+                    },
+                    onPinchZoomPan = { zoom, pan ->
+                        // Both zoom and pan applied together, matching how
+                        // a real pinch/pan gesture always carries some of
+                        // each — see PlayerGestureModifiers.kt for why.
+                        videoScale = (videoScale * zoom).coerceIn(1f, 3f)
+                        videoOffsetX += pan.x
+                        videoOffsetY += pan.y
+                        val maxOffsetX = (screenWidthPx * (videoScale - 1f) / 2f).coerceAtLeast(0f)
+                        val maxOffsetY = (screenHeightPx * (videoScale - 1f) / 2f).coerceAtLeast(0f)
+                        videoOffsetX = videoOffsetX.coerceIn(-maxOffsetX, maxOffsetX)
+                        videoOffsetY = videoOffsetY.coerceIn(-maxOffsetY, maxOffsetY)
+                        if (videoScale <= 1.02f) {
+                            videoScale = 1f
+                            videoOffsetX = 0f
+                            videoOffsetY = 0f
+                        }
+                    },
+                )
+        }
+
+        Box(modifier = Modifier.fillMaxSize().then(playbackGestureModifier))
+
+        LaunchedEffect(studioUi.gestureFeedback) {
+            if (studioUi.gestureFeedback.isBlank()) return@LaunchedEffect
+            delay(900)
+            studioUi.gestureFeedback = ""
+        }
+
+        // ── Subtitle gestures (opt-in, off by default) ──────────────────
+        // Deliberately NOT pixel-tracking the subtitle's actual rendered
+        // position (which depends on appearanceUi.bottomPadding, itself
+        // adjustable 0.02-0.90) — at low padding values that would sit
+        // directly on top of the transport dock and seek bar, guaranteeing
+        // touch conflicts with existing controls. Instead this is a FIXED
+        // band positioned safely above the dock, spanning most of the
+        // width but leaving generous margin so it doesn't compete with the
+        // brightness/volume vertical-swipe zones on the far left/right
+        // edges of the full screen. A deliberate simplification, not an
+        // attempt at exact subtitle-position tracking.
+        if (coreUi.behaviorPrefs.enableSubtitleGestures && coreUi.subtitlesEnabled && !isStreamMedia) {
+            val gestureZoneHeight = 110.dp
+            val gestureZoneBottomOffset = bottomDockPadding + playButton + 26.dp
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = gestureZoneBottomOffset, start = 48.dp, end = 48.dp)
+                    .fillMaxWidth()
+                    .height(gestureZoneHeight)
+                    .subtitleGestureZone(
+                        enabledKey = coreUi.behaviorPrefs.enableSubtitleGestures,
+                        onPinchTextSize = { zoom ->
+                            appearanceUi.textSizeSp = (appearanceUi.textSizeSp * zoom).coerceIn(12f, 32f)
+                            studioUi.gestureFeedback = "${appearanceUi.textSizeSp.toInt()}sp"
+                        },
+                        onHorizontalSyncDrag = { deltaX ->
+                            // Positive (rightward) delay matches the same
+                            // sign convention as the Sync slider elsewhere.
+                            val deltaSeconds = deltaX / 60f
+                            coreUi.syncOffset = (coreUi.syncOffset + deltaSeconds).coerceIn(-10f, 10f)
+                            val formattedOffset = String.format("%.1f", coreUi.syncOffset)
+                            studioUi.gestureFeedback = if (coreUi.syncOffset >= 0f) "+${formattedOffset}s" else "${formattedOffset}s"
+                        },
+                        onVerticalPositionDrag = { deltaFraction ->
+                            // Dragging UP raises the subtitle, which is a
+                            // DECREASE in bottom-padding fraction — sign
+                            // flip already applied by the caller.
+                            appearanceUi.bottomPadding = (appearanceUi.bottomPadding + deltaFraction).coerceIn(0.02f, 0.90f)
+                            studioUi.gestureFeedback = "Position"
+                        },
+                        onDoubleTapResetSync = {
+                            coreUi.syncOffset = 0f
+                            studioUi.gestureFeedback = "Sync reset"
+                        },
+                        onLongPressTogglePlayback = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                            showControls = true
+                        },
+                    )
+            )
+            AnimatedVisibility(
+                visible = studioUi.gestureFeedback.isNotBlank(),
+                enter = fadeIn(animationSpec = tween(100)), exit = fadeOut(animationSpec = tween(200)),
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = gestureZoneBottomOffset + gestureZoneHeight / 2)
+            ) {
+                Text(
+                    text = studioUi.gestureFeedback, color = AmberCore, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 14.dp, vertical = 7.dp)
+                )
+            }
+        }
+
+        AnimatedVisibility(visible = showBrightnessCircle, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(if (isLandscape) Alignment.TopEnd else Alignment.CenterEnd).padding(top = if (isLandscape) 86.dp else 0.dp, end = 28.dp)) {
+            VerticalBrightnessHud(value = brightnessPercent, size = hudSize)
+        }
+        AnimatedVisibility(visible = showVolumeCircle, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(if (isLandscape) Alignment.TopStart else Alignment.CenterStart).padding(top = if (isLandscape) 86.dp else 0.dp, start = 28.dp)) {
+            val volumeColor = when { volumePercent > 120 -> Color.Red; volumePercent > 90 -> Color(0xFFFF9800); else -> Color.White }
+            FilledCircleHud(value = volumePercent, maxValue = 150, color = volumeColor, size = hudSize)
+        }
+
+        AnimatedVisibility(visible = edgeSwipeHint.isNotBlank(), enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(200)), modifier = Modifier.align(Alignment.Center)) {
+            Text(text = edgeSwipeHint, color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 20.dp, vertical = 10.dp))
+        }
+
+        // Glasses-connected indicator — brief confirmation toast-style pill,
+        // same treatment as edgeSwipeHint above, shown once when an external
+        // display connects (fades out on its own after ~2s).
+        AnimatedVisibility(visible = showGlassesConnectedHint, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(250)), modifier = Modifier.align(Alignment.TopCenter).padding(top = if (isLandscape) 54.dp else 90.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 16.dp, vertical = 9.dp)) {
+                Icon(imageVector = Icons.Rounded.Tv, contentDescription = null, tint = AmberCore, modifier = Modifier.size(15.dp))
+                Spacer(modifier = Modifier.width(7.dp))
+                Text(text = "External display connected — RayNeo subtitle profile", color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        AnimatedVisibility(visible = showBufferingSpinner && playerErrorMessage == null, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(150)), modifier = Modifier.align(Alignment.Center)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(modifier = Modifier.size(56.dp).glassPanel(cornerRadius = 28.dp, fill = GlassSurfaceStrong), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = AmberCore, strokeWidth = 3.dp, modifier = Modifier.size(28.dp))
+                }
+                if (stuckBufferingHint) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Taking longer than usual — slow drive or connection?",
+                        color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center,
+                        modifier = Modifier.widthIn(max = 240.dp).glassPanel(cornerRadius = 14.dp, fill = GlassSurfaceStrong).padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+            }
+        }
+
+        AnimatedVisibility(visible = playerErrorMessage != null, enter = fadeIn(animationSpec = tween(150)), exit = fadeOut(animationSpec = tween(150)), modifier = Modifier.align(Alignment.Center).padding(24.dp)) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.widthIn(max = 320.dp).glassPanel(cornerRadius = 24.dp, fill = GlassSurfaceStrong).padding(horizontal = 22.dp, vertical = 20.dp)
+            ) {
+                Icon(imageVector = Icons.Rounded.ErrorOutline, contentDescription = null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(34.dp))
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(text = "Playback Error", color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(text = playerErrorMessage ?: "", color = TextMuted, fontSize = 13.sp, textAlign = TextAlign.Center, lineHeight = 18.sp)
+                Spacer(modifier = Modifier.height(18.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Back", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable { onBack() }.padding(horizontal = 18.dp, vertical = 9.dp)
+                    )
+                    Text(
+                        text = "Retry", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
+                        modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore).clickable {
+                            errorRetryCount = 0
+                            playCurrentVideoWithSubtitle(subtitleUri = trackUi.originalUri, resumePosition = position, isOriginalSubtitle = false)
+                        }.padding(horizontal = 18.dp, vertical = 9.dp)
+                    )
+                }
+            }
+        }
+
+        if (sleepTimerActive && sleepTimerRemainingMs > 0) {
+            val sleepMins = (sleepTimerRemainingMs / 60000).toInt()
+            val sleepSecs = ((sleepTimerRemainingMs % 60000) / 1000).toInt()
+            Row(
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 56.dp)
+                    .glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong)
+                    .padding(horizontal = 12.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(imageVector = Icons.Rounded.Timer, contentDescription = null, tint = AmberCore, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(5.dp))
+                Text(text = "%d:%02d".format(sleepMins, sleepSecs), color = AmberCore, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        val clusterHeightDp = with(density) { clusterHeightPx.toDp() }
+        val titleRowOffset = if (isLandscape) 0.dp else 46.dp
+        SpeedAndSleepMenuPopups(
+            showSpeedMenu = showSpeedMenu,
+            showSleepMenu = showSleepMenu,
+            playbackSpeed = playbackSpeed,
+            sleepTimerMinutes = sleepTimerMinutes,
+            topClusterPaddingTop = topClusterPaddingTop,
+            titleRowOffset = titleRowOffset,
+            clusterHeightDp = clusterHeightDp,
+            sidePadding = sidePadding,
+            smallMenuWidth = smallMenuWidth,
+            smallMenuMaxHeight = smallMenuMaxHeight,
+            onSpeedSelected = { setPlaybackSpeed(it) },
+            onDismissSpeedMenu = { showSpeedMenu = false },
+            onSleepSelected = { setSleepTimer(it) },
+            onDismissSleepMenu = { showSleepMenu = false },
+        )
+
+        val srtFiles = rememberAvailableLocalSubtitleFiles(
+            videoPath = currentVideo.path,
+            selectorVisible = showSrtBrowser,
+            pendingDeletePaths = pendingDeletePaths
+        )
+        val audioTracksForPopup = buildAudioTrackRows(
+            player = exoPlayer,
+            trackSelector = trackSelector,
+            onTrackSelected = {
+                showAudioSelector = false
+                showControls = true
+            }
+        )
+        SrtAndAudioTrackPopups(
+            showSrtBrowser = showSrtBrowser,
+            srtFiles = srtFiles,
+            srtPopupWidth = srtPopupWidth,
+            srtPopupMaxHeight = srtPopupMaxHeight,
+            srtBottomPadding = anchoredY(popupBottomPadding, srtPopupMaxHeight),
+            srtOffsetX = anchoredX(subIconX, srtPopupWidth),
+            onPickSrt = { file -> showSrtBrowser = false; pendingSrtUri = Uri.fromFile(file) },
+            onDeleteSrt = { file -> requestDeleteSubtitle(file) },
+            onSystemPicker = { showSrtBrowser = false; srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
+            onCloseSrtBrowser = { showSrtBrowser = false; showControls = true },
+            showAudioSelector = showAudioSelector,
+            audioTracks = audioTracksForPopup,
+            audioPopupWidth = audioPopupWidth,
+            audioBottomPadding = popupBottomPadding,
+            audioOffsetX = anchoredX(audioIconX, audioPopupWidth),
+            audioSyncMs = audioSyncMs,
+            onAudioSyncChange = { audioSyncMs = it; menuTouchKey++ },
+            onAudioMenuInteraction = { menuTouchKey++ },
+            onCloseAudioSelector = { showAudioSelector = false; showControls = true },
+        )
+
+        val hasInternalSubtitles = hasInternalSubtitleTracks(exoPlayer.currentTracks)
+
+        // ── Track Selector data, built fresh from live player + disk state
+        // every time it's shown. Embedded tracks read straight off
+        // ExoPlayer's current track groups (source of truth for what's
+        // actually IN the file); downloaded/local read off disk the same
+        // way the existing SRT browser and OpenSubtitlesClient cache
+        // already do — no new scanning logic, just reused in one place.
+        val embeddedTrackChoices = remember(exoPlayer.currentTracks) {
+            buildEmbeddedSubtitleChoices(exoPlayer.currentTracks)
+        }
+        val downloadedTrackChoice = rememberDownloadedSubtitleChoice(
+            context = context,
+            videoPath = currentVideo.path,
+            preferredLanguages = coreUi.behaviorPrefs.preferredLanguages,
+            selectorVisible = trackUi.showSelector,
+            canDownloadExternalSubtitles = canDownloadExternalSubtitles
+        )
+        val localFileChoices = rememberAvailableLocalSubtitleFiles(
+            videoPath = currentVideo.path,
+            selectorVisible = trackUi.showSelector,
+            pendingDeletePaths = pendingDeletePaths
+        )
+
+        val subtitleQuickMenuStatusText = when {
+            !coreUi.subtitlesEnabled -> "Subtitles off"
+            trackUi.selectedLabel.isNotBlank() -> "$trackUi.selectedLabel · $trackUi.selectedSource"
+            hasInternalSubtitles -> "Embedded track active"
+            else -> "No subtitle selected"
+        }
+        SubtitleQuickMenuAndTrackSelector(
+            showSubtitleSettings = coreUi.showSettings,
+            showTrackSelector = trackUi.showSelector,
+            subtitlesEnabled = coreUi.subtitlesEnabled,
+            activeTrackStatusText = subtitleQuickMenuStatusText,
+            quickMenuBottomPadding = anchoredY(popupBottomPadding, subtitlePopupHeightEstimate),
+            quickMenuOffsetX = anchoredX(subIconX, subtitlePopupWidth),
+            subtitleTextSizeSp = appearanceUi.textSizeSp,
+            subtitleBottomPadding = appearanceUi.bottomPadding,
+            onFindClick = {
+                studioUi.menuTouchKey++
+                coreUi.showSettings = false
+                searchUi.showSearch = true
+                showControls = true
+                if (searchUi.searchResults.isEmpty() && !searchUi.searchLoading) {
+                    performSubtitleSearch(OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path), "", "")
+                }
+            },
+            onTracksClick = { coreUi.showSettings = false; trackUi.showSelector = true; showControls = true; studioUi.menuTouchKey++ },
+            onToggleSubtitles = {
+                coreUi.subtitlesEnabled = !coreUi.subtitlesEnabled
+                trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !coreUi.subtitlesEnabled).build()
+                if (!coreUi.subtitlesEnabled) { trackUi.selectedKey = "off"; trackUi.selectedLabel = ""; trackUi.selectedSource = "" }
+                showControls = true; studioUi.menuTouchKey++
+            },
+            onDismissSettings = { coreUi.showSettings = false; showControls = true },
+            onFontSizeChange = { appearanceUi.textSizeSp = it; showControls = true; studioUi.menuTouchKey++ },
+            onVerticalPositionChange = { appearanceUi.bottomPadding = it; showControls = true; studioUi.menuTouchKey++ },
+            onSyncClick = { coreUi.showSettings = false; studioUi.initialTab = SubtitleStudioTab.TIMING; studioUi.showStudio = true; showControls = true },
+            onStyleClick = { coreUi.showSettings = false; coreUi.showAppearanceStudio = true; showControls = true },
+            onResetSubtitleSettings = {
+                clearSubtitleProfileSettings(context, displayProfileType, isLandscape)
+                val defaults = defaultSubtitleProfileSettings(displayProfileType, isLandscape)
+                appearanceUi.textSizeSp = defaults.fontSizeSp
+                appearanceUi.bottomPadding = defaults.bottomPadding
+                appearanceUi.preset = defaults.presetName
+                appearanceUi.appearance = SubtitleAppearance(defaults.foregroundColor, defaults.edgeType, defaults.edgeColor, defaults.backgroundColor)
+                appearanceUi.preserveOriginalStyling = false
+                coreUi.syncOffset = 0f
+                trackUi.appliedOffsetMs = 0L
+                driftUi.scale = 1f; driftUi.appliedScale = 1f
+                driftUi.pointA = null; driftUi.pointB = null
+                AudioSyncHolder.offsetUs = 0L; audioSyncMs = 0
+                Toast.makeText(context, "Subtitle settings reset for ${displayProfileType.label}", Toast.LENGTH_SHORT).show()
+                showControls = true; studioUi.menuTouchKey++
+            },
+            onSettingsUserInteraction = { studioUi.menuTouchKey++; showControls = true },
+            trackSelectorBottomPadding = anchoredY(popupBottomPadding, trackSelectorMaxHeight),
+            trackSelectorOffsetX = anchoredX(subIconX, trackSelectorWidth),
+            trackSelectorWidth = trackSelectorWidth,
+            trackSelectorMaxHeight = trackSelectorMaxHeight,
+            containerWidth = maxWidth,
+            containerHeight = maxHeight,
+            embeddedTrackChoices = embeddedTrackChoices,
+            downloadedTrackChoice = downloadedTrackChoice,
+            localFileChoices = localFileChoices,
+            selectedTrackKey = trackUi.selectedKey,
+            onSelectTrack = { choice -> selectSubtitleTrack(choice); trackUi.showSelector = false; showControls = true },
+            onDeleteLocalTrack = { file -> requestDeleteSubtitle(file) },
+            onOpenFilePickerFromTrackSelector = { trackUi.showSelector = false; srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
+            onDismissTrackSelector = { trackUi.showSelector = false; showControls = true },
+            onTrackSelectorUserInteraction = { studioUi.menuTouchKey++ },
+        )
+
+        val searchWidth = if (isLandscape) (maxWidth.value * 0.72f).dp.coerceIn(320.dp, 620.dp)
+            else (maxWidth.value * 0.94f).dp.coerceAtMost(480.dp)
+        val searchMaxHeight = if (isCompactLandscape) (maxHeight.value * 0.76f).dp.coerceAtMost(280.dp)
+            else if (isLandscape) (maxHeight.value * 0.78f).dp.coerceAtMost(360.dp)
+            else (maxHeight.value * 0.65f).dp.coerceAtMost(580.dp)
+        val subtitleWebQuery = OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path)
+        SubtitleAcquisitionFlow(
+            showSubtitleSearch = searchUi.showSearch,
+            searchWidth = searchWidth,
+            searchMaxHeight = searchMaxHeight,
+            containerWidth = maxWidth,
+            containerHeight = maxHeight,
+            initialSearchQuery = remember(currentVideo.path) { OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path) },
+            searchResults = searchUi.searchResults,
+            isSearching = searchUi.searchLoading,
+            searchStatusText = searchUi.searchStatus,
+            onSearchUserInteraction = { studioUi.menuTouchKey++ },
+            onSearch = { q, s, e -> studioUi.menuTouchKey++; performSubtitleSearch(q, s, e) },
+            onDownloadAndApply = { result -> studioUi.menuTouchKey++; applySearchResult(result, alsoPlay = true) },
+            onDownloadOnly = { result -> studioUi.menuTouchKey++; applySearchResult(result, alsoPlay = false) },
+            onWebsiteFallbackFromSearch = { searchUi.showSearch = false; searchUi.showFallback = true; showControls = true },
+            onDismissSearch = { searchUi.showSearch = false; showControls = true },
+            showSubtitleFallback = searchUi.showFallback,
+            fallbackSearchQuery = subtitleWebQuery,
+            fallbackStatusText = searchUi.searchStatus,
+            onSecureBrowser = {
+                exoPlayer.pause()
+                launchSubtitleCustomTab(context, subtitleWebQuery)
+                searchUi.showFallback = false
+                Toast.makeText(context, "After downloading, return and choose Import downloaded subtitle", Toast.LENGTH_LONG).show()
+            },
+            onEmbeddedBrowser = {
+                exoPlayer.pause()
+                searchUi.showFallback = false
+                searchUi.showEmbeddedBrowser = true
+            },
+            onImportFile = {
+                exoPlayer.pause()
+                srtPickerLauncher.launch(
+                    arrayOf(
+                        "application/x-subrip",
+                        "text/vtt",
+                        "text/plain",
+                        "application/zip",
+                        "application/x-zip-compressed",
+                        "application/octet-stream"
+                    )
+                )
+            },
+            onDismissFallback = { searchUi.showFallback = false },
+            showEmbeddedSubtitleBrowser = searchUi.showEmbeddedBrowser,
+            embeddedBrowserQuery = OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path),
+            embeddedBrowserPreferredLanguage = coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en",
+            onImported = { result ->
+                if (result.alternatives.isEmpty()) {
+                    applyImportedWebsiteSubtitle(result.selected)
+                } else {
+                    searchUi.pendingImportCandidates = result
+                    searchUi.showEmbeddedBrowser = false
+                }
+            },
+            onMessage = { Toast.makeText(context, it, Toast.LENGTH_LONG).show() },
+            onDismissEmbeddedBrowser = { searchUi.showEmbeddedBrowser = false; showControls = true },
+            pendingImportedCandidates = searchUi.pendingImportCandidates,
+            onCandidateSelected = { applyImportedWebsiteSubtitle(it) },
+            onDismissCandidateSheet = { searchUi.pendingImportCandidates = null },
+        )
+
+        SubtitleSyncAndAppearancePopups(
+            dialogueSyncArmed = coreUi.dialogueSyncArmed,
+            isLandscape = isLandscape,
+            onDialogueSyncTap = { confirmDialogueSyncTap() },
+            onDialogueSyncCancel = { cancelDialogueSync() },
+            showDriftDialog = driftUi.showDialog,
+            driftPopupWidth = trackSelectorWidth.coerceAtLeast(220.dp),
+            videoDurationMs = duration,
+            currentPositionMs = position,
+            driftPointA = driftUi.pointA,
+            driftPointB = driftUi.pointB,
+            onMarkPointA = { correction -> markDriftPointA(correction) },
+            onMarkPointB = { correction -> markDriftPointB(correction) },
+            onApplyDrift = { applyDriftFix() },
+            onDismissDrift = { driftUi.showDialog = false; showControls = true },
+            showAppearanceStudio = coreUi.showAppearanceStudio,
+            appearanceBottomPadding = anchoredY(popupBottomPadding, trackSelectorMaxHeight),
+            appearanceOffsetX = anchoredX(subIconX, trackSelectorWidth),
+            appearancePopupWidth = trackSelectorWidth,
+            appearancePopupMaxHeight = trackSelectorMaxHeight,
+            containerWidth = maxWidth,
+            containerHeight = maxHeight,
+            appearancePresetName = appearanceUi.preset,
+            appearance = appearanceUi.appearance,
+            appearanceFontSizeSp = appearanceUi.textSizeSp,
+            onApplyPreset = { name, preset -> appearanceUi.preset = name; appearanceUi.appearance = preset },
+            onForegroundChange = { c -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(foregroundColor = c) },
+            onEdgeTypeChange = { t -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(edgeType = t) },
+            onEdgeColorChange = { c -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(edgeColor = c) },
+            onBackgroundChange = { c -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(backgroundColor = c) },
+            isAssOrSsaFormat = isAssOrSsaFormat,
+            preserveOriginalStyling = appearanceUi.preserveOriginalStyling,
+            onPreserveOriginalStylingChange = { appearanceUi.preserveOriginalStyling = it },
+            onDismissAppearanceStudio = { coreUi.showAppearanceStudio = false; showControls = true },
+            onAppearanceUserInteraction = { studioUi.menuTouchKey++ },
+        )
+
+        // FIX: sizing only ever reacted to ORIENTATION (isLandscape/
+        // isCompactLandscape), never to actual physical screen size — so a
+        // phone in landscape got the exact same width/height caps as a
+        // tablet in landscape, even though the phone has far less real
+        // estate. isTabletSized uses the SMALLER of the two dimensions
+        // (Android's own sw600dp convention for "this is a 7"+ tablet"),
+        // which stays correct regardless of which way the device is held
+        // — unlike maxWidth alone, which would misclassify a phone turned
+        // sideways as tablet-sized. Phones now get meaningfully smaller
+        // caps in every orientation; tablets get meaningfully bigger ones.
+        // Safe to shrink on phones specifically because Studio already
+        // scrolls internally (every tab's content is in a
+        // verticalScroll'd Column) and is already independently
+        // draggable (its own long-press-drag handle, not this sizing) —
+        // nothing gets cut off, it just needs to scroll a bit more.
+        val isTabletSized = minOf(maxWidth, maxHeight) >= 600.dp
+        val studioWidth = when {
+            isTabletSized && isLandscape -> (maxWidth.value * 0.50f).dp.coerceIn(420.dp, 640.dp)
+            isTabletSized -> (maxWidth.value * 0.75f).dp.coerceIn(420.dp, 560.dp)
+            isLandscape -> (maxWidth.value * 0.60f).dp.coerceIn(300.dp, 420.dp)
+            else -> (maxWidth.value * 0.92f).dp.coerceAtMost(380.dp)
+        }
+        val studioMaxHeight = when {
+            isTabletSized && isLandscape -> (maxHeight.value * 0.80f).dp.coerceAtMost(560.dp)
+            isTabletSized -> (maxHeight.value * 0.65f).dp.coerceAtMost(680.dp)
+            isCompactLandscape -> (maxHeight.value * 0.80f).dp.coerceAtMost(260.dp)
+            isLandscape -> (maxHeight.value * 0.82f).dp.coerceAtMost(320.dp)
+            else -> (maxHeight.value * 0.58f).dp.coerceAtMost(480.dp)
+        }
+        SubtitleStudioOverlay(
+            showSubtitleStudio = studioUi.showStudio,
+            studioWidth = studioWidth,
+            studioMaxHeight = studioMaxHeight,
+            containerWidth = maxWidth,
+            containerHeight = maxHeight,
+            initialTab = studioUi.initialTab,
+            videoPath = currentVideo.path,
+            onOpenSearch = {
+                studioUi.showStudio = false
+                searchUi.showSearch = true
+                showControls = true
+                if (searchUi.searchResults.isEmpty() && !searchUi.searchLoading) {
+                    performSubtitleSearch(OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path), "", "")
+                }
+            },
+            onOpenManualSearch = {
+                studioUi.showStudio = false
+                searchUi.showFallback = true
+                showControls = true
+            },
+            embeddedTracks = embeddedTrackChoices,
+            downloadedTrack = downloadedTrackChoice,
+            localFiles = localFileChoices,
+            selectedTrackKey = trackUi.selectedKey,
+            onSelectTrack = { choice -> selectSubtitleTrack(choice) },
+            onDeleteLocalTrack = { file -> requestDeleteSubtitle(file) },
+            onOpenFilePicker = { srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
+            currentSyncOffset = coreUi.syncOffset,
+            onSyncOffsetChange = { coreUi.syncOffset = it; studioUi.menuTouchKey++ },
+            onDialogueSyncClick = { armDialogueSync() },
+            onDriftFixClick = { studioUi.showStudio = false; driftUi.showDialog = true },
+            autoSyncStatus = autoSyncStatus,
+            autoSyncAvailable = autoSyncAvailable,
+            onAutoSyncClick = { runAutoSync() },
+            onApplyAutoSync = { result -> applyAutoSyncResult(result) },
+            onCancelAutoSync = { autoSyncStatus = AutoSyncStatus.Idle },
+            presetName = appearanceUi.preset,
+            appearance = appearanceUi.appearance,
+            fontSizeSp = appearanceUi.textSizeSp,
+            onFontSizeChange = { appearanceUi.textSizeSp = it },
+            onApplyPreset = { name, preset -> appearanceUi.preset = name; appearanceUi.appearance = preset },
+            onForegroundChange = { c -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(foregroundColor = c) },
+            onEdgeTypeChange = { t -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(edgeType = t) },
+            onEdgeColorChange = { c -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(edgeColor = c) },
+            onBackgroundChange = { c -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(backgroundColor = c) },
+            isAssOrSsaFormat = isAssOrSsaFormat,
+            preserveOriginalStyling = appearanceUi.preserveOriginalStyling,
+            onPreserveOriginalStylingChange = { appearanceUi.preserveOriginalStyling = it },
+            bottomPadding = appearanceUi.bottomPadding,
+            onBottomPaddingChange = { appearanceUi.bottomPadding = it },
+            behaviorPrefs = coreUi.behaviorPrefs,
+            onBehaviorPrefsChange = { coreUi.behaviorPrefs = it; saveSubtitleBehaviorPrefs(context, it) },
+            cleaningOptions = coreUi.cleaningOptions,
+            onCleaningOptionsChange = { coreUi.cleaningOptions = it; saveSubtitleCleaningOptions(context, it) },
+            dualSubtitlesEnabled = dualUi.enabled,
+            dualCanEnable = trackUi.primaryUri != null,
+            dualSecondaryLanguage = dualUi.secondaryLanguage,
+            dualGapLines = dualUi.gapLines,
+            dualStatusText = dualUi.statusText,
+            onToggleDual = { enabled ->
+                dualUi.enabled = enabled
+                if (enabled) fetchAndApplyDualSecondary() else disableDualSubtitles()
+            },
+            onDualSecondaryLanguageChange = { lang ->
+                dualUi.secondaryLanguage = lang
+                coreUi.behaviorPrefs = coreUi.behaviorPrefs.copy(dualSecondaryLanguage = lang)
+                saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
+                if (dualUi.enabled) fetchAndApplyDualSecondary()
+            },
+            onDualGapLinesChange = { gap ->
+                dualUi.gapLines = gap
+                if (dualUi.enabled) fetchAndApplyDualSecondary()
+            },
+            onDismiss = { studioUi.showStudio = false; showControls = true },
+            onUserInteraction = { studioUi.menuTouchKey++ },
+        )
+
+        // Studio and Search are large, self-contained sheets that cover
+        // most of the screen — showing the transport dock/seek bar/top
+        // cluster underneath them just doubles up the UI for no reason
+        // (confirmed on-device: Vivo X300 Pro screenshots showed both
+        // layers competing for the same space). Both are explicitly
+        // EXCLUDED from the trigger list and explicitly HIDE this whole
+        // block via the trailing && clause, unlike the smaller anchored
+        // popups (Track Selector, Drift, Appearance, quick menu) which
+        // were designed to sit alongside visible controls and still do.
+        val hideControlsForLargeSheet = studioUi.showStudio || searchUi.showSearch
+        AnimatedVisibility(visible = externalPlayerView == null && (showControls || isDraggingSeekbar || showAudioSelector || coreUi.showSettings || trackUi.showSelector || driftUi.showDialog || coreUi.showAppearanceStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu) && !hideControlsForLargeSheet && !CineVaultPlayerHolder.isInPipMode, enter = fadeIn(), exit = fadeOut()) {
+            Box(modifier = Modifier.fillMaxSize()) {
+
+                val topRowVisible = !showSeekPreview
+                if (isLandscape) {
+                    Box(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = topClusterPaddingTop)) {
+                        AnimatedVisibility(
+                            visible = topRowVisible,
+                            enter = fadeIn(animationSpec = tween(160)), exit = fadeOut(animationSpec = tween(120)),
+                            modifier = Modifier.align(Alignment.CenterStart).padding(start = sidePadding)
+                        ) {
+                            FloatingScoreCapsule(meta = currentMeta, vertical = false)
+                        }
+
+                        AnimatedVisibility(
+                            visible = topRowVisible,
+                            enter = fadeIn(animationSpec = tween(220)), exit = fadeOut(animationSpec = tween(160)),
+                            modifier = Modifier.align(Alignment.Center).padding(horizontal = 96.dp)
+                        ) {
+                            NowPlayingTitlePill(text = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path), fontSize = 13.sp)
+                        }
+
+                        TopIconCluster(
+                            isLandscape = true, iconSize = topIconSize,
+                            playbackSpeed = playbackSpeed, sleepTimerActive = sleepTimerActive,
+                            showSpeedMenu = showSpeedMenu, showSleepMenu = showSleepMenu,
+                            onSpeedClick = { val wasOpen = showSpeedMenu; closeAllMenus(); showSpeedMenu = !wasOpen; showControls = true },
+                            onSleepClick = { val wasOpen = showSleepMenu; closeAllMenus(); showSleepMenu = !wasOpen; showControls = true },
+                            onPipClick = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                    val actions = buildPipActions(context, exoPlayer.isPlaying)
+                                    activity?.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).setActions(actions).build())
+                                }
+                            },
+                            // FIX: extra end padding reserves space for the
+                            // always-on-top lock button (TopEnd, last child
+                            // in the outer Box so it draws above everything
+                            // including this cluster) — without this, the
+                            // Speed icon's position could sit directly under
+                            // the lock button's touch/paint area in
+                            // landscape, since Compose doesn't auto-avoid
+                            // overlap between independently-aligned
+                            // siblings. Portrait doesn't need this: the
+                            // title pill + spacer above already push this
+                            // Column well clear of the lock button's corner.
+                            modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding + 62.dp)
+                                .onGloballyPositioned { clusterHeightPx = it.size.height.toFloat() }
+                        )
+                    }
+                } else {
+                    Column(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = topClusterPaddingTop)) {
+                        AnimatedVisibility(
+                            visible = topRowVisible,
+                            enter = fadeIn(animationSpec = tween(220)), exit = fadeOut(animationSpec = tween(160)),
+                            modifier = Modifier.align(Alignment.CenterHorizontally).padding(horizontal = 72.dp)
+                        ) {
+                            NowPlayingTitlePill(text = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path), fontSize = 15.sp)
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = topRowVisible,
+                                enter = fadeIn(animationSpec = tween(160)), exit = fadeOut(animationSpec = tween(120)),
+                                modifier = Modifier.align(Alignment.CenterStart).padding(start = sidePadding)
+                            ) {
+                                FloatingScoreCapsule(meta = currentMeta, vertical = true)
+                            }
+
+                            TopIconCluster(
+                                isLandscape = false, iconSize = topIconSize,
+                                playbackSpeed = playbackSpeed, sleepTimerActive = sleepTimerActive,
+                                showSpeedMenu = showSpeedMenu, showSleepMenu = showSleepMenu,
+                                onSpeedClick = { val wasOpen = showSpeedMenu; closeAllMenus(); showSpeedMenu = !wasOpen; showControls = true },
+                                onSleepClick = { val wasOpen = showSleepMenu; closeAllMenus(); showSleepMenu = !wasOpen; showControls = true },
+                                onPipClick = {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                        val actions = buildPipActions(context, exoPlayer.isPlaying)
+                                        activity?.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).setActions(actions).build())
+                                    }
+                                },
+                                modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)
+                                    .onGloballyPositioned { clusterHeightPx = it.size.height.toFloat() }
+                            )
+                        }
+                    }
+                }
+
+                AnimatedVisibility(visible = autoSubtitleFetch.status.isNotBlank() && !showSeekPreview, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.TopCenter).padding(top = if (isLandscape) 54.dp else 86.dp).padding(horizontal = 24.dp)) {
+                    Text(
+                        text = autoSubtitleFetch.status, color = AmberCore, fontSize = if (isLandscape) 11.sp else 12.sp, fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.glassPanel(cornerRadius = 18.dp, fill = GlassSurfaceStrong).widthIn(max = if (isLandscape) 320.dp else 300.dp).padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
+                }
+
+                AnimatedVisibility(visible = showNextEpisodeOverlay && pendingNextEpisode != null && !showSeekPreview, enter = fadeIn(animationSpec = tween(140)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
+                    NextEpisodeCountdownOverlay(nextEpisode = pendingNextEpisode, countdown = nextEpisodeCountdown, isLandscape = isLandscape,
+                        onPlayNow = { val n = pendingNextEpisode; if (n != null) { showNextEpisodeOverlay = false; pendingNextEpisode = null; currentMediaType = n.type; currentVideo = n.video; onPlayNext(n) } },
+                        onCancel = { showNextEpisodeOverlay = false; pendingNextEpisode = null; nextEpisodeCountdown = 0; nextEpisodeDismissed = true; showControls = true }
+                    )
+                }
+
+                val anyMenuOpenForSmartSkip = showAudioSelector || coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
+                val suppressCreditsPillForScene = activeSmartSegment?.type == SegmentType.CREDITS &&
+                    (smartSegmentResult.hasMidCreditsScene || smartSegmentResult.hasPostCreditsScene)
+                AnimatedVisibility(visible = activeSmartSegment != null && !suppressCreditsPillForScene && !showNextEpisodeOverlay && !showSeekPreview && !isDraggingSeekbar && !anyMenuOpenForSmartSkip, enter = fadeIn(animationSpec = tween(180)), exit = fadeOut(animationSpec = tween(140)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
+                    activeSmartSegment?.let { segment ->
+                        SmartSkipPill(segment, segment.endMs - position) {
+                            exoPlayer.seekTo(segment.endMs)
+                            position = segment.endMs
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            showControls = true
+                        }
+                    }
+                }
+
+                val creditNoticeVisible = !isCurrentTvShow && creditsSegment != null && position >= creditsSegment.startMs &&
+                    (smartSegmentResult.hasMidCreditsScene || smartSegmentResult.hasPostCreditsScene) &&
+                    (exactSceneSegment == null || position < exactSceneSegment.startMs)
+                AnimatedVisibility(visible = creditNoticeVisible && !showSeekPreview && !anyMenuOpenForSmartSkip, enter = fadeIn(tween(180)), exit = fadeOut(tween(140)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
+                    PostCreditNotice(
+                        hasExactTimestamp = exactSceneSegment != null,
+                        isMidCredits = smartSegmentResult.hasMidCreditsScene && !smartSegmentResult.hasPostCreditsScene,
+                        onJump = exactSceneSegment?.let { scene -> { exoPlayer.seekTo(scene.startMs); position = scene.startMs } }
+                    )
+                }
+
+                AnimatedVisibility(visible = isZoomMode && !showSeekPreview, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.TopCenter).padding(top = if (isLandscape) 54.dp else 90.dp)) {
+                    Text(text = "⛶  Fill", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 12.dp, vertical = 6.dp))
+                }
+
+                AnimatedVisibility(
+                    visible = !showSeekPreview && !isDraggingSeekbar,
+                    enter = slideInVertically(initialOffsetY = { it / 2 }, animationSpec = tween(260, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(200)),
+                    exit = slideOutVertically(targetOffsetY = { it / 2 }, animationSpec = tween(180)) + fadeOut(animationSpec = tween(140)),
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(bottom = bottomDockPadding, start = sidePadding, end = sidePadding)
+                            .glassPanel(cornerRadius = 42.dp, fill = GlassSurfaceStrong)
+                            .padding(horizontal = (12 * scale).dp, vertical = (6 * scale).dp)
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy((7 * scale).dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        BackIconButton(size = smallButton, onClick = onBack)
+
+                        GlassTransportButton(icon = Icons.Rounded.Replay10, size = smallButton) { exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0)); position = exoPlayer.currentPosition; showControls = true }
+
+                        FrostedPlayButton(isPlaying = isPlaying, isEnded = isVideoEnded, size = playButton) {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            if (isVideoEnded) { exoPlayer.seekTo(0); exoPlayer.play(); isVideoEnded = false; showControls = true }
+                            else { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play(); showControls = true }
+                        }
+
+                        GlassTransportButton(icon = Icons.Rounded.Forward10, size = smallButton) { exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration.coerceAtLeast(0))); position = exoPlayer.currentPosition; showControls = true }
+
+                        // Next — same visibility/dim logic as Previous above.
+                        if (showPrevNextButtons) {
+                            IconCircle(
+                                icon = Icons.Rounded.SkipNext, size = smallButton,
+                                tint = if (hasNextVideo) TextBright else TextMuted.copy(alpha = 0.35f)
+                            ) {
+                                if (hasNextVideo) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    playNext()
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width((4 * scale).dp))
+
+                        IconCircle(icon = Icons.Rounded.AllInclusive, size = smallButton, tint = if (autoPlayEnabled) AmberCore else TextMuted.copy(alpha = 0.6f)) {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            autoPlayEnabled = !autoPlayEnabled; showControls = true
+                            Toast.makeText(context, if (autoPlayEnabled) "Autoplay on" else "Autoplay off", Toast.LENGTH_SHORT).show()
+                        }
+
+                        IconCircle(icon = Icons.Rounded.Audiotrack, size = smallButton, tint = if (showAudioSelector) AmberCore else TextBright, modifier = Modifier.onGloballyPositioned { audioIconX = it.positionInRoot().x + it.size.width / 2f }) {
+                            val wasOpen = showAudioSelector; closeAllMenus(); showAudioSelector = !wasOpen; showControls = true; menuTouchKey++
+                        }
+
+                        if (!isStreamMedia) {
+                            Box(
+                                modifier = Modifier
+                                    .size(smallButton)
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(GlassSurface)
+                                    .background(Brush.verticalGradient(0f to GlassHighlight, 0.4f to Color.Transparent, 1f to Color.Transparent))
+                                    .border(1.dp, Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)), RoundedCornerShape(20.dp))
+                                    .onGloballyPositioned { subIconX = it.positionInRoot().x + it.size.width / 2f }
+                                    .combinedClickable(
+                                        onClick = {
+                                            val wasOpen = coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio
+                                            closeAllMenus(); coreUi.showSettings = !wasOpen; showControls = true; menuTouchKey++
+                                        },
+                                        onLongClick = {
+                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            closeAllMenus(); studioUi.initialTab = null; studioUi.showStudio = true; showControls = true
+                                        }
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.ClosedCaption, contentDescription = null,
+                                    tint = if (coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio) AmberCore else TextBright,
+                                    modifier = Modifier.size(smallButton * 0.44f)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                SeekPreviewBubble(isVisible = showSeekPreview, bitmap = previewBitmap, timeText = formatTime(previewPosition), isLandscape = isLandscape, isLarge = isSeekPreviewLarge, progress = (previewPosition.toFloat() / duration.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f))
+
+                Box(
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(start = sidePadding, end = sidePadding, bottom = seekBottomPadding)
+                        .glassPanel(cornerRadius = 30.dp, fill = GlassSurface)
+                        .padding(horizontal = (14 * scale).dp, vertical = (7 * scale).dp)
+                ) {
+                    CinematicSeekBar(
+                        position = position, duration = duration, isDragging = isDraggingSeekbar,
+                        seed = currentVideo.path.hashCode(),
+                        onPreviewPositionChanged = { pos ->
+                            isDraggingSeekbar = true; showSeekPreview = true; showControls = true; showTopBar = true
+                            position = pos.coerceIn(0L, duration); previewPosition = position
+                            VideoThumbnailHelper.nearestPreviewFrame(previewFrames, previewPosition)?.let { previewBitmap = it }
+                        },
+                        onSeekFinished = { finalPos ->
+                            val safe = finalPos.coerceIn(0L, duration)
+                            position = safe; previewPosition = safe; exoPlayer.seekTo(safe); isDraggingSeekbar = false
+                            previewBitmap = VideoThumbnailHelper.nearestPreviewFrame(previewFrames, safe) ?: previewBitmap
+                            showSeekPreview = true
+                            if (isStreamMedia) { scope.launch { delay(360); if (!isDraggingSeekbar) showSeekPreview = false } }
+                            else { scope.launch { val bmp = VideoThumbnailHelper.generateFrameAtTime(context, currentVideo.path, safe); if (bmp != null && previewPosition == safe) previewBitmap = bmp; delay(620); if (previewPosition == safe && !isDraggingSeekbar) showSeekPreview = false } }
+                            showControls = true; showTopBar = true
+                        }
+                    )
+                }
+            }
+        }
+
+        // FIX (E3): controls lock. Placed as the LAST child of the outer
+        // Box specifically — Compose renders later children on top, so
+        // this genuinely sits above every popup, menu, and the transport
+        // controls, not just visually but for touch priority too. When
+        // locked, a full-screen absorber (same containment pattern as the
+        // A1 fix) swallows every touch before it reaches anything else —
+        // except now a tap while locked specifically reveals the lock
+        // button (see lockButtonVisibleWhileLocked above), rather than
+        // doing nothing. Only the lock button reappears, not the other
+        // controls behind it — those stay genuinely locked and hidden,
+        // tapping here isn't a way to peek at them, only a way to find
+        // Unlock again.
+        if (controlsLocked) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) { detectTapGestures { lockButtonVisibleWhileLocked = true } }
+            )
+        }
+        // FIX: was unconditionally visible always — now follows the same
+        // show/hide behavior as the rest of the transport controls when
+        // unlocked. While actually locked, visibility comes from the
+        // separate lockButtonVisibleWhileLocked flag instead of
+        // showControls directly — that flag starts true, auto-hides on
+        // the same timer as everything else, and gets set back to true
+        // by a tap on the absorber above, giving a way back to Unlock
+        // without ever showing (or unblocking) the other, still-locked
+        // controls behind it.
+        AnimatedVisibility(
+            visible = externalPlayerView == null && (if (controlsLocked) lockButtonVisibleWhileLocked else showControls) && !CineVaultPlayerHolder.isInPipMode,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopEnd)
+        ) {
+            Box(
+                modifier = Modifier
+                    .padding(top = if (isLandscape) 10.dp else 14.dp, end = 14.dp)
+                    .height(46.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(AmberCore)
+                    .clickable {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        controlsLocked = !controlsLocked
+                        lockButtonVisibleWhileLocked = true
+                    }
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (controlsLocked) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
+                    contentDescription = if (controlsLocked) "Unlock controls" else "Lock controls",
+                    tint = Color.Black,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+
+        if (!studioUi.showStudio && !CineVaultPlayerHolder.isInPipMode) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 14.dp)
+            ) {
+                DraggableFloatingPopup(
+                    containerWidth = playerMaxWidth,
+                    containerHeight = playerMaxHeight,
+                    popupWidth = 260.dp,
+                    popupMaxHeight = 200.dp,
+                    onUserInteraction = {}
+                ) {
+                    AutoSyncFloatingIndicator(
+                        status = autoSyncStatus,
+                        onApply = { result -> applyAutoSyncResult(result) },
+                        onCancel = { autoSyncStatus = AutoSyncStatus.Idle },
+                        onRetry = { runAutoSync() }
+                    )
+                }
+            }
+        }
+
+        // ── Delete confirmation dialog (styled to match the app, not the
+        // plain white Android AlertDialog) ─────────────────────────────
+        AnimatedVisibility(
+            visible = pendingDeleteConfirmFile != null,
+            enter = fadeIn(animationSpec = tween(150)),
+            exit = fadeOut(animationSpec = tween(180))
+        ) {
+        pendingDeleteConfirmFile?.let { file ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .pointerInput(Unit) { detectTapGestures { pendingDeleteConfirmFile = null } },
+                contentAlignment = Alignment.Center
+            ) {
+                // Sheet slides up + fades in on top of the scrim's plain
+                // fade — same "arriving from below" language as the
+                // context sheets on the Library/TV Show screens.
+                AnimatedVisibility(
+                    visible = pendingDeleteConfirmFile != null,
+                    enter = slideInVertically(initialOffsetY = { it / 3 }, animationSpec = tween(260, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
+                    exit = slideOutVertically(targetOffsetY = { it / 3 }, animationSpec = tween(180)) + fadeOut(tween(140))
+                ) {
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 320.dp)
+                        .glassPanel(cornerRadius = 24.dp, fill = GlassSurfaceStrong)
+                        .pointerInput(Unit) { detectTapGestures { } }
+                        .padding(horizontal = 22.dp, vertical = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(imageVector = Icons.Rounded.Delete, contentDescription = null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(32.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(text = "Delete subtitle file?", color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(text = file.name, color = TextMuted, fontSize = 12.sp, textAlign = TextAlign.Center, maxLines = 2)
+                    Spacer(modifier = Modifier.height(18.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Cancel", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f))
+                                .clickable { pendingDeleteConfirmFile = null }.padding(horizontal = 20.dp, vertical = 10.dp)
+                        )
+                        Text(
+                            text = "Delete", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
+                            modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore)
+                                .clickable {
+                                    pendingDeleteConfirmFile = null
+                                    deleteWithUndo(file)
+                                }.padding(horizontal = 20.dp, vertical = 10.dp)
+                        )
+                    }
+                }
+                }
+            }
+        }
+        }
+
+        // ── Undo snackbar — styled the same as the app's other floating
+        // pills (glassPanel + amber action text) rather than Material's
+        // default snackbar look. Positioned above the transport dock so
+        // it never fights the dock for touch space.
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = bottomDockPadding + playButton + 26.dp)
+        ) { data ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 18.dp, vertical = 12.dp)
+            ) {
+                Text(text = data.visuals.message, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                data.visuals.actionLabel?.let { label ->
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = label, color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Black,
+                        modifier = Modifier.clickable { data.performAction() }
+                    )
+                }
+            }
+        }
+    }
+}
