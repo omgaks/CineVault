@@ -1,9 +1,13 @@
 import java.util.Properties
+import org.gradle.api.tasks.testing.Test
+import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
+import org.gradle.testing.jacoco.tasks.JacocoReport
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
+    jacoco
 }
 
 val localProperties = Properties()
@@ -237,4 +241,59 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
 
     testImplementation("junit:junit:4.13.2")
+}
+
+// Test Foundation Batch 1: produce an HTML report for people and an XML
+// report for CI/auditing every time the debug unit-test suite runs. Coverage
+// is reported, but deliberately not used as a percentage gate yet: the first
+// goal is a trustworthy baseline that can grow alongside each future slice.
+tasks.withType<Test>().configureEach {
+    extensions.configure<JacocoTaskExtension> {
+        isIncludeNoLocationClasses = true
+        excludes = listOf("jdk.internal.*")
+    }
+}
+
+val jacocoTestReport by tasks.registering(JacocoReport::class) {
+    dependsOn("testDebugUnitTest")
+
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        csv.required.set(false)
+    }
+
+    val coverageExclusions = listOf(
+        "**/R.class",
+        "**/R\$*.class",
+        "**/BuildConfig.*",
+        "**/Manifest*.*",
+        "**/*Test*.*",
+        "**/*_Factory.*",
+        "**/*_Impl.*",
+        "**/*Dao_Impl.*",
+        "**/*Database_Impl.*",
+    )
+
+    classDirectories.setFrom(
+        files(
+            fileTree(layout.buildDirectory.dir("tmp/kotlin-classes/debug")) {
+                exclude(coverageExclusions)
+            },
+            fileTree(layout.buildDirectory.dir("intermediates/javac/debug/classes")) {
+                exclude(coverageExclusions)
+            },
+        ),
+    )
+    sourceDirectories.setFrom(files("src/main/java", "src/main/kotlin"))
+    executionData.setFrom(
+        fileTree(layout.buildDirectory) {
+            include("jacoco/testDebugUnitTest.exec")
+            include("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
+        },
+    )
+}
+
+tasks.named("testDebugUnitTest") {
+    finalizedBy(jacocoTestReport)
 }
