@@ -949,55 +949,34 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(showControls, showAudioSelector, coreUi.showSettings, trackUi.showSelector, searchUi.showSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
-        if (showControls && !anyMenuOpen && !isDraggingSeekbar) {
-            delay(4500)
-            if (!isDraggingSeekbar && !anyMenuOpen) showControls = false
-        }
-    }
-
-    // FIX: was a full-screen touch absorber that swallowed every tap
-    // while locked, with the lock button always visible — meaning it was
-    // reachable, but never actually hid the way the rest of the controls
-    // do. Now the lock button follows the same auto-hide behavior as
-    // everything else, and this timer specifically handles its own
-    // reappear-then-hide-again cycle while locked: the absorber below
-    // sets lockButtonVisibleWhileLocked = true on tap (revealing ONLY the
-    // lock button, not the other — still genuinely locked — controls),
-    // and this effect hides it again after the same idle window used
-    // elsewhere, so it doesn't linger forever once revealed.
-    LaunchedEffect(controlsLocked, lockButtonVisibleWhileLocked) {
-        if (controlsLocked && lockButtonVisibleWhileLocked) {
-            delay(4500)
-            lockButtonVisibleWhileLocked = false
-        }
-    }
-
-    LaunchedEffect(showTopBar, showAudioSelector, coreUi.showSettings, trackUi.showSelector, searchUi.showSearch, showSpeedMenu, showSleepMenu, showSrtBrowser, isDraggingSeekbar) {
-        val anyMenuOpen = showAudioSelector || coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
-        if (showTopBar && !anyMenuOpen && !isDraggingSeekbar) {
-            delay(2800)
-            if (!isDraggingSeekbar && !anyMenuOpen) showTopBar = false
-        }
-    }
-
-    LaunchedEffect(showAudioSelector, menuTouchKey) { if (showAudioSelector) { delay(9000); showAudioSelector = false } }
-    LaunchedEffect(coreUi.showSettings, studioUi.menuTouchKey) { if (coreUi.showSettings) { delay(9000); coreUi.showSettings = false } }
-    // FIX: shortened idle timeouts — these only ever fire on genuine
-    // inactivity now that C3's activity-detection correctly resets them
-    // on every real interaction (verified: Appearance Studio does close,
-    // just felt slow at the old duration). Track Selector (12s) and SRT
-    // Browser (20s) weren't flagged as an issue, left unchanged.
-    LaunchedEffect(trackUi.showSelector, studioUi.menuTouchKey) { if (trackUi.showSelector) { delay(12000); trackUi.showSelector = false } }
-    LaunchedEffect(searchUi.showSearch, studioUi.menuTouchKey) { if (searchUi.showSearch) { delay(18000); searchUi.showSearch = false } }
-    LaunchedEffect(coreUi.showAppearanceStudio, studioUi.menuTouchKey) { if (coreUi.showAppearanceStudio) { delay(15000); coreUi.showAppearanceStudio = false } }
-    LaunchedEffect(studioUi.showStudio, studioUi.menuTouchKey) { if (studioUi.showStudio) { delay(30000); studioUi.showStudio = false } }
-    LaunchedEffect(showSrtBrowser) { if (showSrtBrowser) { delay(20000); showSrtBrowser = false } }
-    LaunchedEffect(showSpeedMenu) { if (showSpeedMenu) { delay(8000); showSpeedMenu = false } }
-    LaunchedEffect(showSleepMenu) { if (showSleepMenu) { delay(8000); showSleepMenu = false } }
-    LaunchedEffect(brightnessGestureKey) { if (brightnessGestureKey > 0) { delay(1400); showBrightnessCircle = false } }
-    LaunchedEffect(volumeGestureKey) { if (volumeGestureKey > 0) { delay(1400); showVolumeCircle = false } }
+    PlayerAutoHideEffects(
+        showControls = showControls,
+        showTopBar = showTopBar,
+        controlsLocked = controlsLocked,
+        lockButtonVisibleWhileLocked = lockButtonVisibleWhileLocked,
+        isDraggingSeekbar = isDraggingSeekbar,
+        showAudioSelector = showAudioSelector,
+        showSpeedMenu = showSpeedMenu,
+        showSleepMenu = showSleepMenu,
+        showSrtBrowser = showSrtBrowser,
+        menuTouchKey = menuTouchKey,
+        brightnessGestureKey = brightnessGestureKey,
+        volumeGestureKey = volumeGestureKey,
+        coreUi = coreUi,
+        trackUi = trackUi,
+        searchUi = searchUi,
+        driftUi = driftUi,
+        studioUi = studioUi,
+        onHideControls = { showControls = false },
+        onHideTopBar = { showTopBar = false },
+        onHideLockedButton = { lockButtonVisibleWhileLocked = false },
+        onHideAudioSelector = { showAudioSelector = false },
+        onHideSpeedMenu = { showSpeedMenu = false },
+        onHideSleepMenu = { showSleepMenu = false },
+        onHideSrtBrowser = { showSrtBrowser = false },
+        onHideBrightnessHud = { showBrightnessCircle = false },
+        onHideVolumeHud = { showVolumeCircle = false },
+    )
 
     // Shared by both the standalone Track Selector sheet and the Subtitle
     // Studio's Track tab — previously duplicated verbatim in both places,
@@ -1188,20 +1167,18 @@ fun VideoPlayerScreen(
         // only actually defined on this outer one.
         val playerMaxWidth = maxWidth
         val playerMaxHeight = maxHeight
-        val isLandscape = maxWidth > maxHeight
-        val isSmallPhone = maxWidth < 430.dp || maxHeight < 760.dp
-        val isCompactLandscape = isLandscape && maxHeight < 430.dp
-        val layoutScale = when { isCompactLandscape -> 0.70f; isSmallPhone && !isLandscape -> 0.78f; isSmallPhone -> 0.82f; isLandscape -> 0.90f; else -> 1f }
-        val deckNaturalWidth = 66f * 6 + 98f + 7f * 7 + 24f
-        val fitScale = ((maxWidth.value - 32f) / deckNaturalWidth).coerceAtMost(1f)
-        val scale = minOf(layoutScale, fitScale).coerceAtLeast(0.42f)
-        val playButton = (98 * scale).dp
-        val smallButton = (66 * scale).dp
-        val hudSize = (72 * scale).dp
-        val sidePadding = if (isCompactLandscape) 8.dp else 16.dp
-        val bottomDockPadding = when { isCompactLandscape -> 76.dp; isLandscape -> 90.dp; else -> 152.dp }
-        val seekBottomPadding = when { isCompactLandscape -> 13.dp; isLandscape -> 17.dp; else -> 92.dp }
-        val topClusterPaddingTop = if (isLandscape) 10.dp else 18.dp
+        val displayLayout = calculatePlayerDisplayLayout(maxWidth, maxHeight)
+        val isLandscape = displayLayout.isLandscape
+        val isSmallPhone = displayLayout.isSmallPhone
+        val isCompactLandscape = displayLayout.isCompactLandscape
+        val scale = displayLayout.scale
+        val playButton = displayLayout.playButton
+        val smallButton = displayLayout.smallButton
+        val hudSize = displayLayout.hudSize
+        val sidePadding = displayLayout.sidePadding
+        val bottomDockPadding = displayLayout.bottomDockPadding
+        val seekBottomPadding = displayLayout.seekBottomPadding
+        val topClusterPaddingTop = displayLayout.topClusterPaddingTop
 
         // ── Per-display subtitle profiles ──────────────────────────────
         // Which profile applies right now — external (RayNeo/DP Alt Mode)
@@ -1209,50 +1186,13 @@ fun VideoPlayerScreen(
         // surface, regardless of what the tablet's own screen size says.
         // TV isn't reachable yet (see DisplayProfiles.kt) so it never
         // appears here.
-        val displayProfileType = when {
-            externalDisplay.isConnected -> DisplayProfileType.EXTERNAL
-            isSmallPhone -> DisplayProfileType.PHONE
-            else -> DisplayProfileType.TABLET
-        }
-        val currentProfileId = remember(displayProfileType, isLandscape) { displayProfileId(displayProfileType, isLandscape) }
-        var profileLoadedFor by remember { mutableStateOf<String?>(null) }
-
-        // Loads this profile's saved size/position/style the moment the
-        // profile changes (rotation, or a RayNeo connecting/disconnecting)
-        // — e.g. switching from tablet-landscape to external mid-playback
-        // instantly swaps in whatever subtitle look was last used on the
-        // glasses, not whatever was active a second ago on the tablet.
-        LaunchedEffect(currentProfileId) {
-            val settings = loadSubtitleProfileSettings(context, displayProfileType, isLandscape)
-            appearanceUi.textSizeSp = settings.fontSizeSp
-            appearanceUi.bottomPadding = settings.bottomPadding
-            appearanceUi.preset = settings.presetName
-            appearanceUi.appearance = SubtitleAppearance(settings.foregroundColor, settings.edgeType, settings.edgeColor, settings.backgroundColor)
-            profileLoadedFor = currentProfileId
-        }
-
-        // Persists back to the SAME profile whenever the person adjusts
-        // size/position/style — guarded by profileLoadedFor so the values
-        // freshly loaded above (for a brand new profile) don't immediately
-        // get written back over themselves, and so a value still carrying
-        // over from the PREVIOUS profile during the one-frame transition
-        // can't leak into the new profile's saved settings.
-        LaunchedEffect(currentProfileId, appearanceUi.textSizeSp, appearanceUi.bottomPadding, appearanceUi.preset, appearanceUi.appearance) {
-            if (profileLoadedFor != currentProfileId) return@LaunchedEffect
-            delay(400)
-            saveSubtitleProfileSettings(
-                context, displayProfileType, isLandscape,
-                SubtitleProfileSettings(
-                    fontSizeSp = appearanceUi.textSizeSp,
-                    bottomPadding = appearanceUi.bottomPadding,
-                    presetName = appearanceUi.preset,
-                    foregroundColor = appearanceUi.appearance.foregroundColor,
-                    edgeType = appearanceUi.appearance.edgeType,
-                    edgeColor = appearanceUi.appearance.edgeColor,
-                    backgroundColor = appearanceUi.appearance.backgroundColor
-                )
-            )
-        }
+        val displayProfileType = RememberPlayerSubtitleDisplayProfile(
+            context = context,
+            externalDisplayConnected = externalDisplay.isConnected,
+            isSmallPhone = isSmallPhone,
+            isLandscape = isLandscape,
+            appearanceUi = appearanceUi,
+        )
 
         val uiScale = (maxWidth.value / 400f).coerceIn(0.85f, 1.25f)
 
