@@ -558,6 +558,27 @@ fun CineVaultApp() {
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            // Give every navigation destination its own Compose slot tree.
+            // Detail uses ScrollState/LazyRow while Actor/Genre/Collection
+            // pages use LazyGridState. On minified release builds Compose
+            // could otherwise restore a remembered state object belonging
+            // to the screen that occupied this position immediately before
+            // it, producing a ClassCastException during the first frame of
+            // the Actor page. The explicit key disposes the previous
+            // destination's remembered UI before composing the new one.
+            val destinationCompositionKey = when (val destination = current) {
+                is Destination.Tab -> "tab:${destination.index}"
+                is Destination.Detail -> "detail:${destination.item.video.path}"
+                is Destination.TvShow -> "tv:${destination.group.showName}"
+                is Destination.Player -> "player:${destination.video.path}"
+                is Destination.GenrePage -> "genre:${destination.genreName}"
+                is Destination.DirectorPage -> "director:${destination.directorName}"
+                is Destination.ActorPage -> "actor:${destination.actorId}"
+                is Destination.NativeCollectionPage -> "native-collection:${destination.collectionId}"
+                is Destination.CuratedCollectionPage -> "curated-collection:${destination.collectionName}"
+                is Destination.RestrictedFolderPage -> "restricted-folder:${destination.folderId}"
+            }
+            key(destinationCompositionKey) {
             when (val dest = current) {
                 is Destination.Player -> {
                     VideoPlayerScreen(
@@ -636,7 +657,11 @@ fun CineVaultApp() {
                 }
 
                 is Destination.ActorPage -> {
-                    val items = libraryVideos.filter { v -> v.cast.any { it.id == dest.actorId } }
+                    // Gson can deserialize caches written before `cast` was
+                    // added with a runtime null despite the Kotlin property
+                    // being declared non-null. orEmpty() keeps those existing
+                    // caches usable instead of crashing actor navigation.
+                    val items = libraryVideos.filter { v -> v.cast.orEmpty().any { it.id == dest.actorId } }
                     ActorScreen(
                         actorId = dest.actorId,
                         actorName = dest.actorName,
@@ -743,6 +768,7 @@ fun CineVaultApp() {
                         )
                     }
                 }
+            }
             }
 
             // Outside playback Android mirrors CineVault to the glasses.
