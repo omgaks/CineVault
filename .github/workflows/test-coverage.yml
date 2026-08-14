@@ -34,7 +34,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
 
       - name: Run unit tests and create coverage report
-        run: bash gradlew test --no-daemon
+        run: |
+          bash gradlew test --no-daemon
+          bash gradlew jacocoTestReport --no-daemon
 
       - name: Upload test and coverage reports
         if: always()
