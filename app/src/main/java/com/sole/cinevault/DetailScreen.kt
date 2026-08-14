@@ -376,9 +376,27 @@ fun DetailScreen(
                 SectionTitle("Cast & Crew")
                 Spacer(modifier = Modifier.height(12.dp))
                 when {
-                    castLoading && castList.isEmpty() -> CastRowShimmer()
-                    castList.isEmpty() -> Text(text = "Cast info not available.", color = TextFaint, fontSize = 14.sp)
-                    else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) { items(castList) { cast -> CastCard(cast = cast, movieName = item.title, onActorClick = onActorClick) } }
+                    castLoading && castList.isEmpty() -> key("cast-loading") {
+                        CastRowShimmer()
+                    }
+                    castList.isEmpty() -> key("cast-empty") {
+                        Text(text = "Cast info not available.", color = TextFaint, fontSize = 14.sp)
+                    }
+                    else -> key("cast-list:${item.tmdbId}:${item.type}") {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            items(
+                                items = castList,
+                                key = { cast -> "${cast.id ?: 0}:${cast.name.orEmpty()}:${cast.profile_path.orEmpty()}" },
+                                contentType = { "cast-card" },
+                            ) { cast ->
+                                CastCard(
+                                    cast = cast,
+                                    movieName = item.title,
+                                    onActorClick = onActorClick,
+                                )
+                            }
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(28.dp))
@@ -597,13 +615,14 @@ private fun formatResumeTime(positionMs: Long): String { val s = positionMs / 10
 @Composable
 private fun CastCard(cast: TmdbCastMember, movieName: String, onActorClick: (Int, String, String?) -> Unit) {
     val context = LocalContext.current
+    val currentOnActorClick by rememberUpdatedState(onActorClick)
     val imageUrl = cast.profile_path?.let { "https://image.tmdb.org/t/p/w300$it" }
     val safeName = cast.name ?: "Unknown"
     val actorId = cast.id
     val onCardClick = {
         if (actorId != null && !cast.name.isNullOrBlank()) {
             // Routes into the Actor page, filtered against your own library.
-            onActorClick(actorId, cast.name, cast.profile_path)
+            currentOnActorClick(actorId, cast.name, cast.profile_path)
         } else {
             // No TMDB person id (older cached credits, or a rare API gap) —
             // fall back to the original web-search behavior instead of a dead tap.
