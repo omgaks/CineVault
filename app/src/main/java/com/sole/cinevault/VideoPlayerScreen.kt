@@ -131,7 +131,6 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
@@ -835,33 +834,30 @@ fun VideoPlayerScreen(
         onDispose { exoPlayer.removeListener(listener) }
     }
 
-    DisposableEffect(exoPlayer, currentVideo.path) {
-        val analyticsListener = object : AnalyticsListener {
-            override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
-                if (droppedFrames < 8) return
-                if (droppedFrameNudgeCount >= 3) return
-                val now = System.currentTimeMillis()
-                if (now - lastNudgeAtMs < 90_000L) return
-                lastNudgeAtMs = now
-                droppedFrameNudgeCount++
-                exoPlayer.seekTo(exoPlayer.currentPosition)
-            }
-        }
-        exoPlayer.addAnalyticsListener(analyticsListener)
-        onDispose { exoPlayer.removeAnalyticsListener(analyticsListener) }
-    }
-
-    LaunchedEffect(isBuffering) {
-        if (isBuffering) { delay(400); if (isBuffering) showBufferingSpinner = true }
-        else { showBufferingSpinner = false; stuckBufferingHint = false }
-    }
-
-    LaunchedEffect(isBuffering, currentVideo.path) {
-        if (isBuffering) {
-            delay(15_000)
-            if (isBuffering) stuckBufferingHint = true
-        }
-    }
+    PlayerTimelineEffects(
+        context = context,
+        player = exoPlayer,
+        videoPath = currentVideo.path,
+        isStreamMedia = isStreamMedia,
+        isDraggingSeekbar = isDraggingSeekbar,
+        isBuffering = isBuffering,
+        showSeekPreview = showSeekPreview,
+        previewPosition = previewPosition,
+        duration = duration,
+        previewReloadKey = previewReloadKey,
+        droppedFrameNudgeCount = droppedFrameNudgeCount,
+        lastNudgeAtMs = lastNudgeAtMs,
+        onPositionChanged = { position = it },
+        onDurationChanged = { duration = it },
+        onPlayingChanged = { isPlaying = it },
+        onBufferingSpinnerChanged = { showBufferingSpinner = it },
+        onStuckBufferingChanged = { stuckBufferingHint = it },
+        onDroppedFrameNudgeCountChanged = { droppedFrameNudgeCount = it },
+        onLastNudgeAtMsChanged = { lastNudgeAtMs = it },
+        onPreviewFramesChanged = { previewFrames = it },
+        onPreviewBitmapChanged = { previewBitmap = it },
+        onSeekPreviewLargeChanged = { isSeekPreviewLarge = it },
+    )
 
     DisposableEffect(Unit) {
         onDispose {
@@ -889,30 +885,6 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(exoPlayer) {
-        while (true) {
-            if (!isDraggingSeekbar) position = exoPlayer.currentPosition.coerceAtLeast(0)
-            duration = exoPlayer.duration.coerceAtLeast(1)
-            isPlaying = exoPlayer.isPlaying
-            delay(350)
-        }
-    }
-
-    LaunchedEffect(currentVideo.path, duration, previewReloadKey) {
-        if (!isStreamMedia && duration > 1000L) {
-            previewFrames = emptyList()
-            val quick = VideoThumbnailHelper.generatePreviewCache(context, currentVideo.path, duration, 18)
-            if (quick.isNotEmpty()) { previewFrames = quick; previewBitmap = quick.firstOrNull()?.bitmap ?: previewBitmap }
-            val dense = VideoThumbnailHelper.generatePreviewCache(context, currentVideo.path, duration, 72)
-            if (dense.isNotEmpty()) previewFrames = dense
-        } else { previewFrames = emptyList(); previewBitmap = null }
-    }
-
-    LaunchedEffect(showSeekPreview, previewPosition) {
-        if (showSeekPreview) { isSeekPreviewLarge = false; delay(650); if (showSeekPreview) isSeekPreviewLarge = true }
-        else isSeekPreviewLarge = false
-    }
-
     PlayerPipWindowEffect(
         activity = activity,
         context = context,
@@ -937,17 +909,6 @@ fun VideoPlayerScreen(
         player = exoPlayer
     )
 
-    LaunchedEffect(currentVideo.path) {
-        while (true) {
-            delay(5000)
-            val current = exoPlayer.currentPosition.coerceAtLeast(0L)
-            val total = exoPlayer.duration.coerceAtLeast(1L)
-            if (!isStreamMedia && current > 5000L && current < total - 5000L) {
-                savePlaybackPosition(context, currentVideo.path, current)
-                recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
-            }
-        }
-    }
 
     PlayerAutoHideEffects(
         showControls = showControls,
