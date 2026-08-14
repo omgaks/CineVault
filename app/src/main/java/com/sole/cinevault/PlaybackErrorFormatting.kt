@@ -27,7 +27,23 @@ fun findHttpStatusDetail(error: Throwable): String? {
 }
 
 fun friendlyPlaybackError(error: PlaybackException): String {
-    val detail = when (error.errorCode) {
+    return friendlyPlaybackErrorForCode(
+        errorCode = error.errorCode,
+        errorCodeName = error.errorCodeName,
+        originalMessage = error.message,
+        causeMessage = error.cause?.message,
+        httpStatusDetail = findHttpStatusDetail(error),
+    )
+}
+
+internal fun friendlyPlaybackErrorForCode(
+    errorCode: Int,
+    errorCodeName: String,
+    originalMessage: String? = null,
+    causeMessage: String? = null,
+    httpStatusDetail: String? = null,
+): String {
+    val detail = when (errorCode) {
         PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ->
             "File not found. It may have been moved, renamed, or the drive it's on was disconnected."
         PlaybackException.ERROR_CODE_IO_NO_PERMISSION ->
@@ -36,7 +52,7 @@ fun friendlyPlaybackError(error: PlaybackException): String {
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
             "Connection problem reading this file. If it's on a USB drive or network share, check the connection."
         PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
-            "The server rejected the request for this stream." + (findHttpStatusDetail(error)?.let { " (HTTP $it)" } ?: "")
+            "The server rejected the request for this stream." + (httpStatusDetail?.let { " (HTTP $it)" } ?: "")
         PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE ->
             "The server returned this link as something other than a playable video (wrong content type)."
         PlaybackException.ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED ->
@@ -62,16 +78,19 @@ fun friendlyPlaybackError(error: PlaybackException): String {
             // real reason almost always lives one level down in the
             // cause chain — surfaced here rather than a generic message
             // discarding it.
-            val causeDetail = error.cause?.message?.takeIf { it.isNotBlank() }
+            val causeDetail = causeMessage?.takeIf { it.isNotBlank() }
             if (causeDetail != null) "Couldn't read this source: $causeDetail"
             else "Couldn't read this source (unspecified I/O error)."
         }
-        else -> error.message ?: "Playback error"
+        else -> originalMessage ?: "Playback error"
     }
-    return "$detail (${error.errorCodeName})"
+    return "$detail ($errorCodeName)"
 }
 
-fun isTransientPlaybackError(error: PlaybackException): Boolean = when (error.errorCode) {
+fun isTransientPlaybackError(error: PlaybackException): Boolean =
+    isTransientPlaybackErrorCode(error.errorCode)
+
+internal fun isTransientPlaybackErrorCode(errorCode: Int): Boolean = when (errorCode) {
     PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
     PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
     PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
