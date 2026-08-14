@@ -776,7 +776,15 @@ internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolea
 }
 
 @Composable
-internal fun SeekPreviewBubble(isVisible: Boolean, bitmap: Bitmap?, timeText: String, isLandscape: Boolean, isLarge: Boolean, progress: Float) {
+internal fun SeekPreviewBubble(
+    isVisible: Boolean,
+    bitmap: Bitmap?,
+    timeText: String,
+    isLandscape: Boolean,
+    isLarge: Boolean,
+    progress: Float,
+    bottomPadding: Dp,
+) {
     val pw by animateDpAsState(if (isLarge) (if (isLandscape) 220.dp else 210.dp) else (if (isLandscape) 150.dp else 160.dp), tween(160), "pw")
     val ph by animateDpAsState(if (isLarge) (if (isLandscape) 124.dp else 118.dp) else (if (isLandscape) 84.dp else 90.dp), tween(160), "ph")
     AnimatedVisibility(visible = isVisible, enter = fadeIn(animationSpec = tween(80)), exit = fadeOut(animationSpec = tween(80)), modifier = Modifier.fillMaxSize()) {
@@ -784,7 +792,7 @@ internal fun SeekPreviewBubble(isVisible: Boolean, bitmap: Bitmap?, timeText: St
             val hp = 18.dp; val aw = maxWidth - (hp * 2)
             val raw = aw * progress.coerceIn(0f, 1f) - (pw / 2); val max = aw - pw
             val safe = when { max < 0.dp -> 0.dp; raw < 0.dp -> 0.dp; raw > max -> max; else -> raw }
-            Column(modifier = Modifier.align(Alignment.BottomStart).offset(x = hp + safe).padding(bottom = if (isLandscape) 116.dp else 134.dp)
+            Column(modifier = Modifier.align(Alignment.BottomStart).offset(x = hp + safe).padding(bottom = bottomPadding)
                 .graphicsLayer { scaleX = if (isLarge) 1.02f else 0.98f; scaleY = if (isLarge) 1.02f else 0.98f; shadowElevation = if (isLarge) 18f else 10f }
                 .glassPanel(cornerRadius = 18.dp, fill = GlassSurfaceStrong)
                 .padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1063,4 +1071,3 @@ private fun SyncStepChip(text: String, onClick: () -> Unit) {
         Text(text = text, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
-
