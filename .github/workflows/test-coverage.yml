@@ -34,7 +34,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
 
       - name: Run unit tests and create coverage report
-        run: ./gradlew testDebugUnitTest jacocoTestReport --no-daemon
+        run: bash gradlew test --no-daemon
 
       - name: Upload test and coverage reports
         if: always()
@@ -42,7 +42,7 @@ jobs:
         with:
           name: test-coverage-${{ github.run_number }}
           path: |
-            app/build/reports/tests/testDebugUnitTest/
-            app/build/reports/jacoco/jacocoTestReport/
+            app/build/reports/tests/
+            app/build/reports/jacoco/
           if-no-files-found: warn
           retention-days: 14
