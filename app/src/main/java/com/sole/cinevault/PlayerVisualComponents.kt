@@ -785,8 +785,21 @@ internal fun SeekPreviewBubble(
     progress: Float,
     bottomPadding: Dp,
 ) {
-    val pw by animateDpAsState(if (isLarge) (if (isLandscape) 220.dp else 210.dp) else (if (isLandscape) 150.dp else 160.dp), tween(160), "pw")
-    val ph by animateDpAsState(if (isLarge) (if (isLandscape) 124.dp else 118.dp) else (if (isLandscape) 84.dp else 90.dp), tween(160), "ph")
+    // Landscape has much less vertical room. Keeping the portrait-sized
+    // card there made its top half occupy the visual centre even when its
+    // bottom edge was correctly anchored above the seek dock.
+    val pw by animateDpAsState(
+        if (isLarge) (if (isLandscape) 168.dp else 210.dp)
+        else (if (isLandscape) 128.dp else 160.dp),
+        tween(160),
+        "pw",
+    )
+    val ph by animateDpAsState(
+        if (isLarge) (if (isLandscape) 88.dp else 118.dp)
+        else (if (isLandscape) 64.dp else 90.dp),
+        tween(160),
+        "ph",
+    )
     AnimatedVisibility(visible = isVisible, enter = fadeIn(animationSpec = tween(80)), exit = fadeOut(animationSpec = tween(80)), modifier = Modifier.fillMaxSize()) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val hp = 18.dp; val aw = maxWidth - (hp * 2)

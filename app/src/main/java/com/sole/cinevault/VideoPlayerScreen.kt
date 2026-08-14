@@ -2169,7 +2169,7 @@ fun VideoPlayerScreen(
                     // hardcoded screen offset. The seek bar is 38dp tall,
                     // surrounded by scaled 7dp vertical padding, with a
                     // small visual gap above it.
-                    bottomPadding = seekBottomPadding + (38f + 14f * scale).dp + 10.dp,
+                    bottomPadding = seekBottomPadding + (38f + 14f * scale).dp + 18.dp,
                 )
 
                 Box(
