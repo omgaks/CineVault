@@ -821,7 +821,9 @@ internal fun SeekPreviewBubble(
 @androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
 internal fun buildPipActions(context: Context, isPlaying: Boolean): List<RemoteAction> {
     fun action(code: Int, iconRes: Int, title: String): RemoteAction {
-        val intent = Intent("com.sole.cinevault.PIP_ACTION").putExtra("pip_action", code)
+        val intent = Intent(CINEVAULT_PIP_ACTION)
+            .setPackage(context.packageName)
+            .putExtra(CINEVAULT_PIP_ACTION_EXTRA, code)
         val pi = PendingIntent.getBroadcast(context, code, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return RemoteAction(AndroidIcon.createWithResource(context, iconRes), title, title, pi)
     }

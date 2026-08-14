@@ -9,10 +9,14 @@ import android.content.IntentFilter
 import android.os.Build
 import android.util.Rational
 import android.view.WindowManager
+import androidx.core.content.ContextCompat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.media3.exoplayer.ExoPlayer
+
+internal const val CINEVAULT_PIP_ACTION = "com.sole.cinevault.PIP_ACTION"
+internal const val CINEVAULT_PIP_ACTION_EXTRA = "pip_action"
 
 /** Keeps the screen awake during playback and refreshes Android's PiP actions. */
 @Composable
@@ -53,8 +57,9 @@ internal fun PlayerPipActionReceiverEffect(
         CineVaultPlayerHolder.currentPlayer = player
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(receiverContext: Context, intent: Intent) {
+                if (intent.action != CINEVAULT_PIP_ACTION) return
                 val activePlayer = CineVaultPlayerHolder.currentPlayer ?: return
-                when (intent.getIntExtra("pip_action", -1)) {
+                when (intent.getIntExtra(CINEVAULT_PIP_ACTION_EXTRA, -1)) {
                     0 -> {
                         if (activePlayer.isPlaying) {
                             activePlayer.pause()
@@ -76,16 +81,18 @@ internal fun PlayerPipActionReceiverEffect(
             }
         }
 
-        val filter = IntentFilter("com.sole.cinevault.PIP_ACTION")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.applicationContext.registerReceiver(
-                receiver,
-                filter,
-                Context.RECEIVER_EXPORTED
-            )
-        } else {
-            context.applicationContext.registerReceiver(receiver, filter)
-        }
+        val filter = IntentFilter(CINEVAULT_PIP_ACTION)
+        // The PendingIntents backing CineVault's PiP buttons are created by
+        // this app, so no other package needs to reach this receiver.
+        // ContextCompat applies the private/non-exported contract across
+        // every supported API level, including pre-Android 13 devices where
+        // the platform registerReceiver overload has no explicit flag.
+        ContextCompat.registerReceiver(
+            context.applicationContext,
+            receiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
 
         onDispose {
             try {
