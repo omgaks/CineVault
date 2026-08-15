@@ -2,6 +2,10 @@ package com.sole.cinevault
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import com.sole.cinevault.library.VideoFile
+import com.sole.cinevault.segments.SegmentType
+import com.sole.cinevault.segments.SmartSegmentRepository
+import com.sole.cinevault.segments.SmartSegmentResult
 import kotlinx.coroutines.delay
 
 /**
@@ -30,15 +34,34 @@ internal fun PlayerSmartPlaybackEffects(
     onCountdownChanged: (Int) -> Unit,
     onCountdownFinished: (VideoWithMetadata) -> Unit,
 ) {
-    LaunchedEffect(currentMeta?.video?.path, duration > 60_000L) {
-        val meta = currentMeta ?: return@LaunchedEffect
-        if (duration <= 60_000L || meta.type == "secret") return@LaunchedEffect
-        onSmartSegmentResultChanged(smartSegmentRepository.load(meta, duration))
+    LaunchedEffect(
+        currentMeta?.video?.path,
+        duration > 60_000L,
+    ) {
+        val meta = currentMeta
+            ?: return@LaunchedEffect
+
+        if (
+            duration <= 60_000L ||
+            meta.type == "secret"
+        ) {
+            return@LaunchedEffect
+        }
+
+        onSmartSegmentResultChanged(
+            smartSegmentRepository.load(
+                meta,
+                duration,
+            ),
+        )
     }
 
-    val creditsStartMs = smartSegmentResult.segments
-        .firstOrNull { it.type == SegmentType.CREDITS }
-        ?.startMs
+    val creditsStartMs =
+        smartSegmentResult.segments
+            .firstOrNull {
+                it.type == SegmentType.CREDITS
+            }
+            ?.startMs
 
     LaunchedEffect(
         currentVideo.path,
@@ -56,14 +79,22 @@ internal fun PlayerSmartPlaybackEffects(
             return@LaunchedEffect
         }
 
-        val index = episodeList.indexOfFirst {
-            it.video.path == currentVideo.path
-        }
-        val next = episodeList.getOrNull(index + 1) ?: return@LaunchedEffect
+        val index =
+            episodeList.indexOfFirst {
+                it.video.path == currentVideo.path
+            }
+
+        val next =
+            episodeList.getOrNull(index + 1)
+                ?: return@LaunchedEffect
+
         onQueueNextEpisode(next)
     }
 
-    LaunchedEffect(position, creditsStartMs) {
+    LaunchedEffect(
+        position,
+        creditsStartMs,
+    ) {
         if (
             showNextEpisodeOverlay &&
             creditsStartMs != null &&
@@ -73,19 +104,34 @@ internal fun PlayerSmartPlaybackEffects(
         }
     }
 
-    LaunchedEffect(showNextEpisodeOverlay, pendingNextEpisode) {
-        if (!showNextEpisodeOverlay) return@LaunchedEffect
-        val queuedEpisode = pendingNextEpisode ?: return@LaunchedEffect
+    LaunchedEffect(
+        showNextEpisodeOverlay,
+        pendingNextEpisode,
+    ) {
+        if (!showNextEpisodeOverlay) {
+            return@LaunchedEffect
+        }
+
+        val queuedEpisode =
+            pendingNextEpisode
+                ?: return@LaunchedEffect
 
         var count = 15
+
         while (count > 0) {
             onCountdownChanged(count)
             delay(1_000)
 
-            if (!showNextEpisodeOverlay || pendingNextEpisode == null) {
+            if (
+                !showNextEpisodeOverlay ||
+                pendingNextEpisode == null
+            ) {
                 return@LaunchedEffect
             }
-            if (isPlaying || isVideoEnded) count--
+
+            if (isPlaying || isVideoEnded) {
+                count--
+            }
         }
 
         onCountdownFinished(queuedEpisode)
