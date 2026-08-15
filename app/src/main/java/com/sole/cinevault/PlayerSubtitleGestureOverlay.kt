@@ -2,19 +2,22 @@ package com.sole.cinevault
 
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
@@ -81,18 +84,23 @@ internal fun PlayerSubtitleGestureOverlay(
                     onPinchTextSize = { zoom ->
                         appearanceUi.textSizeSp =
                             (appearanceUi.textSizeSp * zoom).coerceIn(12f, 32f)
-                        studioUi.gestureFeedback = "${appearanceUi.textSizeSp.toInt()}sp"
+                        studioUi.gestureFeedback =
+                            "${appearanceUi.textSizeSp.toInt()}sp"
                     },
                     onHorizontalSyncDrag = { deltaX ->
                         val deltaSeconds = deltaX / 60f
                         coreUi.syncOffset =
                             (coreUi.syncOffset + deltaSeconds).coerceIn(-10f, 10f)
-                        val formattedOffset = String.format("%.1f", coreUi.syncOffset)
-                        studioUi.gestureFeedback = if (coreUi.syncOffset >= 0f) {
-                            "+${formattedOffset}s"
-                        } else {
-                            "${formattedOffset}s"
-                        }
+
+                        val formattedOffset =
+                            String.format("%.1f", coreUi.syncOffset)
+
+                        studioUi.gestureFeedback =
+                            if (coreUi.syncOffset >= 0f) {
+                                "+${formattedOffset}s"
+                            } else {
+                                "${formattedOffset}s"
+                            }
                     },
                     onVerticalPositionDrag = { deltaFraction ->
                         appearanceUi.bottomPadding =
@@ -105,8 +113,14 @@ internal fun PlayerSubtitleGestureOverlay(
                         studioUi.gestureFeedback = "Sync reset"
                     },
                     onLongPressTogglePlayback = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        if (player.isPlaying) player.pause() else player.play()
+                        haptics.performHapticFeedback(
+                            HapticFeedbackType.LongPress
+                        )
+                        if (player.isPlaying) {
+                            player.pause()
+                        } else {
+                            player.play()
+                        }
                         onShowControls()
                     },
                 ),
@@ -118,7 +132,10 @@ internal fun PlayerSubtitleGestureOverlay(
             exit = fadeOut(animationSpec = tween(200)),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = gestureZoneBottomOffset + gestureZoneHeight / 2),
+                .padding(
+                    bottom = gestureZoneBottomOffset +
+                        gestureZoneHeight / 2
+                ),
         ) {
             Text(
                 text = studioUi.gestureFeedback,
@@ -126,7 +143,8 @@ internal fun PlayerSubtitleGestureOverlay(
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
-                    .glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong)
+                    .clip(RoundedCornerShape(50.dp))
+                    .background(GlassSurfaceStrong)
                     .padding(horizontal = 14.dp, vertical = 7.dp),
             )
         }
