@@ -39,6 +39,7 @@ import com.sole.cinevault.ui.theme.AmberCore
 import com.sole.cinevault.ui.theme.GlassSurfaceStrong
 import com.sole.cinevault.ui.theme.TextBright
 import com.sole.cinevault.ui.theme.TextMuted
+import com.sole.cinevault.ui.theme.glassPanel
 
 /*
  * PlayerPlaybackStatusOverlays.kt
