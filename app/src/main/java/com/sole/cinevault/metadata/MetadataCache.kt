@@ -243,6 +243,36 @@ fun needsGenreUpgrade(item: VideoWithMetadata): Boolean {
             (item.genres.isEmpty() || item.director.isNullOrBlank() || item.cast.isEmpty())
 }
 
+/** True when a matched title is missing either of its useful artwork sizes. */
+fun needsArtworkUpgrade(item: VideoWithMetadata): Boolean {
+    return (item.type == "movie" || item.type == "tv") &&
+            (item.tmdbId ?: 0) > 0 &&
+            (item.posterUrl.isNullOrBlank() || item.backdropUrl.isNullOrBlank())
+}
+
+/**
+ * Decides whether the library scanner should make an online metadata pass.
+ * Personal/camera videos are deliberately excluded after their first lookup;
+ * otherwise they would be retried on every scan because they have no poster.
+ */
+fun shouldEnrichOnlineMetadata(item: VideoWithMetadata): Boolean {
+    if (item.type == "local") return false
+    return !hasUsefulOnlineMetadata(item) ||
+            needsRatingsUpgrade(item) ||
+            needsGenreUpgrade(item) ||
+            needsArtworkUpgrade(item)
+}
+
+private suspend fun fillMissingArtwork(item: VideoWithMetadata): VideoWithMetadata {
+    if (!needsArtworkUpgrade(item)) return item
+    val tmdbId = item.tmdbId ?: return item
+    val fanart = fetchFanartArtwork(tmdbId, item.type) ?: return item
+    return item.copy(
+        posterUrl = item.posterUrl?.takeIf { it.isNotBlank() } ?: fanart.posterUrl,
+        backdropUrl = item.backdropUrl?.takeIf { it.isNotBlank() } ?: fanart.backdropUrl
+    )
+}
+
 // ── OMDB — the source of IMDb and Rotten Tomatoes ratings ─────────────────────
 // THE FIX: this was never called before. TMDB provides posters/cast/its own
 // score, but IMDb and RT ratings only come from OMDB.
@@ -376,21 +406,29 @@ suspend fun enrichVideoWithOnlineMetadata(
         return applyCachedMetadataIfAvailable(context, item)
     }
 
-    loadCachedVideoMetadata(context, item.video.path)?.let { cached ->
+    val cachedMetadata = loadCachedVideoMetadata(context, item.video.path)
+    if (cachedMetadata != null) {
+        val cached = cachedMetadata
         var applied = applyCachedVideoMetadata(item, cached)
         val needsRatings = needsRatingsUpgrade(applied)
         val needsGenres = needsGenreUpgrade(applied)
+        val needsArtwork = needsArtworkUpgrade(applied)
 
-        if (!needsRatings && !needsGenres) return applied
+        // A previous failed TMDB search was cached as a bare item. Those
+        // entries used to return here forever, so corrected filenames and
+        // newly available results could never recover. Let them fall through
+        // to the fresh search below. Known personal videos remain cached.
+        val previousLookupFailed = !hasUsefulOnlineMetadata(applied) && applied.type != "local"
+        if (!previousLookupFailed && !needsRatings && !needsGenres && !needsArtwork) return applied
 
-        if (needsRatings) {
+        if (!previousLookupFailed && needsRatings) {
             val year = if (applied.type == "movie") applied.subtitle.take(4) else null
             val (imdb, rt) = fetchOmdbRatings(applied.title, year)
             if (imdb != null || rt != null) {
                 applied = applied.copy(imdbRating = imdb ?: applied.imdbRating, rottenTomatoesRating = rt ?: applied.rottenTomatoesRating)
             }
         }
-        if (needsGenres) {
+        if (!previousLookupFailed && needsGenres) {
             val tmdbId = applied.tmdbId
             if (tmdbId != null && tmdbId > 0) {
                 fetchTmdbExtraDetails(tmdbId, applied.type)?.let { extra ->
@@ -406,8 +444,14 @@ suspend fun enrichVideoWithOnlineMetadata(
             }
         }
 
-        saveCachedVideoMetadata(context, item.video.path, applied)
-        return applied
+        if (!previousLookupFailed && needsArtwork) {
+            applied = fillMissingArtwork(applied)
+        }
+
+        if (!previousLookupFailed) {
+            saveCachedVideoMetadata(context, item.video.path, applied)
+            return applied
+        }
     }
 
     val episodeInfo = extractEpisodeInfo(item.video.name)
@@ -450,23 +494,18 @@ suspend fun enrichVideoWithOnlineMetadata(
             // upgrade path above, just inlined here for a freshly-scanned item.
             val extra = tv?.id?.let { fetchTmdbExtraDetails(it, "tv") }
 
+            val tmdbPoster = tv?.poster_path?.let { "https://image.tmdb.org/t/p/w780$it" }
+            val tmdbBackdrop = tv?.backdrop_path?.let { "https://image.tmdb.org/t/p/w1280$it" }
+            val fanart = if (tv?.id != null && (tmdbPoster == null || tmdbBackdrop == null)) {
+                fetchFanartArtwork(tv.id, "tv")
+            } else null
+
             item.copy(
                 title = tv?.name ?: episodeInfo.showName,
                 subtitle =
                     "S${episodeInfo.season.toString().padStart(2, '0')}E${episodeInfo.episode.toString().padStart(2, '0')} • ${episodeDetails?.name ?: ""}",
-                posterUrl =
-                    tv?.poster_path?.let {
-                        "https://image.tmdb.org/t/p/w780$it"
-                    },
-                backdropUrl =
-                    tv?.backdrop_path?.let {
-                        // w1280 instead of "original" — TMDB's original-size
-                        // backdrops are often several MB; w1280 looks
-                        // identical on any phone/tablet screen and downloads
-                        // far faster, which is what was causing the ~5s
-                        // first-load delay on the Detail screen's hero image.
-                        "https://image.tmdb.org/t/p/w1280$it"
-                    },
+                posterUrl = tmdbPoster ?: fanart?.posterUrl,
+                backdropUrl = tmdbBackdrop ?: fanart?.backdropUrl,
                 episodeStill =
                     episodeDetails?.still_path?.let {
                         "https://image.tmdb.org/t/p/w780$it"
@@ -498,20 +537,30 @@ suspend fun enrichVideoWithOnlineMetadata(
                     type = "local"
                 )
             } else {
-                val movieResults =
+                val yearHint = extractYearHint(item.video.name)
+                val yearFilteredResults = try {
+                    TmdbClient.api.searchMovie(
+                        bearerToken = BuildConfig.TMDB_TOKEN,
+                        query = movieSearchName,
+                        primaryReleaseYear = yearHint
+                    ).results
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                val movieResults = if (yearFilteredResults.isNotEmpty() || yearHint == null) {
+                    yearFilteredResults
+                } else {
                     try {
                         TmdbClient.api.searchMovie(
                             bearerToken = BuildConfig.TMDB_TOKEN,
                             query = movieSearchName
                         ).results
-                    } catch (e: Exception) {
+                    } catch (_: Exception) {
                         emptyList()
                     }
+                }
 
-                val movie =
-                    extractYearHint(item.video.name)?.let { yearHint ->
-                        movieResults.firstOrNull { it.release_date?.startsWith(yearHint) == true }
-                    } ?: movieResults.firstOrNull()
+                val movie = selectBestMovieMatch(movieResults, movieSearchName, yearHint)
 
                 // OMDB ratings for the movie (title + year gives the best match)
                 val (imdb, rt) =
@@ -522,17 +571,17 @@ suspend fun enrichVideoWithOnlineMetadata(
                 // upgrade path above, just inlined here for a freshly-scanned item.
                 val extra = movie?.id?.let { fetchTmdbExtraDetails(it, "movie") }
 
+                val tmdbPoster = movie?.poster_path?.let { "https://image.tmdb.org/t/p/w780$it" }
+                val tmdbBackdrop = movie?.backdrop_path?.let { "https://image.tmdb.org/t/p/w1280$it" }
+                val fanart = if (movie?.id != null && (tmdbPoster == null || tmdbBackdrop == null)) {
+                    fetchFanartArtwork(movie.id, "movie")
+                } else null
+
                 item.copy(
                     title = movie?.title ?: item.title,
                     subtitle = movie?.release_date?.take(4) ?: item.subtitle,
-                    posterUrl =
-                        movie?.poster_path?.let {
-                            "https://image.tmdb.org/t/p/w780$it"
-                        },
-                    backdropUrl =
-                        movie?.backdrop_path?.let {
-                            "https://image.tmdb.org/t/p/w1280$it"
-                        },
+                    posterUrl = tmdbPoster ?: fanart?.posterUrl,
+                    backdropUrl = tmdbBackdrop ?: fanart?.backdropUrl,
                     overview = movie?.overview ?: item.overview,
                     rating = movie?.vote_average ?: item.rating,
                     imdbRating = imdb ?: item.imdbRating,
@@ -551,6 +600,26 @@ suspend fun enrichVideoWithOnlineMetadata(
 
     saveCachedVideoMetadata(context, item.video.path, enriched)
     return enriched
+}
+
+private fun normalizeMetadataTitle(value: String): String {
+    return value.lowercase().filter { it.isLetterOrDigit() }
+}
+
+private fun selectBestMovieMatch(
+    results: List<TmdbMovie>,
+    cleanedTitle: String,
+    yearHint: String?
+): TmdbMovie? {
+    val wantedTitle = normalizeMetadataTitle(cleanedTitle)
+    return results.maxByOrNull { candidate ->
+        var score = 0
+        if (normalizeMetadataTitle(candidate.title.orEmpty()) == wantedTitle) score += 100
+        if (yearHint != null && candidate.release_date?.startsWith(yearHint) == true) score += 50
+        if (!candidate.poster_path.isNullOrBlank()) score += 5
+        if (!candidate.backdrop_path.isNullOrBlank()) score += 3
+        score
+    }
 }
 
 private fun looksLikePersonalOrCameraVideoForCache(
