@@ -239,7 +239,7 @@ object LibraryScanController {
             onVideosLoaded(instantList); saveLibraryCache(context, instantList)
 
             val toEnrich = instantList.withIndex().filter { (_, item) ->
-                !isRestrictedFolderItem(item) && (!hasUsefulOnlineMetadata(item) || needsRatingsUpgrade(item) || needsGenreUpgrade(item))
+                !isRestrictedFolderItem(item) && shouldEnrichOnlineMetadata(item)
             }
             status = "Loaded ${instantList.size} videos. Updating missing posters & ratings..."
 
