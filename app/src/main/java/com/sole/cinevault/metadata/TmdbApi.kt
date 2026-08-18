@@ -79,5 +79,6 @@ interface TmdbApi {
 }
 
 data class TmdbExternalIds(
-    val imdb_id: String?
+    val imdb_id: String?,
+    val tvdb_id: Int? = null
 )
