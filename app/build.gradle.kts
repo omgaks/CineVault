@@ -42,6 +42,12 @@ android {
 
         buildConfigField(
             "String",
+            "FANART_API_KEY",
+            "\"${localProperties.getProperty("FANART_API_KEY", "")}\""
+        )
+
+        buildConfigField(
+            "String",
             "OPENSUB_API_KEY",
             "\"${localProperties.getProperty("OPENSUB_API_KEY", "")}\""
         )
@@ -254,8 +260,15 @@ tasks.withType<Test>().configureEach {
     }
 }
 
+val debugUnitTestTasks = tasks.withType<Test>().matching {
+    name.contains("debug", ignoreCase = true)
+}
+
 val jacocoTestReport by tasks.registering(JacocoReport::class) {
-    dependsOn("testDebugUnitTest")
+    // AGP creates variant test tasks after this script is evaluated. Using
+    // the live task collection keeps this compatible with that lazy task
+    // registration instead of looking up testDebugUnitTest too early.
+    dependsOn(debugUnitTestTasks)
 
     reports {
         xml.required.set(true)
@@ -294,6 +307,6 @@ val jacocoTestReport by tasks.registering(JacocoReport::class) {
     )
 }
 
-tasks.named("testDebugUnitTest") {
+debugUnitTestTasks.configureEach {
     finalizedBy(jacocoTestReport)
 }
