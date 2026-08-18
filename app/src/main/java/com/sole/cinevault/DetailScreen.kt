@@ -35,11 +35,13 @@ import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Audiotrack
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -62,6 +64,7 @@ import coil.compose.AsyncImage
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.sole.cinevault.ui.theme.*
+import kotlinx.coroutines.launch
 
 // Persists Detail screen scroll position per movie across navigation —
 // FIX: tapping into an Actor/Genre/Director/Collection page and then Back
@@ -106,6 +109,8 @@ fun DetailScreen(
     // or not at all (e.g. "Akira 30th Anniversary" before the filename
     // cleaner handled edition tags). See RematchDialog.kt / RematchViewModel.kt.
     var showRematch by remember { mutableStateOf(false) }
+    var artworkRefreshing by remember(item.video.path) { mutableStateOf(false) }
+    val detailScope = rememberCoroutineScope()
 
     // Cast list — keyed consistently on item.tmdbId/item.type now (the
     // original had remember() keyed on item.video.path but the effect keyed
@@ -369,6 +374,48 @@ fun DetailScreen(
                         Icon(imageVector = Icons.Rounded.Search, contentDescription = null, tint = AmberCore, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Fix Match", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                    }
+                    if (item.tmdbId != null) {
+                        val artworkGlow = rememberPillGlowAlpha()
+                        Button(
+                            onClick = {
+                                if (!artworkRefreshing) {
+                                    detailScope.launch {
+                                        artworkRefreshing = true
+                                        try {
+                                            val updated = refreshArtwork(context, item)
+                                            onMetadataUpdated(updated)
+                                            android.widget.Toast.makeText(context, "Artwork refreshed", android.widget.Toast.LENGTH_SHORT).show()
+                                        } catch (e: Exception) {
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                "Artwork refresh failed: ${e.message ?: "Unknown error"}",
+                                                android.widget.Toast.LENGTH_LONG
+                                            ).show()
+                                        } finally {
+                                            artworkRefreshing = false
+                                        }
+                                    }
+                                }
+                            },
+                            enabled = !artworkRefreshing,
+                            shape = RoundedCornerShape(40.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = GlassSurface, contentColor = TextBright),
+                            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 9.dp),
+                            modifier = Modifier.strongPillGlow(glow = artworkGlow, cornerRadius = 40.dp, glowRadius = 40.dp)
+                        ) {
+                            if (artworkRefreshing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(15.dp),
+                                    strokeWidth = 2.dp,
+                                    color = AmberCore
+                                )
+                            } else {
+                                Icon(imageVector = Icons.Rounded.Refresh, contentDescription = null, tint = AmberCore, modifier = Modifier.size(16.dp))
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(if (artworkRefreshing) "Refreshing…" else "Refresh Artwork", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                        }
                     }
                 }
 
