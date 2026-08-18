@@ -295,6 +295,14 @@ fun TvShowDetailScreen(
                         Text(text = group.showName, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(text = "${visibleEpisodes.size} Episodes", color = Color(0xFFAAAAAA), fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(5.dp))
+                        Text(
+                            text = artworkSourceSummary(group.posterUrl, group.backdropUrl),
+                            color = Color(0xFFAAAAAA),
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }

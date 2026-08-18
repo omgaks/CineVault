@@ -272,6 +272,15 @@ fun DetailScreen(
                     TechBadge(text = item.video.name.substringAfterLast(".").uppercase(), icon = Icons.Rounded.InsertDriveFile)
                 }
 
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = artworkSourceSummary(item.posterUrl, item.backdropUrl),
+                    color = TextMuted,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
                 // Genre chips — tappable into a filtered library view of everything
                 // else you own in that genre.
                 if (item.genres.isNotEmpty()) {
