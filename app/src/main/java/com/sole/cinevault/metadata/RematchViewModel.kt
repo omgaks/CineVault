@@ -128,3 +128,48 @@ suspend fun applyRematch(
     saveCachedVideoMetadata(context, currentItem.video.path, updated)
     return updated
 }
+
+/**
+ * Refreshes artwork for the existing TMDB match without searching for or
+ * changing the matched title. TMDB remains the first source; Fanart.tv is
+ * consulted only for an image TMDB still does not provide.
+ */
+suspend fun refreshArtwork(
+    context: Context,
+    currentItem: VideoWithMetadata
+): VideoWithMetadata = withContext(Dispatchers.IO) {
+    val tmdbId = currentItem.tmdbId
+        ?: throw IllegalStateException("Use Fix Match before refreshing artwork")
+
+    val details = if (currentItem.type == "tv") {
+        TmdbClient.api.getTvDetails(BuildConfig.TMDB_TOKEN, tmdbId)
+    } else {
+        TmdbClient.api.getMovieDetails(BuildConfig.TMDB_TOKEN, tmdbId)
+    }
+
+    val tmdbPosterPath = when (details) {
+        is TmdbTvDetails -> details.poster_path
+        is TmdbMovieDetails -> details.poster_path
+        else -> null
+    }
+    val tmdbBackdropPath = when (details) {
+        is TmdbTvDetails -> details.backdrop_path
+        is TmdbMovieDetails -> details.backdrop_path
+        else -> null
+    }
+
+    val tmdbPoster = tmdbPosterPath?.let { "https://image.tmdb.org/t/p/w780$it" }
+    val tmdbBackdrop = tmdbBackdropPath?.let { "https://image.tmdb.org/t/p/w1280$it" }
+    val fanart = if (tmdbPoster == null || tmdbBackdrop == null) {
+        fetchFanartArtwork(tmdbId, currentItem.type)
+    } else {
+        null
+    }
+
+    val updated = currentItem.copy(
+        posterUrl = tmdbPoster ?: fanart?.posterUrl ?: currentItem.posterUrl,
+        backdropUrl = tmdbBackdrop ?: fanart?.backdropUrl ?: currentItem.backdropUrl
+    )
+    saveCachedVideoMetadata(context, currentItem.video.path, updated)
+    updated
+}

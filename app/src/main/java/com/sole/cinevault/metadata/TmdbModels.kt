@@ -108,6 +108,8 @@ data class TmdbCreditsBlock(
 data class TmdbMovieDetails(
     val id: Int?,
     val title: String?,
+    val poster_path: String? = null,
+    val backdrop_path: String? = null,
     val genres: List<TmdbGenre>? = null,
     val belongs_to_collection: TmdbCollection? = null,
     val credits: TmdbCreditsBlock? = null,
@@ -117,6 +119,8 @@ data class TmdbMovieDetails(
 data class TmdbTvDetails(
     val id: Int?,
     val name: String?,
+    val poster_path: String? = null,
+    val backdrop_path: String? = null,
     val genres: List<TmdbGenre>? = null,
     // TV shows don't have a single per-show "Director" the way movies do
     // (different episodes can have different directors) — created_by (the
