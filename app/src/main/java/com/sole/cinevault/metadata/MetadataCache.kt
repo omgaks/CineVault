@@ -206,11 +206,12 @@ suspend fun applyCachedMetadataIfAvailable(
     item: VideoWithMetadata
 ): VideoWithMetadata {
     val cached = loadCachedVideoMetadata(context, item.video.path)
-    return if (cached != null) {
+    val cachedItem = if (cached != null) {
         applyCachedVideoMetadata(item, cached)
     } else {
         item
     }
+    return applyManualArtworkPreference(context, cachedItem)
 }
 
 fun hasUsefulOnlineMetadata(item: VideoWithMetadata): Boolean {
@@ -423,14 +424,15 @@ suspend fun enrichVideoWithOnlineMetadata(
         var applied = applyCachedVideoMetadata(item, cached)
         val needsRatings = needsRatingsUpgrade(applied)
         val needsGenres = needsGenreUpgrade(applied)
-        val needsArtwork = needsArtworkUpgrade(applied)
+        val displayed = applyManualArtworkPreference(context, applied)
+        val needsArtwork = needsArtworkUpgrade(displayed)
 
         // A previous failed TMDB search was cached as a bare item. Those
         // entries used to return here forever, so corrected filenames and
         // newly available results could never recover. Let them fall through
         // to the fresh search below. Known personal videos remain cached.
         val previousLookupFailed = !hasUsefulOnlineMetadata(applied) && applied.type != "local"
-        if (!previousLookupFailed && !needsRatings && !needsGenres && !needsArtwork) return applied
+        if (!previousLookupFailed && !needsRatings && !needsGenres && !needsArtwork) return displayed
 
         if (!previousLookupFailed && needsRatings) {
             val year = if (applied.type == "movie") applied.subtitle.take(4) else null
@@ -461,7 +463,7 @@ suspend fun enrichVideoWithOnlineMetadata(
 
         if (!previousLookupFailed) {
             saveCachedVideoMetadata(context, item.video.path, applied)
-            return applied
+            return applyManualArtworkPreference(context, applied)
         }
     }
 
@@ -610,7 +612,7 @@ suspend fun enrichVideoWithOnlineMetadata(
         }
 
     saveCachedVideoMetadata(context, item.video.path, enriched)
-    return enriched
+    return applyManualArtworkPreference(context, enriched)
 }
 
 private fun normalizeMetadataTitle(value: String): String {

@@ -5,6 +5,8 @@ import com.sole.cinevault.VideoWithMetadata
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 
 /*
@@ -28,6 +30,51 @@ data class MatchCandidate(
     val overview: String?,
     val voteAverage: Double?
 )
+
+private suspend fun fetchTmdbArtworkOptions(tmdbId: Int, type: String): List<ArtworkOption> {
+    val response = if (type == "tv") {
+        TmdbClient.api.getTvImages(BuildConfig.TMDB_TOKEN, tmdbId, "en,null")
+    } else {
+        TmdbClient.api.getMovieImages(BuildConfig.TMDB_TOKEN, tmdbId, "en,null")
+    }
+    val posters = response.posters.mapNotNull { image ->
+        val path = image.file_path ?: return@mapNotNull null
+        ArtworkOption(
+            url = "https://image.tmdb.org/t/p/w780$path",
+            source = "TMDB",
+            kind = ArtworkKind.POSTER,
+            language = image.iso_639_1,
+            score = image.vote_average ?: 0.0
+        )
+    }
+    val backdrops = response.backdrops.mapNotNull { image ->
+        val path = image.file_path ?: return@mapNotNull null
+        ArtworkOption(
+            url = "https://image.tmdb.org/t/p/w1280$path",
+            source = "TMDB",
+            kind = ArtworkKind.BACKDROP,
+            language = image.iso_639_1,
+            score = image.vote_average ?: 0.0
+        )
+    }
+    return posters + backdrops
+}
+
+suspend fun loadArtworkOptions(tmdbId: Int, type: String): List<ArtworkOption> =
+    coroutineScope {
+        val tmdb = async(Dispatchers.IO) {
+            try { fetchTmdbArtworkOptions(tmdbId, type) } catch (_: Exception) { emptyList() }
+        }
+        val fanart = async(Dispatchers.IO) {
+            fetchFanartArtworkOptions(tmdbId, type)
+        }
+        (tmdb.await() + fanart.await())
+            .distinctBy { it.url }
+            .sortedWith(
+                compareBy<ArtworkOption> { if (it.source == "TMDB") 0 else 1 }
+                    .thenByDescending { it.score }
+            )
+    }
 
 /** Searches TMDB movies for the given query and returns candidate matches. */
 suspend fun searchMovieCandidates(query: String): List<MatchCandidate> =
@@ -131,6 +178,9 @@ suspend fun applyRematch(
         cast = extra?.cast ?: emptyList()
     )
 
+    // A manual choice belongs to the old match. Keeping it here could make
+    // the newly matched title display artwork from the previous movie.
+    clearManualArtworkChoices(context, currentItem.video.path)
     saveCachedVideoMetadata(context, currentItem.video.path, updated)
     return updated
 }
@@ -177,7 +227,7 @@ suspend fun refreshArtwork(
         backdropUrl = tmdbBackdrop ?: fanart?.backdropUrl ?: currentItem.backdropUrl
     )
     saveCachedVideoMetadata(context, currentItem.video.path, updated)
-    updated
+    applyManualArtworkPreference(context, updated)
 }
 
 suspend fun refreshTvArtwork(
@@ -186,17 +236,52 @@ suspend fun refreshTvArtwork(
 ): List<VideoWithMetadata> = withContext(Dispatchers.IO) {
     val representative = episodes.firstOrNull { it.tmdbId != null }
         ?: throw IllegalStateException("No matched TV metadata is available")
-    val refreshed = refreshArtwork(context, representative)
-    val updatedEpisodes = episodes.map { episode ->
+    refreshArtwork(context, representative)
+    val automaticRepresentative = loadCachedVideoMetadata(context, representative.video.path)
+        ?.let { applyCachedVideoMetadata(representative, it) }
+        ?: representative
+    val automaticEpisodes = episodes.map { episode ->
         episode.copy(
-            posterUrl = refreshed.posterUrl,
-            backdropUrl = refreshed.backdropUrl,
-            tmdbId = refreshed.tmdbId,
+            posterUrl = automaticRepresentative.posterUrl,
+            backdropUrl = automaticRepresentative.backdropUrl,
+            tmdbId = automaticRepresentative.tmdbId,
             type = "tv"
         )
     }
-    updatedEpisodes.forEach { episode ->
+    automaticEpisodes.forEach { episode ->
         saveCachedVideoMetadata(context, episode.video.path, episode)
     }
-    updatedEpisodes
+    automaticEpisodes.map { episode -> applyManualArtworkPreference(context, episode) }
+}
+
+suspend fun applyArtworkChoice(
+    context: Context,
+    currentItem: VideoWithMetadata,
+    kind: ArtworkKind,
+    selectedUrl: String?
+): VideoWithMetadata = withContext(Dispatchers.IO) {
+    saveManualArtworkChoice(context, currentItem.video.path, kind, selectedUrl)
+
+    val cached = loadCachedVideoMetadata(context, currentItem.video.path)
+    val automatic = if (cached != null) {
+        applyCachedVideoMetadata(currentItem, cached)
+    } else {
+        currentItem
+    }
+    val preference = loadArtworkPreference(context, currentItem.video.path)
+    automatic.copy(
+        posterUrl = preference?.manualPosterUrl ?: automatic.posterUrl,
+        backdropUrl = preference?.manualBackdropUrl ?: automatic.backdropUrl
+    )
+}
+
+suspend fun applyTvArtworkChoice(
+    context: Context,
+    episodes: List<VideoWithMetadata>,
+    kind: ArtworkKind,
+    selectedUrl: String?
+): List<VideoWithMetadata> = withContext(Dispatchers.IO) {
+    episodes.map { episode ->
+        applyArtworkChoice(context, episode, kind, selectedUrl)
+    }
 }
