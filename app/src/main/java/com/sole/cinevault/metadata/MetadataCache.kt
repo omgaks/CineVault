@@ -263,10 +263,21 @@ fun shouldEnrichOnlineMetadata(item: VideoWithMetadata): Boolean {
             needsArtworkUpgrade(item)
 }
 
-private suspend fun fillMissingArtwork(item: VideoWithMetadata): VideoWithMetadata {
+private suspend fun fetchAutomaticFanartArtwork(
+    context: Context,
+    videoPath: String,
+    tmdbId: Int,
+    type: String
+): FanartArtwork? {
+    if (!canAttemptAutomaticArtwork(context, videoPath)) return null
+    recordAutomaticArtworkAttempt(context, videoPath)
+    return fetchFanartArtwork(tmdbId, type)
+}
+
+private suspend fun fillMissingArtwork(context: Context, item: VideoWithMetadata): VideoWithMetadata {
     if (!needsArtworkUpgrade(item)) return item
     val tmdbId = item.tmdbId ?: return item
-    val fanart = fetchFanartArtwork(tmdbId, item.type) ?: return item
+    val fanart = fetchAutomaticFanartArtwork(context, item.video.path, tmdbId, item.type) ?: return item
     return item.copy(
         posterUrl = item.posterUrl?.takeIf { it.isNotBlank() } ?: fanart.posterUrl,
         backdropUrl = item.backdropUrl?.takeIf { it.isNotBlank() } ?: fanart.backdropUrl
@@ -445,7 +456,7 @@ suspend fun enrichVideoWithOnlineMetadata(
         }
 
         if (!previousLookupFailed && needsArtwork) {
-            applied = fillMissingArtwork(applied)
+            applied = fillMissingArtwork(context, applied)
         }
 
         if (!previousLookupFailed) {
@@ -497,7 +508,7 @@ suspend fun enrichVideoWithOnlineMetadata(
             val tmdbPoster = tv?.poster_path?.let { "https://image.tmdb.org/t/p/w780$it" }
             val tmdbBackdrop = tv?.backdrop_path?.let { "https://image.tmdb.org/t/p/w1280$it" }
             val fanart = if (tv?.id != null && (tmdbPoster == null || tmdbBackdrop == null)) {
-                fetchFanartArtwork(tv.id, "tv")
+                fetchAutomaticFanartArtwork(context, item.video.path, tv.id, "tv")
             } else null
 
             item.copy(
@@ -574,7 +585,7 @@ suspend fun enrichVideoWithOnlineMetadata(
                 val tmdbPoster = movie?.poster_path?.let { "https://image.tmdb.org/t/p/w780$it" }
                 val tmdbBackdrop = movie?.backdrop_path?.let { "https://image.tmdb.org/t/p/w1280$it" }
                 val fanart = if (movie?.id != null && (tmdbPoster == null || tmdbBackdrop == null)) {
-                    fetchFanartArtwork(movie.id, "movie")
+                    fetchAutomaticFanartArtwork(context, item.video.path, movie.id, "movie")
                 } else null
 
                 item.copy(

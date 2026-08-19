@@ -104,13 +104,19 @@ suspend fun applyRematch(
         candidate.releaseYear?.toString()
     )
 
+    val tmdbPoster = candidate.posterPath?.let { "https://image.tmdb.org/t/p/w780$it" }
+    val tmdbBackdrop = candidate.backdropPath?.let { "https://image.tmdb.org/t/p/w1280$it" }
+    val fanart = if (tmdbPoster == null || tmdbBackdrop == null) {
+        fetchFanartArtwork(candidate.tmdbId, "movie")
+    } else {
+        null
+    }
+
     val updated = currentItem.copy(
         title = candidate.title,
         subtitle = candidate.releaseYear?.toString() ?: currentItem.subtitle,
-        posterUrl = candidate.posterPath?.let { "https://image.tmdb.org/t/p/w780$it" }
-            ?: currentItem.posterUrl,
-        backdropUrl = candidate.backdropPath?.let { "https://image.tmdb.org/t/p/w1280$it" }
-            ?: currentItem.backdropUrl,
+        posterUrl = tmdbPoster ?: fanart?.posterUrl,
+        backdropUrl = tmdbBackdrop ?: fanart?.backdropUrl,
         overview = candidate.overview ?: currentItem.overview,
         rating = candidate.voteAverage ?: currentItem.rating,
         imdbRating = imdb ?: currentItem.imdbRating,
@@ -172,4 +178,25 @@ suspend fun refreshArtwork(
     )
     saveCachedVideoMetadata(context, currentItem.video.path, updated)
     updated
+}
+
+suspend fun refreshTvArtwork(
+    context: Context,
+    episodes: List<VideoWithMetadata>
+): List<VideoWithMetadata> = withContext(Dispatchers.IO) {
+    val representative = episodes.firstOrNull { it.tmdbId != null }
+        ?: throw IllegalStateException("No matched TV metadata is available")
+    val refreshed = refreshArtwork(context, representative)
+    val updatedEpisodes = episodes.map { episode ->
+        episode.copy(
+            posterUrl = refreshed.posterUrl,
+            backdropUrl = refreshed.backdropUrl,
+            tmdbId = refreshed.tmdbId,
+            type = "tv"
+        )
+    }
+    updatedEpisodes.forEach { episode ->
+        saveCachedVideoMetadata(context, episode.video.path, episode)
+    }
+    updatedEpisodes
 }
