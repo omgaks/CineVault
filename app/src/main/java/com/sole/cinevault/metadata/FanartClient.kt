@@ -47,6 +47,16 @@ data class FanartArtwork(
     val backdropUrl: String?
 )
 
+enum class ArtworkKind { POSTER, BACKDROP }
+
+data class ArtworkOption(
+    val url: String,
+    val source: String,
+    val kind: ArtworkKind,
+    val language: String? = null,
+    val score: Double = 0.0
+)
+
 private object FanartClient {
     private val retrofit = Retrofit.Builder()
         .baseUrl("https://webservice.fanart.tv/")
@@ -71,6 +81,56 @@ private fun List<FanartImage>.bestArtworkUrl(): String? {
         .mapNotNull { it.url }
         .firstOrNull()
 }
+
+private fun List<FanartImage>.toArtworkOptions(kind: ArtworkKind): List<ArtworkOption> {
+    return asSequence()
+        .filter { it.url?.startsWith("https://") == true }
+        .mapNotNull { image ->
+            val url = image.url ?: return@mapNotNull null
+            ArtworkOption(
+                url = url,
+                source = "Fanart.tv",
+                kind = kind,
+                language = image.lang,
+                score = image.likes?.toDoubleOrNull() ?: 0.0
+            )
+        }
+        .sortedWith(
+            compareByDescending<ArtworkOption> {
+                when {
+                    it.language.equals("en", ignoreCase = true) -> 2
+                    it.language.isNullOrBlank() || it.language == "00" -> 1
+                    else -> 0
+                }
+            }.thenByDescending { it.score }
+        )
+        .toList()
+}
+
+suspend fun fetchFanartArtworkOptions(tmdbId: Int, type: String): List<ArtworkOption> =
+    withContext(Dispatchers.IO) {
+        val apiKey = BuildConfig.FANART_API_KEY
+        if (apiKey.isBlank() || tmdbId <= 0) return@withContext emptyList()
+        try {
+            if (type == "tv") {
+                val tvdbId = TmdbClient.api
+                    .getTvExternalIds(BuildConfig.TMDB_TOKEN, tmdbId)
+                    .tvdb_id
+                    ?: return@withContext emptyList()
+                val response = FanartClient.api.getTvArtwork(tvdbId, apiKey)
+                response.tvposter.toArtworkOptions(ArtworkKind.POSTER) +
+                        (response.showbackground + response.show4kbackground)
+                            .toArtworkOptions(ArtworkKind.BACKDROP)
+            } else {
+                val response = FanartClient.api.getMovieArtwork(tmdbId, apiKey)
+                response.movieposter.toArtworkOptions(ArtworkKind.POSTER) +
+                        (response.moviebackground + response.movie4kbackground)
+                            .toArtworkOptions(ArtworkKind.BACKDROP)
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
 
 /**
  * Returns Fanart.tv images only when TMDB did not provide them. Movie lookup

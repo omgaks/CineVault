@@ -48,6 +48,20 @@ data class TmdbEpisode(
     val still_path: String?
 )
 
+data class TmdbImage(
+    val file_path: String?,
+    val iso_639_1: String? = null,
+    val vote_average: Double? = null,
+    val vote_count: Int? = null,
+    val width: Int? = null,
+    val height: Int? = null
+)
+
+data class TmdbImagesResponse(
+    val posters: List<TmdbImage> = emptyList(),
+    val backdrops: List<TmdbImage> = emptyList()
+)
+
 // ── Added for media intelligence: genres, collections, director/crew ──────────
 // The plain /search/movie and /search/tv endpoints only return raw
 // genre_ids (numbers, no names) and nothing about collections or crew at

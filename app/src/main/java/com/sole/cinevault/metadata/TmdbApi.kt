@@ -60,6 +60,20 @@ interface TmdbApi {
         @Path("series_id") seriesId: Int
     ): TmdbExternalIds
 
+    @GET("movie/{movie_id}/images")
+    suspend fun getMovieImages(
+        @Header("Authorization") bearerToken: String,
+        @Path("movie_id") movieId: Int,
+        @Query("include_image_language") languages: String? = null
+    ): TmdbImagesResponse
+
+    @GET("tv/{series_id}/images")
+    suspend fun getTvImages(
+        @Header("Authorization") bearerToken: String,
+        @Path("series_id") seriesId: Int,
+        @Query("include_image_language") languages: String? = null
+    ): TmdbImagesResponse
+
     // ── Media intelligence additions ───────────────────────────────────────
     // append_to_response bundles credits AND keywords into the SAME
     // response as genres/collection — zero extra network round-trips.
