@@ -43,6 +43,12 @@ interface CachedVideoMetadataDao {
     // hundreds of rows one at a time would be needlessly slow.
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(metadata: List<CachedVideoMetadata>)
+
+    @Query("SELECT * FROM cached_video_metadata")
+    suspend fun getAll(): List<CachedVideoMetadata>
+
+    @Query("DELETE FROM cached_video_metadata")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -78,6 +84,44 @@ suspend fun recordAutomaticArtworkAttempt(context: Context, videoPath: String) =
             )
         )
     }
+
+suspend fun loadArtworkPreference(context: Context, videoPath: String): ArtworkPreference? =
+    withContext(Dispatchers.IO) {
+        CachedVideoMetadataDatabase.getInstance(context).artworkPreferenceDao().getByPath(videoPath)
+    }
+
+suspend fun clearManualArtworkChoices(context: Context, videoPath: String) =
+    withContext(Dispatchers.IO) {
+        CachedVideoMetadataDatabase.getInstance(context)
+            .artworkPreferenceDao()
+            .deleteByPath(videoPath)
+    }
+
+suspend fun saveManualArtworkChoice(
+    context: Context,
+    videoPath: String,
+    kind: ArtworkKind,
+    url: String?
+) = withContext(Dispatchers.IO) {
+    val dao = CachedVideoMetadataDatabase.getInstance(context).artworkPreferenceDao()
+    val existing = dao.getByPath(videoPath) ?: ArtworkPreference(videoPath = videoPath)
+    val updated = when (kind) {
+        ArtworkKind.POSTER -> existing.copy(manualPosterUrl = url)
+        ArtworkKind.BACKDROP -> existing.copy(manualBackdropUrl = url)
+    }
+    dao.upsert(updated)
+}
+
+suspend fun applyManualArtworkPreference(
+    context: Context,
+    item: com.sole.cinevault.VideoWithMetadata
+): com.sole.cinevault.VideoWithMetadata = withContext(Dispatchers.IO) {
+    val preference = loadArtworkPreference(context, item.video.path) ?: return@withContext item
+    item.copy(
+        posterUrl = preference.manualPosterUrl ?: item.posterUrl,
+        backdropUrl = preference.manualBackdropUrl ?: item.backdropUrl
+    )
+}
 
 // Room only understands primitive-ish column types natively —
 // List<String>?/List<CastEntry>? need explicit conversion to/from a
