@@ -1,6 +1,7 @@
 package com.sole.cinevault
 
 import com.sole.cinevault.library.*
+import com.sole.cinevault.metadata.*
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -41,6 +42,10 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -62,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.sole.cinevault.ui.theme.*
+import kotlinx.coroutines.launch
 import java.io.File
 
 @Composable
@@ -75,6 +81,8 @@ fun TvShowDetailScreen(
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val heroImage = group.backdropUrl ?: group.posterUrl
+    val artworkScope = rememberCoroutineScope()
+    var artworkRefreshing by remember(group.showName) { mutableStateOf(false) }
 
     // Local copy so delete/hide can update the visible list immediately;
     // onEpisodesChanged lets the caller sync its own master list too.
@@ -303,6 +311,64 @@ fun TvShowDetailScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                    }
+                }
+            }
+
+            if (episodes.any { it.tmdbId != null }) {
+                item {
+                    Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.End
+                    ) {
+                        Button(
+                        onClick = {
+                            if (!artworkRefreshing) {
+                                artworkScope.launch {
+                                    artworkRefreshing = true
+                                    try {
+                                        val updated = refreshTvArtwork(context, episodes)
+                                        episodes = updated
+                                        onEpisodesChanged(updated)
+                                        Toast.makeText(context, "TV artwork refreshed", Toast.LENGTH_SHORT).show()
+                                    } catch (e: Exception) {
+                                        Toast.makeText(
+                                            context,
+                                            "Artwork refresh failed: ${e.message ?: "Unknown error"}",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    } finally {
+                                        artworkRefreshing = false
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !artworkRefreshing,
+                        shape = RoundedCornerShape(40.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = GlassSurface, contentColor = Color.White),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            if (artworkRefreshing) {
+                                CircularProgressIndicator(
+                                modifier = Modifier.size(15.dp),
+                                strokeWidth = 2.dp,
+                                color = AmberCore
+                            )
+                            } else {
+                                Icon(
+                                imageVector = Icons.Rounded.Refresh,
+                                contentDescription = null,
+                                tint = AmberCore,
+                                modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                            text = if (artworkRefreshing) "Refreshing…" else "Refresh Artwork",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.5.sp
+                            )
+                        }
                     }
                 }
             }

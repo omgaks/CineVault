@@ -604,6 +604,22 @@ fun CineVaultApp() {
                         onEpisodeClick = { episode ->
                             push(Destination.Player(episode.video, episode.type, dest.group.episodes))
                         },
+                        onEpisodesChanged = { updatedEpisodes ->
+                            val updatesByPath = updatedEpisodes.associateBy { it.video.path }
+                            libraryVideos = libraryVideos.map { existing ->
+                                updatesByPath[existing.video.path] ?: existing
+                            }
+                            val representative = updatedEpisodes.firstOrNull()
+                            replaceTop(
+                                Destination.TvShow(
+                                    dest.group.copy(
+                                        posterUrl = representative?.posterUrl ?: dest.group.posterUrl,
+                                        backdropUrl = representative?.backdropUrl ?: dest.group.backdropUrl,
+                                        episodes = updatedEpisodes
+                                    )
+                                )
+                            )
+                        },
                         onSecretChanged = { scope.launch { reloadAfterSecretChange() } }
                     )
                 }
