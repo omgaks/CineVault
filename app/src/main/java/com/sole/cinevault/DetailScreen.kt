@@ -109,6 +109,7 @@ fun DetailScreen(
     // or not at all (e.g. "Akira 30th Anniversary" before the filename
     // cleaner handled edition tags). See RematchDialog.kt / RematchViewModel.kt.
     var showRematch by remember { mutableStateOf(false) }
+    var showArtworkChooser by remember { mutableStateOf(false) }
     var artworkRefreshing by remember(item.video.path) { mutableStateOf(false) }
     val detailScope = rememberCoroutineScope()
 
@@ -416,6 +417,18 @@ fun DetailScreen(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(if (artworkRefreshing) "Refreshing…" else "Refresh Artwork", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
                         }
+                        val chooserGlow = rememberPillGlowAlpha()
+                        Button(
+                            onClick = { showArtworkChooser = true },
+                            shape = RoundedCornerShape(40.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = GlassSurface, contentColor = TextBright),
+                            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 9.dp),
+                            modifier = Modifier.strongPillGlow(glow = chooserGlow, cornerRadius = 40.dp, glowRadius = 40.dp)
+                        ) {
+                            Icon(imageVector = Icons.Filled.VideoLibrary, contentDescription = null, tint = AmberCore, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Choose Artwork", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                        }
                     }
                 }
 
@@ -475,6 +488,37 @@ fun DetailScreen(
                 onApplied = { updated ->
                     showRematch = false
                     onMetadataUpdated(updated)
+                }
+            )
+        }
+
+        val artworkTmdbId = item.tmdbId
+        if (showArtworkChooser && artworkTmdbId != null) {
+            ArtworkChooserDialog(
+                tmdbId = artworkTmdbId,
+                type = item.type,
+                currentPosterUrl = item.posterUrl,
+                currentBackdropUrl = item.backdropUrl,
+                onDismiss = { showArtworkChooser = false },
+                onSelected = { kind, url ->
+                    detailScope.launch {
+                        try {
+                            val updated = applyArtworkChoice(context, item, kind, url)
+                            onMetadataUpdated(updated)
+                            showArtworkChooser = false
+                            android.widget.Toast.makeText(
+                                context,
+                                if (url == null) "Automatic artwork restored" else "Artwork selected",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(
+                                context,
+                                "Artwork selection failed: ${e.message ?: "Unknown error"}",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
                 }
             )
         }

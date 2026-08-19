@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Favorite
@@ -83,6 +84,7 @@ fun TvShowDetailScreen(
     val heroImage = group.backdropUrl ?: group.posterUrl
     val artworkScope = rememberCoroutineScope()
     var artworkRefreshing by remember(group.showName) { mutableStateOf(false) }
+    var showArtworkChooser by remember(group.showName) { mutableStateOf(false) }
 
     // Local copy so delete/hide can update the visible list immediately;
     // onEpisodesChanged lets the caller sync its own master list too.
@@ -322,6 +324,22 @@ fun TvShowDetailScreen(
                     horizontalArrangement = Arrangement.End
                     ) {
                         Button(
+                            onClick = { showArtworkChooser = true },
+                            shape = RoundedCornerShape(40.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = GlassSurface, contentColor = Color.White),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.VideoLibrary,
+                                contentDescription = null,
+                                tint = AmberCore,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Choose Artwork", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
                         onClick = {
                             if (!artworkRefreshing) {
                                 artworkScope.launch {
@@ -499,6 +517,39 @@ fun TvShowDetailScreen(
             modifier = Modifier.align(Alignment.TopCenter).padding(top = 68.dp, start = 16.dp, end = 16.dp)
         ) {
             activeError?.let { err -> ErrorBanner(state = err, onDismiss = { activeError = null }) }
+        }
+
+        val artworkRepresentative = episodes.firstOrNull { it.tmdbId != null }
+        val artworkTmdbId = artworkRepresentative?.tmdbId
+        if (showArtworkChooser && artworkRepresentative != null && artworkTmdbId != null) {
+            ArtworkChooserDialog(
+                tmdbId = artworkTmdbId,
+                type = "tv",
+                currentPosterUrl = artworkRepresentative.posterUrl ?: group.posterUrl,
+                currentBackdropUrl = artworkRepresentative.backdropUrl ?: group.backdropUrl,
+                onDismiss = { showArtworkChooser = false },
+                onSelected = { kind, url ->
+                    artworkScope.launch {
+                        try {
+                            val updated = applyTvArtworkChoice(context, episodes, kind, url)
+                            episodes = updated
+                            onEpisodesChanged(updated)
+                            showArtworkChooser = false
+                            Toast.makeText(
+                                context,
+                                if (url == null) "Automatic artwork restored" else "TV artwork updated",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        } catch (e: Exception) {
+                            Toast.makeText(
+                                context,
+                                "Artwork update failed: ${e.message ?: "Unknown error"}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }
+            )
         }
 
         // ── Long-press context sheet — same pattern as the Library screen ──
