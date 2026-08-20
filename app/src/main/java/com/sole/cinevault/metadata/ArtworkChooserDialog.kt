@@ -67,14 +67,19 @@ fun ArtworkChooserDialog(
     var options by remember(tmdbId, type) { mutableStateOf<List<ArtworkOption>>(emptyList()) }
     var loading by remember(tmdbId, type) { mutableStateOf(true) }
     var error by remember(tmdbId, type) { mutableStateOf<String?>(null) }
+    var retryRequest by remember(tmdbId, type) { mutableStateOf(0) }
 
-    LaunchedEffect(tmdbId, type) {
+    LaunchedEffect(tmdbId, type, retryRequest) {
         loading = true
         error = null
         try {
             options = loadArtworkOptions(context, tmdbId, type)
         } catch (e: Exception) {
-            error = e.message ?: "Artwork could not be loaded"
+            error = when {
+                e.message?.contains("401") == true -> "TMDB rejected the configured credential (401)."
+                e.message?.contains("404") == true -> "The saved TMDB match no longer exists (404). Try Fix Match."
+                else -> e.message ?: "Artwork could not be loaded. Check the connection and try again."
+            }
         } finally {
             loading = false
         }
@@ -142,8 +147,21 @@ fun ArtworkChooserDialog(
                 loading -> Box(modifier = Modifier.fillMaxWidth().height(280.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = ChooserAmber)
                 }
-                error != null -> Box(modifier = Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
+                error != null -> Column(
+                    modifier = Modifier.fillMaxWidth().height(180.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
                     Text(text = error.orEmpty(), color = Color(0xFFFF7777), fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = { retryRequest++ },
+                        colors = ButtonDefaults.buttonColors(containerColor = ChooserAmber)
+                    ) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = null, tint = Color.Black)
+                        Spacer(modifier = Modifier.size(6.dp))
+                        Text("Retry", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
                 }
                 visibleOptions.isEmpty() -> Box(modifier = Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
                     Text(text = "No ${if (selectedKind == ArtworkKind.POSTER) "posters" else "backdrops"} available.", color = Color.Gray)

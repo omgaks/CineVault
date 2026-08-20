@@ -36,11 +36,21 @@ private suspend fun fetchTmdbArtworkOptions(
     type: String,
     preferredLanguage: String
 ): List<ArtworkOption> {
+    val configuredToken = BuildConfig.TMDB_TOKEN.trim()
+    require(configuredToken.isNotBlank()) { "TMDB credential is missing from this build" }
+
+    // Accept either credential TMDB provides: the long API Read Access Token
+    // (v4 bearer token) or the shorter v3 API key. This prevents the chooser
+    // from silently returning an empty grid when a valid v3 key was supplied.
+    val isV3ApiKey = configuredToken.matches(Regex("^[a-fA-F0-9]{32}$"))
+    val authorization = if (isV3ApiKey) null else configuredToken
+        .let { if (it.startsWith("Bearer ", ignoreCase = true)) it else "Bearer $it" }
+    val apiKey = configuredToken.takeIf { isV3ApiKey }
     val imageLanguages = listOf(preferredLanguage, "en", "null").distinct().joinToString(",")
     val response = if (type == "tv") {
-        TmdbClient.api.getTvImages(BuildConfig.TMDB_TOKEN, tmdbId, imageLanguages)
+        TmdbClient.api.getTvImages(authorization, tmdbId, imageLanguages, apiKey)
     } else {
-        TmdbClient.api.getMovieImages(BuildConfig.TMDB_TOKEN, tmdbId, imageLanguages)
+        TmdbClient.api.getMovieImages(authorization, tmdbId, imageLanguages, apiKey)
     }
     val posters = response.posters.mapNotNull { image ->
         val path = image.file_path ?: return@mapNotNull null
@@ -82,12 +92,18 @@ private suspend fun loadArtworkOptionsForLanguage(
 ): List<ArtworkOption> =
     coroutineScope {
         val tmdb = async(Dispatchers.IO) {
-            try { fetchTmdbArtworkOptions(tmdbId, type, preferredLanguage) } catch (_: Exception) { emptyList() }
+            runCatching { fetchTmdbArtworkOptions(tmdbId, type, preferredLanguage) }
         }
         val fanart = async(Dispatchers.IO) {
             fetchFanartArtworkOptions(tmdbId, type, preferredLanguage)
         }
-        (tmdb.await() + fanart.await())
+        val tmdbResult = tmdb.await()
+        val fanartOptions = fanart.await()
+        if (tmdbResult.isFailure && fanartOptions.isEmpty()) {
+            throw tmdbResult.exceptionOrNull()
+                ?: IllegalStateException("Artwork could not be loaded from TMDB")
+        }
+        (tmdbResult.getOrDefault(emptyList()) + fanartOptions)
             .distinctBy { it.url }
             .sortedWith(
                 compareBy<ArtworkOption> { if (it.source == "TMDB") 0 else 1 }

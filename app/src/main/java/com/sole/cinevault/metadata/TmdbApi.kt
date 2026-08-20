@@ -67,16 +67,18 @@ interface TmdbApi {
 
     @GET("movie/{movie_id}/images")
     suspend fun getMovieImages(
-        @Header("Authorization") bearerToken: String,
+        @Header("Authorization") bearerToken: String?,
         @Path("movie_id") movieId: Int,
-        @Query("include_image_language") languages: String? = null
+        @Query("include_image_language") languages: String? = null,
+        @Query("api_key") apiKey: String? = null
     ): TmdbImagesResponse
 
     @GET("tv/{series_id}/images")
     suspend fun getTvImages(
-        @Header("Authorization") bearerToken: String,
+        @Header("Authorization") bearerToken: String?,
         @Path("series_id") seriesId: Int,
-        @Query("include_image_language") languages: String? = null
+        @Query("include_image_language") languages: String? = null,
+        @Query("api_key") apiKey: String? = null
     ): TmdbImagesResponse
 
     // ── Media intelligence additions ───────────────────────────────────────
