@@ -64,6 +64,9 @@ interface ArtworkPreferenceDao {
 
     @Query("DELETE FROM artwork_preferences")
     suspend fun clearAll()
+
+    @Query("UPDATE artwork_preferences SET lastAutomaticAttemptAt = 0")
+    suspend fun resetAutomaticAttemptTimestamps()
 }
 
 suspend fun canAttemptAutomaticArtwork(context: Context, videoPath: String): Boolean =
