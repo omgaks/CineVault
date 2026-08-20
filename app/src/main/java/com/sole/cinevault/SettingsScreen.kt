@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Switch
@@ -68,6 +69,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.ui.theme.*
+import kotlinx.coroutines.launch
 
 private val AshSignatureFont = FontFamily(
     Font(R.font.great_vibes)
@@ -118,11 +120,19 @@ fun SettingsScreen(
     // FIX: previously took no argument, so the URL typed into the Stream
     // dialog was captured then silently discarded — Play did nothing.
     // Now the URL is actually passed through to whoever handles playback.
-    onOpenStreamUrl: (String) -> Unit
+    onOpenStreamUrl: (String) -> Unit,
+    videos: List<VideoWithMetadata> = emptyList(),
+    onVideosUpdated: (List<VideoWithMetadata>) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val metadataScope = rememberCoroutineScope()
     var showStreamDialog by remember { mutableStateOf(false) }
     var showCrashLog by remember { mutableStateOf(false) }
+    var metadataFetchEnabled by remember { mutableStateOf(loadMetadataFetchEnabled(context)) }
+    var metadataLanguage by remember { mutableStateOf(loadMetadataLanguage(context)) }
+    var metadataOperation by remember { mutableStateOf<String?>(null) }
+    var metadataProgress by remember { mutableStateOf<MetadataOperationProgress?>(null) }
+    var showClearMetadataConfirmation by remember { mutableStateOf(false) }
 
     var smbShares by remember { mutableStateOf(loadSmbShares(context)) }
     var showSmbDialog by remember { mutableStateOf(false) }
@@ -136,6 +146,7 @@ fun SettingsScreen(
     BackHandler(enabled = showStreamDialog) { showStreamDialog = false }
     BackHandler(enabled = showCrashLog) { showCrashLog = false }
     BackHandler(enabled = showSmbDialog) { showSmbDialog = false; editingShare = null }
+    BackHandler(enabled = showClearMetadataConfirmation) { showClearMetadataConfirmation = false }
 
     // Select Folder — the general "Add Media Folder" picker (and the whole
     // Media Library section) was removed entirely: it saved folders but
@@ -251,7 +262,6 @@ fun SettingsScreen(
             // immediately on toggle — no separate Save button, matching
             // every other setting on this screen.
             GlassSectionCard(title = "Privacy", subtitle = "Control what CineVault sends over the network.", icon = Icons.Rounded.Lock, accent = AccentPrivacy) {
-                var metadataFetchEnabled by remember { mutableStateOf(loadMetadataFetchEnabled(context)) }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(text = "Fetch online metadata", color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
@@ -269,6 +279,154 @@ fun SettingsScreen(
                             saveMetadataFetchEnabled(context, it)
                         },
                         colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            GlassSectionCard(
+                title = "Metadata Manager",
+                subtitle = "Manage online information and artwork for your library.",
+                icon = Icons.Rounded.Refresh,
+                accent = AccentNetwork
+            ) {
+                Text(
+                    text = "Metadata language",
+                    color = TextBright,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    supportedMetadataLanguages.forEach { option ->
+                        val selected = metadataLanguage == option.code
+                        Text(
+                            text = option.label,
+                            color = if (selected) Color.Black else TextBright,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(if (selected) AmberCore else Color.White.copy(alpha = 0.09f))
+                                .clickable(enabled = metadataOperation == null) {
+                                    metadataLanguage = option.code
+                                    saveMetadataLanguage(context, option.code)
+                                    Toast.makeText(
+                                        context,
+                                        "${option.label} will be used for new metadata",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    text = "Changing language affects new lookups and artwork ordering. To replace existing descriptions, clear the metadata cache and then run Refresh missing metadata.",
+                    color = TextFaint,
+                    fontSize = 11.5.sp,
+                    lineHeight = 16.sp
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+                GlassActionRow(
+                    icon = Icons.Rounded.Refresh,
+                    iconTint = AccentNetwork,
+                    title = "Refresh missing metadata",
+                    subtitle = "Fill missing posters, ratings, cast and genres",
+                    action = if (metadataOperation == "missing") "WAIT" else "RUN"
+                ) {
+                    if (metadataOperation == null) {
+                        if (!metadataFetchEnabled) {
+                            Toast.makeText(context, "Enable online metadata first", Toast.LENGTH_SHORT).show()
+                        } else if (videos.isEmpty()) {
+                            Toast.makeText(context, "Scan your library first", Toast.LENGTH_SHORT).show()
+                        } else {
+                            metadataScope.launch {
+                                metadataOperation = "missing"
+                                metadataProgress = MetadataOperationProgress(0, 1, "Preparing library")
+                                try {
+                                    val updated = refreshAllMissingMetadata(context, videos) { metadataProgress = it }
+                                    onVideosUpdated(updated)
+                                    Toast.makeText(context, "Missing metadata refresh complete", Toast.LENGTH_SHORT).show()
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Metadata refresh failed: ${e.message ?: "Unknown error"}", Toast.LENGTH_LONG).show()
+                                } finally {
+                                    metadataOperation = null
+                                    metadataProgress = null
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(9.dp))
+                GlassActionRow(
+                    icon = Icons.Rounded.Refresh,
+                    iconTint = AmberCore,
+                    title = "Refresh all artwork",
+                    subtitle = "Recheck TMDB and Fanart.tv for every matched title",
+                    action = if (metadataOperation == "artwork") "WAIT" else "RUN"
+                ) {
+                    if (metadataOperation == null) {
+                        if (!metadataFetchEnabled) {
+                            Toast.makeText(context, "Enable online metadata first", Toast.LENGTH_SHORT).show()
+                        } else if (videos.isEmpty()) {
+                            Toast.makeText(context, "Scan your library first", Toast.LENGTH_SHORT).show()
+                        } else {
+                            metadataScope.launch {
+                                metadataOperation = "artwork"
+                                metadataProgress = MetadataOperationProgress(0, 1, "Preparing artwork")
+                                try {
+                                    val updated = refreshAllLibraryArtwork(context, videos) { metadataProgress = it }
+                                    onVideosUpdated(updated)
+                                    Toast.makeText(context, "Artwork refresh complete", Toast.LENGTH_SHORT).show()
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Artwork refresh failed: ${e.message ?: "Unknown error"}", Toast.LENGTH_LONG).show()
+                                } finally {
+                                    metadataOperation = null
+                                    metadataProgress = null
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(9.dp))
+                GlassActionRow(
+                    icon = Icons.Rounded.Delete,
+                    iconTint = Color(0xFFFF6E6E),
+                    title = "Clear metadata cache",
+                    subtitle = "Keep files, history, favorites and chosen artwork",
+                    action = "CLEAR"
+                ) {
+                    if (metadataOperation == null) showClearMetadataConfirmation = true
+                }
+
+                val progress = metadataProgress
+                if (metadataOperation != null && progress != null) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    LinearProgressIndicator(
+                        progress = { progress.fraction },
+                        modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(50)),
+                        color = AmberCore,
+                        trackColor = Color.White.copy(alpha = 0.10f)
+                    )
+                    Spacer(modifier = Modifier.height(7.dp))
+                    Text(
+                        text = if (progress.total > 0) {
+                            "${progress.message} • ${progress.completed}/${progress.total}"
+                        } else progress.message,
+                        color = TextMuted,
+                        fontSize = 11.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -296,6 +454,41 @@ fun SettingsScreen(
                 Text(
                     text = "Your personal cinema, built from the ground up. Play straight from local storage, a USB drive, or a NAS over SMB — with real decoding for DTS, TrueHD and the formats most players choke on. TMDB and OMDB automatically bring in posters, cast, genres, collections, and IMDb/Rotten Tomatoes ratings for everything you own. A cinematic glass-and-amber design throughout, gesture-driven playback, and a private Select Folder space that stays exactly that.",
                     color = TextMuted, fontSize = 13.sp, lineHeight = 19.sp
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(text = "Metadata & artwork providers", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(7.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.themoviedb.org")))
+                    }
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.tmdb_logo),
+                        contentDescription = "The Movie Database",
+                        modifier = Modifier.width(56.dp).height(41.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "TMDB • OMDb • Fanart.tv",
+                        color = AccentAbout,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(modifier = Modifier.height(5.dp))
+                Text(
+                    text = "This product uses the TMDB API but is not endorsed or certified by TMDB.",
+                    color = TextMuted,
+                    fontSize = 11.5.sp,
+                    lineHeight = 16.sp
+                )
+                Text(
+                    text = "Additional ratings are supplied by OMDb, and fallback artwork is supplied by Fanart.tv.",
+                    color = TextFaint,
+                    fontSize = 11.5.sp,
+                    lineHeight = 16.sp
                 )
                 Spacer(modifier = Modifier.height(14.dp))
                 GlassActionRow(
@@ -388,6 +581,72 @@ fun SettingsScreen(
                         Text(
                             text = "Clear Log", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
                             modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFFFF5252)).clickable { clearCrashLog(context); showCrashLog = false }.padding(horizontal = 16.dp, vertical = 9.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        if (showClearMetadataConfirmation) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.68f))
+                    .clickable { showClearMetadataConfirmation = false },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .width(310.dp)
+                        .glassPanel(cornerRadius = 24.dp, fill = SpaceMid.copy(alpha = 0.98f))
+                        .clickable(enabled = false) { }
+                        .padding(20.dp)
+                ) {
+                    Text("Clear metadata cache?", color = TextBright, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Downloaded titles, summaries, ratings and automatic artwork will be removed. Your video files, playback history, favorites, Secret Folder records and manually chosen artwork will remain.",
+                        color = TextMuted,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                    Spacer(modifier = Modifier.height(18.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "Cancel",
+                            color = TextBright,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(Color.White.copy(alpha = 0.12f))
+                                .clickable { showClearMetadataConfirmation = false }
+                                .padding(horizontal = 16.dp, vertical = 9.dp)
+                        )
+                        Text(
+                            text = "Clear",
+                            color = Color.Black,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Black,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(Color(0xFFFF6E6E))
+                                .clickable {
+                                    showClearMetadataConfirmation = false
+                                    metadataScope.launch {
+                                        metadataOperation = "clear"
+                                        try {
+                                            val updated = clearAutomaticMetadataCache(context, videos)
+                                            onVideosUpdated(updated)
+                                            Toast.makeText(context, "Metadata cache cleared", Toast.LENGTH_SHORT).show()
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Could not clear metadata: ${e.message ?: "Unknown error"}", Toast.LENGTH_LONG).show()
+                                        } finally {
+                                            metadataOperation = null
+                                        }
+                                    }
+                                }
+                                .padding(horizontal = 16.dp, vertical = 9.dp)
                         )
                     }
                 }

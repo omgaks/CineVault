@@ -733,6 +733,11 @@ fun CineVaultApp() {
                             onOpenStreamUrl = { url ->
                                 val streamName = url.substringAfterLast("/").substringBefore("?").ifBlank { "Stream" }
                                 push(Destination.Player(VideoFile(path = url, name = streamName), "stream", emptyList()))
+                            },
+                            videos = libraryVideos,
+                            onVideosUpdated = { updatedVideos ->
+                                libraryVideos = updatedVideos
+                                scope.launch { saveLibraryCache(context, updatedVideos) }
                             }
                         )
 
