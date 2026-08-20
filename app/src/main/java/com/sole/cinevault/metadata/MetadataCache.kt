@@ -257,7 +257,11 @@ fun needsArtworkUpgrade(item: VideoWithMetadata): Boolean {
  * otherwise they would be retried on every scan because they have no poster.
  */
 fun shouldEnrichOnlineMetadata(item: VideoWithMetadata): Boolean {
-    if (item.type == "local") return false
+    if (item.type == "local" || item.type == "restricted") return false
+    // A manually selected poster can deliberately remain after the
+    // automatic metadata cache is cleared. It must not make that otherwise
+    // bare movie/episode look fully enriched and block the next lookup.
+    if ((item.type == "movie" || item.type == "tv") && item.tmdbId == null) return true
     return !hasUsefulOnlineMetadata(item) ||
             needsRatingsUpgrade(item) ||
             needsGenreUpgrade(item) ||
@@ -268,17 +272,28 @@ private suspend fun fetchAutomaticFanartArtwork(
     context: Context,
     videoPath: String,
     tmdbId: Int,
-    type: String
+    type: String,
+    preferredLanguage: String
 ): FanartArtwork? {
     if (!canAttemptAutomaticArtwork(context, videoPath)) return null
     recordAutomaticArtworkAttempt(context, videoPath)
-    return fetchFanartArtwork(tmdbId, type)
+    return fetchFanartArtwork(tmdbId, type, preferredLanguage)
 }
 
-private suspend fun fillMissingArtwork(context: Context, item: VideoWithMetadata): VideoWithMetadata {
+private suspend fun fillMissingArtwork(
+    context: Context,
+    item: VideoWithMetadata,
+    preferredLanguage: String
+): VideoWithMetadata {
     if (!needsArtworkUpgrade(item)) return item
     val tmdbId = item.tmdbId ?: return item
-    val fanart = fetchAutomaticFanartArtwork(context, item.video.path, tmdbId, item.type) ?: return item
+    val fanart = fetchAutomaticFanartArtwork(
+        context,
+        item.video.path,
+        tmdbId,
+        item.type,
+        preferredLanguage
+    ) ?: return item
     return item.copy(
         posterUrl = item.posterUrl?.takeIf { it.isNotBlank() } ?: fanart.posterUrl,
         backdropUrl = item.backdropUrl?.takeIf { it.isNotBlank() } ?: fanart.backdropUrl
@@ -369,11 +384,19 @@ fun extractTopCast(credits: TmdbCreditsBlock?): List<CastEntry> {
         ?: emptyList()
 }
 
-suspend fun fetchTmdbExtraDetails(tmdbId: Int, type: String): TmdbExtraDetails? =
+suspend fun fetchTmdbExtraDetails(
+    tmdbId: Int,
+    type: String,
+    language: String? = null
+): TmdbExtraDetails? =
     withContext(Dispatchers.IO) {
         try {
             if (type == "tv") {
-                val details = TmdbClient.api.getTvDetails(BuildConfig.TMDB_TOKEN, tmdbId)
+                val details = TmdbClient.api.getTvDetails(
+                    BuildConfig.TMDB_TOKEN,
+                    tmdbId,
+                    language = language
+                )
                 val keywordNames = details.keywords?.results?.mapNotNull { it.name } ?: emptyList()
                 TmdbExtraDetails(
                     genres = details.genres?.mapNotNull { it.name?.takeIf { n -> n.isNotBlank() } } ?: emptyList(),
@@ -384,7 +407,11 @@ suspend fun fetchTmdbExtraDetails(tmdbId: Int, type: String): TmdbExtraDetails? 
                     cast = extractTopCast(details.credits)
                 )
             } else {
-                val details = TmdbClient.api.getMovieDetails(BuildConfig.TMDB_TOKEN, tmdbId)
+                val details = TmdbClient.api.getMovieDetails(
+                    BuildConfig.TMDB_TOKEN,
+                    tmdbId,
+                    language = language
+                )
                 val keywordNames = details.keywords?.keywords?.mapNotNull { it.name } ?: emptyList()
                 TmdbExtraDetails(
                     genres = details.genres?.mapNotNull { it.name?.takeIf { n -> n.isNotBlank() } } ?: emptyList(),
@@ -404,6 +431,7 @@ suspend fun enrichVideoWithOnlineMetadata(
     context: Context,
     item: VideoWithMetadata
 ): VideoWithMetadata {
+    val metadataLanguage = loadMetadataLanguage(context)
 
     // Privacy: when off, this function makes NO network calls at all —
     // not the initial search, not the OMDB ratings lookup, and not the
@@ -444,7 +472,7 @@ suspend fun enrichVideoWithOnlineMetadata(
         if (!previousLookupFailed && needsGenres) {
             val tmdbId = applied.tmdbId
             if (tmdbId != null && tmdbId > 0) {
-                fetchTmdbExtraDetails(tmdbId, applied.type)?.let { extra ->
+                fetchTmdbExtraDetails(tmdbId, applied.type, metadataLanguage)?.let { extra ->
                     applied = applied.copy(
                         genres = extra.genres,
                         director = extra.director,
@@ -458,7 +486,7 @@ suspend fun enrichVideoWithOnlineMetadata(
         }
 
         if (!previousLookupFailed && needsArtwork) {
-            applied = fillMissingArtwork(context, applied)
+            applied = fillMissingArtwork(context, applied, metadataLanguage.substringBefore('-'))
         }
 
         if (!previousLookupFailed) {
@@ -476,7 +504,8 @@ suspend fun enrichVideoWithOnlineMetadata(
                 try {
                     TmdbClient.api.searchTv(
                         bearerToken = BuildConfig.TMDB_TOKEN,
-                        query = episodeInfo.showName
+                        query = episodeInfo.showName,
+                        language = metadataLanguage
                     ).results.firstOrNull()
                 } catch (e: Exception) {
                     null
@@ -489,7 +518,8 @@ suspend fun enrichVideoWithOnlineMetadata(
                             bearerToken = BuildConfig.TMDB_TOKEN,
                             seriesId = tv.id,
                             seasonNumber = episodeInfo.season,
-                            episodeNumber = episodeInfo.episode
+                            episodeNumber = episodeInfo.episode,
+                            language = metadataLanguage
                         )
                     } else {
                         null
@@ -505,12 +535,18 @@ suspend fun enrichVideoWithOnlineMetadata(
 
             // Genres/creator for the show — same details call used by the
             // upgrade path above, just inlined here for a freshly-scanned item.
-            val extra = tv?.id?.let { fetchTmdbExtraDetails(it, "tv") }
+            val extra = tv?.id?.let { fetchTmdbExtraDetails(it, "tv", metadataLanguage) }
 
             val tmdbPoster = tv?.poster_path?.let { "https://image.tmdb.org/t/p/w780$it" }
             val tmdbBackdrop = tv?.backdrop_path?.let { "https://image.tmdb.org/t/p/w1280$it" }
             val fanart = if (tv?.id != null && (tmdbPoster == null || tmdbBackdrop == null)) {
-                fetchAutomaticFanartArtwork(context, item.video.path, tv.id, "tv")
+                fetchAutomaticFanartArtwork(
+                    context,
+                    item.video.path,
+                    tv.id,
+                    "tv",
+                    metadataLanguage.substringBefore('-')
+                )
             } else null
 
             item.copy(
@@ -555,7 +591,8 @@ suspend fun enrichVideoWithOnlineMetadata(
                     TmdbClient.api.searchMovie(
                         bearerToken = BuildConfig.TMDB_TOKEN,
                         query = movieSearchName,
-                        primaryReleaseYear = yearHint
+                        primaryReleaseYear = yearHint,
+                        language = metadataLanguage
                     ).results
                 } catch (_: Exception) {
                     emptyList()
@@ -566,7 +603,8 @@ suspend fun enrichVideoWithOnlineMetadata(
                     try {
                         TmdbClient.api.searchMovie(
                             bearerToken = BuildConfig.TMDB_TOKEN,
-                            query = movieSearchName
+                            query = movieSearchName,
+                            language = metadataLanguage
                         ).results
                     } catch (_: Exception) {
                         emptyList()
@@ -582,12 +620,18 @@ suspend fun enrichVideoWithOnlineMetadata(
 
                 // Genres/director/collection — same details call used by the
                 // upgrade path above, just inlined here for a freshly-scanned item.
-                val extra = movie?.id?.let { fetchTmdbExtraDetails(it, "movie") }
+                val extra = movie?.id?.let { fetchTmdbExtraDetails(it, "movie", metadataLanguage) }
 
                 val tmdbPoster = movie?.poster_path?.let { "https://image.tmdb.org/t/p/w780$it" }
                 val tmdbBackdrop = movie?.backdrop_path?.let { "https://image.tmdb.org/t/p/w1280$it" }
                 val fanart = if (movie?.id != null && (tmdbPoster == null || tmdbBackdrop == null)) {
-                    fetchAutomaticFanartArtwork(context, item.video.path, movie.id, "movie")
+                    fetchAutomaticFanartArtwork(
+                        context,
+                        item.video.path,
+                        movie.id,
+                        "movie",
+                        metadataLanguage.substringBefore('-')
+                    )
                 } else null
 
                 item.copy(

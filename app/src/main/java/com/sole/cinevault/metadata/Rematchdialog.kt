@@ -89,7 +89,7 @@ fun RematchDialog(
             errorMessage = null
             hasSearched = true
             candidates = try {
-                searchMovieCandidates(trimmed)
+                searchMovieCandidates(context, trimmed)
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Search failed"
                 emptyList()

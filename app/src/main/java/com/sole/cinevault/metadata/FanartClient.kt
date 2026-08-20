@@ -66,12 +66,13 @@ private object FanartClient {
     val api: FanartApi = retrofit.create(FanartApi::class.java)
 }
 
-private fun List<FanartImage>.bestArtworkUrl(): String? {
+private fun List<FanartImage>.bestArtworkUrl(preferredLanguage: String): String? {
     return asSequence()
         .filter { it.url?.startsWith("https://") == true }
         .sortedWith(
             compareByDescending<FanartImage> {
                 when {
+                    it.lang.equals(preferredLanguage, ignoreCase = true) -> 3
                     it.lang.equals("en", ignoreCase = true) -> 2
                     it.lang.isNullOrBlank() || it.lang == "00" -> 1
                     else -> 0
@@ -82,7 +83,10 @@ private fun List<FanartImage>.bestArtworkUrl(): String? {
         .firstOrNull()
 }
 
-private fun List<FanartImage>.toArtworkOptions(kind: ArtworkKind): List<ArtworkOption> {
+private fun List<FanartImage>.toArtworkOptions(
+    kind: ArtworkKind,
+    preferredLanguage: String
+): List<ArtworkOption> {
     return asSequence()
         .filter { it.url?.startsWith("https://") == true }
         .mapNotNull { image ->
@@ -92,12 +96,18 @@ private fun List<FanartImage>.toArtworkOptions(kind: ArtworkKind): List<ArtworkO
                 source = "Fanart.tv",
                 kind = kind,
                 language = image.lang,
-                score = image.likes?.toDoubleOrNull() ?: 0.0
+                score = (image.likes?.toDoubleOrNull() ?: 0.0) + when {
+                    image.lang.equals(preferredLanguage, ignoreCase = true) -> 3_000.0
+                    image.lang.equals("en", ignoreCase = true) -> 2_000.0
+                    image.lang.isNullOrBlank() || image.lang == "00" -> 1_000.0
+                    else -> 0.0
+                }
             )
         }
         .sortedWith(
             compareByDescending<ArtworkOption> {
                 when {
+                    it.language.equals(preferredLanguage, ignoreCase = true) -> 3
                     it.language.equals("en", ignoreCase = true) -> 2
                     it.language.isNullOrBlank() || it.language == "00" -> 1
                     else -> 0
@@ -107,7 +117,11 @@ private fun List<FanartImage>.toArtworkOptions(kind: ArtworkKind): List<ArtworkO
         .toList()
 }
 
-suspend fun fetchFanartArtworkOptions(tmdbId: Int, type: String): List<ArtworkOption> =
+suspend fun fetchFanartArtworkOptions(
+    tmdbId: Int,
+    type: String,
+    preferredLanguage: String = "en"
+): List<ArtworkOption> =
     withContext(Dispatchers.IO) {
         val apiKey = BuildConfig.FANART_API_KEY
         if (apiKey.isBlank() || tmdbId <= 0) return@withContext emptyList()
@@ -118,14 +132,14 @@ suspend fun fetchFanartArtworkOptions(tmdbId: Int, type: String): List<ArtworkOp
                     .tvdb_id
                     ?: return@withContext emptyList()
                 val response = FanartClient.api.getTvArtwork(tvdbId, apiKey)
-                response.tvposter.toArtworkOptions(ArtworkKind.POSTER) +
+                response.tvposter.toArtworkOptions(ArtworkKind.POSTER, preferredLanguage) +
                         (response.showbackground + response.show4kbackground)
-                            .toArtworkOptions(ArtworkKind.BACKDROP)
+                            .toArtworkOptions(ArtworkKind.BACKDROP, preferredLanguage)
             } else {
                 val response = FanartClient.api.getMovieArtwork(tmdbId, apiKey)
-                response.movieposter.toArtworkOptions(ArtworkKind.POSTER) +
+                response.movieposter.toArtworkOptions(ArtworkKind.POSTER, preferredLanguage) +
                         (response.moviebackground + response.movie4kbackground)
-                            .toArtworkOptions(ArtworkKind.BACKDROP)
+                            .toArtworkOptions(ArtworkKind.BACKDROP, preferredLanguage)
             }
         } catch (_: Exception) {
             emptyList()
@@ -137,7 +151,11 @@ suspend fun fetchFanartArtworkOptions(tmdbId: Int, type: String): List<ArtworkOp
  * uses the TMDB id directly; Fanart's TV endpoint uses the corresponding
  * TheTVDB id, which TMDB exposes through its external-ids endpoint.
  */
-suspend fun fetchFanartArtwork(tmdbId: Int, type: String): FanartArtwork? =
+suspend fun fetchFanartArtwork(
+    tmdbId: Int,
+    type: String,
+    preferredLanguage: String = "en"
+): FanartArtwork? =
     withContext(Dispatchers.IO) {
         val apiKey = BuildConfig.FANART_API_KEY
         if (apiKey.isBlank() || tmdbId <= 0) return@withContext null
@@ -150,16 +168,16 @@ suspend fun fetchFanartArtwork(tmdbId: Int, type: String): FanartArtwork? =
                     ?: return@withContext null
                 val response = FanartClient.api.getTvArtwork(tvdbId, apiKey)
                 FanartArtwork(
-                    posterUrl = response.tvposter.bestArtworkUrl(),
-                    backdropUrl = response.showbackground.bestArtworkUrl()
-                        ?: response.show4kbackground.bestArtworkUrl()
+                    posterUrl = response.tvposter.bestArtworkUrl(preferredLanguage),
+                    backdropUrl = response.showbackground.bestArtworkUrl(preferredLanguage)
+                        ?: response.show4kbackground.bestArtworkUrl(preferredLanguage)
                 )
             } else {
                 val response = FanartClient.api.getMovieArtwork(tmdbId, apiKey)
                 FanartArtwork(
-                    posterUrl = response.movieposter.bestArtworkUrl(),
-                    backdropUrl = response.moviebackground.bestArtworkUrl()
-                        ?: response.movie4kbackground.bestArtworkUrl()
+                    posterUrl = response.movieposter.bestArtworkUrl(preferredLanguage),
+                    backdropUrl = response.moviebackground.bestArtworkUrl(preferredLanguage)
+                        ?: response.movie4kbackground.bestArtworkUrl(preferredLanguage)
                 )
             }
         } catch (_: Exception) {

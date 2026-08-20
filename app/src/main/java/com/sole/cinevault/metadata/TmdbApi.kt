@@ -19,25 +19,29 @@ interface TmdbApi {
         // filtering as its OWN separate parameter — this just actually
         // uses it. Optional/nullable so existing callers that don't pass
         // a year keep behaving exactly as before.
-        @Query("primary_release_year") primaryReleaseYear: String? = null
+        @Query("primary_release_year") primaryReleaseYear: String? = null,
+        @Query("language") language: String? = null
     ): TmdbMovieSearchResponse
 
     @GET("search/tv")
     suspend fun searchTv(
         @Header("Authorization") bearerToken: String,
-        @Query("query") query: String
+        @Query("query") query: String,
+        @Query("language") language: String? = null
     ): TmdbTvSearchResponse
 
     @GET("movie/{movie_id}/credits")
     suspend fun getMovieCredits(
         @Header("Authorization") bearerToken: String,
-        @Path("movie_id") movieId: Int
+        @Path("movie_id") movieId: Int,
+        @Query("language") language: String? = null
     ): TmdbCreditsResponse
 
     @GET("tv/{series_id}/credits")
     suspend fun getTvCredits(
         @Header("Authorization") bearerToken: String,
-        @Path("series_id") seriesId: Int
+        @Path("series_id") seriesId: Int,
+        @Query("language") language: String? = null
     ): TmdbCreditsResponse
 
     @GET("tv/{series_id}/season/{season_number}/episode/{episode_number}")
@@ -45,7 +49,8 @@ interface TmdbApi {
         @Header("Authorization") bearerToken: String,
         @Path("series_id") seriesId: Int,
         @Path("season_number") seasonNumber: Int,
-        @Path("episode_number") episodeNumber: Int
+        @Path("episode_number") episodeNumber: Int,
+        @Query("language") language: String? = null
     ): TmdbEpisode
 
     @GET("movie/{movie_id}/external_ids")
@@ -81,14 +86,16 @@ interface TmdbApi {
     suspend fun getMovieDetails(
         @Header("Authorization") bearerToken: String,
         @Path("movie_id") movieId: Int,
-        @Query("append_to_response") appendToResponse: String = "credits,keywords"
+        @Query("append_to_response") appendToResponse: String = "credits,keywords",
+        @Query("language") language: String? = null
     ): TmdbMovieDetails
 
     @GET("tv/{series_id}")
     suspend fun getTvDetails(
         @Header("Authorization") bearerToken: String,
         @Path("series_id") seriesId: Int,
-        @Query("append_to_response") appendToResponse: String = "credits,keywords"
+        @Query("append_to_response") appendToResponse: String = "credits,keywords",
+        @Query("language") language: String? = null
     ): TmdbTvDetails
 }
 

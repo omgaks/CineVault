@@ -31,11 +31,16 @@ data class MatchCandidate(
     val voteAverage: Double?
 )
 
-private suspend fun fetchTmdbArtworkOptions(tmdbId: Int, type: String): List<ArtworkOption> {
+private suspend fun fetchTmdbArtworkOptions(
+    tmdbId: Int,
+    type: String,
+    preferredLanguage: String
+): List<ArtworkOption> {
+    val imageLanguages = listOf(preferredLanguage, "en", "null").distinct().joinToString(",")
     val response = if (type == "tv") {
-        TmdbClient.api.getTvImages(BuildConfig.TMDB_TOKEN, tmdbId, "en,null")
+        TmdbClient.api.getTvImages(BuildConfig.TMDB_TOKEN, tmdbId, imageLanguages)
     } else {
-        TmdbClient.api.getMovieImages(BuildConfig.TMDB_TOKEN, tmdbId, "en,null")
+        TmdbClient.api.getMovieImages(BuildConfig.TMDB_TOKEN, tmdbId, imageLanguages)
     }
     val posters = response.posters.mapNotNull { image ->
         val path = image.file_path ?: return@mapNotNull null
@@ -44,7 +49,12 @@ private suspend fun fetchTmdbArtworkOptions(tmdbId: Int, type: String): List<Art
             source = "TMDB",
             kind = ArtworkKind.POSTER,
             language = image.iso_639_1,
-            score = image.vote_average ?: 0.0
+            score = (image.vote_average ?: 0.0) + when {
+                image.iso_639_1.equals(preferredLanguage, ignoreCase = true) -> 3_000.0
+                image.iso_639_1.equals("en", ignoreCase = true) -> 2_000.0
+                image.iso_639_1.isNullOrBlank() -> 1_000.0
+                else -> 0.0
+            }
         )
     }
     val backdrops = response.backdrops.mapNotNull { image ->
@@ -54,19 +64,28 @@ private suspend fun fetchTmdbArtworkOptions(tmdbId: Int, type: String): List<Art
             source = "TMDB",
             kind = ArtworkKind.BACKDROP,
             language = image.iso_639_1,
-            score = image.vote_average ?: 0.0
+            score = (image.vote_average ?: 0.0) + when {
+                image.iso_639_1.equals(preferredLanguage, ignoreCase = true) -> 3_000.0
+                image.iso_639_1.equals("en", ignoreCase = true) -> 2_000.0
+                image.iso_639_1.isNullOrBlank() -> 1_000.0
+                else -> 0.0
+            }
         )
     }
     return posters + backdrops
 }
 
-suspend fun loadArtworkOptions(tmdbId: Int, type: String): List<ArtworkOption> =
+private suspend fun loadArtworkOptionsForLanguage(
+    tmdbId: Int,
+    type: String,
+    preferredLanguage: String
+): List<ArtworkOption> =
     coroutineScope {
         val tmdb = async(Dispatchers.IO) {
-            try { fetchTmdbArtworkOptions(tmdbId, type) } catch (_: Exception) { emptyList() }
+            try { fetchTmdbArtworkOptions(tmdbId, type, preferredLanguage) } catch (_: Exception) { emptyList() }
         }
         val fanart = async(Dispatchers.IO) {
-            fetchFanartArtworkOptions(tmdbId, type)
+            fetchFanartArtworkOptions(tmdbId, type, preferredLanguage)
         }
         (tmdb.await() + fanart.await())
             .distinctBy { it.url }
@@ -76,8 +95,27 @@ suspend fun loadArtworkOptions(tmdbId: Int, type: String): List<ArtworkOption> =
             )
     }
 
+suspend fun loadArtworkOptions(context: Context, tmdbId: Int, type: String): List<ArtworkOption> =
+    loadArtworkOptionsForLanguage(tmdbId, type, metadataArtworkLanguage(context))
+
+// Compatibility overload keeps a safe upload sequence while the dialog file
+// is replaced in a later GitHub commit.
+suspend fun loadArtworkOptions(tmdbId: Int, type: String): List<ArtworkOption> =
+    loadArtworkOptionsForLanguage(tmdbId, type, "en")
+
 /** Searches TMDB movies for the given query and returns candidate matches. */
+suspend fun searchMovieCandidates(context: Context, query: String): List<MatchCandidate> =
+    searchMovieCandidatesForLanguage(query, loadMetadataLanguage(context))
+
+// Compatibility overload keeps the previous dialog compiling until its full
+// replacement is uploaded. New code uses the context-aware overload above.
 suspend fun searchMovieCandidates(query: String): List<MatchCandidate> =
+    searchMovieCandidatesForLanguage(query, "en-US")
+
+private suspend fun searchMovieCandidatesForLanguage(
+    query: String,
+    metadataLanguage: String
+): List<MatchCandidate> =
     withContext(Dispatchers.IO) {
         try {
             // FIX: a query like "wall E 2008" was being sent to TMDB
@@ -92,7 +130,12 @@ suspend fun searchMovieCandidates(query: String): List<MatchCandidate> =
             val finalQuery = titleOnlyQuery.ifBlank { query }
 
             val yearFiltered = TmdbClient.api
-                .searchMovie(bearerToken = BuildConfig.TMDB_TOKEN, query = finalQuery, primaryReleaseYear = yearHint)
+                .searchMovie(
+                    bearerToken = BuildConfig.TMDB_TOKEN,
+                    query = finalQuery,
+                    primaryReleaseYear = yearHint,
+                    language = metadataLanguage
+                )
                 .results
 
             // FIX: primary_release_year filters strictly against TMDB's
@@ -108,7 +151,12 @@ suspend fun searchMovieCandidates(query: String): List<MatchCandidate> =
             // back from there.
             val results = if (yearFiltered.isEmpty() && yearHint != null) {
                 TmdbClient.api
-                    .searchMovie(bearerToken = BuildConfig.TMDB_TOKEN, query = finalQuery, primaryReleaseYear = null)
+                    .searchMovie(
+                        bearerToken = BuildConfig.TMDB_TOKEN,
+                        query = finalQuery,
+                        primaryReleaseYear = null,
+                        language = metadataLanguage
+                    )
                     .results
             } else {
                 yearFiltered
@@ -144,7 +192,8 @@ suspend fun applyRematch(
     currentItem: VideoWithMetadata,
     candidate: MatchCandidate
 ): VideoWithMetadata {
-    val extra = fetchTmdbExtraDetails(candidate.tmdbId, "movie")
+    val metadataLanguage = loadMetadataLanguage(context)
+    val extra = fetchTmdbExtraDetails(candidate.tmdbId, "movie", metadataLanguage)
 
     val (imdb, rt) = fetchOmdbRatings(
         candidate.title,
@@ -154,7 +203,7 @@ suspend fun applyRematch(
     val tmdbPoster = candidate.posterPath?.let { "https://image.tmdb.org/t/p/w780$it" }
     val tmdbBackdrop = candidate.backdropPath?.let { "https://image.tmdb.org/t/p/w1280$it" }
     val fanart = if (tmdbPoster == null || tmdbBackdrop == null) {
-        fetchFanartArtwork(candidate.tmdbId, "movie")
+        fetchFanartArtwork(candidate.tmdbId, "movie", metadataLanguage.substringBefore('-'))
     } else {
         null
     }
@@ -196,11 +245,12 @@ suspend fun refreshArtwork(
 ): VideoWithMetadata = withContext(Dispatchers.IO) {
     val tmdbId = currentItem.tmdbId
         ?: throw IllegalStateException("Use Fix Match before refreshing artwork")
+    val metadataLanguage = loadMetadataLanguage(context)
 
     val details = if (currentItem.type == "tv") {
-        TmdbClient.api.getTvDetails(BuildConfig.TMDB_TOKEN, tmdbId)
+        TmdbClient.api.getTvDetails(BuildConfig.TMDB_TOKEN, tmdbId, language = metadataLanguage)
     } else {
-        TmdbClient.api.getMovieDetails(BuildConfig.TMDB_TOKEN, tmdbId)
+        TmdbClient.api.getMovieDetails(BuildConfig.TMDB_TOKEN, tmdbId, language = metadataLanguage)
     }
 
     val tmdbPosterPath = when (details) {
@@ -217,7 +267,7 @@ suspend fun refreshArtwork(
     val tmdbPoster = tmdbPosterPath?.let { "https://image.tmdb.org/t/p/w780$it" }
     val tmdbBackdrop = tmdbBackdropPath?.let { "https://image.tmdb.org/t/p/w1280$it" }
     val fanart = if (tmdbPoster == null || tmdbBackdrop == null) {
-        fetchFanartArtwork(tmdbId, currentItem.type)
+        fetchFanartArtwork(tmdbId, currentItem.type, metadataLanguage.substringBefore('-'))
     } else {
         null
     }
