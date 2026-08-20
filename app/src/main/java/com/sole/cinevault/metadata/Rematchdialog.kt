@@ -74,7 +74,14 @@ fun RematchDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var query by remember { mutableStateOf(currentItem.title) }
+    // Start from the actual filename, not the already-generated display title.
+    // This removes release-group tags such as BONE while keeping the year as
+    // a separate search hint.
+    var query by remember(currentItem.video.path) {
+        mutableStateOf(
+            cleanMovieFilename(currentItem.video.path.substringAfterLast('/'))
+        )
+    }
     var candidates by remember { mutableStateOf<List<MatchCandidate>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     var isApplying by remember { mutableStateOf(false) }
