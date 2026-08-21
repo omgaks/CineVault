@@ -196,13 +196,13 @@ suspend fun fetchFanartArtworkOptionsStrict(
                 apiKey
             )
 
-            response.tvposter.toArtworkOptions(
+            response.tvposter.orEmpty().toArtworkOptions(
                 ArtworkKind.POSTER,
                 preferredLanguage
             ) +
                 (
-                    response.showbackground +
-                        response.show4kbackground
+                    response.showbackground.orEmpty() +
+                        response.show4kbackground.orEmpty()
                     ).toArtworkOptions(
                     ArtworkKind.BACKDROP,
                     preferredLanguage
@@ -213,13 +213,13 @@ suspend fun fetchFanartArtworkOptionsStrict(
                 apiKey
             )
 
-            response.movieposter.toArtworkOptions(
+            response.movieposter.orEmpty().toArtworkOptions(
                 ArtworkKind.POSTER,
                 preferredLanguage
             ) +
                 (
-                    response.moviebackground +
-                        response.movie4kbackground
+                    response.moviebackground.orEmpty() +
+                        response.movie4kbackground.orEmpty()
                     ).toArtworkOptions(
                     ArtworkKind.BACKDROP,
                     preferredLanguage
@@ -260,14 +260,14 @@ suspend fun fetchFanartArtwork(
                 )
 
                 FanartArtwork(
-                    posterUrl = response.tvposter.bestArtworkUrl(
+                    posterUrl = response.tvposter.orEmpty().bestArtworkUrl(
                         preferredLanguage
                     ),
                     backdropUrl =
-                        response.showbackground.bestArtworkUrl(
+                        response.showbackground.orEmpty().bestArtworkUrl(
                             preferredLanguage
                         )
-                            ?: response.show4kbackground.bestArtworkUrl(
+                            ?: response.show4kbackground.orEmpty().bestArtworkUrl(
                                 preferredLanguage
                             )
                 )
@@ -278,14 +278,14 @@ suspend fun fetchFanartArtwork(
                 )
 
                 FanartArtwork(
-                    posterUrl = response.movieposter.bestArtworkUrl(
+                    posterUrl = response.movieposter.orEmpty().bestArtworkUrl(
                         preferredLanguage
                     ),
                     backdropUrl =
-                        response.moviebackground.bestArtworkUrl(
+                        response.moviebackground.orEmpty().bestArtworkUrl(
                             preferredLanguage
                         )
-                            ?: response.movie4kbackground.bestArtworkUrl(
+                            ?: response.movie4kbackground.orEmpty().bestArtworkUrl(
                                 preferredLanguage
                             )
                 )
