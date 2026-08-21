@@ -31,14 +31,17 @@ fun cleanMovieFilename(name: String): String {
             .replace(Regex("\\s+"), " ")
             .trim()
 
-    // Keep title before year, example:
-    // Guardians of the Galaxy 2014 1080p BluRay -> Guardians of the Galaxy
-    val beforeYear =
-        Regex("(?i)^(.*?)(19\\d{2}|20\\d{2})\\b")
-            .find(editionStripped)
-            ?.groupValues
-            ?.getOrNull(1)
-            ?.trim()
+    // Treat the LAST year-shaped token as the release year. A title may
+    // legitimately begin with a number that looks like a year:
+    // "2001 A Space Odyssey 1968" and "Blade Runner 2049 2017".
+    // A single leading token is therefore considered part of the title.
+    val yearMatches = Regex("\\b(19|20)\\d{2}\\b").findAll(editionStripped).toList()
+    val releaseYearMatch = yearMatches.lastOrNull()?.takeUnless {
+        yearMatches.size == 1 && it.range.first == 0
+    }
+    val beforeYear = releaseYearMatch
+        ?.let { editionStripped.substring(0, it.range.first) }
+        ?.trim()
     var cleaned =
         beforeYear?.takeIf { it.isNotBlank() } ?: editionStripped
     cleaned =
@@ -62,10 +65,9 @@ fun cleanMovieFilename(name: String): String {
         }
 }
 fun tmdbMovieSearchQuery(name: String): String {
+    // cleanMovieFilename already removes the detected RELEASE year while
+    // preserving year-shaped numbers that are genuinely part of a title.
     return cleanMovieFilename(name)
-        .replace(Regex("(?i)\\b(19\\d{2}|20\\d{2})\\b"), "")
-        .replace(Regex("\\s+"), " ")
-        .trim()
 }
 
 // Pulls a plausible release year straight out of the ORIGINAL filename
@@ -75,5 +77,10 @@ fun tmdbMovieSearchQuery(name: String): String {
 // this, not just one specific film. Returns null rather than guessing
 // when no year-shaped token is present, same convention as the rest of
 // this file's cleaning functions.
-fun extractYearHint(name: String): String? =
-    Regex("\\b(19|20)\\d{2}\\b").find(name)?.value
+fun extractYearHint(name: String): String? {
+    val normalized = name.substringBeforeLast(".").replace('.', ' ').trim()
+    val matches = Regex("\\b(19|20)\\d{2}\\b").findAll(normalized).toList()
+    return matches.lastOrNull()
+        ?.takeUnless { matches.size == 1 && it.range.first == 0 }
+        ?.value
+}
