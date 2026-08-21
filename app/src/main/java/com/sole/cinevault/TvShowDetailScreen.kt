@@ -2,6 +2,7 @@ package com.sole.cinevault
 
 import com.sole.cinevault.library.*
 import com.sole.cinevault.metadata.*
+import com.sole.cinevault.metadata.artworkstudio.*
 
 import android.app.Activity
 import android.app.AlertDialog
@@ -81,14 +82,16 @@ fun TvShowDetailScreen(
 ) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
-    val heroImage = group.backdropUrl ?: group.posterUrl
-    val artworkScope = rememberCoroutineScope()
-    var artworkRefreshing by remember(group.showName) { mutableStateOf(false) }
-    var showArtworkChooser by remember(group.showName) { mutableStateOf(false) }
+    var artworkStudioTool by remember(group.showName) { mutableStateOf<ArtworkStudioTool?>(null) }
 
     // Local copy so delete/hide can update the visible list immediately;
     // onEpisodesChanged lets the caller sync its own master list too.
     var episodes by remember(group) { mutableStateOf(group.episodes) }
+    val currentShowArtwork = episodes.firstOrNull()
+    val currentShowName = currentShowArtwork?.title ?: group.showName
+    val currentPoster = currentShowArtwork?.posterUrl ?: group.posterUrl
+    val currentBackdrop = currentShowArtwork?.backdropUrl ?: group.backdropUrl
+    val heroImage = currentBackdrop ?: currentPoster
     var hiddenPaths by remember { mutableStateOf<Set<String>>(loadSecretVideoPaths(context)) }
     var hiddenFolders by remember { mutableStateOf<Set<String>>(loadSecretFolderPaths(context)) }
     var favoritePaths by remember { mutableStateOf(loadFavoriteVideoPaths(context)) }
@@ -277,7 +280,7 @@ fun TvShowDetailScreen(
                     if (!heroImage.isNullOrBlank()) {
                         AsyncImage(
                             model = heroImage,
-                            contentDescription = group.showName,
+                            contentDescription = currentShowName,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
@@ -302,12 +305,12 @@ fun TvShowDetailScreen(
                     Column(
                         modifier = Modifier.align(Alignment.BottomStart).padding(start = 22.dp, end = 22.dp, bottom = 20.dp)
                     ) {
-                        Text(text = group.showName, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(text = currentShowName, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(text = "${visibleEpisodes.size} Episodes", color = Color(0xFFAAAAAA), fontSize = 14.sp)
                         Spacer(modifier = Modifier.height(5.dp))
                         Text(
-                            text = artworkSourceSummary(group.posterUrl, group.backdropUrl),
+                            text = artworkSourceSummary(currentPoster, currentBackdrop),
                             color = Color(0xFFAAAAAA),
                             fontSize = 11.sp,
                             maxLines = 1,
@@ -317,77 +320,12 @@ fun TvShowDetailScreen(
                 }
             }
 
-            if (episodes.any { it.tmdbId != null }) {
-                item {
-                    Row(
+            item {
+                Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.End
-                    ) {
-                        Button(
-                            onClick = { showArtworkChooser = true },
-                            shape = RoundedCornerShape(40.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = GlassSurface, contentColor = Color.White),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.VideoLibrary,
-                                contentDescription = null,
-                                tint = AmberCore,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Choose Artwork", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                        onClick = {
-                            if (!artworkRefreshing) {
-                                artworkScope.launch {
-                                    artworkRefreshing = true
-                                    try {
-                                        val updated = refreshTvArtwork(context, episodes)
-                                        episodes = updated
-                                        onEpisodesChanged(updated)
-                                        Toast.makeText(context, "TV artwork refreshed", Toast.LENGTH_SHORT).show()
-                                    } catch (e: Exception) {
-                                        Toast.makeText(
-                                            context,
-                                            "Artwork refresh failed: ${e.message ?: "Unknown error"}",
-                                            Toast.LENGTH_LONG
-                                        ).show()
-                                    } finally {
-                                        artworkRefreshing = false
-                                    }
-                                }
-                            }
-                        },
-                        enabled = !artworkRefreshing,
-                        shape = RoundedCornerShape(40.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = GlassSurface, contentColor = Color.White),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                        ) {
-                            if (artworkRefreshing) {
-                                CircularProgressIndicator(
-                                modifier = Modifier.size(15.dp),
-                                strokeWidth = 2.dp,
-                                color = AmberCore
-                            )
-                            } else {
-                                Icon(
-                                imageVector = Icons.Rounded.Refresh,
-                                contentDescription = null,
-                                tint = AmberCore,
-                                modifier = Modifier.size(16.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                            text = if (artworkRefreshing) "Refreshing…" else "Refresh Artwork",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.5.sp
-                            )
-                        }
-                    }
+                ) {
+                    ArtworkStudioPill(onOpen = { artworkStudioTool = it })
                 }
             }
 
@@ -519,35 +457,14 @@ fun TvShowDetailScreen(
             activeError?.let { err -> ErrorBanner(state = err, onDismiss = { activeError = null }) }
         }
 
-        val artworkRepresentative = episodes.firstOrNull { it.tmdbId != null }
-        val artworkTmdbId = artworkRepresentative?.tmdbId
-        if (showArtworkChooser && artworkRepresentative != null && artworkTmdbId != null) {
-            ArtworkChooserDialog(
-                tmdbId = artworkTmdbId,
-                type = "tv",
-                currentPosterUrl = artworkRepresentative.posterUrl ?: group.posterUrl,
-                currentBackdropUrl = artworkRepresentative.backdropUrl ?: group.backdropUrl,
-                onDismiss = { showArtworkChooser = false },
-                onSelected = { kind, url ->
-                    artworkScope.launch {
-                        try {
-                            val updated = applyTvArtworkChoice(context, episodes, kind, url)
-                            episodes = updated
-                            onEpisodesChanged(updated)
-                            showArtworkChooser = false
-                            Toast.makeText(
-                                context,
-                                if (url == null) "Automatic artwork restored" else "TV artwork updated",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        } catch (e: Exception) {
-                            Toast.makeText(
-                                context,
-                                "Artwork update failed: ${e.message ?: "Unknown error"}",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                    }
+        artworkStudioTool?.let { initialTool ->
+            ArtworkStudioDialog(
+                items = episodes,
+                initialTool = initialTool,
+                onDismiss = { artworkStudioTool = null },
+                onApplied = { updated ->
+                    episodes = updated
+                    onEpisodesChanged(updated)
                 }
             )
         }
