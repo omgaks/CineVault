@@ -13,13 +13,64 @@ import retrofit2.HttpException
 object ArtworkStudioRepository {
     private fun providerError(provider: String, error: Throwable): ArtworkProviderReport {
         val code = (error as? HttpException)?.code()
+        val cause = generateSequence(error) { it.cause }.last()
         val message = when (code) {
             401, 403 -> "$provider rejected its API credential"
             404 -> "$provider has no artwork for this saved match"
             429 -> "$provider is temporarily rate-limiting requests"
-            else -> error.message?.takeIf { it.isNotBlank() } ?: "$provider could not be reached"
+            else -> cause.message?.takeIf { it.isNotBlank() }
+                ?: error.message?.takeIf { it.isNotBlank() }
+                ?: "${cause::class.java.simpleName.ifBlank { "Unknown provider error" }}"
         }
         return ArtworkProviderReport(provider, ArtworkProviderStatus.ERROR, message = message)
+    }
+
+    /**
+     * Loads TMDB's complete image gallery using either supported credential
+     * form. Search requests already accepted both v3 keys and v4 tokens, but
+     * the Studio previously always constructed a Bearer header here. Keeping
+     * the two paths identical avoids an image-only authentication failure.
+     */
+    private suspend fun loadTmdbOptions(
+        item: VideoWithMetadata,
+        tmdbId: Int,
+        preferredLanguage: String
+    ): List<ArtworkOption> {
+        val credential = BuildConfig.TMDB_TOKEN.trim()
+        require(credential.isNotBlank()) { "TMDB credential is missing from this build" }
+        val isV3Key = credential.matches(Regex("^[A-Fa-f0-9]{32}$"))
+        val authorization = if (isV3Key) null else credential
+            .let { if (it.startsWith("Bearer ", ignoreCase = true)) it else "Bearer $it" }
+        val apiKey = credential.takeIf { isV3Key }
+        val language = preferredLanguage.substringBefore('-').ifBlank { "en" }
+        val response = if (item.type.equals("tv", ignoreCase = true)) {
+            TmdbClient.api.getTvImages(authorization, tmdbId, null, apiKey)
+        } else {
+            TmdbClient.api.getMovieImages(authorization, tmdbId, null, apiKey)
+        }
+        val posters = response.posters.orEmpty().mapNotNull { image ->
+            image.file_path?.let {
+                ArtworkOption(
+                    url = "https://image.tmdb.org/t/p/w780$it",
+                    source = "TMDB",
+                    kind = ArtworkKind.POSTER,
+                    language = image.iso_639_1,
+                    score = (image.vote_average ?: 0.0) + artworkLanguageScore(image.iso_639_1, language)
+                )
+            }
+        }
+        val backdrops = response.backdrops.orEmpty().mapNotNull { image ->
+            image.file_path?.let {
+                ArtworkOption(
+                    url = "https://image.tmdb.org/t/p/w1280$it",
+                    source = "TMDB",
+                    kind = ArtworkKind.BACKDROP,
+                    language = image.iso_639_1,
+                    score = (image.vote_average ?: 0.0) + artworkLanguageScore(image.iso_639_1, language)
+                )
+            }
+        }
+        return posters + backdrops
     }
 
     suspend fun loadGallery(context: Context, item: VideoWithMetadata): ArtworkStudioGallery =
@@ -34,36 +85,7 @@ object ArtworkStudioRepository {
             val language = metadataArtworkLanguage(context)
             coroutineScope {
                 val tmdbDeferred = async {
-                    runCatching {
-                        val response = if (item.type == "tv") {
-                            TmdbClient.api.getTvImages(tmdbAuthorizationHeader(), tmdbId, "$language,en,null")
-                        } else {
-                            TmdbClient.api.getMovieImages(tmdbAuthorizationHeader(), tmdbId, "$language,en,null")
-                        }
-                        val posters = response.posters.mapNotNull { image ->
-                            image.file_path?.let {
-                                ArtworkOption(
-                                    url = "https://image.tmdb.org/t/p/w780$it",
-                                    source = "TMDB",
-                                    kind = ArtworkKind.POSTER,
-                                    language = image.iso_639_1,
-                                    score = (image.vote_average ?: 0.0) + artworkLanguageScore(image.iso_639_1, language)
-                                )
-                            }
-                        }
-                        val backdrops = response.backdrops.mapNotNull { image ->
-                            image.file_path?.let {
-                                ArtworkOption(
-                                    url = "https://image.tmdb.org/t/p/w1280$it",
-                                    source = "TMDB",
-                                    kind = ArtworkKind.BACKDROP,
-                                    language = image.iso_639_1,
-                                    score = (image.vote_average ?: 0.0) + artworkLanguageScore(image.iso_639_1, language)
-                                )
-                            }
-                        }
-                        posters + backdrops
-                    }
+                    runCatching { loadTmdbOptions(item, tmdbId, language) }
                 }
                 val fanartDeferred = async {
                     if (BuildConfig.FANART_API_KEY.isBlank()) {
