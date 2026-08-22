@@ -39,6 +39,15 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.sole.cinevault.ui.theme.AmberCore
+import com.sole.cinevault.ui.theme.GlassBorderBottom
+import com.sole.cinevault.ui.theme.GlassBorderTop
+import com.sole.cinevault.ui.theme.GlassHighlight
+import com.sole.cinevault.ui.theme.GlassSurface
+import com.sole.cinevault.ui.theme.GlassSurfaceStrong
+import com.sole.cinevault.ui.theme.TextBright
+import com.sole.cinevault.ui.theme.TextMuted
+import com.sole.cinevault.ui.theme.glassPanel
 
 @Composable
 internal fun BoxScope.PlayerBottomTransportDock(
