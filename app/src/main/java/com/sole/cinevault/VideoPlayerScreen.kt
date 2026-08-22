@@ -1970,62 +1970,19 @@ fun VideoPlayerScreen(
             }
         }
 
-        // FIX (E3): controls lock. Placed as the LAST child of the outer
-        // Box specifically — Compose renders later children on top, so
-        // this genuinely sits above every popup, menu, and the transport
-        // controls, not just visually but for touch priority too. When
-        // locked, a full-screen absorber (same containment pattern as the
-        // A1 fix) swallows every touch before it reaches anything else —
-        // except now a tap while locked specifically reveals the lock
-        // button (see lockButtonVisibleWhileLocked above), rather than
-        // doing nothing. Only the lock button reappears, not the other
-        // controls behind it — those stay genuinely locked and hidden,
-        // tapping here isn't a way to peek at them, only a way to find
-        // Unlock again.
-        if (controlsLocked) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) { detectTapGestures { lockButtonVisibleWhileLocked = true } }
-            )
-        }
-        // FIX: was unconditionally visible always — now follows the same
-        // show/hide behavior as the rest of the transport controls when
-        // unlocked. While actually locked, visibility comes from the
-        // separate lockButtonVisibleWhileLocked flag instead of
-        // showControls directly — that flag starts true, auto-hides on
-        // the same timer as everything else, and gets set back to true
-        // by a tap on the absorber above, giving a way back to Unlock
-        // without ever showing (or unblocking) the other, still-locked
-        // controls behind it.
-        AnimatedVisibility(
-            visible = externalPlayerView == null && (if (controlsLocked) lockButtonVisibleWhileLocked else showControls) && !CineVaultPlayerHolder.isInPipMode,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.TopEnd)
-        ) {
-            Box(
-                modifier = Modifier
-                    .padding(top = if (isLandscape) 10.dp else 14.dp, end = 14.dp)
-                    .height(46.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(AmberCore)
-                    .clickable {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        controlsLocked = !controlsLocked
-                        lockButtonVisibleWhileLocked = true
-                    }
-                    .padding(horizontal = 12.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = if (controlsLocked) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
-                    contentDescription = if (controlsLocked) "Unlock controls" else "Lock controls",
-                    tint = Color.Black,
-                    modifier = Modifier.size(22.dp)
-                )
+        PlayerControlsLockLayer(
+            controlsLocked = controlsLocked,
+            lockButtonVisible = externalPlayerView == null &&
+                (if (controlsLocked) lockButtonVisibleWhileLocked else showControls) &&
+                !CineVaultPlayerHolder.isInPipMode,
+            isLandscape = isLandscape,
+            onLockedSurfaceTap = { lockButtonVisibleWhileLocked = true },
+            onToggleLock = {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                controlsLocked = !controlsLocked
+                lockButtonVisibleWhileLocked = true
             }
-        }
+        )
 
         if (!studioUi.showStudio && !CineVaultPlayerHolder.isInPipMode) {
             Box(
