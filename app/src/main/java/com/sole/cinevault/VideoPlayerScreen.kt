@@ -1432,7 +1432,7 @@ fun VideoPlayerScreen(
             }
         }
 
-        PlayerStatusOverlays(
+        PlayerPlaybackStatusOverlays(
             isLandscape = isLandscape,
             hudSize = hudSize,
             showBrightnessCircle = showBrightnessCircle,
@@ -1452,9 +1452,9 @@ fun VideoPlayerScreen(
                 playCurrentVideoWithSubtitle(
                     subtitleUri = trackUi.originalUri,
                     resumePosition = position,
-                    isOriginalSubtitle = false
+                    isOriginalSubtitle = false,
                 )
-            }
+            },
         )
 
         val clusterHeightDp = with(density) { clusterHeightPx.toDp() }
