@@ -1929,44 +1929,56 @@ fun VideoPlayerScreen(
                     onSubtitleCenterMeasured = { subIconX = it }
                 )
 
-                SeekPreviewBubble(
-                    isVisible = showSeekPreview,
-                    bitmap = previewBitmap,
-                    timeText = formatTime(previewPosition),
+                PlayerSeekDock(
+                    showSeekPreview = showSeekPreview,
+                    previewBitmap = previewBitmap,
+                    previewPosition = previewPosition,
+                    duration = duration,
                     isLandscape = isLandscape,
-                    isLarge = isSeekPreviewLarge,
-                    progress = (previewPosition.toFloat() / duration.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f),
-                    // Anchored to the actual seek-bar dock instead of a
-                    // hardcoded screen offset. The seek bar is 38dp tall,
-                    // surrounded by scaled 7dp vertical padding, with a
-                    // small visual gap above it.
-                    bottomPadding = seekBottomPadding + (38f + 14f * scale).dp + 18.dp,
+                    isSeekPreviewLarge = isSeekPreviewLarge,
+                    seekBottomPadding = seekBottomPadding,
+                    sidePadding = sidePadding,
+                    scale = scale,
+                    position = position,
+                    isDraggingSeekbar = isDraggingSeekbar,
+                    seed = currentVideo.path.hashCode(),
+                    onPreviewPositionChanged = { pos ->
+                        isDraggingSeekbar = true
+                        showSeekPreview = true
+                        showControls = true
+                        showTopBar = true
+                        position = pos.coerceIn(0L, duration)
+                        previewPosition = position
+                        VideoThumbnailHelper.nearestPreviewFrame(previewFrames, previewPosition)?.let {
+                            previewBitmap = it
+                        }
+                    },
+                    onSeekFinished = { finalPos ->
+                        val safe = finalPos.coerceIn(0L, duration)
+                        position = safe
+                        previewPosition = safe
+                        exoPlayer.seekTo(safe)
+                        isDraggingSeekbar = false
+                        previewBitmap = VideoThumbnailHelper.nearestPreviewFrame(previewFrames, safe) ?: previewBitmap
+                        showSeekPreview = true
+                        if (isStreamMedia) {
+                            scope.launch {
+                                delay(360)
+                                if (!isDraggingSeekbar) showSeekPreview = false
+                            }
+                        } else {
+                            scope.launch {
+                                val bmp = VideoThumbnailHelper.generateFrameAtTime(context, currentVideo.path, safe)
+                                if (bmp != null && previewPosition == safe) previewBitmap = bmp
+                                delay(620)
+                                if (previewPosition == safe && !isDraggingSeekbar) showSeekPreview = false
+                            }
+                        }
+                        showControls = true
+                        showTopBar = true
+                    }
                 )
 
-                Box(
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(start = sidePadding, end = sidePadding, bottom = seekBottomPadding)
-                        .glassPanel(cornerRadius = 30.dp, fill = GlassSurface)
-                        .padding(horizontal = (14 * scale).dp, vertical = (7 * scale).dp)
-                ) {
-                    CinematicSeekBar(
-                        position = position, duration = duration, isDragging = isDraggingSeekbar,
-                        seed = currentVideo.path.hashCode(),
-                        onPreviewPositionChanged = { pos ->
-                            isDraggingSeekbar = true; showSeekPreview = true; showControls = true; showTopBar = true
-                            position = pos.coerceIn(0L, duration); previewPosition = position
-                            VideoThumbnailHelper.nearestPreviewFrame(previewFrames, previewPosition)?.let { previewBitmap = it }
-                        },
-                        onSeekFinished = { finalPos ->
-                            val safe = finalPos.coerceIn(0L, duration)
-                            position = safe; previewPosition = safe; exoPlayer.seekTo(safe); isDraggingSeekbar = false
-                            previewBitmap = VideoThumbnailHelper.nearestPreviewFrame(previewFrames, safe) ?: previewBitmap
-                            showSeekPreview = true
-                            if (isStreamMedia) { scope.launch { delay(360); if (!isDraggingSeekbar) showSeekPreview = false } }
-                            else { scope.launch { val bmp = VideoThumbnailHelper.generateFrameAtTime(context, currentVideo.path, safe); if (bmp != null && previewPosition == safe) previewBitmap = bmp; delay(620); if (previewPosition == safe && !isDraggingSeekbar) showSeekPreview = false } }
-                            showControls = true; showTopBar = true
-                        }
-                    )
-                }
             }
         }
 
