@@ -1810,13 +1810,12 @@ fun VideoPlayerScreen(
                     onClusterHeightMeasured = { clusterHeightPx = it }
                 )
 
-                AnimatedVisibility(visible = autoSubtitleFetch.status.isNotBlank() && !showSeekPreview, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.TopCenter).padding(top = if (isLandscape) 54.dp else 86.dp).padding(horizontal = 24.dp)) {
-                    Text(
-                        text = autoSubtitleFetch.status, color = AmberCore, fontSize = if (isLandscape) 11.sp else 12.sp, fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.glassPanel(cornerRadius = 18.dp, fill = GlassSurfaceStrong).widthIn(max = if (isLandscape) 320.dp else 300.dp).padding(horizontal = 14.dp, vertical = 8.dp)
-                    )
-                }
+                PlayerTransientStatusPills(
+                    autoSubtitleStatus = autoSubtitleFetch.status,
+                    showSeekPreview = showSeekPreview,
+                    isLandscape = isLandscape,
+                    isZoomMode = isZoomMode
+                )
 
                 AnimatedVisibility(visible = showNextEpisodeOverlay && pendingNextEpisode != null && !showSeekPreview, enter = fadeIn(animationSpec = tween(140)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
                     NextEpisodeCountdownOverlay(nextEpisode = pendingNextEpisode, countdown = nextEpisodeCountdown, isLandscape = isLandscape,
@@ -1848,10 +1847,6 @@ fun VideoPlayerScreen(
                         isMidCredits = smartSegmentResult.hasMidCreditsScene && !smartSegmentResult.hasPostCreditsScene,
                         onJump = exactSceneSegment?.let { scene -> { exoPlayer.seekTo(scene.startMs); position = scene.startMs } }
                     )
-                }
-
-                AnimatedVisibility(visible = isZoomMode && !showSeekPreview, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.TopCenter).padding(top = if (isLandscape) 54.dp else 90.dp)) {
-                    Text(text = "⛶  Fill", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 12.dp, vertical = 6.dp))
                 }
 
                 PlayerBottomTransportDock(
