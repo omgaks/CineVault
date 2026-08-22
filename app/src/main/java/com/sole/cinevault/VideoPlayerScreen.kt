@@ -2007,85 +2007,16 @@ fun VideoPlayerScreen(
             }
         }
 
-        // ── Delete confirmation dialog (styled to match the app, not the
-        // plain white Android AlertDialog) ─────────────────────────────
-        AnimatedVisibility(
-            visible = pendingDeleteConfirmFile != null,
-            enter = fadeIn(animationSpec = tween(150)),
-            exit = fadeOut(animationSpec = tween(180))
-        ) {
-        pendingDeleteConfirmFile?.let { file ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.55f))
-                    .pointerInput(Unit) { detectTapGestures { pendingDeleteConfirmFile = null } },
-                contentAlignment = Alignment.Center
-            ) {
-                // Sheet slides up + fades in on top of the scrim's plain
-                // fade — same "arriving from below" language as the
-                // context sheets on the Library/TV Show screens.
-                AnimatedVisibility(
-                    visible = pendingDeleteConfirmFile != null,
-                    enter = slideInVertically(initialOffsetY = { it / 3 }, animationSpec = tween(260, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
-                    exit = slideOutVertically(targetOffsetY = { it / 3 }, animationSpec = tween(180)) + fadeOut(tween(140))
-                ) {
-                Column(
-                    modifier = Modifier
-                        .widthIn(max = 320.dp)
-                        .glassPanel(cornerRadius = 24.dp, fill = GlassSurfaceStrong)
-                        .pointerInput(Unit) { detectTapGestures { } }
-                        .padding(horizontal = 22.dp, vertical = 20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(imageVector = Icons.Rounded.Delete, contentDescription = null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(32.dp))
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(text = "Delete subtitle file?", color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(text = file.name, color = TextMuted, fontSize = 12.sp, textAlign = TextAlign.Center, maxLines = 2)
-                    Spacer(modifier = Modifier.height(18.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = "Cancel", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                            modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f))
-                                .clickable { pendingDeleteConfirmFile = null }.padding(horizontal = 20.dp, vertical = 10.dp)
-                        )
-                        Text(
-                            text = "Delete", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
-                            modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore)
-                                .clickable {
-                                    pendingDeleteConfirmFile = null
-                                    deleteWithUndo(file)
-                                }.padding(horizontal = 20.dp, vertical = 10.dp)
-                        )
-                    }
-                }
-                }
+        PlayerSubtitleDeleteFeedback(
+            pendingFile = pendingDeleteConfirmFile,
+            snackbarHostState = snackbarHostState,
+            snackbarBottomPadding = bottomDockPadding + playButton + 26.dp,
+            onDismissDelete = { pendingDeleteConfirmFile = null },
+            onConfirmDelete = { file ->
+                pendingDeleteConfirmFile = null
+                deleteWithUndo(file)
             }
-        }
-        }
+        )
 
-        // ── Undo snackbar — styled the same as the app's other floating
-        // pills (glassPanel + amber action text) rather than Material's
-        // default snackbar look. Positioned above the transport dock so
-        // it never fights the dock for touch space.
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = bottomDockPadding + playButton + 26.dp)
-        ) { data ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 18.dp, vertical = 12.dp)
-            ) {
-                Text(text = data.visuals.message, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                data.visuals.actionLabel?.let { label ->
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text(
-                        text = label, color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Black,
-                        modifier = Modifier.clickable { data.performAction() }
-                    )
-                }
-            }
-        }
     }
 }
