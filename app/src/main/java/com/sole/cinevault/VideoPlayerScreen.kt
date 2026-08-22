@@ -1817,37 +1817,54 @@ fun VideoPlayerScreen(
                     isZoomMode = isZoomMode
                 )
 
-                AnimatedVisibility(visible = showNextEpisodeOverlay && pendingNextEpisode != null && !showSeekPreview, enter = fadeIn(animationSpec = tween(140)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
-                    NextEpisodeCountdownOverlay(nextEpisode = pendingNextEpisode, countdown = nextEpisodeCountdown, isLandscape = isLandscape,
-                        onPlayNow = { val n = pendingNextEpisode; if (n != null) { showNextEpisodeOverlay = false; pendingNextEpisode = null; currentMediaType = n.type; currentVideo = n.video; onPlayNext(n) } },
-                        onCancel = { showNextEpisodeOverlay = false; pendingNextEpisode = null; nextEpisodeCountdown = 0; nextEpisodeDismissed = true; showControls = true }
-                    )
-                }
-
                 val anyMenuOpenForSmartSkip = showAudioSelector || coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
                 val suppressCreditsPillForScene = activeSmartSegment?.type == SegmentType.CREDITS &&
                     (smartSegmentResult.hasMidCreditsScene || smartSegmentResult.hasPostCreditsScene)
-                AnimatedVisibility(visible = activeSmartSegment != null && !suppressCreditsPillForScene && !showNextEpisodeOverlay && !showSeekPreview && !isDraggingSeekbar && !anyMenuOpenForSmartSkip, enter = fadeIn(animationSpec = tween(180)), exit = fadeOut(animationSpec = tween(140)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
-                    activeSmartSegment?.let { segment ->
-                        SmartSkipPill(segment, segment.endMs - position) {
-                            exoPlayer.seekTo(segment.endMs)
-                            position = segment.endMs
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            showControls = true
-                        }
-                    }
-                }
-
                 val creditNoticeVisible = !isCurrentTvShow && creditsSegment != null && position >= creditsSegment.startMs &&
                     (smartSegmentResult.hasMidCreditsScene || smartSegmentResult.hasPostCreditsScene) &&
                     (exactSceneSegment == null || position < exactSceneSegment.startMs)
-                AnimatedVisibility(visible = creditNoticeVisible && !showSeekPreview && !anyMenuOpenForSmartSkip, enter = fadeIn(tween(180)), exit = fadeOut(tween(140)), modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)) {
-                    PostCreditNotice(
-                        hasExactTimestamp = exactSceneSegment != null,
-                        isMidCredits = smartSegmentResult.hasMidCreditsScene && !smartSegmentResult.hasPostCreditsScene,
-                        onJump = exactSceneSegment?.let { scene -> { exoPlayer.seekTo(scene.startMs); position = scene.startMs } }
-                    )
-                }
+
+                PlayerSmartPlaybackOverlays(
+                    sidePadding = sidePadding,
+                    showSeekPreview = showSeekPreview,
+                    isDraggingSeekbar = isDraggingSeekbar,
+                    showNextEpisodeOverlay = showNextEpisodeOverlay,
+                    pendingNextEpisode = pendingNextEpisode,
+                    nextEpisodeCountdown = nextEpisodeCountdown,
+                    activeSmartSegment = activeSmartSegment,
+                    suppressCreditsPillForScene = suppressCreditsPillForScene,
+                    anyMenuOpenForSmartSkip = anyMenuOpenForSmartSkip,
+                    creditNoticeVisible = creditNoticeVisible,
+                    exactSceneSegment = exactSceneSegment,
+                    hasMidCreditsScene = smartSegmentResult.hasMidCreditsScene,
+                    hasPostCreditsScene = smartSegmentResult.hasPostCreditsScene,
+                    position = position,
+                    isLandscape = isLandscape,
+                    onPlayNextEpisode = { n ->
+                        showNextEpisodeOverlay = false
+                        pendingNextEpisode = null
+                        currentMediaType = n.type
+                        currentVideo = n.video
+                        onPlayNext(n)
+                    },
+                    onCancelNextEpisode = {
+                        showNextEpisodeOverlay = false
+                        pendingNextEpisode = null
+                        nextEpisodeCountdown = 0
+                        nextEpisodeDismissed = true
+                        showControls = true
+                    },
+                    onSkipSegment = { segment ->
+                        exoPlayer.seekTo(segment.endMs)
+                        position = segment.endMs
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        showControls = true
+                    },
+                    onJumpToCreditScene = { scene ->
+                        exoPlayer.seekTo(scene.startMs)
+                        position = scene.startMs
+                    }
+                )
 
                 PlayerBottomTransportDock(
                     visible = !showSeekPreview && !isDraggingSeekbar,
