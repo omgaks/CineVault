@@ -1757,8 +1757,12 @@ fun VideoPlayerScreen(
         // popups (Track Selector, Drift, Appearance, quick menu) which
         // were designed to sit alongside visible controls and still do.
         val hideControlsForLargeSheet = studioUi.showStudio || searchUi.showSearch
-        AnimatedVisibility(visible = externalPlayerView == null && (showControls || isDraggingSeekbar || showAudioSelector || coreUi.showSettings || trackUi.showSelector || driftUi.showDialog || coreUi.showAppearanceStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu) && !hideControlsForLargeSheet && !CineVaultPlayerHolder.isInPipMode, enter = fadeIn(), exit = fadeOut()) {
-            Box(modifier = Modifier.fillMaxSize()) {
+        PlayerControlsVisibilityShell(
+            visible = externalPlayerView == null &&
+                (showControls || isDraggingSeekbar || showAudioSelector || coreUi.showSettings || trackUi.showSelector || driftUi.showDialog || coreUi.showAppearanceStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu) &&
+                !hideControlsForLargeSheet &&
+                !CineVaultPlayerHolder.isInPipMode
+        ) {
 
                 PlayerTopControlCluster(
                     isLandscape = isLandscape,
@@ -1979,7 +1983,6 @@ fun VideoPlayerScreen(
                     }
                 )
 
-            }
         }
 
         PlayerControlsLockLayer(
