@@ -1465,12 +1465,12 @@ fun VideoPlayerScreen(
             pendingDeletePaths = pendingDeletePaths
         )
 
-        val subtitleQuickMenuStatusText = when {
-            !coreUi.subtitlesEnabled -> "Subtitles off"
-            trackUi.selectedLabel.isNotBlank() -> "$trackUi.selectedLabel · $trackUi.selectedSource"
-            hasInternalSubtitles -> "Embedded track active"
-            else -> "No subtitle selected"
-        }
+        val subtitleQuickMenuStatusText = buildSubtitleQuickMenuStatusText(
+            subtitlesEnabled = coreUi.subtitlesEnabled,
+            selectedLabel = trackUi.selectedLabel,
+            selectedSource = trackUi.selectedSource,
+            hasInternalSubtitles = hasInternalSubtitles
+        )
         SubtitleQuickMenuAndTrackSelector(
             showSubtitleSettings = coreUi.showSettings,
             showTrackSelector = trackUi.showSelector,
