@@ -1168,31 +1168,19 @@ fun VideoPlayerScreen(
         }
         val hasNextVideo = episodeList.size > 1 && currentEpisodeIndex in 0 until episodeList.lastIndex
 
-        AndroidView(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(scaleX = videoScale, scaleY = videoScale, translationX = videoOffsetX, translationY = videoOffsetY),
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    // ExoPlayer may own only one video surface. While the
-                    // Presentation is active this local view intentionally
-                    // remains black beneath the touch controls.
-                    player = if (externalPlayerView == null) exoPlayer else null
-                    useController = false
-                    resizeMode = if (isZoomMode) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    subtitleView?.setViewType(SubtitleView.VIEW_TYPE_CANVAS)
-                    studioUi.playerView = externalPlayerView ?: this
-                    localPlayerView = this
-                }
-            },
-            update = { pv ->
+        PlayerVideoSurface(
+            player = exoPlayer,
+            externalDisplayActive = externalPlayerView != null,
+            isZoomMode = isZoomMode,
+            videoScale = videoScale,
+            videoOffsetX = videoOffsetX,
+            videoOffsetY = videoOffsetY,
+            onPlayerViewChanged = { pv ->
                 localPlayerView = pv
-                if (externalPlayerView == null && pv.player !== exoPlayer) {
-                    pv.player = exoPlayer
-                }
-                pv.resizeMode = if (isZoomMode) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                externalPresentation?.updateResizeMode(pv.resizeMode)
                 studioUi.playerView = externalPlayerView ?: pv
+            },
+            onResizeModeChanged = { resizeMode ->
+                externalPresentation?.updateResizeMode(resizeMode)
             }
         )
 
