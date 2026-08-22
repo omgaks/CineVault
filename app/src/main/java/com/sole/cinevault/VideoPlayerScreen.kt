@@ -2008,28 +2008,15 @@ fun VideoPlayerScreen(
             }
         )
 
-        if (!studioUi.showStudio && !CineVaultPlayerHolder.isInPipMode) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 14.dp)
-            ) {
-                DraggableFloatingPopup(
-                    containerWidth = playerMaxWidth,
-                    containerHeight = playerMaxHeight,
-                    popupWidth = 260.dp,
-                    popupMaxHeight = 200.dp,
-                    onUserInteraction = {}
-                ) {
-                    AutoSyncFloatingIndicator(
-                        status = autoSyncStatus,
-                        onApply = { result -> applyAutoSyncResult(result) },
-                        onCancel = { autoSyncStatus = AutoSyncStatus.Idle },
-                        onRetry = { runAutoSync() }
-                    )
-                }
-            }
-        }
+        PlayerAutoSyncFloatingOverlay(
+            visible = !studioUi.showStudio && !CineVaultPlayerHolder.isInPipMode,
+            containerWidth = playerMaxWidth,
+            containerHeight = playerMaxHeight,
+            status = autoSyncStatus,
+            onApply = { result -> applyAutoSyncResult(result) },
+            onCancel = { autoSyncStatus = AutoSyncStatus.Idle },
+            onRetry = { runAutoSync() }
+        )
 
         PlayerSubtitleDeleteFeedback(
             pendingFile = pendingDeleteConfirmFile,
