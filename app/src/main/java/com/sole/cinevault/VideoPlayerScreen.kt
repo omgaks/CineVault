@@ -1772,91 +1772,43 @@ fun VideoPlayerScreen(
         AnimatedVisibility(visible = externalPlayerView == null && (showControls || isDraggingSeekbar || showAudioSelector || coreUi.showSettings || trackUi.showSelector || driftUi.showDialog || coreUi.showAppearanceStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu) && !hideControlsForLargeSheet && !CineVaultPlayerHolder.isInPipMode, enter = fadeIn(), exit = fadeOut()) {
             Box(modifier = Modifier.fillMaxSize()) {
 
-                val topRowVisible = !showSeekPreview
-                if (isLandscape) {
-                    Box(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = topClusterPaddingTop)) {
-                        AnimatedVisibility(
-                            visible = topRowVisible,
-                            enter = fadeIn(animationSpec = tween(160)), exit = fadeOut(animationSpec = tween(120)),
-                            modifier = Modifier.align(Alignment.CenterStart).padding(start = sidePadding)
-                        ) {
-                            FloatingScoreCapsule(meta = currentMeta, vertical = false)
-                        }
-
-                        AnimatedVisibility(
-                            visible = topRowVisible,
-                            enter = fadeIn(animationSpec = tween(220)), exit = fadeOut(animationSpec = tween(160)),
-                            modifier = Modifier.align(Alignment.Center).padding(horizontal = 96.dp)
-                        ) {
-                            NowPlayingTitlePill(text = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path), fontSize = 13.sp)
-                        }
-
-                        TopIconCluster(
-                            isLandscape = true, iconSize = topIconSize,
-                            playbackSpeed = playbackSpeed, sleepTimerActive = sleepTimerActive,
-                            showSpeedMenu = showSpeedMenu, showSleepMenu = showSleepMenu,
-                            onSpeedClick = { val wasOpen = showSpeedMenu; closeAllMenus(); showSpeedMenu = !wasOpen; showControls = true },
-                            onSleepClick = { val wasOpen = showSleepMenu; closeAllMenus(); showSleepMenu = !wasOpen; showControls = true },
-                            onPipClick = {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                    val actions = buildPipActions(context, exoPlayer.isPlaying)
-                                    activity?.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).setActions(actions).build())
-                                }
-                            },
-                            // FIX: extra end padding reserves space for the
-                            // always-on-top lock button (TopEnd, last child
-                            // in the outer Box so it draws above everything
-                            // including this cluster) — without this, the
-                            // Speed icon's position could sit directly under
-                            // the lock button's touch/paint area in
-                            // landscape, since Compose doesn't auto-avoid
-                            // overlap between independently-aligned
-                            // siblings. Portrait doesn't need this: the
-                            // title pill + spacer above already push this
-                            // Column well clear of the lock button's corner.
-                            modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding + 62.dp)
-                                .onGloballyPositioned { clusterHeightPx = it.size.height.toFloat() }
-                        )
-                    }
-                } else {
-                    Column(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = topClusterPaddingTop)) {
-                        AnimatedVisibility(
-                            visible = topRowVisible,
-                            enter = fadeIn(animationSpec = tween(220)), exit = fadeOut(animationSpec = tween(160)),
-                            modifier = Modifier.align(Alignment.CenterHorizontally).padding(horizontal = 72.dp)
-                        ) {
-                            NowPlayingTitlePill(text = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path), fontSize = 15.sp)
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Box(modifier = Modifier.fillMaxWidth()) {
-                            androidx.compose.animation.AnimatedVisibility(
-                                visible = topRowVisible,
-                                enter = fadeIn(animationSpec = tween(160)), exit = fadeOut(animationSpec = tween(120)),
-                                modifier = Modifier.align(Alignment.CenterStart).padding(start = sidePadding)
-                            ) {
-                                FloatingScoreCapsule(meta = currentMeta, vertical = true)
-                            }
-
-                            TopIconCluster(
-                                isLandscape = false, iconSize = topIconSize,
-                                playbackSpeed = playbackSpeed, sleepTimerActive = sleepTimerActive,
-                                showSpeedMenu = showSpeedMenu, showSleepMenu = showSleepMenu,
-                                onSpeedClick = { val wasOpen = showSpeedMenu; closeAllMenus(); showSpeedMenu = !wasOpen; showControls = true },
-                                onSleepClick = { val wasOpen = showSleepMenu; closeAllMenus(); showSleepMenu = !wasOpen; showControls = true },
-                                onPipClick = {
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                        val actions = buildPipActions(context, exoPlayer.isPlaying)
-                                        activity?.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).setActions(actions).build())
-                                    }
-                                },
-                                modifier = Modifier.align(Alignment.CenterEnd).padding(end = sidePadding)
-                                    .onGloballyPositioned { clusterHeightPx = it.size.height.toFloat() }
+                PlayerTopControlCluster(
+                    isLandscape = isLandscape,
+                    topRowVisible = !showSeekPreview,
+                    topClusterPaddingTop = topClusterPaddingTop,
+                    sidePadding = sidePadding,
+                    topIconSize = topIconSize,
+                    currentMeta = currentMeta,
+                    title = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path),
+                    playbackSpeed = playbackSpeed,
+                    sleepTimerActive = sleepTimerActive,
+                    showSpeedMenu = showSpeedMenu,
+                    showSleepMenu = showSleepMenu,
+                    onSpeedClick = {
+                        val wasOpen = showSpeedMenu
+                        closeAllMenus()
+                        showSpeedMenu = !wasOpen
+                        showControls = true
+                    },
+                    onSleepClick = {
+                        val wasOpen = showSleepMenu
+                        closeAllMenus()
+                        showSleepMenu = !wasOpen
+                        showControls = true
+                    },
+                    onPipClick = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            val actions = buildPipActions(context, exoPlayer.isPlaying)
+                            activity?.enterPictureInPictureMode(
+                                PictureInPictureParams.Builder()
+                                    .setAspectRatio(Rational(16, 9))
+                                    .setActions(actions)
+                                    .build()
                             )
                         }
-                    }
-                }
+                    },
+                    onClusterHeightMeasured = { clusterHeightPx = it }
+                )
 
                 AnimatedVisibility(visible = autoSubtitleFetch.status.isNotBlank() && !showSeekPreview, enter = fadeIn(animationSpec = tween(120)), exit = fadeOut(animationSpec = tween(120)), modifier = Modifier.align(Alignment.TopCenter).padding(top = if (isLandscape) 54.dp else 86.dp).padding(horizontal = 24.dp)) {
                     Text(

@@ -22,11 +22,10 @@ import androidx.compose.ui.unit.sp
 /*
  * PlayerTopControlCluster.kt
  *
- * Owns the responsive title/rating row and Speed, Sleep and PiP icon cluster.
- * Menu state and PiP actions remain in VideoPlayerScreen and are supplied as
- * callbacks, preserving the existing player behavior.
+ * Owns the responsive top-of-player presentation: ratings, now-playing title,
+ * and PiP / sleep / speed controls. State and actions remain owned by
+ * VideoPlayerScreen.
  */
-
 @Composable
 internal fun BoxScope.PlayerTopControlCluster(
     isLandscape: Boolean,
@@ -35,7 +34,7 @@ internal fun BoxScope.PlayerTopControlCluster(
     sidePadding: Dp,
     topIconSize: Dp,
     currentMeta: VideoWithMetadata?,
-    titleText: String,
+    title: String,
     playbackSpeed: Float,
     sleepTimerActive: Boolean,
     showSpeedMenu: Boolean,
@@ -43,14 +42,14 @@ internal fun BoxScope.PlayerTopControlCluster(
     onSpeedClick: () -> Unit,
     onSleepClick: () -> Unit,
     onPipClick: () -> Unit,
-    onClusterHeightChanged: (Float) -> Unit,
+    onClusterHeightMeasured: (Float) -> Unit,
 ) {
     if (isLandscape) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
-                .padding(top = topClusterPaddingTop),
+                .padding(top = topClusterPaddingTop)
         ) {
             AnimatedVisibility(
                 visible = topRowVisible,
@@ -58,7 +57,7 @@ internal fun BoxScope.PlayerTopControlCluster(
                 exit = fadeOut(animationSpec = tween(120)),
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .padding(start = sidePadding),
+                    .padding(start = sidePadding)
             ) {
                 FloatingScoreCapsule(meta = currentMeta, vertical = false)
             }
@@ -69,9 +68,9 @@ internal fun BoxScope.PlayerTopControlCluster(
                 exit = fadeOut(animationSpec = tween(160)),
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .padding(horizontal = 96.dp),
+                    .padding(horizontal = 96.dp)
             ) {
-                NowPlayingTitlePill(text = titleText, fontSize = 13.sp)
+                NowPlayingTitlePill(text = title, fontSize = 13.sp)
             }
 
             TopIconCluster(
@@ -84,14 +83,10 @@ internal fun BoxScope.PlayerTopControlCluster(
                 onSpeedClick = onSpeedClick,
                 onSleepClick = onSleepClick,
                 onPipClick = onPipClick,
-                // Extra end padding preserves the lock button's separate
-                // always-on-top touch area in landscape.
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = sidePadding + 62.dp)
-                    .onGloballyPositioned {
-                        onClusterHeightChanged(it.size.height.toFloat())
-                    },
+                    .onGloballyPositioned { onClusterHeightMeasured(it.size.height.toFloat()) }
             )
         }
     } else {
@@ -99,7 +94,7 @@ internal fun BoxScope.PlayerTopControlCluster(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
-                .padding(top = topClusterPaddingTop),
+                .padding(top = topClusterPaddingTop)
         ) {
             AnimatedVisibility(
                 visible = topRowVisible,
@@ -107,21 +102,21 @@ internal fun BoxScope.PlayerTopControlCluster(
                 exit = fadeOut(animationSpec = tween(160)),
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
-                    .padding(horizontal = 72.dp),
+                    .padding(horizontal = 72.dp)
             ) {
-                NowPlayingTitlePill(text = titleText, fontSize = 15.sp)
+                NowPlayingTitlePill(text = title, fontSize = 15.sp)
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
             Box(modifier = Modifier.fillMaxWidth()) {
-                androidx.compose.animation.AnimatedVisibility(
+                AnimatedVisibility(
                     visible = topRowVisible,
                     enter = fadeIn(animationSpec = tween(160)),
                     exit = fadeOut(animationSpec = tween(120)),
                     modifier = Modifier
                         .align(Alignment.CenterStart)
-                        .padding(start = sidePadding),
+                        .padding(start = sidePadding)
                 ) {
                     FloatingScoreCapsule(meta = currentMeta, vertical = true)
                 }
@@ -139,9 +134,7 @@ internal fun BoxScope.PlayerTopControlCluster(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .padding(end = sidePadding)
-                        .onGloballyPositioned {
-                            onClusterHeightChanged(it.size.height.toFloat())
-                        },
+                        .onGloballyPositioned { onClusterHeightMeasured(it.size.height.toFloat()) }
                 )
             }
         }
