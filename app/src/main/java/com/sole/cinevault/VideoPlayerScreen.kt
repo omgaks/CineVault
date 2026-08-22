@@ -1854,87 +1854,80 @@ fun VideoPlayerScreen(
                     Text(text = "⛶  Fill", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 12.dp, vertical = 6.dp))
                 }
 
-                AnimatedVisibility(
+                PlayerBottomTransportDock(
                     visible = !showSeekPreview && !isDraggingSeekbar,
-                    enter = slideInVertically(initialOffsetY = { it / 2 }, animationSpec = tween(260, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(200)),
-                    exit = slideOutVertically(targetOffsetY = { it / 2 }, animationSpec = tween(180)) + fadeOut(animationSpec = tween(140)),
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(bottom = bottomDockPadding, start = sidePadding, end = sidePadding)
-                            .glassPanel(cornerRadius = 42.dp, fill = GlassSurfaceStrong)
-                            .padding(horizontal = (12 * scale).dp, vertical = (6 * scale).dp)
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy((7 * scale).dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        BackIconButton(size = smallButton, onClick = onBack)
-
-                        GlassTransportButton(icon = Icons.Rounded.Replay10, size = smallButton) { exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0)); position = exoPlayer.currentPosition; showControls = true }
-
-                        FrostedPlayButton(isPlaying = isPlaying, isEnded = isVideoEnded, size = playButton) {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            if (isVideoEnded) { exoPlayer.seekTo(0); exoPlayer.play(); isVideoEnded = false; showControls = true }
-                            else { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play(); showControls = true }
+                    bottomDockPadding = bottomDockPadding,
+                    sidePadding = sidePadding,
+                    scale = scale,
+                    smallButton = smallButton,
+                    playButton = playButton,
+                    isPlaying = isPlaying,
+                    isVideoEnded = isVideoEnded,
+                    showPrevNextButtons = showPrevNextButtons,
+                    hasNextVideo = hasNextVideo,
+                    autoPlayEnabled = autoPlayEnabled,
+                    showAudioSelector = showAudioSelector,
+                    showSubtitleActive = coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio,
+                    isStreamMedia = isStreamMedia,
+                    onBack = onBack,
+                    onReplay10 = {
+                        exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0))
+                        position = exoPlayer.currentPosition
+                        showControls = true
+                    },
+                    onPlayPause = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        if (isVideoEnded) {
+                            exoPlayer.seekTo(0)
+                            exoPlayer.play()
+                            isVideoEnded = false
+                            showControls = true
+                        } else {
+                            if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                            showControls = true
                         }
-
-                        GlassTransportButton(icon = Icons.Rounded.Forward10, size = smallButton) { exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration.coerceAtLeast(0))); position = exoPlayer.currentPosition; showControls = true }
-
-                        // Next — same visibility/dim logic as Previous above.
-                        if (showPrevNextButtons) {
-                            IconCircle(
-                                icon = Icons.Rounded.SkipNext, size = smallButton,
-                                tint = if (hasNextVideo) TextBright else TextMuted.copy(alpha = 0.35f)
-                            ) {
-                                if (hasNextVideo) {
-                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    playNext()
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width((4 * scale).dp))
-
-                        IconCircle(icon = Icons.Rounded.AllInclusive, size = smallButton, tint = if (autoPlayEnabled) AmberCore else TextMuted.copy(alpha = 0.6f)) {
+                    },
+                    onForward10 = {
+                        exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration.coerceAtLeast(0)))
+                        position = exoPlayer.currentPosition
+                        showControls = true
+                    },
+                    onNext = {
+                        if (hasNextVideo) {
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            autoPlayEnabled = !autoPlayEnabled; showControls = true
-                            Toast.makeText(context, if (autoPlayEnabled) "Autoplay on" else "Autoplay off", Toast.LENGTH_SHORT).show()
+                            playNext()
                         }
-
-                        IconCircle(icon = Icons.Rounded.Audiotrack, size = smallButton, tint = if (showAudioSelector) AmberCore else TextBright, modifier = Modifier.onGloballyPositioned { audioIconX = it.positionInRoot().x + it.size.width / 2f }) {
-                            val wasOpen = showAudioSelector; closeAllMenus(); showAudioSelector = !wasOpen; showControls = true; menuTouchKey++
-                        }
-
-                        if (!isStreamMedia) {
-                            Box(
-                                modifier = Modifier
-                                    .size(smallButton)
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .background(GlassSurface)
-                                    .background(Brush.verticalGradient(0f to GlassHighlight, 0.4f to Color.Transparent, 1f to Color.Transparent))
-                                    .border(1.dp, Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)), RoundedCornerShape(20.dp))
-                                    .onGloballyPositioned { subIconX = it.positionInRoot().x + it.size.width / 2f }
-                                    .combinedClickable(
-                                        onClick = {
-                                            val wasOpen = coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio
-                                            closeAllMenus(); coreUi.showSettings = !wasOpen; showControls = true; menuTouchKey++
-                                        },
-                                        onLongClick = {
-                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            closeAllMenus(); studioUi.initialTab = null; studioUi.showStudio = true; showControls = true
-                                        }
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.ClosedCaption, contentDescription = null,
-                                    tint = if (coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio) AmberCore else TextBright,
-                                    modifier = Modifier.size(smallButton * 0.44f)
-                                )
-                            }
-                        }
-                    }
-                }
+                    },
+                    onToggleAutoplay = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        autoPlayEnabled = !autoPlayEnabled
+                        showControls = true
+                        Toast.makeText(context, if (autoPlayEnabled) "Autoplay on" else "Autoplay off", Toast.LENGTH_SHORT).show()
+                    },
+                    onAudioClick = {
+                        val wasOpen = showAudioSelector
+                        closeAllMenus()
+                        showAudioSelector = !wasOpen
+                        showControls = true
+                        menuTouchKey++
+                    },
+                    onAudioCenterMeasured = { audioIconX = it },
+                    onSubtitleClick = {
+                        val wasOpen = coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio
+                        closeAllMenus()
+                        coreUi.showSettings = !wasOpen
+                        showControls = true
+                        menuTouchKey++
+                    },
+                    onSubtitleLongClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        closeAllMenus()
+                        studioUi.initialTab = null
+                        studioUi.showStudio = true
+                        showControls = true
+                    },
+                    onSubtitleCenterMeasured = { subIconX = it }
+                )
 
                 SeekPreviewBubble(
                     isVisible = showSeekPreview,
