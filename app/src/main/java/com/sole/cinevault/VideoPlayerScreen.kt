@@ -1362,75 +1362,17 @@ fun VideoPlayerScreen(
 
         Box(modifier = Modifier.fillMaxSize().then(playbackGestureModifier))
 
-        LaunchedEffect(studioUi.gestureFeedback) {
-            if (studioUi.gestureFeedback.isBlank()) return@LaunchedEffect
-            delay(900)
-            studioUi.gestureFeedback = ""
-        }
-
-        // ── Subtitle gestures (opt-in, off by default) ──────────────────
-        // Deliberately NOT pixel-tracking the subtitle's actual rendered
-        // position (which depends on appearanceUi.bottomPadding, itself
-        // adjustable 0.02-0.90) — at low padding values that would sit
-        // directly on top of the transport dock and seek bar, guaranteeing
-        // touch conflicts with existing controls. Instead this is a FIXED
-        // band positioned safely above the dock, spanning most of the
-        // width but leaving generous margin so it doesn't compete with the
-        // brightness/volume vertical-swipe zones on the far left/right
-        // edges of the full screen. A deliberate simplification, not an
-        // attempt at exact subtitle-position tracking.
-        if (coreUi.behaviorPrefs.enableSubtitleGestures && coreUi.subtitlesEnabled && !isStreamMedia) {
-            val gestureZoneHeight = 110.dp
-            val gestureZoneBottomOffset = bottomDockPadding + playButton + 26.dp
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = gestureZoneBottomOffset, start = 48.dp, end = 48.dp)
-                    .fillMaxWidth()
-                    .height(gestureZoneHeight)
-                    .subtitleGestureZone(
-                        enabledKey = coreUi.behaviorPrefs.enableSubtitleGestures,
-                        onPinchTextSize = { zoom ->
-                            appearanceUi.textSizeSp = (appearanceUi.textSizeSp * zoom).coerceIn(12f, 32f)
-                            studioUi.gestureFeedback = "${appearanceUi.textSizeSp.toInt()}sp"
-                        },
-                        onHorizontalSyncDrag = { deltaX ->
-                            // Positive (rightward) delay matches the same
-                            // sign convention as the Sync slider elsewhere.
-                            val deltaSeconds = deltaX / 60f
-                            coreUi.syncOffset = (coreUi.syncOffset + deltaSeconds).coerceIn(-10f, 10f)
-                            val formattedOffset = String.format("%.1f", coreUi.syncOffset)
-                            studioUi.gestureFeedback = if (coreUi.syncOffset >= 0f) "+${formattedOffset}s" else "${formattedOffset}s"
-                        },
-                        onVerticalPositionDrag = { deltaFraction ->
-                            // Dragging UP raises the subtitle, which is a
-                            // DECREASE in bottom-padding fraction — sign
-                            // flip already applied by the caller.
-                            appearanceUi.bottomPadding = (appearanceUi.bottomPadding + deltaFraction).coerceIn(0.02f, 0.90f)
-                            studioUi.gestureFeedback = "Position"
-                        },
-                        onDoubleTapResetSync = {
-                            coreUi.syncOffset = 0f
-                            studioUi.gestureFeedback = "Sync reset"
-                        },
-                        onLongPressTogglePlayback = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
-                            showControls = true
-                        },
-                    )
-            )
-            AnimatedVisibility(
-                visible = studioUi.gestureFeedback.isNotBlank(),
-                enter = fadeIn(animationSpec = tween(100)), exit = fadeOut(animationSpec = tween(200)),
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = gestureZoneBottomOffset + gestureZoneHeight / 2)
-            ) {
-                Text(
-                    text = studioUi.gestureFeedback, color = AmberCore, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 14.dp, vertical = 7.dp)
-                )
-            }
-        }
+        PlayerSubtitleGestureOverlay(
+            player = exoPlayer,
+            haptics = haptics,
+            isStreamMedia = isStreamMedia,
+            bottomDockPadding = bottomDockPadding,
+            playButtonSize = playButton,
+            coreUi = coreUi,
+            appearanceUi = appearanceUi,
+            studioUi = studioUi,
+            onShowControls = { showControls = true },
+        )
 
         PlayerPlaybackStatusOverlays(
             isLandscape = isLandscape,
