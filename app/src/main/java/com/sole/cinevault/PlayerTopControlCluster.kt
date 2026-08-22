@@ -110,15 +110,14 @@ internal fun BoxScope.PlayerTopControlCluster(
             Spacer(modifier = Modifier.height(10.dp))
 
             Box(modifier = Modifier.fillMaxWidth()) {
-                this.AnimatedVisibility(
-                    visible = topRowVisible,
-                    enter = fadeIn(animationSpec = tween(160)),
-                    exit = fadeOut(animationSpec = tween(120)),
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = sidePadding)
-                ) {
-                    FloatingScoreCapsule(meta = currentMeta, vertical = true)
+                if (topRowVisible) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = sidePadding)
+                    ) {
+                        FloatingScoreCapsule(meta = currentMeta, vertical = true)
+                    }
                 }
 
                 TopIconCluster(
