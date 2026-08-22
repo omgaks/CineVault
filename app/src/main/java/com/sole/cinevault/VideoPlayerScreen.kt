@@ -1132,13 +1132,13 @@ fun VideoPlayerScreen(
             smartSegmentResult = smartSegmentRepository.load(meta, duration)
         }
 
-        val activeSmartSegment = smartSegmentResult.segments
-            .filter { it.type == SegmentType.RECAP || it.type == SegmentType.INTRO || it.type == SegmentType.PREVIEW || it.type == SegmentType.COMMERCIAL || it.type == SegmentType.CREDITS }
-            .firstOrNull { it.contains(position) }
-        val exactSceneSegment = smartSegmentResult.segments.firstOrNull {
-            it.type == SegmentType.MID_CREDITS_SCENE || it.type == SegmentType.POST_CREDITS_SCENE
-        }
-        val creditsSegment = smartSegmentResult.segments.firstOrNull { it.type == SegmentType.CREDITS }
+        val smartPlaybackSegments = deriveSmartPlaybackSegments(
+            result = smartSegmentResult,
+            position = position
+        )
+        val activeSmartSegment = smartPlaybackSegments.activeSegment
+        val exactSceneSegment = smartPlaybackSegments.exactSceneSegment
+        val creditsSegment = smartPlaybackSegments.creditsSegment
 
         LaunchedEffect(currentVideo.path, position, creditsSegment?.startMs, showNextEpisodeOverlay) {
             if (!isCurrentTvShow || showNextEpisodeOverlay || nextEpisodeDismissed || creditsSegment == null || position < creditsSegment.startMs) return@LaunchedEffect
