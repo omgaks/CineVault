@@ -1387,16 +1387,14 @@ fun VideoPlayerScreen(
             },
         )
 
-        val clusterHeightDp = with(density) { clusterHeightPx.toDp() }
-        val titleRowOffset = if (isLandscape) 0.dp else 46.dp
-        SpeedAndSleepMenuPopups(
+        PlayerSpeedAndSleepMenus(
             showSpeedMenu = showSpeedMenu,
             showSleepMenu = showSleepMenu,
             playbackSpeed = playbackSpeed,
             sleepTimerMinutes = sleepTimerMinutes,
             topClusterPaddingTop = topClusterPaddingTop,
-            titleRowOffset = titleRowOffset,
-            clusterHeightDp = clusterHeightDp,
+            clusterHeightPx = clusterHeightPx,
+            isLandscape = isLandscape,
             sidePadding = sidePadding,
             smallMenuWidth = smallMenuWidth,
             smallMenuMaxHeight = smallMenuMaxHeight,
