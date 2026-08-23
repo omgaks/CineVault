@@ -1,12 +1,13 @@
 package com.sole.cinevault
 
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun PlayerSpeedAndSleepMenus(
+internal fun BoxScope.PlayerSpeedAndSleepMenus(
     showSpeedMenu: Boolean,
     showSleepMenu: Boolean,
     playbackSpeed: Float,
