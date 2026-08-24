@@ -1095,24 +1095,29 @@ fun VideoPlayerScreen(
             appearanceUi = appearanceUi,
         )
 
-        val uiScale = (maxWidth.value / 400f).coerceIn(0.85f, 1.25f)
+        val popupDimensions = calculatePlayerPopupDimensions(
+            maxWidth = maxWidth,
+            maxHeight = maxHeight,
+            isLandscape = isLandscape,
+            isCompactLandscape = isCompactLandscape,
+            bottomDockPadding = bottomDockPadding,
+            playButton = playButton
+        )
+        val uiScale = popupDimensions.uiScale
 
         val density = LocalDensity.current
         val screenWidthPx = with(density) { maxWidth.toPx() }
         val screenHeightPx = with(density) { maxHeight.toPx() }
-        val popupBottomPadding = bottomDockPadding + playButton + 18.dp
-
-        val subtitlePopupWidthBase = if (isLandscape) (maxWidth.value * 0.30f).dp.coerceIn(210.dp, 270.dp) else (maxWidth.value * 0.62f).dp.coerceIn(220.dp, 300.dp)
-        val subtitlePopupWidth = subtitleMenuWidth(maxWidth.value, isLandscape)
-        val subtitlePopupHeightEstimate = (((if (isCompactLandscape || isLandscape) 220f else 360f) * uiScale).dp).coerceAtMost(maxHeight * 0.45f)
-        val trackSelectorWidth = subtitlePopupWidth
-        val trackSelectorMaxHeight = (((if (isCompactLandscape || isLandscape) 230f else 380f) * uiScale).dp).coerceAtMost(maxHeight * 0.55f)
-        val srtPopupWidth = (subtitlePopupWidthBase.value * uiScale).dp.coerceAtMost(maxWidth * 0.86f)
-        val srtPopupMaxHeight = (((if (isCompactLandscape) 160f else if (isLandscape) 200f else 280f) * uiScale).dp).coerceAtMost(maxHeight * 0.5f)
-        val audioPopupWidth = ((((if (isCompactLandscape) 175f else if (isLandscape) 190f else 205f) * uiScale).dp).coerceAtMost(maxWidth * 0.75f)) * 0.6f
-        val smallMenuWidth = (((165f * uiScale).dp).coerceAtMost(maxWidth * 0.6f)) * 0.6f
-        val smallMenuHeightScale = if (isLandscape) 0.95f else 0.6f
-        val smallMenuMaxHeight = ((((if (isCompactLandscape) 150f else if (isLandscape) 190f else 230f) * uiScale).dp).coerceAtMost(maxHeight * 0.55f)) * smallMenuHeightScale
+        val popupBottomPadding = popupDimensions.bottomPadding
+        val subtitlePopupWidth = popupDimensions.subtitlePopupWidth
+        val subtitlePopupHeightEstimate = popupDimensions.subtitlePopupHeightEstimate
+        val trackSelectorWidth = popupDimensions.trackSelectorWidth
+        val trackSelectorMaxHeight = popupDimensions.trackSelectorMaxHeight
+        val srtPopupWidth = popupDimensions.srtPopupWidth
+        val srtPopupMaxHeight = popupDimensions.srtPopupMaxHeight
+        val audioPopupWidth = popupDimensions.audioPopupWidth
+        val smallMenuWidth = popupDimensions.smallMenuWidth
+        val smallMenuMaxHeight = popupDimensions.smallMenuMaxHeight
         val topIconSize = (44 * uiScale * scale.coerceAtLeast(0.75f)).dp
 
         val currentMeta = remember(currentVideo.path, episodeList) {
