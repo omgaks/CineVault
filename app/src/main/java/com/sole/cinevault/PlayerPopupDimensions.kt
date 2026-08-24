@@ -2,6 +2,7 @@ package com.sole.cinevault
 
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.sole.cinevault.subtitles.subtitleMenuWidth
 
 internal data class PlayerPopupDimensions(
     val uiScale: Float,
