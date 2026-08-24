@@ -1100,12 +1100,6 @@ fun VideoPlayerScreen(
         val density = LocalDensity.current
         val screenWidthPx = with(density) { maxWidth.toPx() }
         val screenHeightPx = with(density) { maxHeight.toPx() }
-        fun anchoredX(iconCenterX: Float, popupWidth: Dp): Int {
-            val pw = with(density) { popupWidth.toPx() }
-            val pad = with(density) { 8.dp.toPx() }
-            return (iconCenterX - pw / 2f).coerceIn(pad, (screenWidthPx - pw - pad).coerceAtLeast(pad)).roundToInt()
-        }
-        fun anchoredY(desiredBottomPadding: Dp, popupHeightEstimate: Dp): Dp = desiredBottomPadding
         val popupBottomPadding = bottomDockPadding + playButton + 18.dp
 
         val subtitlePopupWidthBase = if (isLandscape) (maxWidth.value * 0.30f).dp.coerceIn(210.dp, 270.dp) else (maxWidth.value * 0.62f).dp.coerceIn(220.dp, 300.dp)
@@ -1422,8 +1416,8 @@ fun VideoPlayerScreen(
             srtFiles = srtFiles,
             srtPopupWidth = srtPopupWidth,
             srtPopupMaxHeight = srtPopupMaxHeight,
-            srtBottomPadding = anchoredY(popupBottomPadding, srtPopupMaxHeight),
-            srtOffsetX = anchoredX(subIconX, srtPopupWidth),
+            srtBottomPadding = playerPopupBottomPadding(popupBottomPadding),
+            srtOffsetX = calculatePlayerPopupOffsetX(subIconX, srtPopupWidth, screenWidthPx, density),
             onPickSrt = { file -> showSrtBrowser = false; pendingSrtUri = Uri.fromFile(file) },
             onDeleteSrt = { file -> requestDeleteSubtitle(file) },
             onSystemPicker = { showSrtBrowser = false; srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
@@ -1432,7 +1426,7 @@ fun VideoPlayerScreen(
             audioTracks = audioTracksForPopup,
             audioPopupWidth = audioPopupWidth,
             audioBottomPadding = popupBottomPadding,
-            audioOffsetX = anchoredX(audioIconX, audioPopupWidth),
+            audioOffsetX = calculatePlayerPopupOffsetX(audioIconX, audioPopupWidth, screenWidthPx, density),
             audioSyncMs = audioSyncMs,
             onAudioSyncChange = { audioSyncMs = it; menuTouchKey++ },
             onAudioMenuInteraction = { menuTouchKey++ },
@@ -1474,8 +1468,8 @@ fun VideoPlayerScreen(
             showTrackSelector = trackUi.showSelector,
             subtitlesEnabled = coreUi.subtitlesEnabled,
             activeTrackStatusText = subtitleQuickMenuStatusText,
-            quickMenuBottomPadding = anchoredY(popupBottomPadding, subtitlePopupHeightEstimate),
-            quickMenuOffsetX = anchoredX(subIconX, subtitlePopupWidth),
+            quickMenuBottomPadding = playerPopupBottomPadding(popupBottomPadding),
+            quickMenuOffsetX = calculatePlayerPopupOffsetX(subIconX, subtitlePopupWidth, screenWidthPx, density),
             subtitleTextSizeSp = appearanceUi.textSizeSp,
             subtitleBottomPadding = appearanceUi.bottomPadding,
             onFindClick = {
@@ -1516,8 +1510,8 @@ fun VideoPlayerScreen(
                 showControls = true; studioUi.menuTouchKey++
             },
             onSettingsUserInteraction = { studioUi.menuTouchKey++; showControls = true },
-            trackSelectorBottomPadding = anchoredY(popupBottomPadding, trackSelectorMaxHeight),
-            trackSelectorOffsetX = anchoredX(subIconX, trackSelectorWidth),
+            trackSelectorBottomPadding = playerPopupBottomPadding(popupBottomPadding),
+            trackSelectorOffsetX = calculatePlayerPopupOffsetX(subIconX, trackSelectorWidth, screenWidthPx, density),
             trackSelectorWidth = trackSelectorWidth,
             trackSelectorMaxHeight = trackSelectorMaxHeight,
             containerWidth = maxWidth,
@@ -1620,8 +1614,8 @@ fun VideoPlayerScreen(
             onApplyDrift = { applyDriftFix() },
             onDismissDrift = { driftUi.showDialog = false; showControls = true },
             showAppearanceStudio = coreUi.showAppearanceStudio,
-            appearanceBottomPadding = anchoredY(popupBottomPadding, trackSelectorMaxHeight),
-            appearanceOffsetX = anchoredX(subIconX, trackSelectorWidth),
+            appearanceBottomPadding = playerPopupBottomPadding(popupBottomPadding),
+            appearanceOffsetX = calculatePlayerPopupOffsetX(subIconX, trackSelectorWidth, screenWidthPx, density),
             appearancePopupWidth = trackSelectorWidth,
             appearancePopupMaxHeight = trackSelectorMaxHeight,
             containerWidth = maxWidth,
