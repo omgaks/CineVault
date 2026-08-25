@@ -1754,12 +1754,24 @@ fun VideoPlayerScreen(
         // block via the trailing && clause, unlike the smaller anchored
         // popups (Track Selector, Drift, Appearance, quick menu) which
         // were designed to sit alongside visible controls and still do.
-        val hideControlsForLargeSheet = studioUi.showStudio || searchUi.showSearch
+        val mainControlsVisible = shouldShowMainPlayerControls(
+            externalDisplayActive = externalPlayerView != null,
+            showControls = showControls,
+            isDraggingSeekbar = isDraggingSeekbar,
+            showAudioSelector = showAudioSelector,
+            showSubtitleSettings = coreUi.showSettings,
+            showTrackSelector = trackUi.showSelector,
+            showDriftDialog = driftUi.showDialog,
+            showAppearanceStudio = coreUi.showAppearanceStudio,
+            dialogueSyncArmed = coreUi.dialogueSyncArmed,
+            showSpeedMenu = showSpeedMenu,
+            showSleepMenu = showSleepMenu,
+            showSubtitleStudio = studioUi.showStudio,
+            showSubtitleSearch = searchUi.showSearch,
+            isInPipMode = CineVaultPlayerHolder.isInPipMode
+        )
         PlayerControlsVisibilityShell(
-            visible = externalPlayerView == null &&
-                (showControls || isDraggingSeekbar || showAudioSelector || coreUi.showSettings || trackUi.showSelector || driftUi.showDialog || coreUi.showAppearanceStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu) &&
-                !hideControlsForLargeSheet &&
-                !CineVaultPlayerHolder.isInPipMode
+            visible = mainControlsVisible
         ) {
 
                 PlayerTopControlCluster(
