@@ -1167,7 +1167,12 @@ fun VideoPlayerScreen(
         }
 
         LaunchedEffect(position, creditsSegment?.startMs) {
-            if (showNextEpisodeOverlay && creditsSegment != null && position < creditsSegment.startMs) {
+            if (shouldResetNextEpisodeOverlay(
+                    showNextEpisodeOverlay = showNextEpisodeOverlay,
+                    creditsStartMs = creditsSegment?.startMs,
+                    position = position
+                )
+            ) {
                 showNextEpisodeOverlay = false
                 pendingNextEpisode = null
                 nextEpisodeCountdown = 0
