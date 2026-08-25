@@ -1499,7 +1499,7 @@ fun VideoPlayerScreen(
                 searchUi.showSearch = true
                 showControls = true
                 if (searchUi.searchResults.isEmpty() && !searchUi.searchLoading) {
-                    performSubtitleSearch(OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path), "", "")
+                    performSubtitleSearch(playerSubtitleSearchQuery(currentVideo.path), "", "")
                 }
             },
             onTracksClick = { coreUi.showSettings = false; trackUi.showSelector = true; showControls = true; studioUi.menuTouchKey++ },
@@ -1556,14 +1556,14 @@ fun VideoPlayerScreen(
         )
         val searchWidth = subtitleSearchLayout.width
         val searchMaxHeight = subtitleSearchLayout.maxHeight
-        val subtitleWebQuery = OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path)
+        val subtitleWebQuery = playerSubtitleSearchQuery(currentVideo.path)
         SubtitleAcquisitionFlow(
             showSubtitleSearch = searchUi.showSearch,
             searchWidth = searchWidth,
             searchMaxHeight = searchMaxHeight,
             containerWidth = maxWidth,
             containerHeight = maxHeight,
-            initialSearchQuery = remember(currentVideo.path) { OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path) },
+            initialSearchQuery = remember(currentVideo.path) { playerSubtitleSearchQuery(currentVideo.path) },
             searchResults = searchUi.searchResults,
             isSearching = searchUi.searchLoading,
             searchStatusText = searchUi.searchStatus,
@@ -1602,7 +1602,7 @@ fun VideoPlayerScreen(
             },
             onDismissFallback = { searchUi.showFallback = false },
             showEmbeddedSubtitleBrowser = searchUi.showEmbeddedBrowser,
-            embeddedBrowserQuery = OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path),
+            embeddedBrowserQuery = playerSubtitleSearchQuery(currentVideo.path),
             embeddedBrowserPreferredLanguage = coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en",
             onImported = { result ->
                 if (result.alternatives.isEmpty()) {
@@ -1692,7 +1692,7 @@ fun VideoPlayerScreen(
                 searchUi.showSearch = true
                 showControls = true
                 if (searchUi.searchResults.isEmpty() && !searchUi.searchLoading) {
-                    performSubtitleSearch(OpenSubtitlesClient.cleanMovieNamePublic(currentVideo.path), "", "")
+                    performSubtitleSearch(playerSubtitleSearchQuery(currentVideo.path), "", "")
                 }
             },
             onOpenManualSearch = {
