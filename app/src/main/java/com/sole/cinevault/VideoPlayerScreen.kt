@@ -1118,7 +1118,10 @@ fun VideoPlayerScreen(
         val audioPopupWidth = popupDimensions.audioPopupWidth
         val smallMenuWidth = popupDimensions.smallMenuWidth
         val smallMenuMaxHeight = popupDimensions.smallMenuMaxHeight
-        val topIconSize = (44 * uiScale * scale.coerceAtLeast(0.75f)).dp
+        val topIconSize = calculatePlayerTopIconSize(
+            uiScale = uiScale,
+            playerScale = scale
+        )
 
         val playlistNavigation = remember(
             currentVideo.path,
