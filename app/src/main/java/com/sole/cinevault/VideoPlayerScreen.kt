@@ -1151,9 +1151,16 @@ fun VideoPlayerScreen(
         val creditsSegment = smartPlaybackSegments.creditsSegment
 
         LaunchedEffect(currentVideo.path, position, creditsSegment?.startMs, showNextEpisodeOverlay) {
-            if (!isCurrentTvShow || showNextEpisodeOverlay || nextEpisodeDismissed || creditsSegment == null || position < creditsSegment.startMs) return@LaunchedEffect
-            val index = episodeList.indexOfFirst { it.video.path == currentVideo.path }
-            val next = episodeList.getOrNull(index + 1) ?: return@LaunchedEffect
+            val next = findNextEpisodeForCredits(
+                currentVideoPath = currentVideo.path,
+                episodeList = episodeList,
+                isCurrentTvShow = isCurrentTvShow,
+                showNextEpisodeOverlay = showNextEpisodeOverlay,
+                nextEpisodeDismissed = nextEpisodeDismissed,
+                creditsStartMs = creditsSegment?.startMs,
+                position = position
+            ) ?: return@LaunchedEffect
+
             pendingNextEpisode = next
             nextEpisodeCountdown = 15
             showNextEpisodeOverlay = true
