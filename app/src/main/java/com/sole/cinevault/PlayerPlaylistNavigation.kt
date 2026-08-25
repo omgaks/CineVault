@@ -1,5 +1,6 @@
 package com.sole.cinevault
 
+import com.sole.cinevault.library.VideoFile
 internal data class PlayerPlaylistNavigation(
     val currentMeta: VideoWithMetadata?,
     val currentIndex: Int,
