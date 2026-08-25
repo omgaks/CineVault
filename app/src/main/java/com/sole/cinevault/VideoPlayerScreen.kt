@@ -1120,10 +1120,21 @@ fun VideoPlayerScreen(
         val smallMenuMaxHeight = popupDimensions.smallMenuMaxHeight
         val topIconSize = (44 * uiScale * scale.coerceAtLeast(0.75f)).dp
 
-        val currentMeta = remember(currentVideo.path, episodeList) {
-            episodeList.firstOrNull { it.video.path == currentVideo.path }
-                ?: episodeList.firstOrNull { it.video.name == currentVideo.name }
+        val playlistNavigation = remember(
+            currentVideo.path,
+            currentVideo.name,
+            episodeList,
+            isCurrentTvShow,
+            isRestrictedFolderMedia
+        ) {
+            derivePlayerPlaylistNavigation(
+                currentVideo = currentVideo,
+                episodeList = episodeList,
+                isCurrentTvShow = isCurrentTvShow,
+                isRestrictedFolderMedia = isRestrictedFolderMedia
+            )
         }
+        val currentMeta = playlistNavigation.currentMeta
 
         LaunchedEffect(currentMeta?.video?.path, duration > 60_000L) {
             val meta = currentMeta ?: return@LaunchedEffect
@@ -1156,16 +1167,9 @@ fun VideoPlayerScreen(
             }
         }
 
-        // Previous/Next availability — shown ONLY for TV episodes and
-        // Select-Folder videos (where "next in the group" is a meaningful
-        // concept), never for a plain movie played from the general library
-        // list, where episodeList can be the whole library and "next" would
-        // be an unrelated, arbitrary title.
-        val showPrevNextButtons = (isCurrentTvShow || isRestrictedFolderMedia) && episodeList.size > 1
-        val currentEpisodeIndex = remember(currentVideo.path, episodeList) {
-            episodeList.indexOfFirst { it.video.path == currentVideo.path }
-        }
-        val hasNextVideo = episodeList.size > 1 && currentEpisodeIndex in 0 until episodeList.lastIndex
+        val showPrevNextButtons = playlistNavigation.showPrevNextButtons
+        val currentEpisodeIndex = playlistNavigation.currentIndex
+        val hasNextVideo = playlistNavigation.hasNextVideo
 
         PlayerVideoSurface(
             player = exoPlayer,
