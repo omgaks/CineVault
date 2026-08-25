@@ -1353,8 +1353,13 @@ fun VideoPlayerScreen(
                         videoScale = (videoScale * zoom).coerceIn(1f, 3f)
                         videoOffsetX += pan.x
                         videoOffsetY += pan.y
-                        val maxOffsetX = (screenWidthPx * (videoScale - 1f) / 2f).coerceAtLeast(0f)
-                        val maxOffsetY = (screenHeightPx * (videoScale - 1f) / 2f).coerceAtLeast(0f)
+                        val panBounds = calculatePlayerPanBounds(
+                            screenWidthPx = screenWidthPx,
+                            screenHeightPx = screenHeightPx,
+                            videoScale = videoScale
+                        )
+                        val maxOffsetX = panBounds.maxOffsetX
+                        val maxOffsetY = panBounds.maxOffsetY
                         videoOffsetX = videoOffsetX.coerceIn(-maxOffsetX, maxOffsetX)
                         videoOffsetY = videoOffsetY.coerceIn(-maxOffsetY, maxOffsetY)
                         if (videoScale <= 1.02f) {
