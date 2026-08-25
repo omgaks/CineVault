@@ -1138,7 +1138,7 @@ fun VideoPlayerScreen(
 
         LaunchedEffect(currentMeta?.video?.path, duration > 60_000L) {
             val meta = currentMeta ?: return@LaunchedEffect
-            if (duration <= 60_000L || meta.type == "secret") return@LaunchedEffect
+            if (!shouldLoadSmartSegments(meta, duration)) return@LaunchedEffect
             smartSegmentResult = smartSegmentRepository.load(meta, duration)
         }
 
