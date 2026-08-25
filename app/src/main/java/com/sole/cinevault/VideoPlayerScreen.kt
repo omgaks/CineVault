@@ -1347,26 +1347,19 @@ fun VideoPlayerScreen(
                         showVolumeCircle = true
                     },
                     onPinchZoomPan = { zoom, pan ->
-                        // Both zoom and pan applied together, matching how
-                        // a real pinch/pan gesture always carries some of
-                        // each — see PlayerGestureModifiers.kt for why.
-                        videoScale = (videoScale * zoom).coerceIn(1f, 3f)
-                        videoOffsetX += pan.x
-                        videoOffsetY += pan.y
-                        val panBounds = calculatePlayerPanBounds(
+                        val transform = calculatePlayerZoomPanTransform(
+                            currentScale = videoScale,
+                            currentOffsetX = videoOffsetX,
+                            currentOffsetY = videoOffsetY,
+                            zoomFactor = zoom,
+                            panX = pan.x,
+                            panY = pan.y,
                             screenWidthPx = screenWidthPx,
-                            screenHeightPx = screenHeightPx,
-                            videoScale = videoScale
+                            screenHeightPx = screenHeightPx
                         )
-                        val maxOffsetX = panBounds.maxOffsetX
-                        val maxOffsetY = panBounds.maxOffsetY
-                        videoOffsetX = videoOffsetX.coerceIn(-maxOffsetX, maxOffsetX)
-                        videoOffsetY = videoOffsetY.coerceIn(-maxOffsetY, maxOffsetY)
-                        if (videoScale <= 1.02f) {
-                            videoScale = 1f
-                            videoOffsetX = 0f
-                            videoOffsetY = 0f
-                        }
+                        videoScale = transform.scale
+                        videoOffsetX = transform.offsetX
+                        videoOffsetY = transform.offsetY
                     },
                 )
         }
