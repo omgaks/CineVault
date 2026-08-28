@@ -217,8 +217,7 @@ fun VideoPlayerScreen(
     // before its declaration.
     val initialMusicVolumePercent = remember {
         val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val maximum = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-        ((am.getStreamVolume(AudioManager.STREAM_MUSIC) * 100f) / maximum).toInt()
+        playerInitialMusicVolumePercent(am)
     }
     var volumePercent by remember { mutableIntStateOf(initialMusicVolumePercent) }
     var brightnessPercent by remember { mutableIntStateOf(90) }
