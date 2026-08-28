@@ -1973,14 +1973,14 @@ fun VideoPlayerScreen(
                         showSeekPreview = true
                         showControls = true
                         showTopBar = true
-                        position = pos.coerceIn(0L, duration)
+                        position = playerBoundedSeekPosition(pos, duration)
                         previewPosition = position
                         VideoThumbnailHelper.nearestPreviewFrame(previewFrames, previewPosition)?.let {
                             previewBitmap = it
                         }
                     },
                     onSeekFinished = { finalPos ->
-                        val safe = finalPos.coerceIn(0L, duration)
+                        val safe = playerBoundedSeekPosition(finalPos, duration)
                         position = safe
                         previewPosition = safe
                         exoPlayer.seekTo(safe)
