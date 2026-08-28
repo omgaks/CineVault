@@ -1242,7 +1242,7 @@ fun VideoPlayerScreen(
                     },
                     onSeekDelta = { fraction ->
                         val safeDuration = exoPlayer.duration.coerceAtLeast(1L)
-                        previewPosition = (previewPosition + (fraction * safeDuration).toLong()).coerceIn(0L, safeDuration)
+                        previewPosition = calculatePlayerSeekPreviewPosition(previewPosition, fraction, safeDuration)
                         previewBitmap = VideoThumbnailHelper.nearestPreviewFrame(previewFrames, previewPosition)
                         externalPresentation?.updateSeekPreview(previewBitmap, previewPosition, true)
                     },
@@ -1253,15 +1253,15 @@ fun VideoPlayerScreen(
                         externalPresentation?.updateSeekPreview(previewBitmap, previewPosition, false)
                     },
                     onBrightnessDrag = { deltaY ->
-                        brightnessPercent = (brightnessPercent - deltaY.toInt() / 8).coerceIn(5, 100)
+                        brightnessPercent = adjustPlayerBrightnessPercent(brightnessPercent, deltaY)
                         activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = brightnessPercent / 100f }
                         showBrightnessCircle = true
                         externalPresentation?.showGestureHud("Tablet brightness", "$brightnessPercent%", brightnessPercent)
                     },
                     onVolumeDrag = { deltaY ->
-                        volumePercent = (volumePercent - deltaY.toInt() / 8).coerceIn(0, 100)
+                        volumePercent = adjustPlayerVolumePercent(volumePercent, deltaY, maxPercent = 100)
                         val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, ((volumePercent / 100f) * maxVol).toInt(), 0)
+                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, playerSystemVolumeIndex(volumePercent, maxVol), 0)
                         showVolumeCircle = true
                         externalPresentation?.showGestureHud("Volume", "$volumePercent%", volumePercent)
                     },
@@ -1336,14 +1336,14 @@ fun VideoPlayerScreen(
                     onDragSettled = { brightnessGestureKey++; volumeGestureKey++ },
                     onEdgeSwipeNext = { playNext() },
                     onBrightnessDrag = { deltaY ->
-                        brightnessPercent = (brightnessPercent - deltaY.toInt() / 8).coerceIn(5, 100)
+                        brightnessPercent = adjustPlayerBrightnessPercent(brightnessPercent, deltaY)
                         activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = brightnessPercent / 100f }
                         showBrightnessCircle = true
                     },
                     onVolumeDrag = { deltaY ->
-                        volumePercent = (volumePercent - deltaY.toInt() / 8).coerceIn(0, 150)
+                        volumePercent = adjustPlayerVolumePercent(volumePercent, deltaY, maxPercent = 150)
                         val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, ((volumePercent.coerceAtMost(100) / 100f) * maxVol).toInt(), 0)
+                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, playerSystemVolumeIndex(volumePercent, maxVol), 0)
                         showVolumeCircle = true
                     },
                     onPinchZoomPan = { zoom, pan ->
