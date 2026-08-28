@@ -1273,9 +1273,9 @@ fun VideoPlayerScreen(
                     },
                     onPinchZoomPan = { zoom, pan ->
                         externalPresentation?.applyViewportTransform(zoom, pan.x, pan.y)
-                        val shownZoom = (videoScale * zoom).coerceIn(1f, 3f)
-                        videoScale = shownZoom
-                        externalPresentation?.showGestureHud("Screen size", "${(shownZoom * 100).toInt()}%", (((shownZoom - 1f) / 2f) * 100).toInt())
+                        val zoomHud = calculatePlayerExternalZoomHud(videoScale, zoom)
+                        videoScale = zoomHud.scale
+                        externalPresentation?.showGestureHud("Screen size", "${zoomHud.percent}%", zoomHud.progressPercent)
                     },
                     onEmergencyReturnToTablet = {
                         externalPresentation?.showGestureHud("Emergency return", "TABLET")
