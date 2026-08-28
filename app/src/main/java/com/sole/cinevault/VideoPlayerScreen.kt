@@ -1321,12 +1321,12 @@ fun VideoPlayerScreen(
                         }
                     },
                     onSeekBack = {
-                        exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0))
+                        exoPlayer.seekTo(playerSeekBackPosition(exoPlayer.currentPosition))
                         position = exoPlayer.currentPosition
                         showControls = true; showTopBar = true
                     },
                     onSeekForward = {
-                        exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration.coerceAtLeast(0)))
+                        exoPlayer.seekTo(playerSeekForwardPosition(exoPlayer.currentPosition, exoPlayer.duration))
                         position = exoPlayer.currentPosition
                         showControls = true; showTopBar = true
                     },
@@ -1898,7 +1898,7 @@ fun VideoPlayerScreen(
                     isStreamMedia = isStreamMedia,
                     onBack = onBack,
                     onReplay10 = {
-                        exoPlayer.seekTo((exoPlayer.currentPosition - 10000).coerceAtLeast(0))
+                        exoPlayer.seekTo(playerSeekBackPosition(exoPlayer.currentPosition))
                         position = exoPlayer.currentPosition
                         showControls = true
                     },
@@ -1915,7 +1915,7 @@ fun VideoPlayerScreen(
                         }
                     },
                     onForward10 = {
-                        exoPlayer.seekTo((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration.coerceAtLeast(0)))
+                        exoPlayer.seekTo(playerSeekForwardPosition(exoPlayer.currentPosition, exoPlayer.duration))
                         position = exoPlayer.currentPosition
                         showControls = true
                     },
