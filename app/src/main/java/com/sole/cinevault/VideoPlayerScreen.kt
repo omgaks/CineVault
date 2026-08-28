@@ -544,7 +544,7 @@ fun VideoPlayerScreen(
                     trackUi.primaryUri?.path == file.absolutePath
                 if (isActive) {
                     detachedSubtitleForUndo = file
-                    val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+                    val resumeAt = playerSafeResumePosition(exoPlayer.currentPosition)
                     playCurrentVideoWithSubtitle(null, resumeAt, false)
                     trackUi.primaryUri = null; trackUi.originalUri = null
                     trackUi.selectedKey = "off"; trackUi.selectedLabel = ""; trackUi.selectedSource = ""
@@ -553,7 +553,7 @@ fun VideoPlayerScreen(
             },
             onDeleteUndone = { file ->
                 if (detachedSubtitleForUndo?.absolutePath == file.absolutePath && file.exists()) {
-                    val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+                    val resumeAt = playerSafeResumePosition(exoPlayer.currentPosition)
                     coreUi.subtitlesEnabled = true
                     trackUi.primaryUri = Uri.fromFile(file); trackUi.originalUri = Uri.fromFile(file)
                     trackUi.selectedKey = "local:${file.absolutePath}"
@@ -721,7 +721,7 @@ fun VideoPlayerScreen(
                 try {
                     val result = OpenSubtitlesClient.downloadBestSubtitleDetailed(context, currentVideo.path, coreUi.behaviorPrefs.preferredLanguages)
                     if (result is SubtitleDownloadResult.Success) {
-                        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+                        val resumeAt = playerSafeResumePosition(exoPlayer.currentPosition)
                         coreUi.subtitlesEnabled = true
                         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
                         autoSubtitleFetch.status = "Subtitle loaded"
@@ -887,7 +887,7 @@ fun VideoPlayerScreen(
 
     LaunchedEffect(pendingSrtUri) {
         val uri = pendingSrtUri ?: return@LaunchedEffect
-        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+        val resumeAt = playerSafeResumePosition(exoPlayer.currentPosition)
         coreUi.subtitlesEnabled = true
         trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
         // FIX: previously hardcoded "SRT loaded"/"SRT file loaded" even
@@ -945,7 +945,7 @@ fun VideoPlayerScreen(
         val offsetMs = (coreUi.syncOffset * 1000f).toLong()
         if (offsetMs == trackUi.appliedOffsetMs && driftUi.scale == driftUi.appliedScale) return@LaunchedEffect
         delay(350)
-        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+        val resumeAt = playerSafeResumePosition(exoPlayer.currentPosition)
         val shiftedUri = withContext(Dispatchers.IO) { buildShiftedSubtitleFile(context, baseUri, offsetMs, driftUi.scale) }
         if (shiftedUri != null) {
             trackUi.appliedOffsetMs = offsetMs
