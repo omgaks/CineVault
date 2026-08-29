@@ -190,7 +190,7 @@ fun VideoPlayerScreen(
     }
 
     var audioSyncMs by remember { mutableIntStateOf(0) }
-    LaunchedEffect(audioSyncMs) { AudioSyncHolder.offsetUs = audioSyncMs * 1000L }
+    LaunchedEffect(audioSyncMs) { AudioSyncHolder.offsetUs = playerAudioSyncOffsetUs(audioSyncMs) }
 
     var audioIconX by remember { mutableFloatStateOf(0f) }
     var subIconX by remember { mutableFloatStateOf(0f) }
