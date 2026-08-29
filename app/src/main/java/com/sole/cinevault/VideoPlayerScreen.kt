@@ -1240,7 +1240,7 @@ fun VideoPlayerScreen(
                         externalPresentation?.updateSeekPreview(previewBitmap, previewPosition, true)
                     },
                     onSeekDelta = { fraction ->
-                        val safeDuration = exoPlayer.duration.coerceAtLeast(1L)
+                        val safeDuration = playerSafeSeekDuration(exoPlayer.duration)
                         previewPosition = calculatePlayerSeekPreviewPosition(previewPosition, fraction, safeDuration)
                         previewBitmap = VideoThumbnailHelper.nearestPreviewFrame(previewFrames, previewPosition)
                         externalPresentation?.updateSeekPreview(previewBitmap, previewPosition, true)
