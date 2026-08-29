@@ -1996,7 +1996,7 @@ fun VideoPlayerScreen(
                             scope.launch {
                                 val bmp = VideoThumbnailHelper.generateFrameAtTime(context, currentVideo.path, safe)
                                 if (bmp != null && previewPosition == safe) previewBitmap = bmp
-                                delay(620)
+                                delay(playerLocalSeekPreviewHideDelayMs())
                                 if (previewPosition == safe && !isDraggingSeekbar) showSeekPreview = false
                             }
                         }
