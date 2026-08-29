@@ -1625,7 +1625,7 @@ fun VideoPlayerScreen(
             onDialogueSyncTap = { confirmDialogueSyncTap() },
             onDialogueSyncCancel = { cancelDialogueSync() },
             showDriftDialog = driftUi.showDialog,
-            driftPopupWidth = trackSelectorWidth.coerceAtLeast(220.dp),
+            driftPopupWidth = playerDriftPopupWidth(trackSelectorWidth),
             videoDurationMs = duration,
             currentPositionMs = position,
             driftPointA = driftUi.pointA,
