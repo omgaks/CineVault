@@ -1253,7 +1253,7 @@ fun VideoPlayerScreen(
                     },
                     onBrightnessDrag = { deltaY ->
                         brightnessPercent = adjustPlayerBrightnessPercent(brightnessPercent, deltaY)
-                        activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = brightnessPercent / 100f }
+                        activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = playerWindowBrightness(brightnessPercent) }
                         showBrightnessCircle = true
                         externalPresentation?.showGestureHud("Tablet brightness", "$brightnessPercent%", brightnessPercent)
                     },
@@ -1336,7 +1336,7 @@ fun VideoPlayerScreen(
                     onEdgeSwipeNext = { playNext() },
                     onBrightnessDrag = { deltaY ->
                         brightnessPercent = adjustPlayerBrightnessPercent(brightnessPercent, deltaY)
-                        activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = brightnessPercent / 100f }
+                        activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = playerWindowBrightness(brightnessPercent) }
                         showBrightnessCircle = true
                     },
                     onVolumeDrag = { deltaY ->
