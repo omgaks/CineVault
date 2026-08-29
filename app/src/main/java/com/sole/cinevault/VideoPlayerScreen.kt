@@ -1989,7 +1989,7 @@ fun VideoPlayerScreen(
                         showSeekPreview = true
                         if (isStreamMedia) {
                             scope.launch {
-                                delay(360)
+                                delay(playerStreamSeekPreviewHideDelayMs())
                                 if (!isDraggingSeekbar) showSeekPreview = false
                             }
                         } else {
