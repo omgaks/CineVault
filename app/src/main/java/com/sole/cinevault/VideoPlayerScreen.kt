@@ -179,7 +179,7 @@ fun VideoPlayerScreen(
             // can put an app into). An orientation lock is a nice-to-have,
             // never something that should be allowed to crash the app.
             try { activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE } catch (_: Exception) {}
-            activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = 0.02f }
+            activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = playerGlassesConnectedBrightness() }
             showGlassesConnectedHint = true
             delay(2200)
             showGlassesConnectedHint = false
