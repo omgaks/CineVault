@@ -483,7 +483,7 @@ fun VideoPlayerScreen(
             sleepTimerActive = false; sleepTimerRemainingMs = 0
             Toast.makeText(context, "Sleep timer off", Toast.LENGTH_SHORT).show()
         } else {
-            sleepTimerRemainingMs = minutes * 60 * 1000L
+            sleepTimerRemainingMs = playerSleepTimerDurationMs(minutes)
             sleepTimerActive = true
             Toast.makeText(context, "Sleep timer: ${minutes}min", Toast.LENGTH_SHORT).show()
         }
