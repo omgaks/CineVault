@@ -457,7 +457,7 @@ fun VideoPlayerScreen(
 
     LaunchedEffect(sleepTimerActive, sleepTimerRemainingMs) {
         if (playerShouldTickSleepTimer(sleepTimerActive, sleepTimerRemainingMs)) {
-            delay(1000)
+            delay(playerSleepTimerTickIntervalMs())
             sleepTimerRemainingMs = playerSleepTimerRemainingAfterTick(sleepTimerRemainingMs)
             if (playerSleepTimerHasExpired(sleepTimerRemainingMs)) {
                 sleepTimerActive = false
