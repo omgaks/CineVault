@@ -731,7 +731,7 @@ fun VideoPlayerScreen(
                         playCurrentVideoWithSubtitle(cleanedResultUri, resumeAt)
                         trackUi.selectedKey = "downloaded"
                         trackUi.selectedLabel = friendlyLanguageName(result.language); trackUi.selectedSource = "OpenSubtitles"
-                        delay(1400); autoSubtitleFetch.status = ""
+                        delay(playerSubtitleStatusClearDelayMs()); autoSubtitleFetch.status = ""
                     } else {
                         autoSubtitleFetch.status = result.summary(); delay(3500); autoSubtitleFetch.status = ""
                     }
@@ -909,7 +909,7 @@ fun VideoPlayerScreen(
         trackUi.selectedLabel = pickedFile?.name ?: "Subtitle file"; trackUi.selectedSource = "Local file"
         coreUi.showSettings = false; trackUi.showSelector = false; showControls = true
         Toast.makeText(context, "$formatLabel file loaded", Toast.LENGTH_SHORT).show()
-        delay(1400); autoSubtitleFetch.status = ""
+        delay(playerSubtitleStatusClearDelayMs()); autoSubtitleFetch.status = ""
         pendingSrtUri = null
     }
 
