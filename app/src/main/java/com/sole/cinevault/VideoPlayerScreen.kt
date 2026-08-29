@@ -459,7 +459,7 @@ fun VideoPlayerScreen(
         if (playerShouldTickSleepTimer(sleepTimerActive, sleepTimerRemainingMs)) {
             delay(1000)
             sleepTimerRemainingMs = playerSleepTimerRemainingAfterTick(sleepTimerRemainingMs)
-            if (sleepTimerRemainingMs <= 0) {
+            if (playerSleepTimerHasExpired(sleepTimerRemainingMs)) {
                 sleepTimerActive = false
                 sleepTimerRemainingMs = 0
                 exoPlayer.pause()
