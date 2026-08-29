@@ -715,7 +715,7 @@ fun VideoPlayerScreen(
         ) {
             autoSubtitleFetch.attemptedForPath = currentVideo.path
             scope.launch {
-                delay(1200); if (autoSubtitleFetch.downloadInProgress) return@launch
+                delay(playerSubtitleAutoFetchStartDelayMs()); if (autoSubtitleFetch.downloadInProgress) return@launch
                 autoSubtitleFetch.downloadInProgress = true
                 autoSubtitleFetch.status = "Searching subtitles..."
                 try {
