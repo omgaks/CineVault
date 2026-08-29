@@ -479,7 +479,7 @@ fun VideoPlayerScreen(
     fun setSleepTimer(minutes: Int) {
         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         sleepTimerMinutes = minutes
-        if (minutes == 0) {
+        if (playerSleepTimerIsOff(minutes)) {
             sleepTimerActive = false; sleepTimerRemainingMs = 0
             Toast.makeText(context, "Sleep timer off", Toast.LENGTH_SHORT).show()
         } else {
