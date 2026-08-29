@@ -942,7 +942,7 @@ fun VideoPlayerScreen(
     LaunchedEffect(coreUi.syncOffset, driftUi.scale, trackUi.originalUri) {
         val baseUri = trackUi.originalUri ?: return@LaunchedEffect
         if (!coreUi.subtitlesEnabled) return@LaunchedEffect
-        val offsetMs = (coreUi.syncOffset * 1000f).toLong()
+        val offsetMs = playerSubtitleSyncOffsetMs(coreUi.syncOffset)
         if (offsetMs == trackUi.appliedOffsetMs && driftUi.scale == driftUi.appliedScale) return@LaunchedEffect
         delay(350)
         val resumeAt = playerSafeResumePosition(exoPlayer.currentPosition)
