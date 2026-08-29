@@ -733,10 +733,10 @@ fun VideoPlayerScreen(
                         trackUi.selectedLabel = friendlyLanguageName(result.language); trackUi.selectedSource = "OpenSubtitles"
                         delay(playerSubtitleStatusClearDelayMs()); autoSubtitleFetch.status = ""
                     } else {
-                        autoSubtitleFetch.status = result.summary(); delay(3500); autoSubtitleFetch.status = ""
+                        autoSubtitleFetch.status = result.summary(); delay(playerSubtitleResultStatusDurationMs()); autoSubtitleFetch.status = ""
                     }
                 } catch (e: Exception) {
-                    autoSubtitleFetch.status = "Subtitle failed: ${e.message ?: e.javaClass.simpleName}"; delay(3500); autoSubtitleFetch.status = ""
+                    autoSubtitleFetch.status = "Subtitle failed: ${e.message ?: e.javaClass.simpleName}"; delay(playerSubtitleFailureStatusDurationMs()); autoSubtitleFetch.status = ""
                 }
                 finally { autoSubtitleFetch.downloadInProgress = false }
             }
