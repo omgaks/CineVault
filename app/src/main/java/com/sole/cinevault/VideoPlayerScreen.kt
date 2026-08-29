@@ -1138,7 +1138,7 @@ fun VideoPlayerScreen(
         }
         val currentMeta = playlistNavigation.currentMeta
 
-        LaunchedEffect(currentMeta?.video?.path, duration > 60_000L) {
+        LaunchedEffect(currentMeta?.video?.path, playerHasSmartSegmentDuration(duration)) {
             val meta = currentMeta ?: return@LaunchedEffect
             if (!shouldLoadSmartSegments(meta, duration)) return@LaunchedEffect
             smartSegmentResult = smartSegmentRepository.load(meta, duration)
