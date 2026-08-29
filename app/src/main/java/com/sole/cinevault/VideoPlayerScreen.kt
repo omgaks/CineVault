@@ -1047,7 +1047,7 @@ fun VideoPlayerScreen(
             var count = 15
             while (count > 0) {
                 nextEpisodeCountdown = count
-                delay(1000)
+                delay(playerNextEpisodeCountdownIntervalMs())
                 if (!showNextEpisodeOverlay || pendingNextEpisode == null) return@LaunchedEffect
                 if (isPlaying || isVideoEnded) count--
             }
