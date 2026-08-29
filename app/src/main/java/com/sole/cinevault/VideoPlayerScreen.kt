@@ -181,7 +181,7 @@ fun VideoPlayerScreen(
             try { activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE } catch (_: Exception) {}
             activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = playerGlassesConnectedBrightness() }
             showGlassesConnectedHint = true
-            delay(2200)
+            delay(playerGlassesConnectedHintDurationMs())
             showGlassesConnectedHint = false
         } else {
             try { activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR } catch (_: Exception) {}
