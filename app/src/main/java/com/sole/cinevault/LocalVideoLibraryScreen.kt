@@ -1085,112 +1085,30 @@ fun LocalVideoLibraryScreen(
             bannerError?.let { err -> ErrorBanner(state = err, onDismiss = { activeError = null; LibraryScanController.lastError = null }) }
         }
 
-        AnimatedVisibility(visible = contextSheetItem != null, enter = fadeIn(animationSpec = tween(160)), exit = fadeOut(animationSpec = tween(180))) {
-            val selectedItem = contextSheetItem
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.55f))
-                    .clickable { contextSheetItem = null },
-                contentAlignment = Alignment.Center
-            ) {
-                if (selectedItem != null) {
-                    val isFavorite = favoritePaths.contains(selectedItem.video.path)
-                    val isHidden = hiddenPaths.contains(selectedItem.video.path)
-                    val isInSecretFolder = videoIsInsideSecretFolder(selectedItem, hiddenFolders)
-
-                    // Sheet slides up + fades in, distinct from the scrim's
-                    // plain fade above — gives this the "bottom sheet
-                    // arriving" feel instead of just materializing in place.
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = contextSheetItem != null,
-                        enter = slideInVertically(initialOffsetY = { it / 3 }, animationSpec = tween(260, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
-                        exit = slideOutVertically(targetOffsetY = { it / 3 }, animationSpec = tween(180)) + fadeOut(tween(140))
-                    ) {
-                    Column(
-                        modifier = Modifier
-                            .width(180.dp)
-                            .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.98f))
-                            .clickable(enabled = false) { }
-                            .padding(12.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .width(34.dp)
-                                    .height(50.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(SpaceDeep)
-                            ) {
-                                if (!selectedItem.posterUrl.isNullOrBlank()) {
-                                    AsyncImage(model = selectedItem.posterUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = selectedItem.title,
-                                color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                                maxLines = 2, overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-                        HorizontalDivider(color = GlassBorderBottom)
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Icon-only actions — no text labels, small glowing
-                        // circular buttons. FlowRow wraps to a second row on
-                        // its own if it ever needs to.
-                        androidx.compose.foundation.layout.FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            SheetIconButton(icon = Icons.Rounded.PlayArrow, tint = AmberCore, contentDescription = "Play") {
-                                contextSheetItem = null; onPlayClick(selectedItem)
-                            }
-                            SheetIconButton(
-                                icon = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                                tint = if (isFavorite) AmberCore else TextBright,
-                                contentDescription = if (isFavorite) "Remove from Favorites" else "Add to Favorites"
-                            ) {
-                                if (isFavorite) removeFavorite(selectedItem) else addFavorite(selectedItem)
-                                contextSheetItem = null
-                            }
-                            SheetIconButton(
-                                icon = if (isHidden) Icons.Filled.LockOpen else Icons.Rounded.Lock,
-                                tint = TextBright,
-                                contentDescription = if (isHidden) "Remove from Secret" else "Move to Secret"
-                            ) {
-                                if (isHidden) unhideVideo(selectedItem) else hideVideo(selectedItem)
-                                contextSheetItem = null
-                            }
-                            // "Hide Entire Folder" removed as an option going
-                            // forward — Secret (above) is the one hide
-                            // mechanism now, simpler and easier to reverse.
-                            // Still shown ONLY for items already hidden this
-                            // way from before, so nothing already hidden is
-                            // stranded with no way back to the library.
-                            if (isInSecretFolder) {
-                                SheetIconButton(
-                                    icon = Icons.Filled.Folder,
-                                    tint = TextBright,
-                                    contentDescription = "Unlock Folder"
-                                ) {
-                                    unhideEntireFolder(selectedItem)
-                                    contextSheetItem = null
-                                }
-                            }
-                            SheetIconButton(icon = Icons.Rounded.Delete, tint = Color(0xFFFF5252), contentDescription = "Delete File") {
-                                contextSheetItem = null
-                                deleteVideoFile(selectedItem)
-                            }
-                        }
-                    }
-                    }
-                }
+        LibraryItemContextSheet(
+            item = contextSheetItem,
+            isFavorite = contextSheetItem?.let { favoritePaths.contains(it.video.path) } ?: false,
+            isHidden = contextSheetItem?.let { hiddenPaths.contains(it.video.path) } ?: false,
+            isInSecretFolder = contextSheetItem?.let { videoIsInsideSecretFolder(it, hiddenFolders) } ?: false,
+            onDismiss = { contextSheetItem = null },
+            onPlay = { selectedItem -> contextSheetItem = null; onPlayClick(selectedItem) },
+            onFavoriteToggle = { selectedItem ->
+                if (favoritePaths.contains(selectedItem.video.path)) removeFavorite(selectedItem) else addFavorite(selectedItem)
+                contextSheetItem = null
+            },
+            onSecretToggle = { selectedItem ->
+                if (hiddenPaths.contains(selectedItem.video.path)) unhideVideo(selectedItem) else hideVideo(selectedItem)
+                contextSheetItem = null
+            },
+            onUnlockFolder = { selectedItem ->
+                unhideEntireFolder(selectedItem)
+                contextSheetItem = null
+            },
+            onDelete = { selectedItem ->
+                contextSheetItem = null
+                deleteVideoFile(selectedItem)
             }
-        }
+        )
 
         // Folder-level Secret confirmation — long-pressing a folder tile
         // now asks first instead of toggling instantly.
