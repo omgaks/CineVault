@@ -554,124 +554,29 @@ fun LocalVideoLibraryScreen(
             verticalArrangement = Arrangement.spacedBy(18.dp),
             contentPadding = PaddingValues(top = 16.dp, bottom = 28.dp)
         ) {
-            // ── Header (FIX #5) ──────────────────────────────────────────
-            // "Library" title text removed — redundant, we're already in
-            // the Library tab (bottom nav shows that). Category chips now
-            // lead at the very top. Scan / Refresh / Sort / Grid-List
-            // collapse into one row of small glowing icon buttons instead
-            // of two full-width pill buttons + a separate sort pill +
-            // separate List/Grid button, reclaiming a lot of vertical
-            // space. Each icon gets a distinct tint (still same amber-glow
-            // treatment as the signature play button — radial glow +
-            // border in the icon's own color) so they read as separate
-            // controls at a glance.
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Column {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(items = categories) { category ->
-                            FilterChip(
-                                selected = selectedCategory == category,
-                                onClick = { if (category == "Secret") openSecretFolder() else selectedCategory = category },
-                                label = { Text(category) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = AmberGlow.copy(alpha = 0.18f),
-                                    selectedLabelColor = AmberCore,
-                                    containerColor = Color.Transparent,
-                                    labelColor = TextMuted
-                                )
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // FIX: tool row now lives on the right, reading
-                    // left-to-right on screen as Sort → Grid/List → Refresh
-                    // → Scan — i.e. Scan is the rightmost/outermost icon,
-                    // matching "icons position right to left: Scan – Refresh
-                    // – Grid – Sort" (Scan first from the right edge).
-                    // Icons swapped for more distinct/recognizable shapes:
-                    // Scan uses a radar-style sweep, Sort uses ascending
-                    // bars instead of the generic sort glyph, so all four
-                    // silhouettes are easy to tell apart at a glance even
-                    // before reading color.
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.Top) {
-                        if (LibraryScanController.status.isNotBlank()) {
-                            Text(
-                                text = LibraryScanController.status,
-                                color = TextMuted,
-                                fontSize = 11.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f).padding(top = 10.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                        } else {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
-
-                        Box {
-                            LibraryToolIconButton(
-                                icon = Icons.Filled.SwapVert,
-                                tint = Color(0xFF56CCF2),
-                                contentDescription = "Sort by: ${sortOption.label}",
-                                label = "Sort",
-                                onClick = { sortMenuExpanded = true }
-                            )
-                            DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }, modifier = Modifier.background(SpaceMid)) {
-                                LibrarySortOption.values().forEach { option ->
-                                    DropdownMenuItem(
-                                        text = { Text(text = option.label, color = if (sortOption == option) AmberCore else TextBright, fontWeight = if (sortOption == option) FontWeight.Bold else FontWeight.Normal) },
-                                        onClick = { sortOption = option; sortMenuExpanded = false }
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        LibraryToolIconButton(
-                            icon = if (isGridMode) Icons.Filled.ViewAgenda else Icons.Filled.GridView,
-                            tint = Color(0xFFBB86FC),
-                            contentDescription = if (isGridMode) "Switch to List" else "Switch to Grid",
-                            label = if (isGridMode) "List" else "Grid",
-                            onClick = { isGridMode = !isGridMode }
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        LibraryToolIconButton(
-                            icon = Icons.Filled.Refresh,
-                            tint = Color(0xFF6FCF97),
-                            contentDescription = "Refresh / Clear Cache",
-                            label = "Refresh",
-                            enabled = !LibraryScanController.isScanning,
-                            onClick = { scope.launch { clearLibraryCache(context) }; onVideosLoaded(emptyList()); LibraryScanController.status = "Cache cleared. Scan again." }
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        LibraryToolIconButton(
-                            icon = Icons.Filled.TrackChanges,
-                            tint = AmberCore,
-                            contentDescription = "Scan Device Videos",
-                            label = "Scan",
-                            enabled = !LibraryScanController.isScanning,
-                            onClick = { permissionLauncher.launch(permission) }
-                        )
-                    }
-
-                    // FIX: loadLibraryCache is now suspend (see
-                    // PlaybackMemory.kt) — was called directly here,
-                    // synchronously, on every recomposition. produceState
-                    // loads it asynchronously instead; the timestamp
-                    // simply doesn't render until the read completes
-                    // (typically near-instant), rather than blocking
-                    // composition to get it immediately.
-                    val lastScanCache by produceState<CachedLibrary?>(initialValue = null, context) {
-                        value = loadLibraryCache(context)
-                    }
-                    lastScanCache?.let {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = "Last Scan: " + java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(it.timestamp)), color = TextFaint, fontSize = 11.sp)
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-                }
+                LocalLibraryHeader(
+                    categories = categories,
+                    selectedCategory = selectedCategory,
+                    onCategorySelected = { category ->
+                        if (category == "Secret") openSecretFolder() else selectedCategory = category
+                    },
+                    sortOption = sortOption,
+                    sortMenuExpanded = sortMenuExpanded,
+                    onSortMenuExpandedChange = { sortMenuExpanded = it },
+                    onSortSelected = { option -> sortOption = option },
+                    isGridMode = isGridMode,
+                    onToggleGridMode = { isGridMode = !isGridMode },
+                    isScanning = LibraryScanController.isScanning,
+                    scanStatus = LibraryScanController.status,
+                    onRefresh = {
+                        scope.launch { clearLibraryCache(context) }
+                        onVideosLoaded(emptyList())
+                        LibraryScanController.status = "Cache cleared. Scan again."
+                    },
+                    onScan = { permissionLauncher.launch(permission) },
+                    context = context
+                )
             }
 
             // ── Collections shelf — ONLY on "All" (the default overview),
