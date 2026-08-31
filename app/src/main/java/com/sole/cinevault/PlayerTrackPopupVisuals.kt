@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sole.cinevault.subtitles.SubtitleLanguageRegistry
 import com.sole.cinevault.ui.theme.*
 
 data class TrackPopupRowData(val title: String, val subtitle: String, val onClick: () -> Unit)
