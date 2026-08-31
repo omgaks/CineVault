@@ -388,6 +388,7 @@ internal fun buildShiftedSubtitleFile(context: Context, sourceUri: Uri, offsetMs
 // above.
 // computeDriftTransform also moved to SubtitleSharedUtils.kt.
 
+@androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
 internal fun buildPipActions(context: Context, isPlaying: Boolean): List<RemoteAction> {
     fun action(code: Int, iconRes: Int, title: String): RemoteAction {
         val intent = Intent(CINEVAULT_PIP_ACTION)
