@@ -1110,71 +1110,15 @@ fun LocalVideoLibraryScreen(
             }
         )
 
-        // Folder-level Secret confirmation — long-pressing a folder tile
-        // now asks first instead of toggling instantly.
-        // FIX (#2): restyled to use the same SheetIconButton glowing-circle
-        // treatment as the single-file context sheet above, instead of the
-        // old flat text-pill Cancel/Confirm buttons — so both long-press
-        // menus in the app now share one visual language.
-        folderSecretConfirm?.let { (folderName, paths) ->
-            val allHidden = paths.isNotEmpty() && paths.all { hiddenPaths.contains(it) }
-            Box(
-                modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f)).clickable { folderSecretConfirm = null },
-                contentAlignment = Alignment.Center
-            ) {
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = folderSecretConfirm != null,
-                    enter = slideInVertically(initialOffsetY = { it / 3 }, animationSpec = tween(260, easing = FastOutSlowInEasing)) + fadeIn(tween(200)),
-                    exit = slideOutVertically(targetOffsetY = { it / 3 }, animationSpec = tween(180)) + fadeOut(tween(140))
-                ) {
-                Column(
-                    modifier = Modifier
-                        .width(220.dp)
-                        .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.98f))
-                        .clickable(enabled = false) { }
-                        .padding(12.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(SpaceDeep),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(imageVector = Icons.Filled.Folder, contentDescription = null, tint = AmberGlow, modifier = Modifier.size(20.dp))
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = folderName, color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(text = "${paths.size} files", color = TextMuted, fontSize = 10.sp)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-                    HorizontalDivider(color = GlassBorderBottom)
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    androidx.compose.foundation.layout.FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        SheetIconButton(
-                            icon = if (allHidden) Icons.Filled.LockOpen else Icons.Rounded.Lock,
-                            tint = AmberCore,
-                            contentDescription = if (allHidden) "Remove Folder from Secret" else "Move Folder to Secret"
-                        ) {
-                            toggleFolderSecret(paths)
-                            folderSecretConfirm = null
-                        }
-                        SheetIconButton(icon = Icons.Filled.Close, tint = TextBright, contentDescription = "Cancel") {
-                            folderSecretConfirm = null
-                        }
-                    }
-                }
-                }
-            }
-        }
+        LibraryFolderSecretConfirmation(
+            confirmation = folderSecretConfirm,
+            onDismiss = { folderSecretConfirm = null },
+            onToggleSecret = { paths ->
+                toggleFolderSecret(paths)
+                folderSecretConfirm = null
+            },
+            hiddenPaths = hiddenPaths
+        )
     }
 }
 
