@@ -586,84 +586,18 @@ fun LocalVideoLibraryScreen(
                 onCuratedCollectionClick = onCuratedCollectionClick
             )
 
-            // ── TV Shows & Folders — ONE combined scrollable row (same
-            // pattern as the Collections shelf above), not two separate
-            // rows stacked vertically. Previously TV shows and folders each
-            // got their own LazyRow, which is why a single TV show and a
-            // single folder appeared to stack on top of each other instead
-            // of sitting side by side. Only shown on "All" (TV shows) /
-            // "All"+"Folders"+"Downloads" (folders) per the category gate.
-            if (selectedCategory in listOf("All", "TV Shows", "Folders", "Downloads")) {
-                run {
-                    data class RestrictedShelfEntry(val folder: RestrictedFolder, val items: List<VideoWithMetadata>)
-                    val restrictedItems = visibleSortedVideos.filter { it.type.equals("restricted", ignoreCase = true) }
-                    val restrictedShelf = if (restrictedItems.isEmpty()) emptyList() else {
-                        loadRestrictedFolders(context).mapNotNull { folder ->
-                            val items = restrictedItems.filter { folderIdFromRestrictedMarker(it.video.folderPath) == folder.id }
-                            if (items.isEmpty()) null else RestrictedShelfEntry(folder, items)
-                        }
-                    }
-
-                    val showTvInShelf = selectedCategory in listOf("All", "TV Shows") && tvGroups.isNotEmpty()
-                    val showFoldersInShelf = selectedCategory in listOf("All", "Folders", "Downloads") && restrictedShelf.isNotEmpty()
-
-                    // Combined into one ordered list — TV shows first, then
-                    // folders — rendered by ONE LazyRow below instead of two.
-                    val combinedShelf: List<Any> =
-                        (if (showTvInShelf) tvGroups else emptyList()) +
-                        (if (showFoldersInShelf) restrictedShelf else emptyList())
-
-                    if (combinedShelf.isNotEmpty()) {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            Column {
-                                Text(text = "TV Shows & Folders", color = TextBright, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(10.dp))
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                    items(
-                                        items = combinedShelf,
-                                        key = { entry ->
-                                            when (entry) {
-                                                is TvGroup -> "tv:${entry.showName}"
-                                                is RestrictedShelfEntry -> "folder:${entry.folder.id}"
-                                                else -> entry.hashCode().toString()
-                                            }
-                                        }
-                                    ) { entry ->
-                                        when (entry) {
-                                            is TvGroup -> Column(
-                                                modifier = Modifier
-                                                    .width(145.dp)
-                                                    .combinedClickable(
-                                                        onClick = { onTvGroupClick(entry) },
-                                                        onLongClick = { entry.episodes.firstOrNull()?.let { openContextSheet(it) } }
-                                                    )
-                                            ) {
-                                                PosterBox(posterUrl = entry.posterUrl, modifier = Modifier.fillMaxWidth().height(210.dp))
-                                                Spacer(modifier = Modifier.height(8.dp))
-                                                Text(text = entry.showName, color = TextBright, maxLines = 1, fontWeight = FontWeight.SemiBold)
-                                                Text(text = "${entry.episodes.size} Episodes", color = TextMuted, fontSize = 12.sp)
-                                            }
-                                            is RestrictedShelfEntry -> {
-                                                val thumbnailSourcePath = entry.folder.lastPlayedVideoPath
-                                                    ?.takeIf { path -> entry.items.any { it.video.path == path } }
-                                                    ?: entry.items.firstOrNull()?.video?.path
-                                                RestrictedFolderShelfCard(
-                                                    title = entry.folder.displayName,
-                                                    count = entry.items.size,
-                                                    thumbnailVideoPath = thumbnailSourcePath,
-                                                    onClick = { onRestrictedFolderClick(entry.folder) },
-                                                    onLongClick = { folderSecretConfirm = entry.folder.displayName to entry.items.map { it.video.path } }
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(20.dp))
-                            }
-                        }
-                    }
+            LocalLibraryTvAndFoldersShelf(
+                selectedCategory = selectedCategory,
+                visibleSortedVideos = visibleSortedVideos,
+                tvGroups = tvGroups,
+                context = context,
+                onTvGroupClick = onTvGroupClick,
+                onTvGroupLongClick = { group -> group.episodes.firstOrNull()?.let { openContextSheet(it) } },
+                onRestrictedFolderClick = onRestrictedFolderClick,
+                onRestrictedFolderLongClick = { folderName, paths ->
+                    folderSecretConfirm = folderName to paths
                 }
-            }
+            )
 
             // ── Genres shelf — ONLY on "All". Circular glowing icon chips,
             // same horizontal-scroll format as Collections (not a wrapping
