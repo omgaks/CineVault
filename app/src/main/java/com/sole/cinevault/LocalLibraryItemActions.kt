@@ -2,6 +2,10 @@ package com.sole.cinevault
 
 import android.content.Context
 import android.widget.Toast
+import com.sole.cinevault.library.clearPlaybackPosition
+import com.sole.cinevault.library.saveFavoriteVideoPaths
+import com.sole.cinevault.library.saveSecretFolderPaths
+import com.sole.cinevault.library.saveSecretVideoPaths
 import java.io.File
 
 internal fun addVideoToSecret(
