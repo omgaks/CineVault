@@ -1013,21 +1013,19 @@ fun VideoPlayerScreen(
     fun generateSubtitles() = subtitleGenerationCoordinator.generateSubtitles()
     fun translateSubtitles(target: SubtitleTranslationEngine.SupportedLanguage) = subtitleGenerationCoordinator.translateActive(target)
 
-    val aiSubtitleJobLabel: String?
-        get() = when (subtitleGenerationStatus) {
-            is SubtitleGenerationStatus.DownloadingModel -> "AI model"
-            is SubtitleGenerationStatus.Generating -> "AI Subs"
-            is SubtitleGenerationStatus.Translating -> "Translate"
-            else -> null
-        }
+    val aiSubtitleJobLabel: String? = when (subtitleGenerationStatus) {
+        is SubtitleGenerationStatus.DownloadingModel -> "AI model"
+        is SubtitleGenerationStatus.Generating -> "AI Subs"
+        is SubtitleGenerationStatus.Translating -> "Translate"
+        else -> null
+    }
 
-    val aiSubtitleJobProgress: Int?
-        get() = when (val status = subtitleGenerationStatus) {
-            is SubtitleGenerationStatus.DownloadingModel -> status.percent
-            is SubtitleGenerationStatus.Generating -> status.percent
-            is SubtitleGenerationStatus.Translating -> status.percent
-            else -> null
-        }
+    val aiSubtitleJobProgress: Int? = when (val status = subtitleGenerationStatus) {
+        is SubtitleGenerationStatus.DownloadingModel -> status.percent
+        is SubtitleGenerationStatus.Generating -> status.percent
+        is SubtitleGenerationStatus.Translating -> status.percent
+        else -> null
+    }
 
     BackHandler(enabled = showAiSubtitleMenu) {
         showAiSubtitleMenu = false
