@@ -72,7 +72,7 @@ enum class SubtitleStudioTab(val label: String, val icon: ImageVector) {
     BEHAVIOUR("Behaviour", Icons.Filled.Settings)
 }
 
-private val positionPresets = listOf(
+internal val positionPresets = listOf(
     "Bottom" to 0.02f, "Above Controls" to 0.16f, "Centre" to 0.45f, "Top" to 0.85f
 )
 
