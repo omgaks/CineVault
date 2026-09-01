@@ -258,10 +258,12 @@ internal class CineVaultVideoPresentation(
         // the app.
         container.addView(buildAmbientGlow())
         // A TextureView is deliberately used on the secondary display.
-        // Several USB-C display stacks (including the tested RayNeo route)
-        // accepted subtitle/canvas output from PlayerView while leaving its
-        // default SurfaceView black. TextureView keeps the decoded video in
-        // the Presentation's own window composition and avoids that failure.
+        // Several USB-C display stacks accepted subtitle/canvas output from
+        // PlayerView while leaving its default SurfaceView black — confirmed
+        // on RayNeo hardware, and TextureView is used unconditionally (not
+        // gated to a specific vendor) since the fix generalizes to any
+        // similar composition quirk. Worth re-confirming on another brand
+        // once one's available, but nothing here assumes RayNeo specifically.
         val video = (LayoutInflater.from(context)
             .inflate(R.layout.external_player_view, container, false) as PlayerView).apply {
             useController = false
@@ -638,10 +640,17 @@ internal class CineVaultVideoPresentation(
     // Two large, soft radial-gradient circles positioned top-left and
     // bottom-right — same technique as the primary button's glow, just
     // sized for the whole screen and positioned via layout gravity
-    // instead of LayerDrawable insets. Sized relative to a typical
-    // external display's resolution; RayNeo-class glasses commonly
-    // report a 1920×1080-class virtual display, so these are sized in
-    // dp against that assumption rather than the tablet's own screen.
+    // instead of LayerDrawable insets. dp() below resolves against
+    // THIS Presentation's own context (the external display's own
+    // density), not the tablet's, so this already scales correctly
+    // across displays with different pixel density. What's still
+    // untested across brands is proportion, not density: these are
+    // fixed dp sizes tuned by eye against RayNeo's ~960dp-wide logical
+    // display, so a glasses model reporting a notably different
+    // logical width/aspect ratio may render this glow too large, too
+    // small, or off-position relative to the screen edges. Purely
+    // cosmetic (doesn't affect touch/controls/subtitles), worth a
+    // once-over once another brand is actually in hand.
     private fun buildAmbientGlow(): View = FrameLayout(context).apply {
         addView(View(context).apply {
             background = GradientDrawable().apply {

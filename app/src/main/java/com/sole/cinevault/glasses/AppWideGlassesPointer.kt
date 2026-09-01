@@ -30,6 +30,16 @@ private const val POINTER_SENSITIVITY = 1.15f
 private const val POINTER_MARGIN_PX = 12f
 private const val MOVE_SLOP_PX = 8f
 private const val EMERGENCY_SPREAD = 1.35f
+// A one-finger touch clicks if the pointer was effectively still for this
+// long right before release — not if the WHOLE touch (from initial
+// down) stayed under MOVE_SLOP_PX. That old all-or-nothing rule meant a
+// completely ordinary "drag the halo onto the button, then just let go"
+// motion could never click anything, since the drag itself already
+// exceeded the slop early on. Tracking a trailing settle window instead
+// means both a genuinely stationary tap AND a drag-then-pause-then-release
+// register as a click, while a fast swipe that's still moving at the
+// moment of release does not.
+private const val SETTLE_MS = 110L
 
 /** State shared by the full-window trackpad surface and its draw-only halo. */
 @Stable
@@ -45,7 +55,8 @@ fun rememberAppWidePointerState(sessionKey: Any?): AppWidePointerState =
     remember(sessionKey) { AppWidePointerState() }
 
 /**
- * App-wide RayNeo trackpad input used outside playback.
+ * App-wide glasses trackpad input used outside playback — vendor-agnostic,
+ * works the same for any connected AR glasses (RayNeo, Viture, XREAL, etc.).
  *
  * One finger moves a persistent relative pointer; a stationary one-finger tap
  * clicks at that pointer. Two-finger movement is replayed as a normal drag at
@@ -122,6 +133,10 @@ fun Modifier.appWideGlassesInput(
         var emergencyTriggered = false
         var syntheticDragDownTime = 0L
         var syntheticDragPoint = state.position
+        // Resets on every one-finger move past a tiny noise threshold;
+        // click-eligibility at release is judged against how long it's
+        // been since THIS, not against total travel since initial down.
+        var lastSignificantMoveTime = SystemClock.uptimeMillis()
 
         do {
             val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -175,6 +190,12 @@ fun Modifier.appWideGlassesInput(
                     oneFingerTravel += delta.getDistance()
                     state.position = clamp(state.position + delta * POINTER_SENSITIVITY)
                     lastOneFingerPosition = change.position
+                    // MOVE_SLOP_PX, not the 0.25f noise floor above — small
+                    // jitter shouldn't keep resetting the settle timer, or a
+                    // "held mostly still" finger would never count as settled.
+                    if (delta.getDistance() > MOVE_SLOP_PX) {
+                        lastSignificantMoveTime = SystemClock.uptimeMillis()
+                    }
                 }
                 change.consume()
             } else {
@@ -191,7 +212,9 @@ fun Modifier.appWideGlassesInput(
                 )
             }
 
-            maximumPointerCount == 1 && oneFingerTravel < MOVE_SLOP_PX -> {
+            maximumPointerCount == 1 &&
+                (oneFingerTravel < MOVE_SLOP_PX ||
+                    SystemClock.uptimeMillis() - lastSignificantMoveTime >= SETTLE_MS) -> {
                 val now = SystemClock.uptimeMillis()
                 dispatchSynthetic(MotionEvent.ACTION_DOWN, state.position, now, now)
                 dispatchSynthetic(MotionEvent.ACTION_UP, state.position, now)
