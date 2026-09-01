@@ -136,14 +136,14 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    // FIX: previously unconditionally paused playback here — this fired on
-    // ANY onStop, including just the screen locking or the app being
-    // backgrounded, which is why playback used to stop the moment the
-    // screen turned off. CineVaultPlaybackService.kt (a foreground
-    // MediaSessionService) now owns keeping playback alive through those
-    // cases and provides real lock-screen controls; there's nothing left
-    // for onStop to do here.
+    // CineVault is a video-first player: leaving the app or locking the
+    // screen pauses normal playback so audio never continues unexpectedly
+    // in the background. Explicit Picture-in-Picture is the exception —
+    // PiP remains a visible playback mode and is allowed to continue.
     override fun onStop() {
+        if (!isInPictureInPictureMode && !CineVaultPlayerHolder.isInPipMode) {
+            CineVaultPlayerHolder.currentPlayer?.pause()
+        }
         super.onStop()
     }
 

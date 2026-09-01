@@ -28,6 +28,7 @@ import android.view.WindowManager
 import android.widget.Toast
 import android.graphics.Color as AndroidColor
 import android.graphics.Bitmap
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.IntentSenderRequest
@@ -1011,6 +1012,26 @@ fun VideoPlayerScreen(
     fun downloadSubtitleModel() = subtitleGenerationCoordinator.downloadModel()
     fun generateSubtitles() = subtitleGenerationCoordinator.generateSubtitles()
     fun translateSubtitles(target: SubtitleTranslationEngine.SupportedLanguage) = subtitleGenerationCoordinator.translateActive(target)
+
+    val aiSubtitleJobLabel: String?
+        get() = when (subtitleGenerationStatus) {
+            is SubtitleGenerationStatus.DownloadingModel -> "AI model"
+            is SubtitleGenerationStatus.Generating -> "AI Subs"
+            is SubtitleGenerationStatus.Translating -> "Translate"
+            else -> null
+        }
+
+    val aiSubtitleJobProgress: Int?
+        get() = when (val status = subtitleGenerationStatus) {
+            is SubtitleGenerationStatus.DownloadingModel -> status.percent
+            is SubtitleGenerationStatus.Generating -> status.percent
+            is SubtitleGenerationStatus.Translating -> status.percent
+            else -> null
+        }
+
+    BackHandler(enabled = showAiSubtitleMenu) {
+        showAiSubtitleMenu = false
+    }
 
     LaunchedEffect(showNextEpisodeOverlay, pendingNextEpisode) {
         if (showNextEpisodeOverlay && pendingNextEpisode != null) {
@@ -2012,44 +2033,87 @@ fun VideoPlayerScreen(
             }
         )
 
-        // AI subtitle generation/translation entry point — deliberately a
-        // standalone floating button rather than threaded into
-        // SubtitleQuickMenuAndTrackSelector or SubtitleStudioSheet's
-        // existing deeply-parameterized composable chains (both would need
-        // a new param added at every intermediate call site between here
-        // and where they're actually declared). This stays fully additive
-        // and isolated instead — safe to land without touching those
-        // files. Fold it into one of those existing menus later once
-        // you're happy with the pipeline; this is a placement/cosmetic
-        // change at that point, not a functional one. Icon reused from
-        // what's already imported (ClosedCaption) rather than adding a
-        // new one — swap to taste.
+        // AI subtitle entry point. Long-running work immediately collapses
+        // into the small draggable job pill on the right so the movie stays
+        // visible. Tapping that pill reopens this compact draggable panel.
         if (!CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
             IconButton(
                 onClick = { showAiSubtitleMenu = true },
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(start = sidePadding, bottom = bottomDockPadding + playButton + 26.dp)
+                    .padding(
+                        start = sidePadding,
+                        bottom = bottomDockPadding + playButton + 26.dp,
+                    )
             ) {
                 Icon(
                     imageVector = Icons.Rounded.ClosedCaption,
                     contentDescription = "AI Subtitles",
-                    tint = Color.White
+                    tint = Color.White,
                 )
             }
         }
-        if (showAiSubtitleMenu) {
-            SubtitleGenerationMenu(
-                status = subtitleGenerationStatus,
-                modelReady = WhisperModelManager.isModelReady(context),
-                modelName = WhisperModelManager.modelDisplayName(),
-                modelSizeLabel = WhisperModelManager.modelDownloadSizeLabel(),
-                onDownloadModel = { downloadSubtitleModel() },
-                onGenerate = { generateSubtitles() },
-                onTranslate = { lang -> translateSubtitles(lang) },
-                onDismiss = { showAiSubtitleMenu = false }
-            )
+
+        val aiJobLabel = aiSubtitleJobLabel
+        PlayerFloatingJobOverlay(
+            visible = aiJobLabel != null &&
+                !showAiSubtitleMenu &&
+                !CineVaultPlayerHolder.isInPipMode &&
+                externalPlayerView == null,
+            containerWidth = playerMaxWidth,
+            containerHeight = playerMaxHeight,
+            label = aiJobLabel ?: "AI",
+            progress = aiSubtitleJobProgress,
+            onOpen = { showAiSubtitleMenu = true },
+        )
+
+        if (
+            showAiSubtitleMenu &&
+            !CineVaultPlayerHolder.isInPipMode &&
+            externalPlayerView == null
+        ) {
+            val aiPanelWidth = (playerMaxWidth - 28.dp)
+                .coerceAtMost(360.dp)
+                .coerceAtLeast(280.dp)
+            val aiPanelHeight = (playerMaxHeight - 36.dp)
+                .coerceAtMost(470.dp)
+                .coerceAtLeast(320.dp)
+
+            Box(
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                DraggableFloatingPopup(
+                    containerWidth = playerMaxWidth,
+                    containerHeight = playerMaxHeight,
+                    popupWidth = aiPanelWidth,
+                    popupMaxHeight = aiPanelHeight,
+                    onUserInteraction = {},
+                ) {
+                    Box(modifier = Modifier.width(aiPanelWidth)) {
+                        SubtitleGenerationMenu(
+                            status = subtitleGenerationStatus,
+                            modelReady = WhisperModelManager.isModelReady(context),
+                            modelName = WhisperModelManager.modelDisplayName(),
+                            modelSizeLabel = WhisperModelManager.modelDownloadSizeLabel(),
+                            onDownloadModel = {
+                                showAiSubtitleMenu = false
+                                downloadSubtitleModel()
+                            },
+                            onGenerate = {
+                                showAiSubtitleMenu = false
+                                generateSubtitles()
+                            },
+                            onTranslate = { lang ->
+                                showAiSubtitleMenu = false
+                                translateSubtitles(lang)
+                            },
+                            onDismiss = { showAiSubtitleMenu = false },
+                        )
+                    }
+                }
+            }
         }
+
 
 
     }
