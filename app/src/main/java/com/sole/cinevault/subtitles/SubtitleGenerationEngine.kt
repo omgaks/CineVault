@@ -188,13 +188,133 @@ object SubtitleGenerationEngine {
             val startMs = segment.start.toLong() * 1000L / sampleRate
             val endMs = startMs + (segment.samples.size.toLong() * 1000L / sampleRate)
 
-            srt.append(cueIndex).append('\n')
-            srt.append(formatSrtTimestamp(startMs)).append(" --> ").append(formatSrtTimestamp(endMs)).append('\n')
-            srt.append(text).append("\n\n")
-            return cueIndex + 1
+            return appendFormattedCues(
+                srt = srt,
+                firstCueIndex = cueIndex,
+                text = text,
+                segmentStartMs = startMs,
+                segmentEndMs = endMs,
+            )
         } finally {
             stream.release()
         }
+    }
+
+    /**
+     * Whisper can return a whole paragraph for one long VAD speech segment.
+     * Normal subtitles should stay glanceable, so split that paragraph into
+     * compact cues and distribute the original speech timing proportionally.
+     *
+     * Target: roughly two short lines / <= 84 characters per cue.
+     */
+    private fun appendFormattedCues(
+        srt: StringBuilder,
+        firstCueIndex: Int,
+        text: String,
+        segmentStartMs: Long,
+        segmentEndMs: Long,
+    ): Int {
+        val pieces = splitSubtitleText(text)
+        if (pieces.isEmpty()) return firstCueIndex
+
+        val totalDuration = (segmentEndMs - segmentStartMs).coerceAtLeast(1L)
+        val weights = pieces.map { piece -> piece.length.coerceAtLeast(1) }
+        val totalWeight = weights.sum().coerceAtLeast(1)
+
+        var cueIndex = firstCueIndex
+        var consumedWeight = 0
+
+        pieces.forEachIndexed { index, piece ->
+            val cueStartMs =
+                segmentStartMs + (totalDuration * consumedWeight / totalWeight)
+
+            consumedWeight += weights[index]
+
+            val cueEndMs =
+                if (index == pieces.lastIndex) {
+                    segmentEndMs
+                } else {
+                    segmentStartMs + (totalDuration * consumedWeight / totalWeight)
+                }
+
+            srt.append(cueIndex).append('\n')
+            srt.append(formatSrtTimestamp(cueStartMs))
+                .append(" --> ")
+                .append(formatSrtTimestamp(cueEndMs.coerceAtLeast(cueStartMs + 1L)))
+                .append('\n')
+            srt.append(wrapSubtitleLines(piece)).append("\n\n")
+            cueIndex++
+        }
+
+        return cueIndex
+    }
+
+    private fun splitSubtitleText(text: String): List<String> {
+        val normalized = text
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+        if (normalized.isBlank()) return emptyList()
+
+        val sentenceChunks = normalized
+            .split(Regex("(?<=[.!?…])\\s+"))
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+
+        val output = mutableListOf<String>()
+
+        for (sentence in sentenceChunks) {
+            if (sentence.length <= 84) {
+                output += sentence
+                continue
+            }
+
+            val words = sentence.split(' ').filter { it.isNotBlank() }
+            val current = StringBuilder()
+
+            for (word in words) {
+                val proposedLength =
+                    if (current.isEmpty()) word.length
+                    else current.length + 1 + word.length
+
+                if (proposedLength > 84 && current.isNotEmpty()) {
+                    output += current.toString()
+                    current.clear()
+                }
+
+                if (current.isNotEmpty()) current.append(' ')
+                current.append(word)
+            }
+
+            if (current.isNotEmpty()) output += current.toString()
+        }
+
+        return output
+    }
+
+    private fun wrapSubtitleLines(text: String): String {
+        if (text.length <= 42) return text
+
+        val words = text.split(' ')
+        val first = StringBuilder()
+        val second = StringBuilder()
+
+        for (word in words) {
+            if (first.length < 42) {
+                val next = if (first.isEmpty()) word else "${first} $word"
+                if (next.length <= 42 || second.isEmpty()) {
+                    if (first.isNotEmpty()) first.append(' ')
+                    first.append(word)
+                    continue
+                }
+            }
+
+            if (second.isNotEmpty()) second.append(' ')
+            second.append(word)
+        }
+
+        return if (second.isEmpty()) first.toString()
+        else first.toString() + "\n" + second.toString()
     }
 
     private fun formatSrtTimestamp(ms: Long): String {
