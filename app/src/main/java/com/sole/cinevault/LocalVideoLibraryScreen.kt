@@ -579,50 +579,12 @@ fun LocalVideoLibraryScreen(
                 )
             }
 
-            // ── Collections shelf — ONLY on "All" (the default overview),
-            // same fix as the TV/Folders shelf below: this used to render
-            // unconditionally on every category tab.
-            if (selectedCategory == "All") {
-                run {
-                    data class CollectionShelfEntry(val key: String, val displayName: String, val backdropUrl: String?, val isCurated: Boolean, val collectionId: Int?)
-                    val nativeEntries = visibleSortedVideos
-                        .distinctBy { it.collectionId }
-                        .mapNotNull { video ->
-                            val collectionId = video.collectionId
-                            val collectionName = video.collectionName
-                            if (collectionId == null || collectionName == null) null
-                            else CollectionShelfEntry("native:$collectionId", collectionName, video.backdropUrl, false, collectionId)
-                        }
-                    val curatedNames = visibleSortedVideos.flatMap { it.curatedCollections }.distinct()
-                    val curatedEntries = curatedNames.map { name ->
-                        val backdrop = visibleSortedVideos.firstOrNull { it.curatedCollections.contains(name) && !it.backdropUrl.isNullOrBlank() }?.backdropUrl
-                        CollectionShelfEntry("curated:$name", name, backdrop, true, null)
-                    }
-                    val collectionShelf = (nativeEntries + curatedEntries).sortedBy { it.displayName.lowercase() }
-
-                    if (collectionShelf.isNotEmpty()) {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            Column {
-                                Text(text = "Collections", color = TextBright, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(10.dp))
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    items(items = collectionShelf, key = { it.key }) { entry ->
-                                        CollectionShelfCard(
-                                            title = entry.displayName,
-                                            backdropUrl = entry.backdropUrl,
-                                            onClick = {
-                                                if (entry.isCurated) onCuratedCollectionClick(entry.displayName)
-                                                else entry.collectionId?.let { onNativeCollectionClick(it, entry.displayName) }
-                                            }
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(20.dp))
-                            }
-                        }
-                    }
-                }
-            }
+            LocalLibraryCollectionsShelf(
+                selectedCategory = selectedCategory,
+                visibleSortedVideos = visibleSortedVideos,
+                onNativeCollectionClick = onNativeCollectionClick,
+                onCuratedCollectionClick = onCuratedCollectionClick
+            )
 
             // ── TV Shows & Folders — ONE combined scrollable row (same
             // pattern as the Collections shelf above), not two separate
