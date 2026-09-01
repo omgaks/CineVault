@@ -99,7 +99,7 @@ fun Context.findCineActivity(): Activity? {
 // Persists the Home screen's scroll position across navigation — same pattern
 // as LibraryScrollState in LocalVideoLibraryScreen.kt. A plain object survives
 // composable disposal since it isn't tied to the composition.
-private object HomeScrollState {
+internal object HomeScrollState {
     var index: Int = 0
     var offset: Int = 0
 }
