@@ -987,6 +987,31 @@ fun VideoPlayerScreen(
     fun runAutoSync() = autoSyncCoordinator.runAutoSync()
     fun applyAutoSyncResult(result: SubtitleSyncResult) = autoSyncCoordinator.applyAutoSyncResult(result)
 
+    // AI subtitle generation + translation — same coordinator-glue pattern
+    // as autoSyncCoordinator immediately above. subtitleGenerationStatus
+    // needs to exist as a remembered state var wherever this composable's
+    // other UI state lives (alongside autoSyncStatus) — added here inline
+    // via `remember` rather than assuming a specific state-holder file,
+    // since PlayerUiState.kt's exact shape may have moved on since this
+    // was written.
+    var subtitleGenerationStatus by remember { mutableStateOf<SubtitleGenerationStatus>(SubtitleGenerationStatus.Idle) }
+    var showAiSubtitleMenu by remember { mutableStateOf(false) }
+    val subtitleGenerationCoordinator = remember(exoPlayer) {
+        SubtitleGenerationCoordinator(
+            context = context,
+            scope = scope,
+            exoPlayer = exoPlayer,
+            getCurrentVideoPath = { currentVideo.path },
+            getPrimarySubtitleUri = { trackUi.primaryUri },
+            getStatus = { subtitleGenerationStatus },
+            setStatus = { subtitleGenerationStatus = it },
+            onSubtitleReady = { uri -> playCurrentVideoWithSubtitle(uri, resumePosition = position, isOriginalSubtitle = false) }
+        )
+    }
+    fun downloadSubtitleModel() = subtitleGenerationCoordinator.downloadModel()
+    fun generateSubtitles() = subtitleGenerationCoordinator.generateSubtitles()
+    fun translateSubtitles(target: SubtitleTranslationEngine.SupportedLanguage) = subtitleGenerationCoordinator.translateActive(target)
+
     LaunchedEffect(showNextEpisodeOverlay, pendingNextEpisode) {
         if (showNextEpisodeOverlay && pendingNextEpisode != null) {
             var count = 15
@@ -1986,6 +2011,46 @@ fun VideoPlayerScreen(
                 deleteWithUndo(file)
             }
         )
+
+        // AI subtitle generation/translation entry point — deliberately a
+        // standalone floating button rather than threaded into
+        // SubtitleQuickMenuAndTrackSelector or SubtitleStudioSheet's
+        // existing deeply-parameterized composable chains (both would need
+        // a new param added at every intermediate call site between here
+        // and where they're actually declared). This stays fully additive
+        // and isolated instead — safe to land without touching those
+        // files. Fold it into one of those existing menus later once
+        // you're happy with the pipeline; this is a placement/cosmetic
+        // change at that point, not a functional one. Icon reused from
+        // what's already imported (ClosedCaption) rather than adding a
+        // new one — swap to taste.
+        if (!CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
+            IconButton(
+                onClick = { showAiSubtitleMenu = true },
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = sidePadding, bottom = bottomDockPadding + playButton + 26.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.ClosedCaption,
+                    contentDescription = "AI Subtitles",
+                    tint = Color.White
+                )
+            }
+        }
+        if (showAiSubtitleMenu) {
+            SubtitleGenerationMenu(
+                status = subtitleGenerationStatus,
+                modelReady = WhisperModelManager.isModelReady(context),
+                modelName = WhisperModelManager.modelDisplayName(),
+                modelSizeLabel = WhisperModelManager.modelDownloadSizeLabel(),
+                onDownloadModel = { downloadSubtitleModel() },
+                onGenerate = { generateSubtitles() },
+                onTranslate = { lang -> translateSubtitles(lang) },
+                onDismiss = { showAiSubtitleMenu = false }
+            )
+        }
+
 
     }
 }
