@@ -63,6 +63,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.sole.cinevault.ui.theme.*
 
+@Composable
 internal fun rememberPillGlowAlpha(): Float {
     val infinite = rememberInfiniteTransition(label = "detailPillGlow")
     val alpha by infinite.animateFloat(
@@ -77,7 +78,7 @@ internal fun rememberPillGlowAlpha(): Float {
 // A visible glowing amber ring around a pill — combines the soft amberGlow
 // shadow with an explicit gradient border so the effect is unmistakable even
 // if amberGlow's shadow alone renders subtly on some devices.
-private fun Modifier.strongPillGlow(glow: Float, cornerRadius: androidx.compose.ui.unit.Dp = 8.dp, glowRadius: androidx.compose.ui.unit.Dp = 34.dp): Modifier = this
+internal fun Modifier.strongPillGlow(glow: Float, cornerRadius: androidx.compose.ui.unit.Dp = 8.dp, glowRadius: androidx.compose.ui.unit.Dp = 34.dp): Modifier = this
     .amberGlow(radius = glowRadius, alpha = glow)
     .border(
         width = 1.3.dp,
@@ -229,6 +230,7 @@ internal fun CastRowShimmer() {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+@Composable
 internal fun CastCard(cast: TmdbCastMember, movieName: String, onActorClick: (Int, String, String?) -> Unit) {
     val context = LocalContext.current
     val imageUrl = cast.profile_path?.let { "https://image.tmdb.org/t/p/w300$it" }
