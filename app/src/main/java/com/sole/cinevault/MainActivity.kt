@@ -40,10 +40,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import com.sole.cinevault.subtitles.SubtitleImportEngine
-import com.sole.cinevault.glasses.AppWideGlassesPointer
-import com.sole.cinevault.glasses.appWideGlassesInput
-import com.sole.cinevault.glasses.rememberExternalDisplayState
-import com.sole.cinevault.glasses.rememberAppWidePointerState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -446,9 +442,6 @@ fun CineVaultApp() {
 
     val current = backStack.last()
     val activeTabIndex = (backStack.firstOrNull() as? Destination.Tab)?.index ?: 0
-    val externalDisplay by rememberExternalDisplayState()
-    var appWideGlassesPointerDisabled by remember(externalDisplay.displayId) { mutableStateOf(false) }
-    val appWidePointerState = rememberAppWidePointerState(externalDisplay.displayId)
 
     fun push(dest: Destination) { backStack = backStack + dest }
     fun pop() { if (backStack.size > 1) backStack = backStack.dropLast(1) }
@@ -530,20 +523,6 @@ fun CineVaultApp() {
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .then(
-                if (externalDisplay.isConnected && !isPlayerActive && !appWideGlassesPointerDisabled) {
-                    Modifier.appWideGlassesInput(
-                        activity = activity,
-                        sessionKey = externalDisplay.displayId,
-                        state = appWidePointerState,
-                        onEmergencyReturnToTablet = { appWideGlassesPointerDisabled = true }
-                    )
-                } else Modifier
-            )
-    ) {
     Scaffold(
         containerColor = Color(0xFF080808),
         bottomBar = {
@@ -558,27 +537,6 @@ fun CineVaultApp() {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Give every navigation destination its own Compose slot tree.
-            // Detail uses ScrollState/LazyRow while Actor/Genre/Collection
-            // pages use LazyGridState. On minified release builds Compose
-            // could otherwise restore a remembered state object belonging
-            // to the screen that occupied this position immediately before
-            // it, producing a ClassCastException during the first frame of
-            // the Actor page. The explicit key disposes the previous
-            // destination's remembered UI before composing the new one.
-            val destinationCompositionKey = when (val destination = current) {
-                is Destination.Tab -> "tab:${destination.index}"
-                is Destination.Detail -> "detail:${destination.item.video.path}"
-                is Destination.TvShow -> "tv:${destination.group.showName}"
-                is Destination.Player -> "player:${destination.video.path}"
-                is Destination.GenrePage -> "genre:${destination.genreName}"
-                is Destination.DirectorPage -> "director:${destination.directorName}"
-                is Destination.ActorPage -> "actor:${destination.actorId}"
-                is Destination.NativeCollectionPage -> "native-collection:${destination.collectionId}"
-                is Destination.CuratedCollectionPage -> "curated-collection:${destination.collectionName}"
-                is Destination.RestrictedFolderPage -> "restricted-folder:${destination.folderId}"
-            }
-            key(destinationCompositionKey) {
             when (val dest = current) {
                 is Destination.Player -> {
                     VideoPlayerScreen(
@@ -603,22 +561,6 @@ fun CineVaultApp() {
                         onBack = { pop() },
                         onEpisodeClick = { episode ->
                             push(Destination.Player(episode.video, episode.type, dest.group.episodes))
-                        },
-                        onEpisodesChanged = { updatedEpisodes ->
-                            val updatesByPath = updatedEpisodes.associateBy { it.video.path }
-                            libraryVideos = libraryVideos.map { existing ->
-                                updatesByPath[existing.video.path] ?: existing
-                            }
-                            val representative = updatedEpisodes.firstOrNull()
-                            replaceTop(
-                                Destination.TvShow(
-                                    dest.group.copy(
-                                        posterUrl = representative?.posterUrl ?: dest.group.posterUrl,
-                                        backdropUrl = representative?.backdropUrl ?: dest.group.backdropUrl,
-                                        episodes = updatedEpisodes
-                                    )
-                                )
-                            )
                         },
                         onSecretChanged = { scope.launch { reloadAfterSecretChange() } }
                     )
@@ -673,11 +615,7 @@ fun CineVaultApp() {
                 }
 
                 is Destination.ActorPage -> {
-                    // Gson can deserialize caches written before `cast` was
-                    // added with a runtime null despite the Kotlin property
-                    // being declared non-null. orEmpty() keeps those existing
-                    // caches usable instead of crashing actor navigation.
-                    val items = libraryVideos.filter { v -> v.cast.orEmpty().any { it.id == dest.actorId } }
+                    val items = libraryVideos.filter { v -> v.cast.any { it.id == dest.actorId } }
                     ActorScreen(
                         actorId = dest.actorId,
                         actorName = dest.actorName,
@@ -733,11 +671,6 @@ fun CineVaultApp() {
                             onOpenStreamUrl = { url ->
                                 val streamName = url.substringAfterLast("/").substringBefore("?").ifBlank { "Stream" }
                                 push(Destination.Player(VideoFile(path = url, name = streamName), "stream", emptyList()))
-                            },
-                            videos = libraryVideos,
-                            onVideosUpdated = { updatedVideos ->
-                                libraryVideos = updatedVideos
-                                scope.launch { saveLibraryCache(context, updatedVideos) }
                             }
                         )
 
@@ -790,16 +723,6 @@ fun CineVaultApp() {
                     }
                 }
             }
-            }
-
-            // Outside playback Android mirrors CineVault to the glasses.
-            // This transparent layer turns the tablet into a relative
-            // focus-navigation pad and draws the amber halo in that mirrored
-            // output. The dedicated player owns its own richer controller.
-        }
-    }
-        if (externalDisplay.isConnected && !isPlayerActive && !appWideGlassesPointerDisabled) {
-            AppWideGlassesPointer(appWidePointerState)
         }
     }
 }
