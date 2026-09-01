@@ -163,6 +163,14 @@ dependencies {
     implementation("androidx.media3:media3-session:$media3Version")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // ML Kit on-device translation (AI subtitle translation) — small
+    // per-language model downloaded once, then works fully offline. Not
+    // versioned alongside media3-* above; ML Kit is a separate Google
+    // artifact family with its own release cadence.
+    implementation("com.google.mlkit:translate:17.0.3")
+    implementation("com.google.mlkit:language-id:17.0.6")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
     implementation("io.coil-kt:coil-gif:2.7.0")
     implementation("io.coil-kt:coil-video:2.7.0")
 
