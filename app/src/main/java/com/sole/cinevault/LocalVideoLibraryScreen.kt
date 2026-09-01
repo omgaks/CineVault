@@ -137,25 +137,6 @@ object LibraryScrollState {
     var gridMode: Boolean = true
 }
 
-private data class VideoFolder(
-    val folderName: String,
-    val folderPath: String,
-    val videos: List<VideoWithMetadata>
-)
-
-private fun groupVideosByFolder(videos: List<VideoWithMetadata>): List<VideoFolder> {
-    return videos
-        .groupBy { File(it.video.path).parent ?: "/" }
-        .map { (path, items) ->
-            VideoFolder(
-                folderName = File(path).name.ifBlank { path },
-                folderPath = path,
-                videos = items.sortedBy { it.title.lowercase() }
-            )
-        }
-        .sortedBy { it.folderName.lowercase() }
-}
-
 // ── Folder type icon heuristic ────────────────────────────────────────────
 // Generic Material icons only — deliberately NOT actual TikTok/Instagram
 // brand marks (those are trademarked assets, not something to reproduce).
@@ -643,90 +624,20 @@ fun LocalVideoLibraryScreen(
                 }
             }
 
-            if (selectedCategory == "Folders") {
-                if (videoFolders.isEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                            Text(text = "No folders found. Scan your library first.", color = TextMuted, fontSize = 15.sp)
-                        }
-                    }
-                } else {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Text(text = "Folders (${videoFolders.size})", color = TextBright, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    videoFolders.forEach { folder ->
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            val isExpanded = expandedFolders.contains(folder.folderPath)
-                            // FIX (#3): plain device folders in this tab
-                            // previously had no long-press action at all —
-                            // only expand/collapse on tap. That meant a
-                            // long-press here either did nothing, or (if the
-                            // finger landed on an already-expanded video
-                            // card underneath) silently hid just that ONE
-                            // file — which is almost certainly what looked
-                            // like "a random file getting hidden" instead of
-                            // the whole folder. Long-press now routes
-                            // through the exact same folderSecretConfirm ->
-                            // toggleFolderSecret(all paths in folder) path
-                            // used by the TV Shows & Folders shelf, so
-                            // behavior is identical and correct in both
-                            // places.
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .glassPanel(cornerRadius = 14.dp)
-                                    .combinedClickable(
-                                        onClick = {
-                                            expandedFolders = if (isExpanded) expandedFolders - folder.folderPath else expandedFolders + folder.folderPath
-                                        },
-                                        onLongClick = {
-                                            folderSecretConfirm = folder.folderName to folder.videos.map { it.video.path }
-                                        }
-                                    )
-                                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Folder,
-                                    contentDescription = null,
-                                    tint = AmberGlow,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(text = folder.folderName, color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                                    Text(text = "${folder.videos.size} video${if (folder.videos.size != 1) "s" else ""}", color = TextMuted, fontSize = 11.sp)
-                                }
-                                Icon(
-                                    imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                                    contentDescription = null,
-                                    tint = TextMuted,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-
-                        if (expandedFolders.contains(folder.folderPath)) {
-                            if (isGridMode) {
-                                items(items = folder.videos, key = { it.video.path }) { item ->
-                                    LibraryGridCard(item = item, onClick = { onItemClick(item) }, onPlayClick = onPlayClick, onLongPress = { openContextSheet(it) })
-                                }
-                                val remainder = folder.videos.size % gridColumns
-                                if (remainder != 0) {
-                                    repeat(gridColumns - remainder) {
-                                        item { Spacer(modifier = Modifier.fillMaxWidth()) }
-                                    }
-                                }
-                            } else {
-                                items(items = folder.videos, key = { it.video.path }, span = { GridItemSpan(maxLineSpan) }) { item ->
-                                    LibraryCard(item = item, onClick = { onItemClick(item) }, onLongPress = { openContextSheet(it) })
-                                }
-                            }
-                        }
-                    }
+            LocalLibraryFoldersSection(
+                selectedCategory = selectedCategory,
+                videoFolders = videoFolders,
+                expandedFolders = expandedFolders,
+                onExpandedFoldersChange = { expandedFolders = it },
+                isGridMode = isGridMode,
+                gridColumns = gridColumns,
+                onItemClick = onItemClick,
+                onPlayClick = onPlayClick,
+                onItemLongPress = { openContextSheet(it) },
+                onFolderLongPress = { folderName, paths ->
+                    folderSecretConfirm = folderName to paths
                 }
-            }
+            )
 
             LocalLibraryDuplicatesSection(
                 selectedCategory = selectedCategory,
