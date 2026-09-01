@@ -834,12 +834,12 @@ fun LibraryCard(
     }
 }
 
-private fun formatClock(ms: Long): String {
+internal fun formatClock(ms: Long): String {
     val s = ms / 1000; val h = s / 3600; val m = (s % 3600) / 60; val sec = s % 60
     return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%02d:%02d".format(m, sec)
 }
 
-private fun getWatchedPercent(context: Context, item: VideoWithMetadata): Float {
+internal fun getWatchedPercent(context: Context, item: VideoWithMetadata): Float {
     val savedPosition = loadPlaybackPosition(context, item.video.path)
     if (savedPosition <= 15_000L) return 0f
     // Use real saved duration if available, fall back to 90min estimate
