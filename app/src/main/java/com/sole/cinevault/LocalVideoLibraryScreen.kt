@@ -580,35 +580,11 @@ fun LocalVideoLibraryScreen(
                 }
             )
 
-            // ── Genres shelf — ONLY on "All". Circular glowing icon chips,
-            // same horizontal-scroll format as Collections (not a wrapping
-            // grid), spacing tightened to fit more per screen. Genre names
-            // are normalized first so TMDB's movie/TV naming differences
-            // (e.g. "Science Fiction" vs "Sci-Fi & Fantasy") collapse into
-            // one chip instead of showing as near-duplicates.
-            if (selectedCategory == "All") {
-                run {
-                    val genreNames = visibleSortedVideos
-                        .flatMap { it.genres }
-                        .map { normalizeGenreName(it) }
-                        .distinct()
-                        .sortedBy { it.lowercase() }
-                    if (genreNames.isNotEmpty()) {
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            Column {
-                                Text(text = "Genres", color = TextBright, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(12.dp))
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    items(items = genreNames, key = { it }) { genre ->
-                                        GenreIconChip(name = genre, onClick = { onGenreClick(genre) })
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(20.dp))
-                            }
-                        }
-                    }
-                }
-            }
+            LocalLibraryGenresShelf(
+                selectedCategory = selectedCategory,
+                visibleSortedVideos = visibleSortedVideos,
+                onGenreClick = onGenreClick
+            )
 
             if (selectedCategory == "Secret" && !secretUnlocked) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
