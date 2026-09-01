@@ -108,7 +108,7 @@ fun Activity.exitImmersiveModeForPlayer() {
 // CineVault" — content:// Uris carry a real filename via OpenableColumns,
 // everything else (file://, http://, https://) falls back to the last path
 // segment. Never throws; worst case the video just shows a generic name.
-private fun resolveOpenedVideoDisplayName(context: android.content.Context, uri: android.net.Uri): String {
+internal fun resolveOpenedVideoDisplayName(context: android.content.Context, uri: android.net.Uri): String {
     if (uri.scheme.equals("content", ignoreCase = true)) {
         try {
             context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
