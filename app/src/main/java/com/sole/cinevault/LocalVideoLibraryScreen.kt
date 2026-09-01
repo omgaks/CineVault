@@ -199,67 +199,22 @@ fun LocalVideoLibraryScreen(
         LibraryScrollState.gridMode = isGridMode
     }
 
-    // FIX: KeyguardManager.createConfirmDeviceCredentialIntent has been
-    // deprecated since API 30, with inconsistent behavior on newer
-    // platforms — androidx.biometric's BiometricPrompt is the current
-    // standard replacement, and additionally supports actual biometric
-    // auth (fingerprint/face) rather than only PIN/pattern/password.
-    // setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL) means
-    // either biometric OR the device's own PIN/pattern/password satisfies
-    // it — matching the original's fallback behavior — and deliberately
-    // has NO setNegativeButtonText(), since combining that with
-    // DEVICE_CREDENTIAL throws IllegalStateException (DEVICE_CREDENTIAL
-    // already provides its own way out of the prompt).
     fun openSecretFolder() {
-        if (secretUnlocked) { selectedCategory = "Secret"; return }
-        val activity = context.findCineActivity() as? FragmentActivity
-        if (activity == null) {
-            Toast.makeText(context, "Couldn't open Secret Folder unlock", Toast.LENGTH_SHORT).show()
+        if (secretUnlocked) {
+            selectedCategory = "Secret"
             return
         }
-        val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
-        if (BiometricManager.from(context).canAuthenticate(authenticators) != BiometricManager.BIOMETRIC_SUCCESS) {
-            // Never unlocks by default — an unavailable/unset device lock
-            // means the folder simply stays locked, with a clear reason why.
-            Toast.makeText(context, "Set a device lock (fingerprint, PIN, pattern, or password) first to secure this folder", Toast.LENGTH_LONG).show()
-            return
-        }
-        val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Unlock Secret Folder")
-            .setSubtitle("Confirm fingerprint, PIN, pattern, or password")
-            .setAllowedAuthenticators(authenticators)
-            .build()
-        val prompt = BiometricPrompt(activity, ContextCompat.getMainExecutor(context), object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                // FIX (#4, carried over): navigate in the same callback
-                // that confirms the unlock, not on the NEXT tap of the
-                // "Secret" chip — otherwise it only opens on the second tap.
+
+        requestSecretFolderUnlock(
+            context = context,
+            onUnlocked = {
                 secretUnlocked = true
                 selectedCategory = "Secret"
-                Toast.makeText(context, "Secret folder unlocked", Toast.LENGTH_SHORT).show()
-            }
-            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                // FIX: was trying to distinguish "user cancelled" from
-                // "genuine error" by excluding a specific denylist of error
-                // codes (ERROR_USER_CANCELED/NEGATIVE_BUTTON/CANCELED) —
-                // but backing out of the DEVICE_CREDENTIAL fallback screen
-                // (PIN/pattern, as opposed to the fingerprint dialog)
-                // apparently returns a different code than expected on at
-                // least one real device, since a cancel was still showing
-                // this toast. Rather than keep guessing at BiometricPrompt's
-                // full error-code enum one device-report at a time, just
-                // don't show a toast on any error — staying on the same
-                // screen, still locked, is self-evident feedback on its
-                // own, and there was never a strong need to distinguish
-                // "you cancelled" from "something went wrong" here anyway.
+            },
+            onAuthenticationError = {
                 secretUnlocked = false
             }
-            // A single failed attempt (e.g. one bad fingerprint read) keeps
-            // the prompt open for retry — no state change here, matching
-            // BiometricPrompt's own intended UX.
-            override fun onAuthenticationFailed() {}
-        })
-        prompt.authenticate(promptInfo)
+        )
     }
 
     fun openContextSheet(item: VideoWithMetadata) {
