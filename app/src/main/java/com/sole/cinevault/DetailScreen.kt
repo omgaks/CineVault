@@ -1,7 +1,6 @@
 package com.sole.cinevault
 
 import com.sole.cinevault.metadata.*
-import com.sole.cinevault.metadata.artworkstudio.*
 import com.sole.cinevault.library.*
 
 import android.content.Context
@@ -31,10 +30,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Audiotrack
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.Button
@@ -101,12 +102,10 @@ fun DetailScreen(
     val hasResumePosition = savedPosition > 15_000L
     val trailerSearchUrl = remember(item.title) { "https://www.youtube.com/results?search_query=${Uri.encode("${item.title} official trailer")}" }
 
-    // One consolidated entry point for re-matching, online artwork, refresh,
-    // local imports and video-frame artwork. This was previously wired only
-    // on TV-show detail pages, leaving movie pages on the legacy Fix Match UI.
-    var artworkStudioTool by remember(item.video.path) {
-        mutableStateOf<ArtworkStudioTool?>(null)
-    }
+    // "Fix Match" — manual re-match flow for items TMDB matched incorrectly
+    // or not at all (e.g. "Akira 30th Anniversary" before the filename
+    // cleaner handled edition tags). See RematchDialog.kt / RematchViewModel.kt.
+    var showRematch by remember { mutableStateOf(false) }
 
     // Cast list — keyed consistently on item.tmdbId/item.type now (the
     // original had remember() keyed on item.video.path but the effect keyed
@@ -349,7 +348,19 @@ fun DetailScreen(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Trailer", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
                     }
-                    ArtworkStudioPill(onOpen = { artworkStudioTool = it })
+                    // Fix Match — opens RematchDialog to manually correct a
+                    // wrong or missing TMDB match (e.g. special-edition
+                    // filenames that slipped past the automatic cleaner).
+                    val rematchGlow = rememberPillGlowAlpha()
+                    Button(onClick = { showRematch = true },
+                        shape = RoundedCornerShape(40.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = GlassSurface, contentColor = TextBright),
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 9.dp),
+                        modifier = Modifier.strongPillGlow(glow = rematchGlow, cornerRadius = 40.dp, glowRadius = 40.dp)) {
+                        Icon(imageVector = Icons.Rounded.Search, contentDescription = null, tint = AmberCore, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Fix Match", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -365,27 +376,9 @@ fun DetailScreen(
                 SectionTitle("Cast & Crew")
                 Spacer(modifier = Modifier.height(12.dp))
                 when {
-                    castLoading && castList.isEmpty() -> key("cast-loading") {
-                        CastRowShimmer()
-                    }
-                    castList.isEmpty() -> key("cast-empty") {
-                        Text(text = "Cast info not available.", color = TextFaint, fontSize = 14.sp)
-                    }
-                    else -> key("cast-list:${item.tmdbId}:${item.type}") {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            items(
-                                items = castList,
-                                key = { cast -> "${cast.id ?: 0}:${cast.name.orEmpty()}:${cast.profile_path.orEmpty()}" },
-                                contentType = { "cast-card" },
-                            ) { cast ->
-                                CastCard(
-                                    cast = cast,
-                                    movieName = item.title,
-                                    onActorClick = onActorClick,
-                                )
-                            }
-                        }
-                    }
+                    castLoading && castList.isEmpty() -> CastRowShimmer()
+                    castList.isEmpty() -> Text(text = "Cast info not available.", color = TextFaint, fontSize = 14.sp)
+                    else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) { items(castList) { cast -> CastCard(cast = cast, movieName = item.title, onActorClick = onActorClick) } }
                 }
 
                 Spacer(modifier = Modifier.height(28.dp))
@@ -401,13 +394,13 @@ fun DetailScreen(
             Icon(imageVector = Icons.Rounded.ArrowBack, contentDescription = "Back", tint = TextBright, modifier = Modifier.size(22.dp))
         }
 
-        artworkStudioTool?.let { initialTool ->
-            ArtworkStudioDialog(
-                items = listOf(item),
-                initialTool = initialTool,
-                onDismiss = { artworkStudioTool = null },
+        if (showRematch) {
+            RematchDialog(
+                currentItem = item,
+                onDismiss = { showRematch = false },
                 onApplied = { updated ->
-                    updated.firstOrNull()?.let(onMetadataUpdated)
+                    showRematch = false
+                    onMetadataUpdated(updated)
                 }
             )
         }
@@ -420,171 +413,6 @@ fun DetailScreen(
 // reported as "not visible", so it needs to read clearly at rest, not just at
 // its peak.
 @Composable
-private fun rememberPillGlowAlpha(): Float {
-    val infinite = rememberInfiniteTransition(label = "detailPillGlow")
-    val alpha by infinite.animateFloat(
-        initialValue = 0.55f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
-        label = "detailPillGlowAlpha"
-    )
-    return alpha
-}
-
-// A visible glowing amber ring around a pill — combines the soft amberGlow
-// shadow with an explicit gradient border so the effect is unmistakable even
-// if amberGlow's shadow alone renders subtly on some devices.
-private fun Modifier.strongPillGlow(glow: Float, cornerRadius: androidx.compose.ui.unit.Dp = 8.dp, glowRadius: androidx.compose.ui.unit.Dp = 34.dp): Modifier = this
-    .amberGlow(radius = glowRadius, alpha = glow)
-    .border(
-        width = 1.3.dp,
-        brush = Brush.verticalGradient(listOf(AmberGlow.copy(alpha = glow), AmberCore.copy(alpha = glow * 0.7f))),
-        shape = RoundedCornerShape(cornerRadius)
-    )
-
-// Custom-drawn clapperboard mark for the Trailer button — more distinctive
-// and on-theme than a generic library icon, at almost no extra weight.
-@Composable
-private fun ClapperboardIcon(size: androidx.compose.ui.unit.Dp, tint: Color) {
-    Canvas(modifier = Modifier.size(size)) {
-        val w = this.size.width
-        val h = this.size.height
-        val bodyTop = h * 0.42f
-        val corner = androidx.compose.ui.geometry.CornerRadius(w * 0.10f, w * 0.10f)
-
-        // Board body
-        drawRoundRect(color = tint, topLeft = Offset(0f, bodyTop), size = Size(w, h - bodyTop), cornerRadius = corner)
-
-        // Clapper top bar
-        val bar = Path().apply {
-            moveTo(0f, bodyTop * 0.62f)
-            lineTo(w, 0f)
-            lineTo(w, bodyTop * 0.62f)
-            lineTo(0f, bodyTop)
-            close()
-        }
-        drawPath(path = bar, color = tint)
-
-        // Diagonal cut stripes across the bar for the classic clapperboard look
-        val stripeCount = 4
-        val stripeWidth = w * 0.11f
-        for (i in 0 until stripeCount) {
-            val cx = w * (i + 0.5f) / stripeCount
-            rotate(degrees = -18f, pivot = Offset(cx, bodyTop * 0.5f)) {
-                drawRect(color = Color.Black.copy(alpha = 0.55f), topLeft = Offset(cx - stripeWidth / 2f, -h * 0.1f), size = Size(stripeWidth, bodyTop * 1.3f))
-            }
-        }
-    }
-}
-
-// ── Rating badges — real logo marks, uniform 20.dp, matching the player screen, glowing ──
-@Composable
-private fun TmdbBadge(value: String) {
-    val glow = rememberPillGlowAlpha()
-    Row(modifier = Modifier.strongPillGlow(glow).clip(RoundedCornerShape(8.dp)).background(GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Image(painter = painterResource(R.drawable.ic_tmdb), contentDescription = "TMDB", modifier = Modifier.height(14.dp), contentScale = ContentScale.Fit)
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(text = value, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-private fun ImdbBadge(value: String) {
-    val glow = rememberPillGlowAlpha()
-    Row(modifier = Modifier.strongPillGlow(glow).clip(RoundedCornerShape(8.dp)).background(GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Image(painter = painterResource(R.drawable.ic_imdb), contentDescription = "IMDb", modifier = Modifier.height(16.dp), contentScale = ContentScale.Fit)
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(text = value, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-private fun RottenTomatoesBadge(value: String) {
-    val percent = value.replace("%", "").trim().toIntOrNull() ?: 0
-    val isFresh = percent >= 60
-    val glow = rememberPillGlowAlpha()
-    Row(modifier = Modifier.strongPillGlow(glow).clip(RoundedCornerShape(8.dp)).background(GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Image(
-            painter = painterResource(R.drawable.ic_rotten_tomatoes),
-            contentDescription = "Rotten Tomatoes",
-            modifier = Modifier.height(16.dp),
-            contentScale = ContentScale.Fit,
-            colorFilter = if (!isFresh) androidx.compose.ui.graphics.ColorFilter.tint(Color(0xFF8BC34A)) else null
-        )
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(text = value, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-// TECH PILL — uniform height, glowing amber-glass border, small leading icon so
-// format tags (type/resolution/audio/container) read as designed chips instead
-// of plain text-on-background.
-@Composable
-private fun TechBadge(text: String, icon: ImageVector) {
-    val glow = rememberPillGlowAlpha()
-    Row(
-        modifier = Modifier
-            .strongPillGlow(glow = glow, cornerRadius = 9.dp, glowRadius = 28.dp)
-            .height(30.dp)
-            .clip(RoundedCornerShape(9.dp))
-            .background(GlassSurface)
-            .border(1.dp, Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)), RoundedCornerShape(9.dp))
-            .padding(horizontal = 11.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(imageVector = icon, contentDescription = null, tint = AmberCore, modifier = Modifier.size(13.dp))
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(text = text, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-// GENRE CHIP — tappable pill, same glow language as the other badges, but a
-// distinct pill shape (RoundedCornerShape(50)) so genres read as browsable
-// categories rather than static file-format tags.
-@Composable
-private fun GenreChip(text: String, onClick: () -> Unit) {
-    val glow = rememberPillGlowAlpha()
-    Row(
-        modifier = Modifier
-            .strongPillGlow(glow = glow, cornerRadius = 50.dp, glowRadius = 24.dp)
-            .height(28.dp)
-            .clip(RoundedCornerShape(50))
-            .background(GlassSurface)
-            .clickable { onClick() }
-            .padding(horizontal = 13.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(text = text, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-// ── Cast row shimmer — replaces the old plain "Loading cast..." text with
-// a row of pulsing circle+line placeholders shaped like the real CastCard
-// layout below, so the loading state reads as "cast is arriving" rather
-// than a blank line of text for however long the network call takes.
-@Composable
-private fun CastRowShimmer() {
-    val infinite = rememberInfiniteTransition(label = "castShimmer")
-    val alpha by infinite.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.75f,
-        animationSpec = infiniteRepeatable(animation = tween(750, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
-        label = "castShimmerAlpha"
-    )
-    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        repeat(6) {
-            Column(modifier = Modifier.width(82.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(modifier = Modifier.size(76.dp).clip(CircleShape).background(GlassSurfaceStrong.copy(alpha = alpha)))
-                Spacer(modifier = Modifier.height(6.dp))
-                Box(modifier = Modifier.width(56.dp).height(9.dp).clip(RoundedCornerShape(4.dp)).background(GlassSurface.copy(alpha = alpha)))
-                Spacer(modifier = Modifier.height(4.dp))
-                Box(modifier = Modifier.width(40.dp).height(7.dp).clip(RoundedCornerShape(4.dp)).background(GlassSurface.copy(alpha = alpha * 0.8f)))
-            }
-        }
-    }
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 private fun detectResolution(fileName: String): String {
     val lower = fileName.lowercase()
     return when { lower.contains("2160p") || lower.contains("4k") || lower.contains("uhd") -> "4K"; lower.contains("1080p") -> "1080p"; lower.contains("720p") -> "720p"; lower.contains("480p") -> "480p"; else -> "" }
@@ -602,35 +430,6 @@ private fun detectAudioFormat(fileName: String): String {
 private fun formatResumeTime(positionMs: Long): String { val s = positionMs / 1000; val h = s / 3600; val m = (s % 3600) / 60; val sec = s % 60; return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%02d:%02d".format(m, sec) }
 
 @Composable
-private fun CastCard(cast: TmdbCastMember, movieName: String, onActorClick: (Int, String, String?) -> Unit) {
-    val context = LocalContext.current
-    val currentOnActorClick by rememberUpdatedState(onActorClick)
-    val imageUrl = cast.profile_path?.let { "https://image.tmdb.org/t/p/w300$it" }
-    val safeName = cast.name ?: "Unknown"
-    val actorId = cast.id
-    val onCardClick = {
-        if (actorId != null && !cast.name.isNullOrBlank()) {
-            // Routes into the Actor page, filtered against your own library.
-            currentOnActorClick(actorId, cast.name, cast.profile_path)
-        } else {
-            // No TMDB person id (older cached credits, or a rare API gap) —
-            // fall back to the original web-search behavior instead of a dead tap.
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=${Uri.encode("$safeName $movieName")}")))
-        }
-    }
-    Column(modifier = Modifier.width(82.dp).clickable { onCardClick() }, horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(modifier = Modifier.size(76.dp).clip(CircleShape).background(SpaceMid), contentAlignment = Alignment.Center) {
-            if (!imageUrl.isNullOrBlank()) { AsyncImage(model = imageUrl, contentDescription = safeName, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
-            else { Text(text = safeName.take(1).uppercase(), color = TextBright, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(text = safeName, color = TextBright, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        if (!cast.character.isNullOrBlank()) { Text(text = cast.character, color = TextMuted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-    }
-}
-
-@Composable
-private fun SectionTitle(text: String) { Text(text = text, color = TextBright, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
 
 private fun formatRating(rating: Double?): String = if (rating == null || rating <= 0.0) "N/A" else String.format("%.1f", rating)
 
