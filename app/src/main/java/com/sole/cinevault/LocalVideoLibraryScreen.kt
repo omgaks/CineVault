@@ -444,27 +444,10 @@ fun LocalVideoLibraryScreen(
 
     val tvGroups = groupTvShows(sortedVideos.filter { it.type.equals("tv", ignoreCase = true) && !hiddenPaths.contains(it.video.path) && !videoIsInsideSecretFolder(it, hiddenFolders) })
 
-    // ── Secret folder screenshot/recording protection ───────────────────
-    // FLAG_SECURE is a window-level flag — CineVault is single-Activity, and
-    // "Secret" isn't its own screen, it's a category filter within THIS
-    // screen, so the effect keys off (selectedCategory == "Secret" &&
-    // secretUnlocked) rather than a separate screen's lifecycle. Blocks
-    // screenshots, screen recording, AND the Recents-tray thumbnail while
-    // unlocked Secret content is actually on screen; clears automatically
-    // the instant the person switches to any other category or leaves this
-    // screen, so it never lingers and affects some other part of the app.
-    val activity = context.findCineActivity()
-    val isViewingSecret = selectedCategory == "Secret" && secretUnlocked
-    DisposableEffect(isViewingSecret) {
-        if (isViewingSecret) {
-            activity?.window?.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
-        }
-        onDispose {
-            if (isViewingSecret) {
-                activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-            }
-        }
-    }
+    LocalLibrarySecretScreenProtection(
+        context = context,
+        enabled = selectedCategory == "Secret" && secretUnlocked
+    )
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(SpaceBlack)) {
         // ── Adaptive grid columns ─────────────────────────────────────────
