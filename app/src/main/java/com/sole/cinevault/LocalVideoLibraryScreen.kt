@@ -455,7 +455,6 @@ fun LocalVideoLibraryScreen(
     // to secret as they are"), not as hundreds of individual loose entries.
     // Long-pressing that card (same toggleFolderSecret call) unlocks the
     // whole folder in one action.
-    data class SecretFolderGroup(val folder: RestrictedFolder, val items: List<VideoWithMetadata>)
     val secretRestrictedFolderGroups: List<SecretFolderGroup> = if (!secretUnlocked) emptyList() else {
         val restrictedInLibrary = sortedVideos.filter { it.type.equals("restricted", ignoreCase = true) }
         loadRestrictedFolders(context).mapNotNull { folder ->
@@ -586,19 +585,11 @@ fun LocalVideoLibraryScreen(
                 onGenreClick = onGenreClick
             )
 
-            if (selectedCategory == "Secret" && !secretUnlocked) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Box(modifier = Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(text = "🔒 Secret folder is locked", color = TextBright, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Button(onClick = { openSecretFolder() }, shape = RoundedCornerShape(40.dp), colors = ButtonDefaults.buttonColors(containerColor = AmberGlow.copy(alpha = 0.90f), contentColor = Color.Black)) {
-                                Text("Unlock Secret Folder", fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-            }
+            LocalLibrarySecretLockedSection(
+                selectedCategory = selectedCategory,
+                secretUnlocked = secretUnlocked,
+                onUnlock = { openSecretFolder() }
+            )
 
             LocalLibraryFoldersSection(
                 selectedCategory = selectedCategory,
@@ -652,29 +643,15 @@ fun LocalVideoLibraryScreen(
                 }
             }
 
-            if (selectedCategory == "Secret" && secretUnlocked && secretRestrictedFolderGroups.isNotEmpty()) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Column {
-                        Text(text = "Secret Folders", color = TextBright, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(10.dp))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            items(items = secretRestrictedFolderGroups, key = { "secretfolder:${it.folder.id}" }) { group ->
-                                val thumbnailSourcePath = group.folder.lastPlayedVideoPath
-                                    ?.takeIf { path -> group.items.any { it.video.path == path } }
-                                    ?: group.items.firstOrNull()?.video?.path
-                                RestrictedFolderShelfCard(
-                                    title = group.folder.displayName,
-                                    count = group.items.size,
-                                    thumbnailVideoPath = thumbnailSourcePath,
-                                    onClick = { onRestrictedFolderClick(group.folder) },
-                                    onLongClick = { folderSecretConfirm = group.folder.displayName to group.items.map { it.video.path } }
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(20.dp))
-                    }
+            LocalLibrarySecretFoldersShelf(
+                selectedCategory = selectedCategory,
+                secretUnlocked = secretUnlocked,
+                groups = secretRestrictedFolderGroups,
+                onRestrictedFolderClick = onRestrictedFolderClick,
+                onRestrictedFolderLongClick = { folderName, paths ->
+                    folderSecretConfirm = folderName to paths
                 }
-            }
+            )
 
             if (filteredVideos.isNotEmpty() && selectedCategory != "Folders") {
                 item(span = { GridItemSpan(maxLineSpan) }) {
