@@ -2,8 +2,6 @@ package com.sole.cinevault
 
 import com.sole.cinevault.library.*
 import com.sole.cinevault.smb.*
-import com.sole.cinevault.glasses.rememberExternalDisplayState as rememberGlassesDisplayState
-import com.sole.cinevault.glasses.rememberExternalVideoPresentation as rememberGlassesVideoPresentation
 
 // All subtitle-system files (search, import, sync, appearance, dual-merge,
 // providers) moved to their own package on this pass. Single wildcard
@@ -154,41 +152,6 @@ fun VideoPlayerScreen(
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
 
-    // ── Dedicated glasses mode (Phase 1) ───────────────────────────────────
-    // Detects a USB-C DisplayPort Alt Mode external display (RayNeo glasses
-    // or similar) and locks the player to landscape while it's connected —
-    // these devices render a fixed-aspect virtual screen, so letting the
-    // player sit in portrait while one's attached just produces an
-    // unnecessarily letterboxed picture. Also auto-dims the tablet's own
-    // brightness to near-zero while connected — previously this had to be
-    // done manually every time (the tablet screen is just mirroring the
-    // glasses' output, no need for it to be bright too), while keeping the
-    // screen genuinely ON and touchable (not locked), so it still works as
-    // a remote/control surface — the tablet only ever LOOKS off. A real
-    // Presentation now supplies the glasses with a distinct video,
-    // subtitle, control and pointer surface.
-    // Reverts automatically on disconnect or when leaving the player.
-    val externalDisplay by rememberGlassesDisplayState()
-    var showGlassesConnectedHint by remember { mutableStateOf(false) }
-    LaunchedEffect(externalDisplay.isConnected) {
-        if (externalDisplay.isConnected) {
-            // setRequestedOrientation() throws IllegalStateException if the
-            // Activity isn't in a plain fullscreen state at that moment
-            // (split-screen, floating/free-form window, or a PiP
-            // transition — all real states HyperOS's tablet multitasking
-            // can put an app into). An orientation lock is a nice-to-have,
-            // never something that should be allowed to crash the app.
-            try { activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE } catch (_: Exception) {}
-            activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = playerGlassesConnectedBrightness() }
-            showGlassesConnectedHint = true
-            delay(playerGlassesConnectedHintDurationMs())
-            showGlassesConnectedHint = false
-        } else {
-            try { activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR } catch (_: Exception) {}
-            activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = playerDefaultWindowBrightness() }
-        }
-    }
-
     var audioSyncMs by remember { mutableIntStateOf(0) }
     LaunchedEffect(audioSyncMs) { AudioSyncHolder.offsetUs = playerAudioSyncOffsetUs(audioSyncMs) }
 
@@ -330,39 +293,21 @@ fun VideoPlayerScreen(
     val trackSelector = playerRuntime.trackSelector
     val exoPlayer = playerRuntime.player
 
-    // This is the real secondary-display surface. Presentation creation is
-    // tied to the player + physical display ID, so hot-unplug disposes only
-    // the external surface and the local PlayerView below immediately takes
-    // ownership of the same ExoPlayer again at the same playback position.
-    val externalRatingText = remember(currentVideo.path, episodeList) {
-        buildExternalRatingText(currentVideo.path, episodeList)
-    }
     var localPlayerView by remember { mutableStateOf<PlayerView?>(null) }
-    var glassesSessionDisabled by remember(externalDisplay.displayId) { mutableStateOf(false) }
-    val activeExternalDisplay = externalDisplay
-    val externalPresentation by rememberGlassesVideoPresentation(
+    val glasses = rememberPlayerGlassesMode(
         player = exoPlayer,
-        externalDisplay = activeExternalDisplay,
         title = if (currentMediaType.equals("stream", ignoreCase = true)) currentVideo.name else cleanVideoTitle(currentVideo.path),
-        ratingText = externalRatingText,
-        onBack = onBack
+        ratingText = remember(currentVideo.path, episodeList) {
+            buildExternalRatingText(currentVideo.path, episodeList)
+        },
+        onBack = onBack,
+        localPlayerView = localPlayerView,
+        onBoundPlayerViewChanged = { studioUi.playerView = it }
     )
-    val externalPlayerView = if (glassesSessionDisabled) null else externalPresentation?.playerView
-
-    LaunchedEffect(externalPlayerView, localPlayerView) {
-        val localView = localPlayerView
-        val externalView = externalPlayerView
-        when {
-            externalView != null && externalView.player !== exoPlayer -> {
-                PlayerView.switchTargetView(exoPlayer, localView, externalView)
-                studioUi.playerView = externalView
-            }
-            externalView == null && localView != null && localView.player !== exoPlayer -> {
-                localView.player = exoPlayer
-                studioUi.playerView = localView
-            }
-        }
-    }
+    val externalDisplay = glasses.display
+    val showGlassesConnectedHint = glasses.showConnectedHint
+    val externalPresentation = glasses.presentation
+    val externalPlayerView = glasses.externalPlayerView
 
     val canDownloadExternalSubtitles = currentMediaType.equals("movie", ignoreCase = true) || currentMediaType.equals("tv", ignoreCase = true) || currentMediaType.equals("restricted", ignoreCase = true)
     val isCurrentTvShow = currentMediaType.equals("tv", ignoreCase = true)
@@ -1280,7 +1225,7 @@ fun VideoPlayerScreen(
                     onEmergencyReturnToTablet = {
                         externalPresentation?.showGestureHud("Emergency return", "TABLET")
                         externalPresentation?.enterTabletStandby()
-                        glassesSessionDisabled = true
+                        glasses.disableSession()
                         android.widget.Toast.makeText(
                             context,
                             "Glasses Mode ended — playback returned to tablet",
