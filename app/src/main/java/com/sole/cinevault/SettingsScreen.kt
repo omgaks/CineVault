@@ -44,10 +44,8 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -70,14 +68,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.ui.theme.*
-import kotlinx.coroutines.launch
 
-private val AshSignatureFont = FontFamily(
+internal val AshSignatureFont = FontFamily(
     Font(R.font.great_vibes)
 )
 
 // ── Accent palette for section icon chips (keeps amber as the anchor, adds variety) ──
-private val AccentNetwork = Color(0xFF6FC3FF)
+internal val AccentNetwork = Color(0xFF6FC3FF)
 private val AccentStream = Color(0xFFC792FF)
 private val AccentSupport = Color(0xFFFF6E8C)
 private val AccentAbout = Color(0xFFE8C77A)
@@ -99,7 +96,7 @@ private val FolderPillPalette = listOf(
 // brand marks (those are trademarked assets, not something to reproduce).
 // Matches on the folder's display name, which for Select-Folder entries is
 // usually whatever the source app named its export/download folder.
-private fun settingsFolderIconFor(displayName: String): ImageVector {
+internal fun settingsFolderIconFor(displayName: String): ImageVector {
     val lower = displayName.lowercase()
     return when {
         lower.contains("tiktok") -> Icons.Filled.MusicNote
@@ -121,19 +118,11 @@ fun SettingsScreen(
     // FIX: previously took no argument, so the URL typed into the Stream
     // dialog was captured then silently discarded — Play did nothing.
     // Now the URL is actually passed through to whoever handles playback.
-    onOpenStreamUrl: (String) -> Unit,
-    videos: List<VideoWithMetadata> = emptyList(),
-    onVideosUpdated: (List<VideoWithMetadata>) -> Unit = {}
+    onOpenStreamUrl: (String) -> Unit
 ) {
     val context = LocalContext.current
-    val metadataScope = rememberCoroutineScope()
     var showStreamDialog by remember { mutableStateOf(false) }
     var showCrashLog by remember { mutableStateOf(false) }
-    var metadataFetchEnabled by remember { mutableStateOf(loadMetadataFetchEnabled(context)) }
-    var metadataLanguage by remember { mutableStateOf(loadMetadataLanguage(context)) }
-    var metadataOperation by remember { mutableStateOf<String?>(null) }
-    var metadataProgress by remember { mutableStateOf<MetadataOperationProgress?>(null) }
-    var showClearMetadataConfirmation by remember { mutableStateOf(false) }
 
     var smbShares by remember { mutableStateOf(loadSmbShares(context)) }
     var showSmbDialog by remember { mutableStateOf(false) }
@@ -147,7 +136,6 @@ fun SettingsScreen(
     BackHandler(enabled = showStreamDialog) { showStreamDialog = false }
     BackHandler(enabled = showCrashLog) { showCrashLog = false }
     BackHandler(enabled = showSmbDialog) { showSmbDialog = false; editingShare = null }
-    BackHandler(enabled = showClearMetadataConfirmation) { showClearMetadataConfirmation = false }
 
     // Select Folder — the general "Add Media Folder" picker (and the whole
     // Media Library section) was removed entirely: it saved folders but
@@ -263,6 +251,7 @@ fun SettingsScreen(
             // immediately on toggle — no separate Save button, matching
             // every other setting on this screen.
             GlassSectionCard(title = "Privacy", subtitle = "Control what CineVault sends over the network.", icon = Icons.Rounded.Lock, accent = AccentPrivacy) {
+                var metadataFetchEnabled by remember { mutableStateOf(loadMetadataFetchEnabled(context)) }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(text = "Fetch online metadata", color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
@@ -280,154 +269,6 @@ fun SettingsScreen(
                             saveMetadataFetchEnabled(context, it)
                         },
                         colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            GlassSectionCard(
-                title = "Metadata Manager",
-                subtitle = "Manage online information and artwork for your library.",
-                icon = Icons.Rounded.Refresh,
-                accent = AccentNetwork
-            ) {
-                Text(
-                    text = "Metadata language",
-                    color = TextBright,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                androidx.compose.foundation.layout.FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(7.dp),
-                    verticalArrangement = Arrangement.spacedBy(7.dp)
-                ) {
-                    supportedMetadataLanguages.forEach { option ->
-                        val selected = metadataLanguage == option.code
-                        Text(
-                            text = option.label,
-                            color = if (selected) Color.Black else TextBright,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(if (selected) AmberCore else Color.White.copy(alpha = 0.09f))
-                                .clickable(enabled = metadataOperation == null) {
-                                    metadataLanguage = option.code
-                                    saveMetadataLanguage(context, option.code)
-                                    Toast.makeText(
-                                        context,
-                                        "${option.label} will be used for new metadata",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                                .padding(horizontal = 12.dp, vertical = 8.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-                Text(
-                    text = "Changing language affects new lookups and artwork ordering. To replace existing descriptions, clear the metadata cache and then run Refresh missing metadata.",
-                    color = TextFaint,
-                    fontSize = 11.5.sp,
-                    lineHeight = 16.sp
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-                GlassActionRow(
-                    icon = Icons.Rounded.Refresh,
-                    iconTint = AccentNetwork,
-                    title = "Refresh missing metadata",
-                    subtitle = "Fill missing posters, ratings, cast and genres",
-                    action = if (metadataOperation == "missing") "WAIT" else "RUN"
-                ) {
-                    if (metadataOperation == null) {
-                        if (!metadataFetchEnabled) {
-                            Toast.makeText(context, "Enable online metadata first", Toast.LENGTH_SHORT).show()
-                        } else if (videos.isEmpty()) {
-                            Toast.makeText(context, "Scan your library first", Toast.LENGTH_SHORT).show()
-                        } else {
-                            metadataScope.launch {
-                                metadataOperation = "missing"
-                                metadataProgress = MetadataOperationProgress(0, 1, "Preparing library")
-                                try {
-                                    val updated = refreshAllMissingMetadata(context, videos) { metadataProgress = it }
-                                    onVideosUpdated(updated)
-                                    Toast.makeText(context, "Missing metadata refresh complete", Toast.LENGTH_SHORT).show()
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "Metadata refresh failed: ${e.message ?: "Unknown error"}", Toast.LENGTH_LONG).show()
-                                } finally {
-                                    metadataOperation = null
-                                    metadataProgress = null
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(9.dp))
-                GlassActionRow(
-                    icon = Icons.Rounded.Refresh,
-                    iconTint = AmberCore,
-                    title = "Refresh all artwork",
-                    subtitle = "Recheck TMDB and Fanart.tv for every matched title",
-                    action = if (metadataOperation == "artwork") "WAIT" else "RUN"
-                ) {
-                    if (metadataOperation == null) {
-                        if (!metadataFetchEnabled) {
-                            Toast.makeText(context, "Enable online metadata first", Toast.LENGTH_SHORT).show()
-                        } else if (videos.isEmpty()) {
-                            Toast.makeText(context, "Scan your library first", Toast.LENGTH_SHORT).show()
-                        } else {
-                            metadataScope.launch {
-                                metadataOperation = "artwork"
-                                metadataProgress = MetadataOperationProgress(0, 1, "Preparing artwork")
-                                try {
-                                    val updated = refreshAllLibraryArtwork(context, videos) { metadataProgress = it }
-                                    onVideosUpdated(updated)
-                                    Toast.makeText(context, "Artwork refresh complete", Toast.LENGTH_SHORT).show()
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "Artwork refresh failed: ${e.message ?: "Unknown error"}", Toast.LENGTH_LONG).show()
-                                } finally {
-                                    metadataOperation = null
-                                    metadataProgress = null
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(9.dp))
-                GlassActionRow(
-                    icon = Icons.Rounded.Delete,
-                    iconTint = Color(0xFFFF6E6E),
-                    title = "Clear metadata cache",
-                    subtitle = "Keep files, history, favorites and chosen artwork",
-                    action = "CLEAR"
-                ) {
-                    if (metadataOperation == null) showClearMetadataConfirmation = true
-                }
-
-                val progress = metadataProgress
-                if (metadataOperation != null && progress != null) {
-                    Spacer(modifier = Modifier.height(14.dp))
-                    LinearProgressIndicator(
-                        progress = { progress.fraction },
-                        modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(50)),
-                        color = AmberCore,
-                        trackColor = Color.White.copy(alpha = 0.10f)
-                    )
-                    Spacer(modifier = Modifier.height(7.dp))
-                    Text(
-                        text = if (progress.total > 0) {
-                            "${progress.message} • ${progress.completed}/${progress.total}"
-                        } else progress.message,
-                        color = TextMuted,
-                        fontSize = 11.5.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -455,41 +296,6 @@ fun SettingsScreen(
                 Text(
                     text = "Your personal cinema, built from the ground up. Play straight from local storage, a USB drive, or a NAS over SMB — with real decoding for DTS, TrueHD and the formats most players choke on. TMDB and OMDB automatically bring in posters, cast, genres, collections, and IMDb/Rotten Tomatoes ratings for everything you own. A cinematic glass-and-amber design throughout, gesture-driven playback, and a private Select Folder space that stays exactly that.",
                     color = TextMuted, fontSize = 13.sp, lineHeight = 19.sp
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-                Text(text = "Metadata & artwork providers", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(7.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.themoviedb.org")))
-                    }
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.tmdb_logo),
-                        contentDescription = "The Movie Database",
-                        modifier = Modifier.width(56.dp).height(41.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "TMDB • OMDb • Fanart.tv",
-                        color = AccentAbout,
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Spacer(modifier = Modifier.height(5.dp))
-                Text(
-                    text = "This product uses the TMDB API but is not endorsed or certified by TMDB.",
-                    color = TextMuted,
-                    fontSize = 11.5.sp,
-                    lineHeight = 16.sp
-                )
-                Text(
-                    text = "Additional ratings are supplied by OMDb, and fallback artwork is supplied by Fanart.tv.",
-                    color = TextFaint,
-                    fontSize = 11.5.sp,
-                    lineHeight = 16.sp
                 )
                 Spacer(modifier = Modifier.height(14.dp))
                 GlassActionRow(
@@ -588,72 +394,6 @@ fun SettingsScreen(
             }
         }
 
-        if (showClearMetadataConfirmation) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.68f))
-                    .clickable { showClearMetadataConfirmation = false },
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    modifier = Modifier
-                        .width(310.dp)
-                        .glassPanel(cornerRadius = 24.dp, fill = SpaceMid.copy(alpha = 0.98f))
-                        .clickable(enabled = false) { }
-                        .padding(20.dp)
-                ) {
-                    Text("Clear metadata cache?", color = TextBright, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Downloaded titles, summaries, ratings and automatic artwork will be removed. Your video files, playback history, favorites, Secret Folder records and manually chosen artwork will remain.",
-                        color = TextMuted,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp
-                    )
-                    Spacer(modifier = Modifier.height(18.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = "Cancel",
-                            color = TextBright,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(Color.White.copy(alpha = 0.12f))
-                                .clickable { showClearMetadataConfirmation = false }
-                                .padding(horizontal = 16.dp, vertical = 9.dp)
-                        )
-                        Text(
-                            text = "Clear",
-                            color = Color.Black,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Black,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(Color(0xFFFF6E6E))
-                                .clickable {
-                                    showClearMetadataConfirmation = false
-                                    metadataScope.launch {
-                                        metadataOperation = "clear"
-                                        try {
-                                            val updated = clearAutomaticMetadataCache(context, videos)
-                                            onVideosUpdated(updated)
-                                            Toast.makeText(context, "Metadata cache cleared", Toast.LENGTH_SHORT).show()
-                                        } catch (e: Exception) {
-                                            Toast.makeText(context, "Could not clear metadata: ${e.message ?: "Unknown error"}", Toast.LENGTH_LONG).show()
-                                        } finally {
-                                            metadataOperation = null
-                                        }
-                                    }
-                                }
-                                .padding(horizontal = 16.dp, vertical = 9.dp)
-                        )
-                    }
-                }
-            }
-        }
-
         // Folder-removal confirmation — replaces the old inline delete icon.
         // Long-press a pill instead; this is the "are you sure" step for it.
         val target = folderPendingRemoval
@@ -692,280 +432,6 @@ fun SettingsScreen(
                     }
                 }
             }
-        }
-    }
-}
-
-// ── Hero card with a slow-breathing amber halo around the logo ─────────────
-@Composable
-private fun HeroCard() {
-    val pulse = rememberInfiniteTransition(label = "hero_pulse")
-    val glowAlpha by pulse.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.85f,
-        animationSpec = infiniteRepeatable(animation = tween(2200, easing = LinearEasing), repeatMode = RepeatMode.Reverse),
-        label = "hero_glow_alpha"
-    )
-    val glowScale by pulse.animateFloat(
-        initialValue = 0.94f,
-        targetValue = 1.08f,
-        animationSpec = infiniteRepeatable(animation = tween(2200, easing = LinearEasing), repeatMode = RepeatMode.Reverse),
-        label = "hero_glow_scale"
-    )
-
-    // Height and internal spacing both tightened — text sat noticeably far
-    // from the logo before, with more empty vertical space than the content
-    // actually needed.
-    Box(
-        modifier = Modifier.fillMaxWidth().height(120.dp)
-            .shadow(28.dp, RoundedCornerShape(28.dp), ambientColor = AmberCore.copy(alpha = 0.35f), spotColor = AmberCore.copy(alpha = 0.5f))
-            .glassPanel(cornerRadius = 28.dp, fill = SpaceMid)
-            .border(1.dp, Brush.linearGradient(listOf(AmberCore.copy(alpha = 0.55f), Color.Transparent, AmberCore.copy(alpha = 0.25f))), RoundedCornerShape(28.dp))
-            .padding(16.dp)
-    ) {
-        Column(modifier = Modifier.align(Alignment.CenterStart)) {
-            Text(text = "CineVault", color = TextBright, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            Text(text = "Premium Media Experience", color = AmberCore, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(text = "Your personal cinema archive.", color = TextMuted, fontSize = 12.sp)
-        }
-        Box(
-            modifier = Modifier.align(Alignment.CenterEnd).size(78.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            // Breathing glow ring behind the logo
-            Box(
-                modifier = Modifier
-                    .size(78.dp)
-                    .scale(glowScale)
-                    .background(
-                        Brush.radialGradient(
-                            listOf(AmberCore.copy(alpha = glowAlpha * 0.55f), Color.Transparent),
-                            radius = 115f
-                        ),
-                        CircleShape
-                    )
-            )
-            Box(
-                modifier = Modifier.size(68.dp).clip(CircleShape).background(GlassSurface),
-                contentAlignment = Alignment.Center
-            ) {
-                Image(painter = painterResource(id = R.drawable.cinevault_circle_logo), contentDescription = "CineVault Logo", modifier = Modifier.size(64.dp))
-            }
-        }
-    }
-}
-
-// ── Glass section card with a glowing accent icon chip in the header ────────
-@Composable
-private fun GlassSectionCard(title: String, subtitle: String, icon: ImageVector, accent: Color, content: @Composable ColumnScope.() -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxWidth()
-            .shadow(14.dp, RoundedCornerShape(24.dp), ambientColor = accent.copy(alpha = 0.25f), spotColor = accent.copy(alpha = 0.35f))
-            .glassPanel(cornerRadius = 24.dp, fill = GlassSurface)
-            .border(1.dp, accent.copy(alpha = 0.22f), RoundedCornerShape(24.dp))
-            .padding(16.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier.size(42.dp).clip(RoundedCornerShape(14.dp))
-                    .background(Brush.radialGradient(listOf(accent.copy(alpha = 0.30f), accent.copy(alpha = 0.08f)))),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(imageVector = icon, contentDescription = null, tint = accent, modifier = Modifier.size(21.dp))
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text(text = title, color = TextBright, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                Text(text = subtitle, color = TextMuted, fontSize = 12.sp)
-            }
-        }
-        Spacer(modifier = Modifier.height(14.dp))
-        content()
-    }
-}
-
-// ── Glass action row ─────────────────────────────────────────────────────────
-@Composable
-private fun GlassActionRow(icon: ImageVector, iconTint: Color = AmberCore, title: String, subtitle: String, action: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth()
-            .glassPanel(cornerRadius = 22.dp, fill = GlassSurfaceFaint)
-            .clickable { onClick() }
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(modifier = Modifier.size(44.dp).clip(CircleShape).background(iconTint.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
-            Icon(imageVector = icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(23.dp))
-        }
-        Spacer(modifier = Modifier.width(14.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, color = TextBright, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Text(text = subtitle, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        Text(text = action, color = iconTint, fontSize = 11.sp, fontWeight = FontWeight.Black)
-    }
-}
-
-// ── Glowing outlined button used for "Add Network Share" ────────────────────
-@Composable
-private fun GlowButton(text: String, icon: ImageVector, accent: Color, onClick: () -> Unit) {
-    androidx.compose.material3.Button(
-        onClick = onClick,
-        shape = RoundedCornerShape(18.dp),
-        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = GlassSurface, contentColor = TextBright),
-        modifier = Modifier
-            .shadow(10.dp, RoundedCornerShape(18.dp), ambientColor = accent.copy(alpha = 0.4f), spotColor = accent.copy(alpha = 0.5f))
-            .border(1.dp, accent.copy(alpha = 0.4f), RoundedCornerShape(18.dp))
-    ) {
-        Icon(imageVector = icon, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(text, fontWeight = FontWeight.Bold)
-    }
-}
-
-// Same breathing-glow recipe as VideoPlayerScreen.kt's FrostedPlayButton —
-// 0.45→0.95 alpha, 1400ms, FastOutSlowInEasing, reversing — reused here so
-// "Add Folder" and every folder pill pulse with the identical rhythm and
-// intensity instead of a different, one-off glow animation.
-@Composable
-private fun rememberPlayButtonStyleGlow(): Float {
-    val infinite = rememberInfiniteTransition(label = "matchPlayGlow")
-    val glowAlpha by infinite.animateFloat(
-        initialValue = 0.45f,
-        targetValue = 0.95f,
-        animationSpec = infiniteRepeatable(animation = tween(1400, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
-        label = "matchPlayGlowAlpha"
-    )
-    return glowAlpha
-}
-
-// "Add Folder" — same glow language as the play button (radial bloom behind
-// a gradient border, both driven by rememberPlayButtonStyleGlow), just
-// shaped as a pill instead of a circle.
-@Composable
-private fun AddFolderGlowPill(onClick: () -> Unit) {
-    val glowAlpha = rememberPlayButtonStyleGlow()
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(GlassSurfaceStrong)
-            .background(Brush.radialGradient(colors = listOf(AmberGlow.copy(alpha = glowAlpha * 0.55f), Color.Transparent), radius = 220f))
-            .border(
-                width = 1.4.dp,
-                brush = Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.75f + 0.2f * glowAlpha), AmberDeep.copy(alpha = 0.30f))),
-                shape = RoundedCornerShape(50)
-            )
-            .clickable { onClick() }
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(imageVector = Icons.Rounded.Folder, contentDescription = null, tint = AmberCore, modifier = Modifier.size(18.dp))
-        Spacer(modifier = Modifier.width(8.dp))
-        Text("Add Folder", color = TextBright, fontWeight = FontWeight.Bold)
-    }
-}
-
-// One folder — wrap-content pill (sizes itself to the name, not a full-width
-// row), tall enough to comfortably touch-and-hold, glowing in its own color
-// from FolderPillPalette using the exact same play-button glow recipe.
-// Long-press opens the removal confirmation instead of a trailing delete icon.
-// Leading icon now reflects the folder's likely source (TikTok/Instagram/
-// WhatsApp/Camera/generic) via settingsFolderIconFor instead of always
-// showing the same plain folder glyph.
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun FolderNamePill(name: String, accent: Color, onLongPress: () -> Unit) {
-    val glowAlpha = rememberPlayButtonStyleGlow()
-    Column(
-        modifier = Modifier
-            .width(84.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(GlassSurfaceStrong)
-            .background(Brush.radialGradient(colors = listOf(accent.copy(alpha = glowAlpha * 0.45f), Color.Transparent), radius = 170f))
-            .border(
-                width = 1.3.dp,
-                brush = Brush.verticalGradient(listOf(accent.copy(alpha = 0.75f + 0.2f * glowAlpha), accent.copy(alpha = 0.30f))),
-                shape = RoundedCornerShape(18.dp)
-            )
-            .combinedClickable(onClick = {}, onLongClick = onLongPress)
-            .padding(vertical = 14.dp, horizontal = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(imageVector = settingsFolderIconFor(name), contentDescription = null, tint = accent, modifier = Modifier.size(26.dp))
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(text = name, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-    }
-}
-
-@Composable
-private fun SmbShareRow(share: SmbShare, onEdit: () -> Unit, onDelete: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp)
-            .clip(RoundedCornerShape(16.dp)).background(SpaceDeep.copy(alpha = 0.60f))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(imageVector = Icons.Rounded.Dns, contentDescription = null, tint = AccentNetwork, modifier = Modifier.size(17.dp))
-        Spacer(modifier = Modifier.width(9.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = share.displayName, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(text = "${share.host}/${share.shareName}", color = TextMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
-            Icon(imageVector = Icons.Rounded.Edit, contentDescription = "Edit", tint = TextMuted, modifier = Modifier.size(16.dp))
-        }
-        IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-            Icon(imageVector = Icons.Rounded.Delete, contentDescription = "Remove", tint = Color(0xFFFF5252), modifier = Modifier.size(16.dp))
-        }
-    }
-}
-
-// ── Signature footer: "Ash" with a gentle glow + build-date line ────────────
-@Composable
-private fun SignatureFooter() {
-    val pulse = rememberInfiniteTransition(label = "sig_pulse")
-    val glowAlpha by pulse.animateFloat(
-        initialValue = 0.4f,
-        targetValue = 0.95f,
-        animationSpec = infiniteRepeatable(animation = tween(2600, easing = LinearEasing), repeatMode = RepeatMode.Reverse),
-        label = "sig_glow_alpha"
-    )
-
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            // Soft glow bloom sitting behind the signature text
-            Box(
-                modifier = Modifier
-                    .width(180.dp)
-                    .height(70.dp)
-                    .background(
-                        Brush.radialGradient(listOf(AmberCore.copy(alpha = glowAlpha * 0.35f), Color.Transparent)),
-                        RoundedCornerShape(50)
-                    )
-            )
-            Text(
-                text = "Ash",
-                color = AmberCore.copy(alpha = glowAlpha),
-                fontSize = 40.sp,
-                fontFamily = AshSignatureFont,
-                letterSpacing = 0.5.sp
-            )
-        }
-        // Pulled up closer to the signature — this used to sit a full
-        // line's worth of space below "Ash" with nothing filling the gap.
-        Box(modifier = Modifier.offset(y = (-10).dp)) {
-            Text(
-                text = "Crafting CineVault since May 2026",
-                color = TextMuted,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                letterSpacing = 0.3.sp,
-                textAlign = TextAlign.Center
-            )
         }
     }
 }
