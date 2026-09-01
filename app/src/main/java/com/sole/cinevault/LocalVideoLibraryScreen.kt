@@ -223,54 +223,60 @@ fun LocalVideoLibraryScreen(
     }
 
     fun hideVideo(item: VideoWithMetadata) {
-        val updated = hiddenPaths + item.video.path; hiddenPaths = updated
-        saveSecretVideoPaths(context, updated); clearPlaybackPosition(context, item.video.path)
-        onSecretChanged(); Toast.makeText(context, "Moved to Secret folder", Toast.LENGTH_SHORT).show()
+        val updated = addVideoToSecret(
+            context = context,
+            hiddenPaths = hiddenPaths,
+            item = item
+        )
+        hiddenPaths = updated
+        onSecretChanged()
     }
 
     fun unhideEntireFolder(item: VideoWithMetadata) {
-        val folderPath = hiddenFolders.firstOrNull { item.video.path.startsWith(it) } ?: File(item.video.path).parent ?: return
-        val updatedFolders = hiddenFolders - folderPath; hiddenFolders = updatedFolders
-        saveSecretFolderPaths(context, updatedFolders)
-        Toast.makeText(context, "Folder removed from Secret", Toast.LENGTH_SHORT).show()
+        val updatedFolders = removeContainingFolderFromSecret(
+            context = context,
+            hiddenFolders = hiddenFolders,
+            item = item
+        ) ?: return
+        hiddenFolders = updatedFolders
     }
 
     fun unhideVideo(item: VideoWithMetadata) {
-        val updated = hiddenPaths - item.video.path; hiddenPaths = updated
-        saveSecretVideoPaths(context, updated); Toast.makeText(context, "Removed from Secret folder", Toast.LENGTH_SHORT).show()
+        hiddenPaths = removeVideoFromSecret(
+            context = context,
+            hiddenPaths = hiddenPaths,
+            item = item
+        )
     }
 
-    // Long-pressing a folder (whether it's a Select-Folder TILE on the
-    // TV-Shows-&-Folders shelf, OR a plain device folder row in the
-    // "Folders" tab — see FIX #3 below) hides/unhides EVERY video in that
-    // folder as one bulk action, using the same per-video hiddenPaths set
-    // as regular Secret. This is the single folder-level hide mechanism in
-    // the app now — both entry points funnel into this same function, so
-    // behavior can't drift between the two again.
     fun toggleFolderSecret(folderVideoPaths: List<String>) {
-        if (folderVideoPaths.isEmpty()) return
-        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-        val pathSet = folderVideoPaths.toSet()
-        val allHidden = pathSet.all { hiddenPaths.contains(it) }
-        val updated = if (allHidden) hiddenPaths - pathSet else hiddenPaths + pathSet
-        hiddenPaths = updated
-        saveSecretVideoPaths(context, updated)
+        val result = toggleVideosInSecretFolder(
+            context = context,
+            hiddenPaths = hiddenPaths,
+            folderVideoPaths = folderVideoPaths,
+            onLongPressHaptic = {
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            }
+        ) ?: return
+
+        hiddenPaths = result
         onSecretChanged()
-        Toast.makeText(
-            context,
-            if (allHidden) "Folder removed from Secret" else "Folder moved to Secret",
-            Toast.LENGTH_SHORT
-        ).show()
     }
 
     fun addFavorite(item: VideoWithMetadata) {
-        val updated = favoritePaths + item.video.path; favoritePaths = updated
-        saveFavoriteVideoPaths(context, updated); Toast.makeText(context, "Added to Favorites", Toast.LENGTH_SHORT).show()
+        favoritePaths = addVideoToFavorites(
+            context = context,
+            favoritePaths = favoritePaths,
+            item = item
+        )
     }
 
     fun removeFavorite(item: VideoWithMetadata) {
-        val updated = favoritePaths - item.video.path; favoritePaths = updated
-        saveFavoriteVideoPaths(context, updated); Toast.makeText(context, "Removed from Favorites", Toast.LENGTH_SHORT).show()
+        favoritePaths = removeVideoFromFavorites(
+            context = context,
+            favoritePaths = favoritePaths,
+            item = item
+        )
     }
 
     var pendingDeleteResult by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
