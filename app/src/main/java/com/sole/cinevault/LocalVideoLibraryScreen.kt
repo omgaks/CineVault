@@ -612,36 +612,15 @@ fun LocalVideoLibraryScreen(
                 onDeleteCopy = { copy -> deleteVideoFile(copy) }
             )
 
-            if (selectedCategory != "Folders" && selectedCategory != "Duplicates" && !LibraryScanController.isScanning && filteredVideos.isEmpty() && tvGroups.isEmpty() && !(selectedCategory == "Secret" && !secretUnlocked)) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    if (videos.isEmpty()) {
-                        EmptyStateBlock(
-                            icon = Icons.Filled.LocalMovies,
-                            title = "Your library is empty",
-                            subtitle = "Scan your device or add a network share to get started."
-                        ) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text(
-                                    text = "Scan Device Videos", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberGlow.copy(alpha = 0.90f))
-                                        .clickable { permissionLauncher.launch(permission) }
-                                        .padding(horizontal = 18.dp, vertical = 10.dp)
-                                )
-                            }
-                        }
-                    } else {
-                        EmptyStateBlock(
-                            icon = Icons.Filled.LocalMovies,
-                            title = "Nothing here yet",
-                            subtitle = when (selectedCategory) {
-                                "Continue Watching" -> "Videos you've started watching will show up here."
-                                "Favorites" -> "Tap the heart on anything to add it here."
-                                else -> "Try a different category, or rescan your library."
-                            }
-                        )
-                    }
-                }
-            }
+            LocalLibraryEmptyStateSection(
+                selectedCategory = selectedCategory,
+                isScanning = LibraryScanController.isScanning,
+                filteredVideos = filteredVideos,
+                tvGroupsEmpty = tvGroups.isEmpty(),
+                secretUnlocked = secretUnlocked,
+                allVideosEmpty = videos.isEmpty(),
+                onScan = { permissionLauncher.launch(permission) }
+            )
 
             LocalLibrarySecretFoldersShelf(
                 selectedCategory = selectedCategory,
@@ -653,24 +632,14 @@ fun LocalVideoLibraryScreen(
                 }
             )
 
-            if (filteredVideos.isNotEmpty() && selectedCategory != "Folders") {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Text(
-                        text = when (selectedCategory) { "Movies" -> "Movies"; "Downloads" -> "Downloads"; "Favorites" -> "Favorites"; "Secret" -> "Secret Folder"; "Continue Watching" -> "Continue Watching"; else -> "Movies & Downloads" },
-                        color = TextBright, fontSize = 22.sp, fontWeight = FontWeight.Bold
-                    )
-                }
-
-                if (isGridMode) {
-                    items(items = filteredVideos, key = { it.video.path }) { item ->
-                        LibraryGridCard(item = item, onClick = { onItemClick(item) }, onPlayClick = onPlayClick, onLongPress = { openContextSheet(it) })
-                    }
-                } else {
-                    items(items = filteredVideos, key = { it.video.path }, span = { GridItemSpan(maxLineSpan) }) { item ->
-                        LibraryCard(item = item, onClick = { onItemClick(item) }, onLongPress = { openContextSheet(it) })
-                    }
-                }
-            }
+            LocalLibraryVideoItemsSection(
+                selectedCategory = selectedCategory,
+                filteredVideos = filteredVideos,
+                isGridMode = isGridMode,
+                onItemClick = onItemClick,
+                onPlayClick = onPlayClick,
+                onItemLongPress = { openContextSheet(it) }
+            )
         }
 
         // ── Persistent error banner — slides down from the top rather than
