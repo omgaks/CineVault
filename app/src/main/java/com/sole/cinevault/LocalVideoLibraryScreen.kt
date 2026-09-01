@@ -728,71 +728,11 @@ fun LocalVideoLibraryScreen(
                 }
             }
 
-            // Duplicates — same movie sitting in more than one download
-            // folder, detected by real on-disk file size (see
-            // DuplicateDetector.kt), not filename or title. Each group
-            // shows every copy with its exact size and folder path so the
-            // person can see which is which before deciding — nothing is
-            // ever auto-deleted. "Delete this copy" reuses the exact same
-            // consent-gated deleteVideoFile() flow every other delete
-            // action in this screen already goes through.
-            if (selectedCategory == "Duplicates") {
-                if (duplicateGroups.isEmpty()) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                            Text(text = "No duplicates found.", color = TextMuted, fontSize = 15.sp)
-                        }
-                    }
-                } else {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Column {
-                            Text(text = "Duplicates (${duplicateGroups.size})", color = TextBright, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Grouped by matching file size — review before deleting anything.",
-                                color = TextMuted, fontSize = 12.sp
-                            )
-                        }
-                    }
-
-                    duplicateGroups.forEach { group ->
-                        item(span = { GridItemSpan(maxLineSpan) }) {
-                            Column(
-                                modifier = Modifier.fillMaxWidth().glassPanel(cornerRadius = 14.dp).padding(14.dp)
-                            ) {
-                                Text(
-                                    text = "${group.videos.size} copies · ${group.videos.firstOrNull()?.title ?: "Unknown"}",
-                                    color = AmberGlow, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1
-                                )
-                                Spacer(modifier = Modifier.height(10.dp))
-                                group.videos.forEach { copy ->
-                                    val copyFile = File(copy.video.path)
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(text = copyFile.name, color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                            Text(text = copyFile.parent ?: copy.video.path, color = TextMuted, fontSize = 10.sp, maxLines = 1)
-                                            Text(text = formatFileSize(copyFile.length()), color = TextMuted, fontSize = 10.sp)
-                                        }
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = "Delete", color = Color(0xFFFF8080), fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(Color(0xFF2A0A0A))
-                                                .clickable { deleteVideoFile(copy) }
-                                                .padding(horizontal = 12.dp, vertical = 7.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        item(span = { GridItemSpan(maxLineSpan) }) { Spacer(modifier = Modifier.height(4.dp)) }
-                    }
-                }
-            }
+            LocalLibraryDuplicatesSection(
+                selectedCategory = selectedCategory,
+                duplicateGroups = duplicateGroups,
+                onDeleteCopy = { copy -> deleteVideoFile(copy) }
+            )
 
             if (selectedCategory != "Folders" && selectedCategory != "Duplicates" && !LibraryScanController.isScanning && filteredVideos.isEmpty() && tvGroups.isEmpty() && !(selectedCategory == "Secret" && !secretUnlocked)) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
