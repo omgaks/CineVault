@@ -139,7 +139,7 @@ internal fun BoxScope.PlayerPlaybackStatusOverlays(
             )
             Spacer(modifier = Modifier.width(7.dp))
             Text(
-                text = "External display connected — RayNeo subtitle profile",
+                text = "External display connected — glasses subtitle profile",
                 color = TextBright,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,

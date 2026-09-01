@@ -56,8 +56,10 @@ fun rememberPlayerGlassesMode(
     var showConnectedHint by remember { mutableStateOf(false) }
     var sessionDisabled by remember(externalDisplay.displayId) { mutableStateOf(false) }
 
-    // Detects a USB-C DisplayPort Alt Mode external display (RayNeo glasses
-    // or similar) and locks the player to landscape while it's connected —
+    // Detects a USB-C DisplayPort Alt Mode external display (any AR glasses
+    // that present this way — RayNeo, Viture, XREAL, Rokid, etc. — this
+    // check is vendor-agnostic) and locks the player to landscape while
+    // it's connected —
     // these devices render a fixed-aspect virtual screen, so letting the
     // player sit in portrait while one's attached just produces an
     // unnecessarily letterboxed picture. Also auto-dims the tablet's own

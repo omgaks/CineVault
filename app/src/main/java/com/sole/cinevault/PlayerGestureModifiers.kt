@@ -2,6 +2,7 @@ package com.sole.cinevault
 
 import android.graphics.Rect
 import android.os.Build
+import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -164,8 +165,13 @@ fun Modifier.videoPlaybackGestures(
         }
     }
 
-/** Stable, zone-based controller used only while a secondary RayNeo display is active. */
-fun Modifier.rayNeoTouchpadGestures(
+/**
+ * Stable, zone-based controller used while any secondary AR-glasses display
+ * is active (RayNeo, Viture, XREAL, Rokid, or anything else that shows up
+ * as a standard USB-C DisplayPort Alt Mode / Presentation display — nothing
+ * here is tied to a specific vendor).
+ */
+fun Modifier.glassesTouchpadGestures(
     view: View,
     gestureKey: Any?,
     controlsVisible: () -> Boolean,
@@ -202,6 +208,15 @@ fun Modifier.rayNeoTouchpadGestures(
         )
     }
     .pointerInput(gestureKey) {
+        // Seeking only ARMS once accumulated centre-zone horizontal travel
+        // clears this — otherwise a couple of pixels of incidental drift
+        // (reaching for the edge zone, settling into a tap, an unsteady
+        // hand in a dim/near-black idle state with no visual feedback on
+        // the host screen) was enough to start scrubbing playback, since
+        // the old check only compared X-travel to Y-travel, never to an
+        // absolute minimum. Mirrors the 48dp threshold the edge-swipe
+        // next/previous gesture already uses below.
+        val seekArmThresholdPx = 32.dp.toPx()
         var startX = 0f
         var totalX = 0f
         var totalY = 0f
@@ -212,8 +227,14 @@ fun Modifier.rayNeoTouchpadGestures(
                 val w = size.width.toFloat()
                 val horizontal = abs(totalX) > abs(totalY) * 1.35f && abs(totalX) > 48.dp.toPx()
                 when {
-                    startX < w * 0.10f && horizontal && totalX > 0f && canChangeEpisode() -> onPrevious()
-                    startX > w * 0.90f && horizontal && totalX < 0f && canChangeEpisode() -> onNext()
+                    startX < w * 0.10f && horizontal && totalX > 0f && canChangeEpisode() -> {
+                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                        onPrevious()
+                    }
+                    startX > w * 0.90f && horizontal && totalX < 0f && canChangeEpisode() -> {
+                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                        onNext()
+                    }
                     seeking -> onSeekEnd()
                 }
                 onGestureEnd()
@@ -232,9 +253,17 @@ fun Modifier.rayNeoTouchpadGestures(
                     // surface. This check must precede direct seeking or a
                     // normal attempt to reach a button scrubs the movie.
                     controlsVisible() -> { change.consume(); onPointerMove(drag) }
-                    startX in (w / 3f)..(w * 2f / 3f) && horizontal -> {
+                    startX in (w / 3f)..(w * 2f / 3f) && horizontal &&
+                        (seeking || abs(totalX) > seekArmThresholdPx) -> {
                         change.consume()
-                        if (!seeking) { seeking = true; onSeekStart() }
+                        if (!seeking) {
+                            seeking = true
+                            onSeekStart()
+                            // Only feedback available while the host screen
+                            // is dimmed near-black for glasses playback —
+                            // confirms a deliberate scrub actually started.
+                            view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                        }
                         onSeekDelta(drag.x / w)
                     }
                 }

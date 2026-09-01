@@ -1026,7 +1026,7 @@ fun VideoPlayerScreen(
         val topClusterPaddingTop = displayLayout.topClusterPaddingTop
 
         // ── Per-display subtitle profiles ──────────────────────────────
-        // Which profile applies right now — external (RayNeo/DP Alt Mode)
+        // Which profile applies right now — external (any AR glasses via DP Alt Mode)
         // always wins over phone/tablet since it's a distinct viewing
         // surface, regardless of what the tablet's own screen size says.
         // TV isn't reachable yet (see DisplayProfiles.kt) so it never
@@ -1158,7 +1158,7 @@ fun VideoPlayerScreen(
         }
 
         val playbackGestureModifier = if (externalPlayerView != null) {
-            Modifier.rayNeoTouchpadGestures(
+            Modifier.glassesTouchpadGestures(
                     view = view,
                     // Recreate the controller when the tablet rotates so
                     // left/centre/right zones follow the current screen.
