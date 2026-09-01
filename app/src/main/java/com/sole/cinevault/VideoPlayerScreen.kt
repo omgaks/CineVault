@@ -995,8 +995,24 @@ fun VideoPlayerScreen(
     // via `remember` rather than assuming a specific state-holder file,
     // since PlayerUiState.kt's exact shape may have moved on since this
     // was written.
-    var subtitleGenerationStatus by remember { mutableStateOf<SubtitleGenerationStatus>(SubtitleGenerationStatus.Idle) }
+    var subtitleGenerationStatus by remember {
+        mutableStateOf<SubtitleGenerationStatus>(SubtitleGenerationStatus.Idle)
+    }
     var showAiSubtitleMenu by remember { mutableStateOf(false) }
+    var generatedSubtitleRefreshKey by remember(currentVideo.path) { mutableIntStateOf(0) }
+    var generatedSubtitleFiles by remember(currentVideo.path) {
+        mutableStateOf<List<GeneratedSubtitleFile>>(emptyList())
+    }
+
+    LaunchedEffect(currentVideo.path, generatedSubtitleRefreshKey) {
+        generatedSubtitleFiles = withContext(Dispatchers.IO) {
+            GeneratedSubtitleStore.listForVideo(
+                context = context,
+                videoPath = currentVideo.path,
+            )
+        }
+    }
+
     val subtitleGenerationCoordinator = remember(exoPlayer) {
         SubtitleGenerationCoordinator(
             context = context,
@@ -1006,12 +1022,22 @@ fun VideoPlayerScreen(
             getPrimarySubtitleUri = { trackUi.primaryUri },
             getStatus = { subtitleGenerationStatus },
             setStatus = { subtitleGenerationStatus = it },
-            onSubtitleReady = { uri -> playCurrentVideoWithSubtitle(uri, resumePosition = position, isOriginalSubtitle = false) }
+            onSubtitleReady = { uri ->
+                playCurrentVideoWithSubtitle(
+                    uri,
+                    resumePosition = position,
+                    isOriginalSubtitle = false,
+                )
+            },
+            onGeneratedLibraryChanged = { generatedSubtitleRefreshKey++ },
         )
     }
     fun downloadSubtitleModel() = subtitleGenerationCoordinator.downloadModel()
     fun generateSubtitles() = subtitleGenerationCoordinator.generateSubtitles()
-    fun translateSubtitles(target: SubtitleTranslationEngine.SupportedLanguage) = subtitleGenerationCoordinator.translateActive(target)
+    fun translateSubtitles(target: SubtitleTranslationEngine.SupportedLanguage) =
+        subtitleGenerationCoordinator.translateActive(target)
+    fun loadGeneratedSubtitle(file: GeneratedSubtitleFile) =
+        subtitleGenerationCoordinator.loadGeneratedSubtitle(file)
 
     val aiSubtitleJobLabel: String? = when (subtitleGenerationStatus) {
         is SubtitleGenerationStatus.DownloadingModel -> "AI model"
@@ -2093,6 +2119,8 @@ fun VideoPlayerScreen(
                             modelReady = WhisperModelManager.isModelReady(context),
                             modelName = WhisperModelManager.modelDisplayName(),
                             modelSizeLabel = WhisperModelManager.modelDownloadSizeLabel(),
+                            generatedFiles = generatedSubtitleFiles,
+                            activeSubtitleUri = trackUi.primaryUri,
                             onDownloadModel = {
                                 showAiSubtitleMenu = false
                                 downloadSubtitleModel()
@@ -2100,6 +2128,9 @@ fun VideoPlayerScreen(
                             onGenerate = {
                                 showAiSubtitleMenu = false
                                 generateSubtitles()
+                            },
+                            onLoadGenerated = { generated ->
+                                loadGeneratedSubtitle(generated)
                             },
                             onTranslate = { lang ->
                                 showAiSubtitleMenu = false
