@@ -28,9 +28,12 @@ class SubtitleTranslationCoordinator(
     private val onGeneratedLibraryChanged: () -> Unit,
 ) {
     private var translationJob: Job? = null
+    private var translationGeneration = 0L
 
     fun translateActive(target: SubtitleTranslationEngine.SupportedLanguage) {
         if (translationJob?.isActive == true) return
+
+        val generation = ++translationGeneration
 
         val source = resolveActiveSubtitle()
         if (source == null) {
@@ -84,17 +87,28 @@ class SubtitleTranslationCoordinator(
                                 lastPercent = progress.percent
 
                                 scope.launch(Dispatchers.Main.immediate) {
-                                    setStatus(
-                                        SubtitleTranslationStatus.Translating(
-                                            progress.phase,
-                                            progress.percent,
+                                    // This callback is deliberately launched on the
+                                    // UI scope, so it can outlive the worker that
+                                    // produced it. Ignore it once that worker has
+                                    // failed, completed, or been cancelled.
+                                    if (
+                                        generation == translationGeneration &&
+                                        getStatus() is SubtitleTranslationStatus.Translating
+                                    ) {
+                                        setStatus(
+                                            SubtitleTranslationStatus.Translating(
+                                                progress.phase,
+                                                progress.percent,
+                                            )
                                         )
-                                    )
+                                    }
                                 }
                             }
                         }
                     )
                 }
+
+                if (generation != translationGeneration) return@launch
 
                 when (result) {
                     is SubtitleTranslationEngine.Result.Failed -> {
@@ -143,8 +157,13 @@ class SubtitleTranslationCoordinator(
                     }
                 }
             } catch (_: CancellationException) {
-                setStatus(SubtitleTranslationStatus.Idle)
-                Toast.makeText(context, "Translation stopped", Toast.LENGTH_SHORT).show()
+                // cancelTranslation() invalidates the generation and publishes
+                // Idle immediately. Only handle cancellation here when it came
+                // from some other owner (for example, the parent scope).
+                if (generation == translationGeneration) {
+                    setStatus(SubtitleTranslationStatus.Idle)
+                    Toast.makeText(context, "Translation stopped", Toast.LENGTH_SHORT).show()
+                }
             } catch (oom: OutOfMemoryError) {
                 setStatus(
                     SubtitleTranslationStatus.Failed(
@@ -172,14 +191,23 @@ class SubtitleTranslationCoordinator(
                     Toast.LENGTH_LONG,
                 ).show()
             } finally {
-                translationJob = null
+                if (generation == translationGeneration) {
+                    translationJob = null
+                }
             }
         }
     }
 
     fun cancelTranslation() {
-        if (translationJob?.isActive == true) {
-            translationJob?.cancel()
-        }
+        val activeJob = translationJob?.takeIf { it.isActive } ?: return
+
+        // Invalidate queued progress callbacks before cancelling the worker.
+        // Publishing Idle here makes the Stop button respond immediately even
+        // when an ML Kit Task takes time to observe coroutine cancellation.
+        translationGeneration++
+        translationJob = null
+        activeJob.cancel()
+        setStatus(SubtitleTranslationStatus.Idle)
+        Toast.makeText(context, "Translation stopped", Toast.LENGTH_SHORT).show()
     }
 }
