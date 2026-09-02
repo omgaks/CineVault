@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +22,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material3.CircularProgressIndicator
@@ -65,9 +68,61 @@ internal fun BoxScope.PlayerPlaybackStatusOverlays(
     playerErrorMessage: String?,
     sleepTimerActive: Boolean,
     sleepTimerRemainingMs: Long,
+    translationSuccessLanguage: String?,
+    translationSuccessBottomPadding: Dp,
     onBack: () -> Unit,
     onRetry: () -> Unit,
 ) {
+    AnimatedVisibility(
+        visible = translationSuccessLanguage != null,
+        enter = slideInVertically(
+            initialOffsetY = { it / 3 },
+            animationSpec = tween(220),
+        ) + fadeIn(animationSpec = tween(180)),
+        exit = slideOutVertically(
+            targetOffsetY = { it / 4 },
+            animationSpec = tween(180),
+        ) + fadeOut(animationSpec = tween(160)),
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(
+                start = 20.dp,
+                end = 20.dp,
+                bottom = translationSuccessBottomPadding,
+            ),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .widthIn(max = 340.dp)
+                .glassPanel(cornerRadius = 22.dp, fill = GlassSurfaceStrong)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.CheckCircle,
+                contentDescription = null,
+                tint = AmberCore,
+                modifier = Modifier.size(26.dp),
+            )
+            Spacer(modifier = Modifier.width(11.dp))
+            Column {
+                Text(
+                    text = "${translationSuccessLanguage.orEmpty()} translation ready",
+                    color = TextBright,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Subtitles applied automatically",
+                    color = AmberCore,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+    }
+
     AnimatedVisibility(
         visible = showBrightnessCircle,
         enter = fadeIn(),

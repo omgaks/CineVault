@@ -1000,6 +1000,10 @@ fun VideoPlayerScreen(
     }
     var showSpeechSubtitlePanel by remember { mutableStateOf(false) }
     var showSubtitleTranslationPanel by remember { mutableStateOf(false) }
+    var translationSuccessLanguage by remember(currentVideo.path) {
+        mutableStateOf<String?>(null)
+    }
+    var translationSuccessEvent by remember(currentVideo.path) { mutableIntStateOf(0) }
 
     var generatedSubtitleRefreshKey by remember(currentVideo.path) { mutableIntStateOf(0) }
     var generatedSubtitleFiles by remember(currentVideo.path) {
@@ -1072,6 +1076,12 @@ fun VideoPlayerScreen(
             setStatus = { subtitleTranslationStatus = it },
             onSubtitleReady = { file, language ->
                 applyAiSubtitle(file, language, "AI Translation")
+                translationSuccessLanguage =
+                    SubtitleTranslationEngine.commonTargetLanguages
+                        .firstOrNull { it.mlKitCode == language }
+                        ?.label
+                        ?: language.uppercase()
+                translationSuccessEvent++
             },
             onGeneratedLibraryChanged = { generatedSubtitleRefreshKey++ },
         )
@@ -1101,6 +1111,12 @@ fun VideoPlayerScreen(
 
     val translationJobProgress: Int? =
         (subtitleTranslationStatus as? SubtitleTranslationStatus.Translating)?.percent
+
+    LaunchedEffect(translationSuccessEvent) {
+        if (translationSuccessEvent == 0) return@LaunchedEffect
+        delay(3_200L)
+        translationSuccessLanguage = null
+    }
 
     BackHandler(enabled = showSpeechSubtitlePanel || showSubtitleTranslationPanel) {
         when {
@@ -1458,6 +1474,10 @@ fun VideoPlayerScreen(
             playerErrorMessage = playerErrorMessage,
             sleepTimerActive = sleepTimerActive,
             sleepTimerRemainingMs = sleepTimerRemainingMs,
+            translationSuccessLanguage = translationSuccessLanguage?.takeIf {
+                !CineVaultPlayerHolder.isInPipMode && externalPlayerView == null
+            },
+            translationSuccessBottomPadding = bottomDockPadding + playButton + 26.dp,
             onBack = onBack,
             onRetry = {
                 errorRetryCount = 0
