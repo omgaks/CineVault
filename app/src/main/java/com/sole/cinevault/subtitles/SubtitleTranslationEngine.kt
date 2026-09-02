@@ -1,11 +1,14 @@
 package com.sole.cinevault.subtitles
 
 import com.google.mlkit.common.model.DownloadConditions
+import com.google.mlkit.common.model.RemoteModelManager
 import com.google.mlkit.nl.languageid.LanguageIdentification
 import com.google.mlkit.nl.translate.TranslateLanguage
+import com.google.mlkit.nl.translate.TranslateRemoteModel
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.Translator
 import com.google.mlkit.nl.translate.TranslatorOptions
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.tasks.await
@@ -19,6 +22,7 @@ object SubtitleTranslationEngine {
             val srtText: String,
             val sourceLanguage: String,
         ) : Result()
+
         data class Failed(val reason: String) : Result()
     }
 
@@ -54,6 +58,7 @@ object SubtitleTranslationEngine {
         }
 
         onProgress(Progress("Detecting source language", 0))
+
         val sample = blocks
             .asSequence()
             .flatMap { it.lines.asSequence() }
@@ -70,60 +75,187 @@ object SubtitleTranslationEngine {
             return Result.Success(srtText, source)
         }
 
-        val options = TranslatorOptions.Builder()
-            .setSourceLanguage(source)
-            .setTargetLanguage(targetMlKitCode)
-            .build()
-        val translator: Translator = Translation.getClient(options)
+        currentCoroutineContext().ensureActive()
+
+        // Explicitly verify/download both language models before creating the
+        // Translator. This gives us a clean diagnostic boundary between model
+        // readiness and the translation runtime itself.
+        onProgress(Progress("Checking language models", 0))
+
+        val sourceModelResult = ensureModelReady(
+            languageCode = source,
+            label = "source",
+        )
+        if (sourceModelResult != null) return Result.Failed(sourceModelResult)
+
+        currentCoroutineContext().ensureActive()
+
+        val targetModelResult = ensureModelReady(
+            languageCode = targetMlKitCode,
+            label = "target",
+        )
+        if (targetModelResult != null) return Result.Failed(targetModelResult)
+
+        currentCoroutineContext().ensureActive()
+        onProgress(Progress("Starting translator", 0))
+
+        val translator: Translator = try {
+            val options = TranslatorOptions.Builder()
+                .setSourceLanguage(source)
+                .setTargetLanguage(targetMlKitCode)
+                .build()
+
+            Translation.getClient(options)
+        } catch (t: Throwable) {
+            if (t is CancellationException) throw t
+            return Result.Failed(
+                "ML Kit couldn't create the translator (${diagnosticMessage(t)})."
+            )
+        }
 
         try {
-            onProgress(Progress("Downloading language model", 0))
+            // Keep the documented Translator-level readiness call as a final
+            // guard even though RemoteModelManager has already verified both
+            // models. If ML Kit disagrees about readiness, surface that exact
+            // stage instead of continuing into translate().
+            onProgress(Progress("Preparing translator", 0))
             try {
                 translator
                     .downloadModelIfNeeded(DownloadConditions.Builder().build())
                     .await()
-            } catch (e: Exception) {
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
                 return Result.Failed(
-                    "Couldn't download the translation model — check your connection and try again. (${e.message})"
+                    "ML Kit translator preparation failed (${diagnosticMessage(t)})."
                 )
             }
 
             val out = StringBuilder()
+
             blocks.forEachIndexed { i, block ->
                 currentCoroutineContext().ensureActive()
-                onProgress(Progress("Translating", (i * 100 / blocks.size).coerceIn(0, 99)))
+                onProgress(
+                    Progress(
+                        "Translating",
+                        (i * 100 / blocks.size).coerceIn(0, 99),
+                    )
+                )
 
                 val originalText = block.lines.joinToString("\n")
                 val translatedText =
-                    if (originalText.isBlank()) originalText
-                    else try {
-                        translator.translate(originalText).await()
-                    } catch (_: Exception) {
+                    if (originalText.isBlank()) {
                         originalText
+                    } else {
+                        try {
+                            translator.translate(originalText).await()
+                        } catch (t: Throwable) {
+                            if (t is CancellationException) throw t
+
+                            // Do NOT silently copy the English/original cue.
+                            // One failed cue means the generated subtitle is not
+                            // trustworthy, so stop and report the exact stage.
+                            return Result.Failed(
+                                "ML Kit translation failed at subtitle ${i + 1} of " +
+                                    "${blocks.size} (${diagnosticMessage(t)})."
+                            )
+                        }
                     }
 
-                if (block.index.isNotBlank()) out.append(block.index).append('\n')
+                if (block.index.isNotBlank()) {
+                    out.append(block.index).append('\n')
+                }
                 out.append(normalizeTimingLine(block.timing)).append('\n')
                 out.append(translatedText).append("\n\n")
             }
 
             onProgress(Progress("Done", 100))
-            return Result.Success(out.toString().trim() + "\n", source)
+            return Result.Success(
+                srtText = out.toString().trim() + "\n",
+                sourceLanguage = source,
+            )
         } finally {
-            translator.close()
+            try {
+                translator.close()
+            } catch (_: Throwable) {
+                // Closing must never turn a completed/diagnostic translation
+                // result into an app-level crash.
+            }
+        }
+    }
+
+    /**
+     * Returns null when the requested model is confirmed ready.
+     * Returns a user-facing diagnostic string when readiness fails.
+     */
+    private suspend fun ensureModelReady(
+        languageCode: String,
+        label: String,
+    ): String? {
+        val manager = RemoteModelManager.getInstance()
+
+        val model = try {
+            TranslateRemoteModel.Builder(languageCode).build()
+        } catch (t: Throwable) {
+            if (t is CancellationException) throw t
+            return "Couldn't create the $label translation model " +
+                "for '$languageCode' (${diagnosticMessage(t)})."
+        }
+
+        val alreadyDownloaded = try {
+            manager.isModelDownloaded(model).await()
+        } catch (t: Throwable) {
+            if (t is CancellationException) throw t
+            return "Couldn't check the $label translation model " +
+                "'$languageCode' (${diagnosticMessage(t)})."
+        }
+
+        if (!alreadyDownloaded) {
+            try {
+                manager
+                    .download(
+                        model,
+                        DownloadConditions.Builder().build(),
+                    )
+                    .await()
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                return "Couldn't download the $label translation model " +
+                    "'$languageCode' (${diagnosticMessage(t)})."
+            }
+        }
+
+        val confirmedDownloaded = try {
+            manager.isModelDownloaded(model).await()
+        } catch (t: Throwable) {
+            if (t is CancellationException) throw t
+            return "Couldn't verify the $label translation model " +
+                "'$languageCode' (${diagnosticMessage(t)})."
+        }
+
+        return if (confirmedDownloaded) {
+            null
+        } else {
+            "ML Kit did not confirm the $label translation model " +
+                "'$languageCode' after download."
         }
     }
 
     private suspend fun detectSourceLanguage(sample: String): String? {
         if (sample.isBlank()) return null
+
         val identifier = LanguageIdentification.getClient()
         return try {
             val code = identifier.identifyLanguage(sample).await()
             if (code == "und") null else mlKitCodeForLanguageTag(code)
-        } catch (_: Exception) {
+        } catch (t: Throwable) {
+            if (t is CancellationException) throw t
             null
         } finally {
-            identifier.close()
+            try {
+                identifier.close()
+            } catch (_: Throwable) {
+                // Diagnostic cleanup only.
+            }
         }
     }
 
@@ -149,5 +281,11 @@ object SubtitleTranslationEngine {
             "bn" -> TranslateLanguage.BENGALI
             else -> null
         }
+    }
+
+    private fun diagnosticMessage(t: Throwable): String {
+        val type = t.javaClass.simpleName.ifBlank { t.javaClass.name }
+        val message = t.message?.trim().orEmpty()
+        return if (message.isBlank()) type else "$type: $message"
     }
 }
