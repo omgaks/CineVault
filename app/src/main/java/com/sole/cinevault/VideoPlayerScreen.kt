@@ -988,17 +988,18 @@ fun VideoPlayerScreen(
     fun runAutoSync() = autoSyncCoordinator.runAutoSync()
     fun applyAutoSyncResult(result: SubtitleSyncResult) = autoSyncCoordinator.applyAutoSyncResult(result)
 
-    // AI subtitle generation + translation — same coordinator-glue pattern
-    // as autoSyncCoordinator immediately above. subtitleGenerationStatus
-    // needs to exist as a remembered state var wherever this composable's
-    // other UI state lives (alongside autoSyncStatus) — added here inline
-    // via `remember` rather than assuming a specific state-holder file,
-    // since PlayerUiState.kt's exact shape may have moved on since this
-    // was written.
-    var subtitleGenerationStatus by remember {
-        mutableStateOf<SubtitleGenerationStatus>(SubtitleGenerationStatus.Idle)
+    // Stage 2C: speech recognition and subtitle translation are independent.
+    // Translation never requires Whisper and resolves normal Subtitle Studio /
+    // local subtitle sources through SubtitleSourceResolver.
+    var speechSubtitleStatus by remember {
+        mutableStateOf<SpeechSubtitleStatus>(SpeechSubtitleStatus.Idle)
     }
-    var showAiSubtitleMenu by remember { mutableStateOf(false) }
+    var subtitleTranslationStatus by remember {
+        mutableStateOf<SubtitleTranslationStatus>(SubtitleTranslationStatus.Idle)
+    }
+    var showSpeechSubtitlePanel by remember { mutableStateOf(false) }
+    var showSubtitleTranslationPanel by remember { mutableStateOf(false) }
+
     var generatedSubtitleRefreshKey by remember(currentVideo.path) { mutableIntStateOf(0) }
     var generatedSubtitleFiles by remember(currentVideo.path) {
         mutableStateOf<List<GeneratedSubtitleFile>>(emptyList())
@@ -1013,48 +1014,98 @@ fun VideoPlayerScreen(
         }
     }
 
-    val subtitleGenerationCoordinator = remember(exoPlayer) {
-        SubtitleGenerationCoordinator(
+    fun currentTranslationSource(): SubtitleSourceResolver.Resolved? =
+        SubtitleSourceResolver.resolve(
+            SubtitleSourceResolver.Snapshot(
+                primaryUri = trackUi.primaryUri,
+                originalUri = trackUi.originalUri,
+                selectedKey = trackUi.selectedKey,
+                selectedLabel = trackUi.selectedLabel,
+                selectedSource = trackUi.selectedSource,
+                primaryLanguage = trackUi.primaryLanguage,
+            )
+        )
+
+    fun applyAiSubtitle(
+        file: GeneratedSubtitleFile,
+        language: String?,
+        sourceLabel: String,
+    ) {
+        val resumeAt = playerSafeResumePosition(exoPlayer.currentPosition)
+        coreUi.subtitlesEnabled = true
+        trackUi.primaryUri = file.uri
+        trackUi.originalUri = file.uri
+        trackUi.primaryLanguage = language
+        trackUi.selectedKey = "local:${file.uri.path ?: file.fileName}"
+        trackUi.selectedLabel = file.label
+        trackUi.selectedSource = sourceLabel
+        playCurrentVideoWithSubtitle(
+            file.uri,
+            resumePosition = resumeAt,
+            isOriginalSubtitle = true,
+        )
+    }
+
+    val speechSubtitleCoordinator = remember(exoPlayer) {
+        SpeechSubtitleCoordinator(
             context = context,
             scope = scope,
             exoPlayer = exoPlayer,
             getCurrentVideoPath = { currentVideo.path },
-            getPrimarySubtitleUri = { trackUi.primaryUri },
-            getStatus = { subtitleGenerationStatus },
-            setStatus = { subtitleGenerationStatus = it },
-            onSubtitleReady = { uri ->
-                playCurrentVideoWithSubtitle(
-                    uri,
-                    resumePosition = position,
-                    isOriginalSubtitle = false,
-                )
+            getStatus = { speechSubtitleStatus },
+            setStatus = { speechSubtitleStatus = it },
+            onSubtitleReady = { file, language ->
+                applyAiSubtitle(file, language, "Speech recognition")
             },
             onGeneratedLibraryChanged = { generatedSubtitleRefreshKey++ },
         )
     }
-    fun downloadSubtitleModel() = subtitleGenerationCoordinator.downloadModel()
-    fun generateSubtitles() = subtitleGenerationCoordinator.generateSubtitles()
-    fun translateSubtitles(target: SubtitleTranslationEngine.SupportedLanguage) =
-        subtitleGenerationCoordinator.translateActive(target)
+
+    val subtitleTranslationCoordinator = remember(exoPlayer) {
+        SubtitleTranslationCoordinator(
+            context = context,
+            scope = scope,
+            getCurrentVideoPath = { currentVideo.path },
+            resolveActiveSubtitle = { currentTranslationSource() },
+            getStatus = { subtitleTranslationStatus },
+            setStatus = { subtitleTranslationStatus = it },
+            onSubtitleReady = { file, language ->
+                applyAiSubtitle(file, language, "AI Translation")
+            },
+            onGeneratedLibraryChanged = { generatedSubtitleRefreshKey++ },
+        )
+    }
+
     fun loadGeneratedSubtitle(file: GeneratedSubtitleFile) =
-        subtitleGenerationCoordinator.loadGeneratedSubtitle(file)
+        applyAiSubtitle(file, null, "Generated subtitle")
 
-    val aiSubtitleJobLabel: String? = when (subtitleGenerationStatus) {
-        is SubtitleGenerationStatus.DownloadingModel -> "AI model"
-        is SubtitleGenerationStatus.Generating -> "AI Subs"
-        is SubtitleGenerationStatus.Translating -> "Translate"
+    val speechJobLabel: String? = when (speechSubtitleStatus) {
+        is SpeechSubtitleStatus.DownloadingModel -> "Whisper model"
+        is SpeechSubtitleStatus.Generating -> "Speech → Subs"
         else -> null
     }
 
-    val aiSubtitleJobProgress: Int? = when (val status = subtitleGenerationStatus) {
-        is SubtitleGenerationStatus.DownloadingModel -> status.percent
-        is SubtitleGenerationStatus.Generating -> status.percent
-        is SubtitleGenerationStatus.Translating -> status.percent
+    val speechJobProgress: Int? = when (val status = speechSubtitleStatus) {
+        is SpeechSubtitleStatus.DownloadingModel -> status.percent
+        is SpeechSubtitleStatus.Generating -> status.percent
         else -> null
     }
 
-    BackHandler(enabled = showAiSubtitleMenu) {
-        showAiSubtitleMenu = false
+    val translationJobLabel: String? =
+        if (subtitleTranslationStatus is SubtitleTranslationStatus.Translating) {
+            "AI Translate"
+        } else {
+            null
+        }
+
+    val translationJobProgress: Int? =
+        (subtitleTranslationStatus as? SubtitleTranslationStatus.Translating)?.percent
+
+    BackHandler(enabled = showSpeechSubtitlePanel || showSubtitleTranslationPanel) {
+        when {
+            showSubtitleTranslationPanel -> showSubtitleTranslationPanel = false
+            showSpeechSubtitlePanel -> showSpeechSubtitlePanel = false
+        }
     }
 
     LaunchedEffect(showNextEpisodeOverlay, pendingNextEpisode) {
@@ -2057,12 +2108,11 @@ fun VideoPlayerScreen(
             }
         )
 
-        // AI subtitle entry point. Long-running work immediately collapses
-        // into the small draggable job pill on the right so the movie stays
-        // visible. Tapping that pill reopens this compact draggable panel.
+        // Stage 2C: two independent entry pills.
+        // Speech recognition owns Whisper; translation works without it.
         if (!CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
-            IconButton(
-                onClick = { showAiSubtitleMenu = true },
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(
@@ -2070,73 +2120,139 @@ fun VideoPlayerScreen(
                         bottom = bottomDockPadding + playButton + 26.dp,
                     )
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.ClosedCaption,
-                    contentDescription = "AI Subtitles",
-                    tint = Color.White,
-                )
+                OutlinedButton(
+                    onClick = {
+                        showSubtitleTranslationPanel = false
+                        showSpeechSubtitlePanel = true
+                    },
+                ) {
+                    Text("Speech → Subs")
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        showSpeechSubtitlePanel = false
+                        showSubtitleTranslationPanel = true
+                    },
+                ) {
+                    Text("AI Translate")
+                }
             }
         }
 
-        val aiJobLabel = aiSubtitleJobLabel
+        val activeSpeechJobLabel = speechJobLabel
         PlayerFloatingJobOverlay(
-            visible = aiJobLabel != null &&
-                !showAiSubtitleMenu &&
+            visible = activeSpeechJobLabel != null &&
+                !showSpeechSubtitlePanel &&
                 !CineVaultPlayerHolder.isInPipMode &&
                 externalPlayerView == null,
             containerWidth = playerMaxWidth,
             containerHeight = playerMaxHeight,
-            label = aiJobLabel ?: "AI",
-            progress = aiSubtitleJobProgress,
-            onOpen = { showAiSubtitleMenu = true },
+            label = activeSpeechJobLabel ?: "Speech",
+            progress = speechJobProgress,
+            onOpen = {
+                showSubtitleTranslationPanel = false
+                showSpeechSubtitlePanel = true
+            },
+        )
+
+        val activeTranslationJobLabel = translationJobLabel
+        PlayerFloatingJobOverlay(
+            visible = activeTranslationJobLabel != null &&
+                !showSubtitleTranslationPanel &&
+                !CineVaultPlayerHolder.isInPipMode &&
+                externalPlayerView == null,
+            containerWidth = playerMaxWidth,
+            containerHeight = playerMaxHeight,
+            label = activeTranslationJobLabel ?: "Translate",
+            progress = translationJobProgress,
+            onOpen = {
+                showSpeechSubtitlePanel = false
+                showSubtitleTranslationPanel = true
+            },
         )
 
         if (
-            showAiSubtitleMenu &&
+            showSpeechSubtitlePanel &&
             !CineVaultPlayerHolder.isInPipMode &&
             externalPlayerView == null
         ) {
-            val aiPanelWidth = (playerMaxWidth - 28.dp)
+            val panelWidth = (playerMaxWidth - 28.dp)
                 .coerceAtMost(360.dp)
                 .coerceAtLeast(280.dp)
-            val aiPanelHeight = (playerMaxHeight - 36.dp)
-                .coerceAtMost(470.dp)
-                .coerceAtLeast(320.dp)
+            val panelHeight = (playerMaxHeight - 36.dp)
+                .coerceAtMost(390.dp)
+                .coerceAtLeast(280.dp)
 
-            Box(
-                modifier = Modifier.align(Alignment.Center)
-            ) {
+            Box(modifier = Modifier.align(Alignment.Center)) {
                 DraggableFloatingPopup(
                     containerWidth = playerMaxWidth,
                     containerHeight = playerMaxHeight,
-                    popupWidth = aiPanelWidth,
-                    popupMaxHeight = aiPanelHeight,
+                    popupWidth = panelWidth,
+                    popupMaxHeight = panelHeight,
                     onUserInteraction = {},
                 ) {
-                    Box(modifier = Modifier.width(aiPanelWidth)) {
-                        SubtitleGenerationMenu(
-                            status = subtitleGenerationStatus,
+                    Box(modifier = Modifier.width(panelWidth)) {
+                        SpeechSubtitlePanel(
+                            status = speechSubtitleStatus,
                             modelReady = WhisperModelManager.isModelReady(context),
                             modelName = WhisperModelManager.modelDisplayName(),
                             modelSizeLabel = WhisperModelManager.modelDownloadSizeLabel(),
-                            generatedFiles = generatedSubtitleFiles,
-                            activeSubtitleUri = trackUi.primaryUri,
                             onDownloadModel = {
-                                showAiSubtitleMenu = false
-                                downloadSubtitleModel()
+                                showSpeechSubtitlePanel = false
+                                speechSubtitleCoordinator.downloadModel()
                             },
                             onGenerate = {
-                                showAiSubtitleMenu = false
-                                generateSubtitles()
+                                showSpeechSubtitlePanel = false
+                                speechSubtitleCoordinator.generateSubtitles()
                             },
-                            onLoadGenerated = { generated ->
-                                loadGeneratedSubtitle(generated)
+                            onStop = {
+                                speechSubtitleCoordinator.cancelTranscription()
                             },
-                            onTranslate = { lang ->
-                                showAiSubtitleMenu = false
-                                translateSubtitles(lang)
+                            onDismiss = { showSpeechSubtitlePanel = false },
+                        )
+                    }
+                }
+            }
+        }
+
+        if (
+            showSubtitleTranslationPanel &&
+            !CineVaultPlayerHolder.isInPipMode &&
+            externalPlayerView == null
+        ) {
+            val panelWidth = (playerMaxWidth - 28.dp)
+                .coerceAtMost(390.dp)
+                .coerceAtLeast(290.dp)
+            val panelHeight = (playerMaxHeight - 36.dp)
+                .coerceAtMost(500.dp)
+                .coerceAtLeast(340.dp)
+
+            Box(modifier = Modifier.align(Alignment.Center)) {
+                DraggableFloatingPopup(
+                    containerWidth = playerMaxWidth,
+                    containerHeight = playerMaxHeight,
+                    popupWidth = panelWidth,
+                    popupMaxHeight = panelHeight,
+                    onUserInteraction = {},
+                ) {
+                    Box(modifier = Modifier.width(panelWidth)) {
+                        SubtitleTranslationPanel(
+                            status = subtitleTranslationStatus,
+                            activeSource = currentTranslationSource(),
+                            generatedFiles = generatedSubtitleFiles,
+                            activeSubtitleUri = trackUi.primaryUri ?: trackUi.originalUri,
+                            onLoadGenerated = { file ->
+                                loadGeneratedSubtitle(file)
                             },
-                            onDismiss = { showAiSubtitleMenu = false },
+                            onTranslate = { language ->
+                                showSubtitleTranslationPanel = false
+                                subtitleTranslationCoordinator.translateActive(language)
+                            },
+                            onStop = {
+                                subtitleTranslationCoordinator.cancelTranslation()
+                            },
+                            onDismiss = { showSubtitleTranslationPanel = false },
                         )
                     }
                 }
