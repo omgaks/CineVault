@@ -149,11 +149,6 @@ class SubtitleTranslationCoordinator(
                         onGeneratedLibraryChanged()
                         onSubtitleReady(generated, target.mlKitCode)
 
-                        Toast.makeText(
-                            context,
-                            "Translated to ${target.label}",
-                            Toast.LENGTH_SHORT,
-                        ).show()
                     }
                 }
             } catch (_: CancellationException) {
