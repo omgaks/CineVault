@@ -127,6 +127,18 @@
 # org.slf4j.impl.StaticLoggerBinder" — this isn't a defensive guess.
 -dontwarn org.slf4j.**
 
+# ── ML Kit subtitle translation / language identification ──────────────
+# CineVault creates these clients through ML Kit's component/factory
+# registry. Release-only testing showed Translation.getClient(options)
+# failing before a Translator could be returned. Preserve this bounded
+# ML Kit feature surface and its component registrars while leaving the
+# rest of Google Play services and ML Kit available to R8 optimization.
+-keep class com.google.mlkit.nl.translate.** { *; }
+-keep interface com.google.mlkit.nl.translate.** { *; }
+-keep class com.google.mlkit.nl.languageid.** { *; }
+-keep interface com.google.mlkit.nl.languageid.** { *; }
+-keep class com.google.mlkit.** implements com.google.firebase.components.ComponentRegistrar { *; }
+
 # ── coroutines / kotlinx.serialization internals ────────────────────────
 # Standard defensive rules for Kotlin coroutines' own internal use of
 # reflection for continuation state machines — a widely-documented
