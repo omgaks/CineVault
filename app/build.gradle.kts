@@ -97,11 +97,8 @@ android {
             // rules covering every reflection/JNI-dependent library this
             // app actually uses (see that file for the full reasoning
             // behind each one) before turning this on.
-            // TEMPORARY DIAGNOSTIC: keep both disabled for one signed release
-            // build to determine whether R8 is breaking ML Kit translator
-            // creation. Restore both to true after the on-device test.
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
