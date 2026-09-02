@@ -62,18 +62,36 @@ class SubtitleTranslationCoordinator(
                     return@launch
                 }
 
+                var lastPhase = ""
+                var lastPercent = -1
+
                 val result = withContext(Dispatchers.Default) {
                     SubtitleTranslationEngine.translate(
                         srtText = srtText,
                         targetMlKitCode = target.mlKitCode,
                         sourceMlKitCode = knownSource,
                         onProgress = { progress ->
-                            setStatus(
-                                SubtitleTranslationStatus.Translating(
-                                    progress.phase,
-                                    progress.percent,
-                                )
-                            )
+                            // Translation can emit a progress callback for every SRT cue.
+                            // Do not mutate Compose state directly from Dispatchers.Default,
+                            // and do not trigger hundreds of recompositions per second.
+                            val shouldPublish =
+                                progress.phase != lastPhase ||
+                                    progress.percent >= lastPercent + 2 ||
+                                    progress.percent == 100
+
+                            if (shouldPublish) {
+                                lastPhase = progress.phase
+                                lastPercent = progress.percent
+
+                                scope.launch(Dispatchers.Main.immediate) {
+                                    setStatus(
+                                        SubtitleTranslationStatus.Translating(
+                                            progress.phase,
+                                            progress.percent,
+                                        )
+                                    )
+                                }
+                            }
                         }
                     )
                 }
@@ -116,6 +134,7 @@ class SubtitleTranslationCoordinator(
                         )
                         onGeneratedLibraryChanged()
                         onSubtitleReady(generated, target.mlKitCode)
+
                         Toast.makeText(
                             context,
                             "Translated to ${target.label}",
@@ -126,6 +145,32 @@ class SubtitleTranslationCoordinator(
             } catch (_: CancellationException) {
                 setStatus(SubtitleTranslationStatus.Idle)
                 Toast.makeText(context, "Translation stopped", Toast.LENGTH_SHORT).show()
+            } catch (oom: OutOfMemoryError) {
+                setStatus(
+                    SubtitleTranslationStatus.Failed(
+                        "Translation ran out of available memory. Try again after closing other apps."
+                    )
+                )
+                Toast.makeText(
+                    context,
+                    "Translation stopped: not enough memory",
+                    Toast.LENGTH_LONG,
+                ).show()
+            } catch (t: Throwable) {
+                val detail = t.message
+                    ?.takeIf { it.isNotBlank() }
+                    ?: t.javaClass.simpleName
+
+                setStatus(
+                    SubtitleTranslationStatus.Failed(
+                        "Translation failed safely: $detail"
+                    )
+                )
+                Toast.makeText(
+                    context,
+                    "Translation failed: $detail",
+                    Toast.LENGTH_LONG,
+                ).show()
             } finally {
                 translationJob = null
             }
@@ -133,6 +178,8 @@ class SubtitleTranslationCoordinator(
     }
 
     fun cancelTranslation() {
-        if (translationJob?.isActive == true) translationJob?.cancel()
+        if (translationJob?.isActive == true) {
+            translationJob?.cancel()
+        }
     }
 }
