@@ -6,6 +6,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Alignment
@@ -393,7 +394,7 @@ fun BoxScope.SubtitleStudioOverlay(
         visible = showSubtitleStudio,
         enter = fadeIn(animationSpec = tween(180)),
         exit = fadeOut(animationSpec = tween(200)),
-        modifier = Modifier.align(Alignment.Center)
+        modifier = Modifier.fillMaxSize()
     ) {
         SubtitleStudioSheet(
             panelWidth = studioWidth,
