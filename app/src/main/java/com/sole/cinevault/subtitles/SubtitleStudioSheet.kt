@@ -127,20 +127,36 @@ fun SubtitleStudioSheet(
     val maxOffsetXPx = with(density) { ((containerWidth - panelWidth) / 2).coerceAtLeast(0.dp).toPx() }
     val maxOffsetYPx = with(density) { ((containerHeight - panelMaxHeight) / 2).coerceAtLeast(0.dp).toPx() }
 
+    if (screen is StudioScreen.Radial) {
+        StudioBloom(
+            onSelectRoom = { tab ->
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                screen = StudioScreen.Room(tab.asRoom())
+            },
+            onDismiss = onDismiss
+        )
+        return
+    }
+
     Box(
         modifier = Modifier
-            .offset { IntOffset(dragOffsetX.roundToInt(), dragOffsetY.roundToInt()) }
-            .width(panelWidth)
-            .heightIn(max = panelMaxHeight)
-            .glassPanel(cornerRadius = 26.dp, fill = SpaceMid.copy(alpha = 0.98f))
-            .pointerInput(Unit) { detectTapGestures { } }
+            .fillMaxSize()
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     onUserInteraction()
                 }
-            }
+            },
+        contentAlignment = Alignment.Center
     ) {
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(dragOffsetX.roundToInt(), dragOffsetY.roundToInt()) }
+                .width(panelWidth)
+                .heightIn(max = panelMaxHeight)
+                .glassPanel(cornerRadius = 26.dp, fill = SpaceMid.copy(alpha = 0.98f))
+                .pointerInput(Unit) { detectTapGestures { } }
+        ) {
         Column(modifier = Modifier.fillMaxSize().padding(14.dp)) {
             val currentScreen = screen
             Row(
@@ -253,6 +269,7 @@ fun SubtitleStudioSheet(
                     }
                 }
             }
+        }
         }
     }
 }
