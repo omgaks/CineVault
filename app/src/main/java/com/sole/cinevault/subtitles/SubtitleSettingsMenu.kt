@@ -128,13 +128,13 @@ fun SubtitleSettingsMenu(
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-            QuickIconAction(Icons.Filled.ViewList, "Pick", Modifier.weight(1f), isLandscape) {
+            QuickIconAction(Icons.Filled.ViewList, "Tracks", Modifier.weight(1f), isLandscape) {
                 onUserInteraction(); onTracksClick()
             }
-            QuickIconAction(Icons.Filled.Sync, "Time", Modifier.weight(1f), isLandscape) {
+            QuickIconAction(Icons.Filled.Sync, "Sync", Modifier.weight(1f), isLandscape) {
                 onUserInteraction(); onSyncClick()
             }
-            QuickIconAction(Icons.Filled.Palette, "Look", Modifier.weight(1f), isLandscape) {
+            QuickIconAction(Icons.Filled.Palette, "Style", Modifier.weight(1f), isLandscape) {
                 onUserInteraction(); onStyleClick()
             }
             QuickIconAction(Icons.Rounded.AutoAwesome, "Make", Modifier.weight(1f), isLandscape) {

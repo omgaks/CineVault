@@ -46,6 +46,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -67,24 +69,36 @@ import java.io.File
 internal fun StudioRadial(
     onSelectRoom: (SubtitleStudioTab) -> Unit
 ) {
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("STUDIO", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp)
-        Spacer(modifier = Modifier.height(16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            RadialPetal("SOURCE", Icons.Filled.ViewList, SubtitleStudioTab.SOURCE, onSelectRoom)
-            RadialPetal("TIME", Icons.Filled.Sync, SubtitleStudioTab.TIME, onSelectRoom)
+        if (landscape) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                RadialPetal("TRACKS", Icons.Filled.ViewList, SubtitleStudioTab.SOURCE, onSelectRoom, Modifier.weight(1f), compact = true)
+                RadialPetal("SYNC", Icons.Filled.Sync, SubtitleStudioTab.TIME, onSelectRoom, Modifier.weight(1f), compact = true)
+                RadialPetal("STYLE", Icons.Filled.Palette, SubtitleStudioTab.LOOK, onSelectRoom, Modifier.weight(1f), compact = true)
+                RadialPetal("AUTO", Icons.Filled.Settings, SubtitleStudioTab.BRAIN, onSelectRoom, Modifier.weight(1f), compact = true)
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                RadialPetal("TRACKS", Icons.Filled.ViewList, SubtitleStudioTab.SOURCE, onSelectRoom)
+                RadialPetal("SYNC", Icons.Filled.Sync, SubtitleStudioTab.TIME, onSelectRoom)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                RadialPetal("STYLE", Icons.Filled.Palette, SubtitleStudioTab.LOOK, onSelectRoom)
+                RadialPetal("AUTO", Icons.Filled.Settings, SubtitleStudioTab.BRAIN, onSelectRoom)
+            }
         }
-        Spacer(modifier = Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            RadialPetal("LOOK", Icons.Filled.Palette, SubtitleStudioTab.LOOK, onSelectRoom)
-            RadialPetal("BRAIN", Icons.Filled.Settings, SubtitleStudioTab.BRAIN, onSelectRoom)
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-        Text("One room. No nested windows.", color = TextMuted, fontSize = 10.sp)
     }
 }
 
@@ -93,12 +107,13 @@ private fun RadialPetal(
     label: String,
     icon: ImageVector,
     tab: SubtitleStudioTab,
-    onSelect: (SubtitleStudioTab) -> Unit
+    onSelect: (SubtitleStudioTab) -> Unit,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
 ) {
     Column(
-        modifier = Modifier
-            .width(124.dp)
-            .height(92.dp)
+        modifier = modifier
+            .then(if (compact) Modifier.height(78.dp) else Modifier.width(124.dp).height(92.dp))
             .clip(RoundedCornerShape(32.dp))
             .background(SpaceDeep.copy(alpha = 0.78f))
             .border(1.dp, AmberCore.copy(alpha = 0.5f), RoundedCornerShape(32.dp))
@@ -157,13 +172,31 @@ internal fun StudioSourceRoom(
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         RoomCard {
             Text("ON  ·  $currentLabel", color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Black)
-            if (dualEnabled) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    "Dual layer  ·  ${SubtitleLanguageRegistry.displayName(dualSecondaryLanguage)}  ·  $dualGapLines-line gap",
-                    color = TextMuted,
-                    fontSize = 11.sp
-                )
+            Spacer(modifier = Modifier.height(8.dp))
+            StudioToggleRow("Dual subtitles", dualEnabled && dualCanEnable) { on ->
+                if (dualCanEnable) onToggleDual(on)
+            }
+            if (!dualCanEnable) {
+                Text("Pick a downloaded or local track first.", color = TextMuted, fontSize = 11.sp)
+            } else if (dualEnabled) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Second language", color = TextMuted, fontSize = 10.sp)
+                Spacer(modifier = Modifier.height(6.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SubtitleLanguageRegistry.allLanguages().forEach { (code, label) ->
+                        AmberChip(label, dualSecondaryLanguage == code) { onDualSecondaryLanguageChange(code) }
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(0 to "Tight", 1 to "1 line", 2 to "2 lines").forEach { (n, label) ->
+                        AmberChip(label, dualGapLines == n) { onDualGapLinesChange(n) }
+                    }
+                }
+                if (dualStatusText.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(dualStatusText, color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
         Spacer(modifier = Modifier.height(10.dp))
@@ -172,38 +205,6 @@ internal fun StudioSourceRoom(
             SourceAction("Web", Icons.Filled.Language, Modifier.weight(1f), onOpenManualSearch)
             SourceAction("Speech", Icons.Rounded.AutoAwesome, Modifier.weight(1f), onOpenSpeech)
         }
-        Spacer(modifier = Modifier.height(14.dp))
-
-        StudioSectionLabel("Dual layer")
-        if (!dualCanEnable) {
-            Text(
-                "Needs a downloaded, local, or generated file as the primary.",
-                color = TextMuted,
-                fontSize = 11.sp,
-                lineHeight = 15.sp
-            )
-        } else {
-            StudioToggleRow("Layer a second language", dualEnabled, onToggleDual)
-            if (dualEnabled) {
-                Spacer(modifier = Modifier.height(8.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SubtitleLanguageRegistry.allLanguages().forEach { (code, label) ->
-                        AmberChip(label, dualSecondaryLanguage == code) { onDualSecondaryLanguageChange(code) }
-                    }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf(0 to "None", 1 to "1 line", 2 to "2 lines").forEach { (n, label) ->
-                        AmberChip(label, dualGapLines == n) { onDualGapLinesChange(n) }
-                    }
-                }
-                if (dualStatusText.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(dualStatusText, color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                }
-            }
-        }
-
         Spacer(modifier = Modifier.height(14.dp))
         StudioSectionLabel("Tracks")
         TrackRow("Off", selectedTrackKey == SubtitleTrackChoice.Off.key || selectedTrackKey == null) {
@@ -263,6 +264,7 @@ internal fun StudioSourceRoom(
                 .clickable(onClick = onOpenFilePicker)
                 .padding(horizontal = 14.dp, vertical = 8.dp)
         )
+        Spacer(modifier = Modifier.height(8.dp))
     }
 }
 
@@ -300,7 +302,7 @@ internal fun StudioTimeRoom(
     var showManual by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Text(
-            "Auto-Sync collapses to the right-edge pill. Nudge a cue on the strip to shift delay.",
+            "Auto-Sync uses the pill. Nudge the strip to shift delay.",
             color = TextMuted,
             fontSize = 11.sp,
             lineHeight = 15.sp
@@ -372,6 +374,7 @@ internal fun StudioTimeRoom(
                 AmberChip("Fix drift", false, Modifier.weight(1f), onDriftFixClick)
             }
         }
+        Spacer(modifier = Modifier.height(8.dp))
     }
 }
 
@@ -553,6 +556,7 @@ internal fun StudioLookRoom(
             Spacer(modifier = Modifier.height(10.dp))
             StudioToggleRow("Keep original ASS/SSA styling", preserveOriginalStyling, onPreserveOriginalStylingChange)
         }
+        Spacer(modifier = Modifier.height(8.dp))
     }
 }
 
@@ -644,6 +648,7 @@ internal fun StudioBrainRoom(
             Spacer(modifier = Modifier.width(8.dp))
             Text("AI Translate  ·  starts a pill", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Black)
         }
+        Spacer(modifier = Modifier.height(8.dp))
     }
 }
 
@@ -698,7 +703,7 @@ private fun RoomCard(content: @Composable () -> Unit) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(SpaceDeep.copy(alpha = 0.62f))
-            .padding(12.dp)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
     ) { content() }
 }
 

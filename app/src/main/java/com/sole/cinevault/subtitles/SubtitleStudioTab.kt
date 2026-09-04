@@ -17,10 +17,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
  * [asRoom] maps every value onto one of the four rooms.
  */
 enum class SubtitleStudioTab(val label: String, val icon: ImageVector) {
-    SOURCE("Source", Icons.Filled.ViewList),
-    TIME("Time", Icons.Filled.Sync),
-    LOOK("Look", Icons.Filled.Palette),
-    BRAIN("Brain", Icons.Filled.Settings),
+    SOURCE("Tracks", Icons.Filled.ViewList),
+    TIME("Sync", Icons.Filled.Sync),
+    LOOK("Style", Icons.Filled.Palette),
+    BRAIN("Auto", Icons.Filled.Settings),
 
     TRACK("Tracks", Icons.Filled.ViewList),
     TIMING("Timing", Icons.Filled.Sync),

@@ -95,19 +95,19 @@ internal fun StudioBloom(
                 drawCircle(AmberCore, radius = r * 0.22f, center = c, style = Stroke(3.5f))
             }
 
-            BloomHit(Alignment.TopStart, 18.dp, 18.dp, "SOURCE", Icons.Filled.ViewList, SubtitleStudioTab.SOURCE) {
+            BloomHit(Alignment.TopStart, 18.dp, 18.dp, "TRACKS", Icons.Filled.ViewList, SubtitleStudioTab.SOURCE) {
                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onSelectRoom(it)
             }
-            BloomHit(Alignment.TopEnd, (-18).dp, 18.dp, "TIME", Icons.Filled.Sync, SubtitleStudioTab.TIME) {
+            BloomHit(Alignment.TopEnd, (-18).dp, 18.dp, "SYNC", Icons.Filled.Sync, SubtitleStudioTab.TIME) {
                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onSelectRoom(it)
             }
-            BloomHit(Alignment.BottomStart, 18.dp, (-18).dp, "LOOK", Icons.Filled.Palette, SubtitleStudioTab.LOOK) {
+            BloomHit(Alignment.BottomStart, 18.dp, (-18).dp, "STYLE", Icons.Filled.Palette, SubtitleStudioTab.LOOK) {
                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onSelectRoom(it)
             }
-            BloomHit(Alignment.BottomEnd, (-18).dp, (-18).dp, "BRAIN", Icons.Filled.Settings, SubtitleStudioTab.BRAIN) {
+            BloomHit(Alignment.BottomEnd, (-18).dp, (-18).dp, "AUTO", Icons.Filled.Settings, SubtitleStudioTab.BRAIN) {
                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onSelectRoom(it)
             }

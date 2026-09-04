@@ -157,7 +157,7 @@ fun SubtitleStudioSheet(
                 .glassPanel(cornerRadius = 26.dp, fill = SpaceMid.copy(alpha = 0.98f))
                 .pointerInput(Unit) { detectTapGestures { } }
         ) {
-        Column(modifier = Modifier.fillMaxSize().padding(14.dp)) {
+        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 8.dp)) {
             val currentScreen = screen
             Row(
                 modifier = Modifier
@@ -187,16 +187,16 @@ fun SubtitleStudioSheet(
                         StudioScreen.Radial -> "Subtitle Studio"
                     },
                     color = AmberCore,
-                    fontSize = 16.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                     textAlign = TextAlign.Center
                 )
                 AmberPill(icon = Icons.Default.Close, label = "Close", onClick = onDismiss)
             }
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             HorizontalDivider(color = GlassBorderBottom)
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -290,7 +290,7 @@ internal fun StudioSectionLabel(text: String) {
 private fun AmberPill(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .height(40.dp)
+            .height(32.dp)
             .clip(RoundedCornerShape(50))
             .background(AmberCore)
             .clickable(onClick = onClick)
