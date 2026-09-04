@@ -6,7 +6,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Alignment
@@ -348,15 +347,18 @@ fun BoxScope.SubtitleStudioOverlay(
     embeddedTracks: List<SubtitleTrackChoice.Embedded>,
     downloadedTrack: SubtitleTrackChoice.Downloaded?,
     localFiles: List<File>,
+    generatedFiles: List<GeneratedSubtitleFile> = emptyList(),
     selectedTrackKey: String?,
     onSelectTrack: (SubtitleTrackChoice) -> Unit,
     onDeleteLocalTrack: (File) -> Unit,
+    onDeleteGeneratedTrack: (GeneratedSubtitleFile) -> Unit = {},
     onOpenFilePicker: () -> Unit,
     currentSyncOffset: Float,
     onSyncOffsetChange: (Float) -> Unit,
     onDialogueSyncClick: () -> Unit,
     onDriftFixClick: () -> Unit,
     autoSyncStatus: AutoSyncStatus,
+    autoSyncSpeechTimeline: FloatArray? = null,
     autoSyncAvailable: Boolean,
     onAutoSyncClick: () -> Unit,
     onApplyAutoSync: (SubtitleSyncResult) -> Unit,
@@ -394,7 +396,7 @@ fun BoxScope.SubtitleStudioOverlay(
         visible = showSubtitleStudio,
         enter = fadeIn(animationSpec = tween(180)),
         exit = fadeOut(animationSpec = tween(200)),
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.align(Alignment.Center)
     ) {
         SubtitleStudioSheet(
             panelWidth = studioWidth,
@@ -408,15 +410,18 @@ fun BoxScope.SubtitleStudioOverlay(
             embeddedTracks = embeddedTracks,
             downloadedTrack = downloadedTrack,
             localFiles = localFiles,
+            generatedFiles = generatedFiles,
             selectedTrackKey = selectedTrackKey,
             onSelectTrack = onSelectTrack,
             onDeleteLocalTrack = onDeleteLocalTrack,
+            onDeleteGeneratedTrack = onDeleteGeneratedTrack,
             onOpenFilePicker = onOpenFilePicker,
             currentSyncOffset = currentSyncOffset,
             onSyncOffsetChange = onSyncOffsetChange,
             onDialogueSyncClick = onDialogueSyncClick,
             onDriftFixClick = onDriftFixClick,
             autoSyncStatus = autoSyncStatus,
+            autoSyncSpeechTimeline = autoSyncSpeechTimeline,
             autoSyncAvailable = autoSyncAvailable,
             onAutoSyncClick = onAutoSyncClick,
             onApplyAutoSync = onApplyAutoSync,

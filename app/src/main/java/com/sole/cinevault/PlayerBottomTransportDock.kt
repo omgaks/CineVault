@@ -24,7 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AllInclusive
 import androidx.compose.material.icons.rounded.Audiotrack
-import androidx.compose.material.icons.rounded.ClosedCaption
+import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.SkipNext
@@ -175,7 +175,7 @@ internal fun BoxScope.PlayerBottomTransportDock(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.ClosedCaption,
+                        imageVector = Icons.Rounded.Subtitles,
                         contentDescription = null,
                         tint = if (showSubtitleActive) AmberCore else TextBright,
                         modifier = Modifier.size(smallButton * 0.44f)

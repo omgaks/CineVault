@@ -83,6 +83,7 @@ import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -208,7 +209,50 @@ fun VideoPlayerScreen(
 
     val driftUi = remember { DriftCorrectionState() }
     val studioUi = remember { SubtitleStudioUiState() }
+    var showSubtitleDock by remember { mutableStateOf(false) }
+    var showSubtitleBloom by remember { mutableStateOf(false) }
+    var showAiSheet by remember { mutableStateOf(false) }
+    var activeDockItem by remember { mutableStateOf<com.sole.cinevault.subtitles.SubtitleDockItem?>(null) }
+
+    fun onDockItemTapped(item: com.sole.cinevault.subtitles.SubtitleDockItem) {
+        activeDockItem = item
+        showSubtitleDock = false
+        when (item) {
+            com.sole.cinevault.subtitles.SubtitleDockItem.TRACK -> {
+                studioUi.initialTab = SubtitleStudioTab.TRACK
+                studioUi.showStudio = true
+            }
+            com.sole.cinevault.subtitles.SubtitleDockItem.SYNC -> {
+                studioUi.initialTab = SubtitleStudioTab.TIMING
+                studioUi.showStudio = true
+            }
+            com.sole.cinevault.subtitles.SubtitleDockItem.STYLE -> {
+                studioUi.initialTab = SubtitleStudioTab.APPEARANCE
+                studioUi.showStudio = true
+            }
+            com.sole.cinevault.subtitles.SubtitleDockItem.SUPER_SUBS -> {
+                searchUi.showSearch = true
+            }
+        }
+    }
+
+    fun onBloomItemTapped(item: com.sole.cinevault.subtitles.SubtitleBloomItem) {
+        showSubtitleBloom = false
+        when (item) {
+            // Settings routes to the existing Behaviour tab (Dual Sub,
+            // Language Priority, Cleaner, Clean Noise) until that content
+            // gets its own dedicated sheet in the next build pass.
+            com.sole.cinevault.subtitles.SubtitleBloomItem.SETTINGS -> {
+                studioUi.initialTab = SubtitleStudioTab.BEHAVIOUR
+                studioUi.showStudio = true
+            }
+            com.sole.cinevault.subtitles.SubtitleBloomItem.AI -> {
+                showAiSheet = true
+            }
+        }
+    }
     var autoSyncStatus by remember { mutableStateOf<AutoSyncStatus>(AutoSyncStatus.Idle) }
+    var autoSyncSpeechTimeline by remember { mutableStateOf<FloatArray?>(null) }
     val autoSubtitleFetch = remember { AutoSubtitleFetchState() }
     var menuTouchKey by remember { mutableIntStateOf(0) }
 
@@ -361,6 +405,9 @@ fun VideoPlayerScreen(
         searchUi.showFallback = false
         searchUi.showEmbeddedBrowser = false
         searchUi.pendingImportCandidates = null
+        showSubtitleDock = false
+        showSubtitleBloom = false
+        showAiSheet = false
     }
 
     var pendingSrtUri by remember { mutableStateOf<Uri?>(null) }
@@ -607,6 +654,7 @@ fun VideoPlayerScreen(
         appearanceUi.preserveOriginalStyling = false
         studioUi.gestureFeedback = ""
         autoSyncStatus = AutoSyncStatus.Idle
+        autoSyncSpeechTimeline = null
         trackUi.selectedKey = null; trackUi.selectedLabel = ""; trackUi.selectedSource = ""
         droppedFrameNudgeCount = 0; lastNudgeAtMs = 0L
         if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
@@ -982,7 +1030,8 @@ fun VideoPlayerScreen(
             incrementPreviewReloadKey = { previewReloadKey++ },
             setSyncOffsetSeconds = { coreUi.syncOffset = it },
             setDriftScale = { driftUi.scale = it },
-            incrementStudioMenuTouchKey = { studioUi.menuTouchKey++ }
+            incrementStudioMenuTouchKey = { studioUi.menuTouchKey++ },
+            setSpeechTimeline = { autoSyncSpeechTimeline = it }
         )
     }
     fun runAutoSync() = autoSyncCoordinator.runAutoSync()
@@ -999,10 +1048,6 @@ fun VideoPlayerScreen(
     }
     var showSpeechSubtitlePanel by remember { mutableStateOf(false) }
     var showSubtitleTranslationPanel by remember { mutableStateOf(false) }
-    var translationSuccessLanguage by remember(currentVideo.path) {
-        mutableStateOf<String?>(null)
-    }
-    var translationSuccessEvent by remember(currentVideo.path) { mutableIntStateOf(0) }
 
     var generatedSubtitleRefreshKey by remember(currentVideo.path) { mutableIntStateOf(0) }
     var generatedSubtitleFiles by remember(currentVideo.path) {
@@ -1075,12 +1120,6 @@ fun VideoPlayerScreen(
             setStatus = { subtitleTranslationStatus = it },
             onSubtitleReady = { file, language ->
                 applyAiSubtitle(file, language, "AI Translation")
-                translationSuccessLanguage =
-                    SubtitleTranslationEngine.commonTargetLanguages
-                        .firstOrNull { it.mlKitCode == language }
-                        ?.label
-                        ?: language.uppercase()
-                translationSuccessEvent++
             },
             onGeneratedLibraryChanged = { generatedSubtitleRefreshKey++ },
         )
@@ -1110,12 +1149,6 @@ fun VideoPlayerScreen(
 
     val translationJobProgress: Int? =
         (subtitleTranslationStatus as? SubtitleTranslationStatus.Translating)?.percent
-
-    LaunchedEffect(translationSuccessEvent) {
-        if (translationSuccessEvent == 0) return@LaunchedEffect
-        delay(3_200L)
-        translationSuccessLanguage = null
-    }
 
     BackHandler(enabled = showSpeechSubtitlePanel || showSubtitleTranslationPanel) {
         when {
@@ -1473,10 +1506,6 @@ fun VideoPlayerScreen(
             playerErrorMessage = playerErrorMessage,
             sleepTimerActive = sleepTimerActive,
             sleepTimerRemainingMs = sleepTimerRemainingMs,
-            translationSuccessLanguage = translationSuccessLanguage?.takeIf {
-                !CineVaultPlayerHolder.isInPipMode && externalPlayerView == null
-            },
-            translationSuccessBottomPadding = bottomDockPadding + playButton + 26.dp,
             onBack = onBack,
             onRetry = {
                 errorRetryCount = 0
@@ -1789,15 +1818,23 @@ fun VideoPlayerScreen(
             embeddedTracks = embeddedTrackChoices,
             downloadedTrack = downloadedTrackChoice,
             localFiles = localFileChoices,
+            generatedFiles = generatedSubtitleFiles.filter { g ->
+                java.io.File(g.uri.path ?: "").absolutePath !in pendingDeletePaths
+            },
             selectedTrackKey = trackUi.selectedKey,
             onSelectTrack = { choice -> selectSubtitleTrack(choice) },
             onDeleteLocalTrack = { file -> requestDeleteSubtitle(file) },
+            onDeleteGeneratedTrack = { generated ->
+                val path = generated.uri.path
+                if (path != null) requestDeleteSubtitle(java.io.File(path))
+            },
             onOpenFilePicker = { srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
             currentSyncOffset = coreUi.syncOffset,
             onSyncOffsetChange = { coreUi.syncOffset = it; studioUi.menuTouchKey++ },
             onDialogueSyncClick = { armDialogueSync() },
             onDriftFixClick = { studioUi.showStudio = false; driftUi.showDialog = true },
             autoSyncStatus = autoSyncStatus,
+            autoSyncSpeechTimeline = autoSyncSpeechTimeline,
             autoSyncAvailable = autoSyncAvailable,
             onAutoSyncClick = { runAutoSync() },
             onApplyAutoSync = { result -> applyAutoSyncResult(result) },
@@ -2025,17 +2062,18 @@ fun VideoPlayerScreen(
                     },
                     onAudioCenterMeasured = { audioIconX = it },
                     onSubtitleClick = {
-                        val wasOpen = coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio
+                        val wasOpen = showSubtitleDock || showSubtitleBloom || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio
                         closeAllMenus()
-                        coreUi.showSettings = !wasOpen
+                        showSubtitleDock = !wasOpen
                         showControls = true
                         menuTouchKey++
                     },
                     onSubtitleLongClick = {
+                        // 450ms hold threshold is enforced by combinedClickable's own
+                        // long-press timing; this fires once that's satisfied.
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         closeAllMenus()
-                        studioUi.initialTab = null
-                        studioUi.showStudio = true
+                        showSubtitleBloom = true
                         showControls = true
                     },
                     onSubtitleCenterMeasured = { subIconX = it }
@@ -2097,10 +2135,7 @@ fun VideoPlayerScreen(
             controlsLocked = controlsLocked,
             lockButtonVisible = externalPlayerView == null &&
                 (if (controlsLocked) lockButtonVisibleWhileLocked else showControls) &&
-                !CineVaultPlayerHolder.isInPipMode &&
-                !studioUi.showStudio &&
-                !coreUi.showSettings &&
-                !coreUi.showAppearanceStudio,
+                !CineVaultPlayerHolder.isInPipMode,
             isLandscape = isLandscape,
             onLockedSurfaceTap = { lockButtonVisibleWhileLocked = true },
             onToggleLock = {
@@ -2130,6 +2165,81 @@ fun VideoPlayerScreen(
                 deleteWithUndo(file)
             }
         )
+
+        // Tap CC -> HUD Dock (Track / Sync / Style / Super subs)
+        if (showSubtitleDock && !CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
+            com.sole.cinevault.subtitles.SubtitleHudDock(
+                activeItem = activeDockItem,
+                onItemSelected = { onDockItemTapped(it) },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = bottomDockPadding + playButton + 26.dp)
+            )
+        }
+
+        // Long-press CC -> 2-petal Bloom (Settings / AI)
+        if (showSubtitleBloom && !CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
+            com.sole.cinevault.subtitles.SubtitleBloomMenu(
+                onItemSelected = { onBloomItemTapped(it) },
+                onDismiss = { showSubtitleBloom = false },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = bottomDockPadding + playButton + 10.dp, end = sidePadding)
+                    .size(160.dp)
+            )
+        }
+
+        // AI sheet - deduplicated to Speech to subs + AI translate only
+        if (showAiSheet && !CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .width(220.dp)
+            ) {
+                com.sole.cinevault.subtitles.SubtitleAiSheet(
+                    onSpeechToSubs = {
+                        showAiSheet = false
+                        showSpeechSubtitlePanel = true
+                    },
+                    onAiTranslate = {
+                        showAiSheet = false
+                        showSubtitleTranslationPanel = true
+                    }
+                )
+            }
+        }
+
+        // Stage 2C: two independent entry pills.
+        // Speech recognition owns Whisper; translation works without it.
+        if (!CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(
+                        start = sidePadding,
+                        bottom = bottomDockPadding + playButton + 26.dp,
+                    )
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        showSubtitleTranslationPanel = false
+                        showSpeechSubtitlePanel = true
+                    },
+                ) {
+                    Text("Speech → Subs")
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        showSpeechSubtitlePanel = false
+                        showSubtitleTranslationPanel = true
+                    },
+                ) {
+                    Text("AI Translate")
+                }
+            }
+        }
 
         val activeSpeechJobLabel = speechJobLabel
         PlayerFloatingJobOverlay(
