@@ -325,6 +325,108 @@ object AutoSyncEngine {
         return WindowResult(windowCenterMs, bestOffsetMs, bestF1, secondBestF1, coverage)
     }
 
+    // ── Full-video speech timeline, for the Delay slider's waveform ────
+    // Deliberately separate from the offset-search path above: that one
+    // only ever needs a few short windows to find an offset, and folding a
+    // continuous scan into that logic risks the exact kind of subtle
+    // correctness regression that's hard to catch by inspection. This is
+    // a standalone pass with its own bounded-memory discipline — same
+    // shape as the crash this file's own history already fixed once
+    // (see WINDOW_DURATION_MS's comment): never hold more than one
+    // chunk's PCM in memory at a time, release it before requesting the
+    // next chunk, and keep the actual output tiny regardless of runtime
+    // (a fixed bucket count, not one entry per VAD step).
+    private const val FULL_SCAN_CHUNK_MS = 2 * 60_000L
+    private const val TIMELINE_BUCKET_COUNT = 400
+
+    /**
+     * Scans the whole video's audio in sequential [FULL_SCAN_CHUNK_MS] chunks
+     * and returns a fixed-size [TIMELINE_BUCKET_COUNT]-length array where each
+     * value is the fraction of that time-bucket that had detected speech
+     * (0f..1f). Returns null for network shares (same limitation Auto-Sync
+     * itself has) or if nothing could be extracted at all.
+     *
+     * This is real per-second-ish accuracy across the ENTIRE runtime, not the
+     * sparse early/mid/late sampling `run()` above uses for offset search —
+     * intentionally more expensive, only meant to be kicked off once
+     * alongside (not instead of) a normal Auto-Sync run.
+     */
+    suspend fun buildFullSpeechTimeline(
+        context: Context,
+        videoPath: String,
+        videoDurationMs: Long,
+        audioTrackLanguage: String?
+    ): FloatArray? {
+        if (videoDurationMs <= 0L) return null
+        if (videoPath.startsWith("smb://", ignoreCase = true)) return null
+        val isContentUri = videoPath.startsWith("content://", ignoreCase = true)
+        if (!isContentUri && !java.io.File(videoPath).exists()) return null
+
+        val buckets = FloatArray(TIMELINE_BUCKET_COUNT)
+        val bucketSampleCounts = IntArray(TIMELINE_BUCKET_COUNT)
+        val bucketDurationMs = videoDurationMs.toDouble() / TIMELINE_BUCKET_COUNT
+
+        var chunkStart = 0L
+        var sawAnyAudio = false
+        while (chunkStart < videoDurationMs) {
+            currentCoroutineContext().ensureActive()
+            val chunkDuration = min(FULL_SCAN_CHUNK_MS, videoDurationMs - chunkStart)
+
+            val extracted = try {
+                AutoSyncAudioExtractor.extractWindow(
+                    context = context,
+                    filePath = videoPath,
+                    trackLanguage = audioTrackLanguage,
+                    startMs = chunkStart,
+                    durationMs = chunkDuration
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: OutOfMemoryError) {
+                // Bail out with whatever's been scanned so far rather than
+                // crash the whole pass — a partial waveform (or the plain
+                // fallback track, if nothing was collected at all) beats a
+                // memory crash over a purely cosmetic feature.
+                return if (sawAnyAudio) finishTimeline(buckets, bucketSampleCounts) else null
+            } catch (e: Exception) {
+                null
+            }
+
+            if (extracted != null && extracted.samples.isNotEmpty()) {
+                sawAnyAudio = true
+                val vad = try {
+                    buildVadTimeline(context, extracted)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    null
+                }
+                if (vad != null) {
+                    for (i in vad.indices) {
+                        val tMs = chunkStart + i * TIMELINE_STEP_MS
+                        val bucketIdx = (tMs / bucketDurationMs).toInt().coerceIn(0, TIMELINE_BUCKET_COUNT - 1)
+                        if (vad[i]) buckets[bucketIdx] += 1f
+                        bucketSampleCounts[bucketIdx] += 1
+                    }
+                }
+            }
+            // extracted's PCM (and the vad timeline above) fall out of
+            // scope here, before the loop requests the next chunk — never
+            // more than one chunk's audio resident at once.
+            chunkStart += chunkDuration
+        }
+
+        if (!sawAnyAudio) return null
+        return finishTimeline(buckets, bucketSampleCounts)
+    }
+
+    private fun finishTimeline(buckets: FloatArray, counts: IntArray): FloatArray {
+        for (i in buckets.indices) {
+            buckets[i] = if (counts[i] > 0) (buckets[i] / counts[i]).coerceIn(0f, 1f) else 0f
+        }
+        return buckets
+    }
+
     private suspend fun buildVadTimeline(context: Context, audio: AutoSyncAudioExtractor.ExtractedAudio): BooleanArray {
         val config = VadModelConfig(
             sileroVadModelConfig = SileroVadModelConfig(

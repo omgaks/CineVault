@@ -1,5 +1,6 @@
 package com.sole.cinevault.subtitles
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -74,7 +76,10 @@ internal fun StudioTimingTab(
     autoSyncAvailable: Boolean,
     onAutoSyncClick: () -> Unit,
     onApplyAutoSync: (SubtitleSyncResult) -> Unit,
-    onCancelAutoSync: () -> Unit
+    onCancelAutoSync: () -> Unit,
+    // Null until an Auto-Sync run has produced one — see WaveformSlider's
+    // doc comment below for why this can't be populated up front.
+    lastAutoSyncSpeechTimeline: FloatArray? = null
 ) {
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         StudioSectionLabel("Auto-Sync")
@@ -98,10 +103,13 @@ internal fun StudioTimingTab(
             color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Bold
         )
         Spacer(modifier = Modifier.height(8.dp))
-        Slider(
-            value = currentSyncOffset.coerceIn(-10f, 10f), onValueChange = onSyncOffsetChange, valueRange = -10f..10f,
-            colors = SliderDefaults.colors(thumbColor = AmberCore, activeTrackColor = AmberGlow, inactiveTrackColor = Color.White.copy(alpha = 0.15f))
+        WaveformSlider(
+            value = currentSyncOffset.coerceIn(-10f, 10f),
+            onValueChange = onSyncOffsetChange,
+            valueRange = -10f..10f,
+            speechTimeline = lastAutoSyncSpeechTimeline
         )
+        Spacer(modifier = Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf(-5f, -1f, -0.1f, 0f, 0.1f, 1f, 5f).forEach { step ->
                 Text(
@@ -125,6 +133,93 @@ internal fun StudioTimingTab(
         Text(text = "Fixes subtitles that start in sync but drift later/earlier as the video plays.", color = TextMuted, fontSize = 11.sp, lineHeight = 15.sp)
         Spacer(modifier = Modifier.height(8.dp))
         StudioActionButton(label = "Fix Gradual Drift") { onDriftFixClick() }
+    }
+}
+
+// ── Waveform slider (Delay) ─────────────────────────────────────────────
+// Draws amplitude bars from an optional speech-activity timeline so the
+// Delay thumb sits on top of a real "here's where the dialogue is" guide
+// instead of a blind line. `speechTimeline` is nullable on purpose: the
+// VAD data AutoSyncEngine computes today is sampled across a handful of
+// short windows for offset-search speed, not scanned continuously across
+// the whole runtime, so there is nothing honest to draw yet outside of
+// those sampled windows. Pass null (the current call site does) and this
+// renders as a plain dot-thumb track with no fabricated bars. Wiring a
+// real full-length timeline is a separate task: it means AutoSyncEngine
+// running VAD continuously rather than in sparse windows.
+@Composable
+private fun WaveformSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    speechTimeline: FloatArray?,
+    modifier: Modifier = Modifier
+) {
+    val haptics = LocalHapticFeedback.current
+    var lastBucket by remember { mutableStateOf(-1) }
+    val density = LocalDensity.current
+    var widthPx by remember { mutableStateOf(0f) }
+
+    fun fractionFor(x: Float) = (x / widthPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
+    fun valueFor(fraction: Float) = valueRange.start + fraction * (valueRange.endInclusive - valueRange.start)
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(30.dp)
+            .onGloballyPositioned { widthPx = it.size.width.toFloat() }
+            .pointerInput(speechTimeline, valueRange) {
+                detectDragGestures(
+                    onDragStart = { lastBucket = -1 },
+                    onDrag = { change, _ ->
+                        val fraction = fractionFor(change.position.x)
+                        onValueChange(valueFor(fraction))
+                        if (speechTimeline != null && speechTimeline.isNotEmpty()) {
+                            val bucket = (fraction * speechTimeline.size).toInt().coerceIn(0, speechTimeline.size - 1)
+                            val active = speechTimeline[bucket] > 0.5f
+                            val wasActive = lastBucket >= 0 && speechTimeline[lastBucket] > 0.5f
+                            if (bucket != lastBucket && active != wasActive) {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            }
+                            lastBucket = bucket
+                        }
+                    }
+                )
+            },
+        contentAlignment = Alignment.CenterStart
+    ) {
+        if (speechTimeline != null && speechTimeline.isNotEmpty()) {
+            Canvas(modifier = Modifier.fillMaxWidth().height(28.dp)) {
+                val barCount = speechTimeline.size
+                val barWidth = (size.width / barCount) * 0.6f
+                val gap = (size.width / barCount) - barWidth
+                speechTimeline.forEachIndexed { i, amp ->
+                    val h = (size.height * amp.coerceIn(0.05f, 1f))
+                    drawRect(
+                        color = AmberGlow.copy(alpha = if (amp > 0.5f) 0.85f else 0.25f),
+                        topLeft = androidx.compose.ui.geometry.Offset(i * (barWidth + gap), (size.height - h) / 2f),
+                        size = androidx.compose.ui.geometry.Size(barWidth, h)
+                    )
+                }
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color.White.copy(alpha = 0.12f))
+            )
+        }
+        val thumbFraction = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+        Box(
+            modifier = Modifier
+                .offset { IntOffset((thumbFraction * widthPx).roundToInt() - with(density) { 7.dp.roundToPx() }, 0) }
+                .size(14.dp)
+                .clip(CircleShape)
+                .background(AmberCore)
+                .border(2.dp, Color(0xFF1A1206), CircleShape)
+        )
     }
 }
 

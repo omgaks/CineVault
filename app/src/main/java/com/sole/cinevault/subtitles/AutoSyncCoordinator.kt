@@ -43,7 +43,10 @@ class AutoSyncCoordinator(
     private val incrementPreviewReloadKey: () -> Unit,
     private val setSyncOffsetSeconds: (Float) -> Unit,
     private val setDriftScale: (Float) -> Unit,
-    private val incrementStudioMenuTouchKey: () -> Unit
+    private val incrementStudioMenuTouchKey: () -> Unit,
+    // Optional: null-safe no-op default, so any existing construction
+    // site that hasn't been updated yet still compiles unchanged.
+    private val setSpeechTimeline: (FloatArray?) -> Unit = {}
 ) {
     fun runAutoSync() {
         // Same guard as before: SubtitleStudioSheet.kt swaps the "Start
@@ -93,6 +96,20 @@ class AutoSyncCoordinator(
                 AutoSyncStatus.Failed("Not enough available memory for Auto-Sync right now. Close other apps and try again.")
             }
             setAutoSyncStatus(result)
+            // Full-runtime speech timeline for the Delay slider's waveform
+            // — kicked off sequentially AFTER the offset-search result is
+            // already set, never concurrently with it, so the two passes
+            // never compete for memory at the same time. Best-effort: any
+            // failure here just leaves the slider on its plain fallback
+            // track, it never affects the actual sync result above.
+            try {
+                val timeline = withContext(Dispatchers.Default) {
+                    AutoSyncEngine.buildFullSpeechTimeline(context, getCurrentVideoPath(), videoDurationMs, audioLang)
+                }
+                setSpeechTimeline(timeline)
+            } catch (e: OutOfMemoryError) {
+                setSpeechTimeline(null)
+            }
             // Short delay before regenerating previews — gives the
             // collector breathing room right after a memory-intensive
             // analysis pass, and lets the result UI render first without

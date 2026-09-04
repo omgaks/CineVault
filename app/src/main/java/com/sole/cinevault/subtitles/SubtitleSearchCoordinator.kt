@@ -209,6 +209,13 @@ class SubtitleSearchCoordinator(
             is SubtitleTrackChoice.Local -> {
                 setPendingSrtUri(Uri.fromFile(choice.file))
             }
+            is SubtitleTrackChoice.Generated -> {
+                // Same handling as Local — both are just "load this .srt
+                // file as the primary subtitle"; GeneratedSubtitleStore
+                // writes its files with Uri.fromFile() too, so this is a
+                // genuine file:// URI, not a special case.
+                setPendingSrtUri(choice.file.uri)
+            }
         }
     }
 }

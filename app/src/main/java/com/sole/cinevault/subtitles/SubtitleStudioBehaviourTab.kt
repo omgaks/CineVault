@@ -31,6 +31,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -72,94 +73,92 @@ internal fun StudioBehaviourTab(
     onCleaningOptionsChange: (SubtitleCleaningOptions) -> Unit
 ) {
     val languages = SubtitleLanguageRegistry.allLanguages()
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        StudioSectionLabel("Preferred Languages (priority order)")
-        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .clip(RoundedCornerShape(16.dp))
+            .background(GlassSurfaceStrong)
+            .padding(2.dp)
+    ) {
+        StudioSectionLabel("Language priority", tight = true)
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(horizontal = 8.dp)) {
             prefs.preferredLanguages.forEachIndexed { index, code ->
                 val label = languages.firstOrNull { it.first == code }?.second ?: code.uppercase()
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(SpaceDeep.copy(alpha = 0.6f)).padding(horizontal = 10.dp, vertical = 6.dp)
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.03f)).padding(horizontal = 9.dp, vertical = 6.dp)
                 ) {
-                    Text(text = "${index + 1}.", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(18.dp))
-                    Text(text = label, color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Text(text = "${index + 1}", color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(14.dp))
+                    Text(text = label, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                     if (index > 0) {
                         Text(
-                            text = "↑", color = TextMuted, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                            text = "↑", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                             modifier = Modifier.clickable {
                                 val reordered = prefs.preferredLanguages.toMutableList()
                                 reordered[index] = reordered[index - 1].also { reordered[index - 1] = reordered[index] }
                                 onChange(prefs.copy(preferredLanguages = reordered))
-                            }.padding(horizontal = 6.dp)
+                            }.padding(horizontal = 5.dp)
                         )
                     }
                     if (prefs.preferredLanguages.size > 1) {
                         Text(
-                            text = "✕", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                            text = "✕", color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                             modifier = Modifier.clickable {
                                 onChange(prefs.copy(preferredLanguages = prefs.preferredLanguages.filterIndexed { i, _ -> i != index }))
-                            }.padding(horizontal = 6.dp)
+                            }.padding(horizontal = 5.dp)
+                        )
+                    }
+                }
+            }
+            val addable = languages.filter { (code, _) -> code !in prefs.preferredLanguages }
+            if (addable.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    addable.forEach { (code, label) ->
+                        Text(
+                            text = "+ $label", color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Medium,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(50))
+                                .clickable { onChange(prefs.copy(preferredLanguages = prefs.preferredLanguages + code)) }
+                                .padding(horizontal = 10.dp, vertical = 5.dp)
                         )
                     }
                 }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        val addable = languages.filter { (code, _) -> code !in prefs.preferredLanguages }
-        if (addable.isNotEmpty()) {
-            Text(text = "Add language", color = Color(0xFFC9A765), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(4.dp))
-            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                addable.forEach { (code, label) ->
-                    Text(
-                        text = "+ $label", color = TextBright, fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(SpaceDeep.copy(alpha = 0.7f))
-                            .border(1.dp, AmberCore.copy(alpha = 0.3f), RoundedCornerShape(50))
-                            .clickable { onChange(prefs.copy(preferredLanguages = prefs.preferredLanguages + code)) }
-                            .padding(horizontal = 12.dp, vertical = 7.dp)
-                    )
-                }
-            }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        StudioDivider()
         StudioToggleRow(label = "Prefer forced subtitles", checked = prefs.preferForced) { onChange(prefs.copy(preferForced = it)) }
         StudioToggleRow(label = "Prefer SDH (hearing-impaired) subtitles", checked = prefs.preferSdh) { onChange(prefs.copy(preferSdh = it)) }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        StudioSectionLabel("Automatic Behavior")
+        StudioDivider()
+        StudioSectionLabel("Automatic behavior", tight = true)
         StudioToggleRow(label = "Automatically enable embedded subtitles", checked = prefs.autoEnableEmbeddedSubtitles) { onChange(prefs.copy(autoEnableEmbeddedSubtitles = it)) }
         StudioToggleRow(label = "Automatically load matching local subtitle", checked = prefs.autoLoadMatchingLocalFile) { onChange(prefs.copy(autoLoadMatchingLocalFile = it)) }
         StudioToggleRow(label = "Automatically download when none exists", checked = prefs.autoDownloadWhenMissing) { onChange(prefs.copy(autoDownloadWhenMissing = it)) }
         StudioToggleRow(label = "Remember last selected language", checked = prefs.rememberLastSelectedLanguage) { onChange(prefs.copy(rememberLastSelectedLanguage = it)) }
         StudioToggleRow(label = "Disable subtitles when audio matches preferred language", checked = prefs.disableWhenAudioMatchesPreferred) { onChange(prefs.copy(disableWhenAudioMatchesPreferred = it)) }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        StudioSectionLabel("Gestures")
+        StudioDivider()
+        StudioSectionLabel("Gestures", tight = true)
         StudioToggleRow(label = "Enable subtitle gestures (swipe/pinch/long-press)", checked = prefs.enableSubtitleGestures) { onChange(prefs.copy(enableSubtitleGestures = it)) }
         Text(
             text = "Off by default. When on, a zone above the player controls responds to: drag up/down for position, drag left/right for sync, pinch to resize, long-press to pause, double-tap to reset sync. Off elsewhere on screen — brightness, volume, and seek gestures are unaffected either way.",
-            color = TextMuted, fontSize = 10.sp, lineHeight = 14.sp
+            color = TextMuted, fontSize = 9.5.sp, lineHeight = 13.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
         )
-
-        Spacer(modifier = Modifier.height(10.dp))
         Text(
             text = "Restricted-folder videos never auto-download subtitles, regardless of these settings — that protection is fixed, not optional.",
-            color = TextMuted, fontSize = 10.sp, lineHeight = 14.sp
+            color = TextFaint, fontSize = 9.sp, lineHeight = 13.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
         )
 
-        Spacer(modifier = Modifier.height(20.dp))
-        HorizontalDivider(color = GlassBorderBottom)
-        Spacer(modifier = Modifier.height(14.dp))
-
-        StudioSectionLabel("Subtitle Cleaning")
+        StudioDivider()
+        StudioSectionLabel("Subtitle cleaning", tight = true)
         Text(
             text = "Applies to downloaded and local .srt files only — embedded tracks can't be rewritten this way. SDH users who want the sound descriptions should leave the first toggle off.",
-            color = TextMuted, fontSize = 10.sp, lineHeight = 14.sp
+            color = TextMuted, fontSize = 9.5.sp, lineHeight = 13.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
         )
-        Spacer(modifier = Modifier.height(8.dp))
         StudioToggleRow(label = "Hide hearing-impaired descriptions ([MUSIC], (door opens))", checked = cleaningOptions.hideHearingImpairedDescriptions) {
             onCleaningOptionsChange(cleaningOptions.copy(hideHearingImpairedDescriptions = it))
         }
@@ -185,27 +184,40 @@ internal fun StudioBehaviourTab(
             onCleaningOptionsChange(cleaningOptions.copy(removeDuplicateLines = it))
         }
         if (cleaningOptions.isAnyEnabled) {
-            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "Cleaning applies the next time a subtitle is (re)loaded — reopen Tracks and reselect if you don't see it yet.",
-                color = AmberCore, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, lineHeight = 14.sp
+                color = AmberCore, fontSize = 9.5.sp, fontWeight = FontWeight.Medium, lineHeight = 13.sp,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
             )
         }
+        Spacer(modifier = Modifier.height(4.dp))
     }
+}
+
+@Composable
+private fun StudioDivider() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .height(1.dp)
+            .background(Color.White.copy(alpha = 0.06f))
+    )
 }
 
 @Composable
 internal fun StudioToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     val haptics = LocalHapticFeedback.current
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = label, color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Text(text = label, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f).padding(end = 8.dp))
         Switch(
             checked = checked,
             onCheckedChange = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); onCheckedChange(it) },
-            colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
+            colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f)),
+            modifier = Modifier.scale(0.8f)
         )
     }
 }

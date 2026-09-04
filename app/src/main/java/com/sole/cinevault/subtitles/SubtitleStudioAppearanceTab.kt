@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -101,43 +102,121 @@ internal fun StudioAppearanceTab(
             onDismiss = {}
         )
 
-        Spacer(modifier = Modifier.height(20.dp))
-        HorizontalDivider(color = GlassBorderBottom)
-        Spacer(modifier = Modifier.height(14.dp))
+        DotThumbSliderDivider()
 
-        StudioSectionLabel("Text Size")
-        Text(text = "${fontSizeSp.toInt()}sp", color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-        Slider(
-            value = fontSizeSp, onValueChange = onFontSizeChange, valueRange = 12f..32f,
-            colors = SliderDefaults.colors(thumbColor = AmberCore, activeTrackColor = AmberGlow, inactiveTrackColor = Color.White.copy(alpha = 0.15f))
-        )
+        StudioSectionLabel("Text Size", tight = true)
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp)) {
+            DotThumbSlider(
+                value = fontSizeSp, onValueChange = onFontSizeChange, valueRange = 12f..32f,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(text = "${fontSizeSp.toInt()}sp", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(34.dp))
+        }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        StudioSectionLabel("Placement Presets")
-        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        DotThumbSliderDivider()
+
+        StudioSectionLabel("Placement presets", tight = true)
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(horizontal = 8.dp)
+        ) {
             positionPresets.forEach { (label, value) ->
                 val selected = kotlin.math.abs(bottomPadding - value) < 0.005f
                 Text(
-                    text = label, color = if (selected) Color.Black else TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    text = label, color = if (selected) Color.Black else TextBright, fontSize = 10.sp, fontWeight = FontWeight.Medium,
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(if (selected) AmberCore else SpaceDeep.copy(alpha = 0.7f))
-                        .border(1.dp, if (selected) AmberCore else AmberCore.copy(alpha = 0.3f), RoundedCornerShape(50))
+                        .background(if (selected) AmberCore else Color.Transparent)
+                        .border(1.dp, if (selected) AmberCore else Color.White.copy(alpha = 0.12f), RoundedCornerShape(50))
                         .clickable { onBottomPaddingChange(value) }
-                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        StudioSectionLabel("Fine Vertical Position")
-        Slider(
-            value = bottomPadding, onValueChange = onBottomPaddingChange, valueRange = 0.02f..0.90f,
-            colors = SliderDefaults.colors(thumbColor = AmberCore, activeTrackColor = AmberGlow, inactiveTrackColor = Color.White.copy(alpha = 0.15f))
-        )
+        DotThumbSliderDivider()
+
+        StudioSectionLabel("Fine vertical position", tight = true)
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp)) {
+            DotThumbSlider(
+                value = bottomPadding, onValueChange = onBottomPaddingChange, valueRange = 0.02f..0.90f,
+                modifier = Modifier.weight(1f)
+            )
+        }
         Text(
             text = "Placement automatically stays clear of the player controls while they're visible.",
-            color = TextMuted, fontSize = 10.sp, lineHeight = 14.sp
+            color = TextFaint, fontSize = 9.sp, lineHeight = 13.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+    }
+}
+
+@Composable
+private fun DotThumbSliderDivider() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 10.dp)
+            .height(1.dp)
+            .background(Color.White.copy(alpha = 0.06f))
+    )
+}
+
+// Shared dot-thumb slider — same visual as WaveformSlider's fallback
+// track (SubtitleStudioTimingTab.kt) but without the waveform overlay,
+// since these two controls (text size, vertical position) have no audio
+// signal to show. Kept here rather than exported from Timing so this file
+// doesn't have to depend on Timing's audio-specific WaveformSlider.
+@Composable
+internal fun DotThumbSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    modifier: Modifier = Modifier
+) {
+    var widthPx by remember { mutableStateOf(0f) }
+    val density = LocalDensity.current
+    fun fractionFor(x: Float) = (x / widthPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
+    fun valueFor(fraction: Float) = valueRange.start + fraction * (valueRange.endInclusive - valueRange.start)
+
+    Box(
+        modifier = modifier
+            .height(20.dp)
+            .onGloballyPositioned { widthPx = it.size.width.toFloat() }
+            .pointerInput(valueRange) {
+                detectDragGestures { change, _ -> onValueChange(valueFor(fractionFor(change.position.x))) }
+            },
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(3.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Color.White.copy(alpha = 0.12f))
+        )
+        val thumbFraction = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(3.dp)
+                .clip(RoundedCornerShape(2.dp))
+        ) {
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .width(with(density) { (thumbFraction * widthPx).toDp() })
+                    .background(AmberGlow)
+            )
+        }
+        Box(
+            modifier = Modifier
+                .offset { IntOffset((thumbFraction * widthPx).roundToInt() - with(density) { 7.dp.roundToPx() }, 0) }
+                .size(14.dp)
+                .clip(CircleShape)
+                .background(AmberCore)
+                .border(2.dp, Color(0xFF1A1206), CircleShape)
         )
     }
 }

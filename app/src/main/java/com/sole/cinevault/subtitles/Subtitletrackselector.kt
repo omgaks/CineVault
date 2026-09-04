@@ -12,9 +12,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.SubtitlesOff
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,6 +54,13 @@ sealed class SubtitleTrackChoice(val key: String) {
     ) : SubtitleTrackChoice("embedded:$groupIndex:$trackIndexInGroup")
     data class Downloaded(val file: File, val language: String) : SubtitleTrackChoice("downloaded")
     data class Local(val file: File) : SubtitleTrackChoice("local:${file.absolutePath}")
+    // AI-generated (Speech to subs) or AI-translated files. `isTranslated`
+    // drives the row's source label — GeneratedSubtitleStore's own
+    // fileName convention ("...-translated-<code>-<ts>.srt" vs
+    // "...-ai-<lang>-<ts>.srt") is the one place that distinction already
+    // exists, so it's read from there rather than re-derived some other
+    // way that could drift out of sync with it.
+    data class Generated(val file: GeneratedSubtitleFile, val isTranslated: Boolean) : SubtitleTrackChoice("generated:${file.fileName}")
 }
 
 @Composable
@@ -55,14 +68,23 @@ fun SubtitleTrackSelectorSheet(
     embeddedTracks: List<SubtitleTrackChoice.Embedded>,
     downloadedTrack: SubtitleTrackChoice.Downloaded?,
     localFiles: List<File>,
+    generatedFiles: List<GeneratedSubtitleFile> = emptyList(),
     selectedKey: String?,
     popupWidth: Dp,
     popupMaxHeight: Dp,
     onSelect: (SubtitleTrackChoice) -> Unit,
     onDeleteLocal: (File) -> Unit,
+    onDeleteGenerated: (GeneratedSubtitleFile) -> Unit = {},
     onOpenFilePicker: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    // Own, self-contained display toggle — not lifted to VideoPlayerScreen
+    // since nothing outside this sheet needs to know whether delete icons
+    // are currently showing. Off by default: a first-glance list of
+    // sources shouldn't be cluttered with delete affordances for tracks
+    // nobody asked to manage yet.
+    var manageMode by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .width(popupWidth)
@@ -72,6 +94,8 @@ fun SubtitleTrackSelectorSheet(
     ) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(text = "Subtitle Tracks", color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            ManageToggleChip(active = manageMode, onClick = { manageMode = !manageMode })
+            Spacer(modifier = Modifier.width(6.dp))
             IconCircleSmall(icon = Icons.Default.Close, onClick = onDismiss)
         }
         Spacer(modifier = Modifier.height(8.dp))
@@ -119,8 +143,26 @@ fun SubtitleTrackSelectorSheet(
                     badges = emptyList(),
                     selected = selectedKey == downloadedTrack.key,
                     onClick = { onSelect(downloadedTrack) },
-                    onDelete = { onDeleteLocal(downloadedTrack.file) }
+                    onDelete = if (manageMode) ({ onDeleteLocal(downloadedTrack.file) }) else null
                 )
+            }
+
+            if (generatedFiles.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                TrackSectionLabel("Generated & translated")
+                generatedFiles.forEach { file ->
+                    val isTranslated = file.fileName.contains("-translated-")
+                    val choice = SubtitleTrackChoice.Generated(file, isTranslated)
+                    TrackRow(
+                        icon = if (isTranslated) Icons.Rounded.AutoAwesome else Icons.Rounded.Mic,
+                        title = file.label,
+                        subtitle = if (isTranslated) "AI translated" else "Speech-generated",
+                        badges = emptyList(),
+                        selected = selectedKey == choice.key,
+                        onClick = { onSelect(choice) },
+                        onDelete = if (manageMode) ({ onDeleteGenerated(file) }) else null
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -137,13 +179,31 @@ fun SubtitleTrackSelectorSheet(
                         badges = emptyList(),
                         selected = selectedKey == choice.key,
                         onClick = { onSelect(choice) },
-                        onDelete = { onDeleteLocal(file) }
+                        onDelete = if (manageMode) ({ onDeleteLocal(file) }) else null
                     )
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
             TrackRow(icon = null, title = "Open subtitle file…", subtitle = null, badges = emptyList(), selected = false, onClick = onOpenFilePicker)
         }
+    }
+}
+
+@Composable
+private fun ManageToggleChip(active: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .height(34.dp)
+            .clip(RoundedCornerShape(50))
+            .background(if (active) AmberCore.copy(alpha = 0.16f) else Color.Transparent)
+            .border(1.dp, if (active) AmberCore else Color.White.copy(alpha = 0.12f), RoundedCornerShape(50))
+            .clickable { onClick() }
+            .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(imageVector = Icons.Rounded.Delete, contentDescription = null, tint = if (active) AmberCore else TextMuted, modifier = Modifier.size(13.dp))
+        Spacer(modifier = Modifier.width(5.dp))
+        Text(text = "Manage", color = if (active) AmberCore else TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Medium)
     }
 }
 
