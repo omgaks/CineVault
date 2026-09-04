@@ -127,17 +127,32 @@
 # org.slf4j.impl.StaticLoggerBinder" — this isn't a defensive guess.
 -dontwarn org.slf4j.**
 
-# ── ML Kit subtitle translation / language identification ──────────────
-# CineVault creates these clients through ML Kit's component/factory
-# registry. Release-only testing showed Translation.getClient(options)
-# failing before a Translator could be returned. Preserve this bounded
-# ML Kit feature surface and its component registrars while leaving the
-# rest of Google Play services and ML Kit available to R8 optimization.
--keep class com.google.mlkit.nl.translate.** { *; }
--keep interface com.google.mlkit.nl.translate.** { *; }
--keep class com.google.mlkit.nl.languageid.** { *; }
--keep interface com.google.mlkit.nl.languageid.** { *; }
--keep class com.google.mlkit.** implements com.google.firebase.components.ComponentRegistrar { *; }
+# ── ML Kit on-device translation (SubtitleTranslationEngine) ───────────
+# ML Kit's Translate and Language-ID modules resolve several internal
+# classes by exact name at runtime through Play Services' dynamic module
+# loader (RemoteModelManager / TranslatorImpl / LanguageIdentification's
+# internal client). R8 renaming or stripping any of those classes doesn't
+# fail at compile time — it surfaces as a runtime NullPointerException
+# ("Attempt to invoke virtual method '...getClass()' on a null object
+# reference") the first time translation is used in a release build.
+# This is a documented ML Kit + R8 issue (Google's own ML Kit known-issues
+# page lists version-specific cases of exactly this crash for
+# language-id), and the same mechanism applies to translate.
+-keep class com.google.mlkit.** { *; }
+-keep interface com.google.mlkit.** { *; }
+-dontwarn com.google.mlkit.**
+
+-keep class com.google.android.gms.internal.mlkit_translate.** { *; }
+-keep class com.google.android.gms.internal.mlkit_language_id.** { *; }
+-keep class com.google.android.gms.internal.mlkit_common.** { *; }
+-dontwarn com.google.android.gms.internal.mlkit_translate.**
+-dontwarn com.google.android.gms.internal.mlkit_language_id.**
+-dontwarn com.google.android.gms.internal.mlkit_common.**
+
+# language-id's historical crash points (still harmless to keep even on
+# newer versions where Google says it's fixed — a no-op keep costs nothing).
+-keep class com.google.mlkit.nl.languageid.internal.LanguageIdentificationJni { *; }
+-keep class com.google.mlkit.nl.languageid.internal.ThickLanguageIdentifier { *; }
 
 # ── coroutines / kotlinx.serialization internals ────────────────────────
 # Standard defensive rules for Kotlin coroutines' own internal use of
