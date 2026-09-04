@@ -2217,37 +2217,11 @@ fun VideoPlayerScreen(
             }
         }
 
-        // Stage 2C: two independent entry pills.
-        // Speech recognition owns Whisper; translation works without it.
-        if (!CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(
-                        start = sidePadding,
-                        bottom = bottomDockPadding + playButton + 26.dp,
-                    )
-            ) {
-                OutlinedButton(
-                    onClick = {
-                        showSubtitleTranslationPanel = false
-                        showSpeechSubtitlePanel = true
-                    },
-                ) {
-                    Text("Speech → Subs")
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        showSpeechSubtitlePanel = false
-                        showSubtitleTranslationPanel = true
-                    },
-                ) {
-                    Text("AI Translate")
-                }
-            }
-        }
+        // Speech to subs / AI Translate are reachable through the Bloom's
+        // AI sheet now (same showSpeechSubtitlePanel/showSubtitleTranslationPanel
+        // flags below) — this standalone button row was the original, unstyled
+        // entry point and is removed rather than left as a second door to the
+        // same two actions.
 
         val activeSpeechJobLabel = speechJobLabel
         PlayerFloatingJobOverlay(
