@@ -1046,6 +1046,7 @@ fun VideoPlayerScreen(
     var subtitleTranslationStatus by remember {
         mutableStateOf<SubtitleTranslationStatus>(SubtitleTranslationStatus.Idle)
     }
+    var translationSuccessLanguage by remember { mutableStateOf<String?>(null) }
     var showSpeechSubtitlePanel by remember { mutableStateOf(false) }
     var showSubtitleTranslationPanel by remember { mutableStateOf(false) }
 
@@ -1120,6 +1121,11 @@ fun VideoPlayerScreen(
             setStatus = { subtitleTranslationStatus = it },
             onSubtitleReady = { file, language ->
                 applyAiSubtitle(file, language, "AI Translation")
+                translationSuccessLanguage = SubtitleLanguageRegistry.displayName(language)
+                scope.launch {
+                    delay(3000)
+                    translationSuccessLanguage = null
+                }
             },
             onGeneratedLibraryChanged = { generatedSubtitleRefreshKey++ },
         )
@@ -1506,6 +1512,8 @@ fun VideoPlayerScreen(
             playerErrorMessage = playerErrorMessage,
             sleepTimerActive = sleepTimerActive,
             sleepTimerRemainingMs = sleepTimerRemainingMs,
+            translationSuccessLanguage = translationSuccessLanguage,
+            translationSuccessBottomPadding = bottomDockPadding + playButton + 26.dp,
             onBack = onBack,
             onRetry = {
                 errorRetryCount = 0
