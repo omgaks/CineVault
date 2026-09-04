@@ -83,7 +83,6 @@ import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -2098,7 +2097,10 @@ fun VideoPlayerScreen(
             controlsLocked = controlsLocked,
             lockButtonVisible = externalPlayerView == null &&
                 (if (controlsLocked) lockButtonVisibleWhileLocked else showControls) &&
-                !CineVaultPlayerHolder.isInPipMode,
+                !CineVaultPlayerHolder.isInPipMode &&
+                !studioUi.showStudio &&
+                !coreUi.showSettings &&
+                !coreUi.showAppearanceStudio,
             isLandscape = isLandscape,
             onLockedSurfaceTap = { lockButtonVisibleWhileLocked = true },
             onToggleLock = {
@@ -2128,38 +2130,6 @@ fun VideoPlayerScreen(
                 deleteWithUndo(file)
             }
         )
-
-        // Stage 2C: two independent entry pills.
-        // Speech recognition owns Whisper; translation works without it.
-        if (!CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(
-                        start = sidePadding,
-                        bottom = bottomDockPadding + playButton + 26.dp,
-                    )
-            ) {
-                OutlinedButton(
-                    onClick = {
-                        showSubtitleTranslationPanel = false
-                        showSpeechSubtitlePanel = true
-                    },
-                ) {
-                    Text("Speech → Subs")
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        showSpeechSubtitlePanel = false
-                        showSubtitleTranslationPanel = true
-                    },
-                ) {
-                    Text("AI Translate")
-                }
-            }
-        }
 
         val activeSpeechJobLabel = speechJobLabel
         PlayerFloatingJobOverlay(

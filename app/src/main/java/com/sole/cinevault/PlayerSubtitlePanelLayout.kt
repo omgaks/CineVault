@@ -22,8 +22,8 @@ internal fun calculateSubtitleSearchLayout(
     }
 
     val maxPanelHeight = when {
-        isCompactLandscape -> (maxHeight.value * 0.76f).dp.coerceAtMost(280.dp)
-        isLandscape -> (maxHeight.value * 0.78f).dp.coerceAtMost(360.dp)
+        isCompactLandscape -> (maxHeight.value * 0.88f).dp
+        isLandscape -> (maxHeight.value * 0.90f).dp
         else -> (maxHeight.value * 0.65f).dp.coerceAtMost(580.dp)
     }
 
@@ -39,18 +39,18 @@ internal fun calculateSubtitleStudioLayout(
     val isTabletSized = min(maxWidth.value, maxHeight.value) >= 600f
 
     val width = when {
-        isTabletSized && isLandscape -> (maxWidth.value * 0.50f).dp.coerceIn(420.dp, 640.dp)
-        isTabletSized -> (maxWidth.value * 0.75f).dp.coerceIn(420.dp, 560.dp)
-        isLandscape -> (maxWidth.value * 0.60f).dp.coerceIn(300.dp, 420.dp)
-        else -> (maxWidth.value * 0.92f).dp.coerceAtMost(380.dp)
+        isTabletSized && isLandscape -> (maxWidth.value * 0.42f).dp.coerceIn(360.dp, 480.dp)
+        isTabletSized -> (maxWidth.value * 0.52f).dp.coerceIn(320.dp, 420.dp)
+        isLandscape -> (maxWidth.value * 0.42f).dp.coerceIn(300.dp, 420.dp)
+        else -> (maxWidth.value * 0.78f).dp.coerceAtMost(320.dp)
     }
 
     val maxPanelHeight = when {
-        isTabletSized && isLandscape -> (maxHeight.value * 0.80f).dp.coerceAtMost(560.dp)
-        isTabletSized -> (maxHeight.value * 0.65f).dp.coerceAtMost(680.dp)
-        isCompactLandscape -> (maxHeight.value * 0.80f).dp.coerceAtMost(260.dp)
-        isLandscape -> (maxHeight.value * 0.82f).dp.coerceAtMost(320.dp)
-        else -> (maxHeight.value * 0.58f).dp.coerceAtMost(480.dp)
+        isTabletSized && isLandscape -> (maxHeight.value * 0.78f).dp
+        isTabletSized -> (maxHeight.value * 0.55f).dp
+        isCompactLandscape -> (maxHeight.value * 0.82f).dp
+        isLandscape -> (maxHeight.value * 0.80f).dp
+        else -> (maxHeight.value * 0.52f).dp.coerceAtMost(420.dp)
     }
 
     return PlayerPopupLayout(width = width, maxHeight = maxPanelHeight)
