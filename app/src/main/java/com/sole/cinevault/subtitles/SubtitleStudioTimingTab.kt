@@ -136,92 +136,10 @@ internal fun StudioTimingTab(
     }
 }
 
-// ── Waveform slider (Delay) ─────────────────────────────────────────────
-// Draws amplitude bars from an optional speech-activity timeline so the
-// Delay thumb sits on top of a real "here's where the dialogue is" guide
-// instead of a blind line. `speechTimeline` is nullable on purpose: the
-// VAD data AutoSyncEngine computes today is sampled across a handful of
-// short windows for offset-search speed, not scanned continuously across
-// the whole runtime, so there is nothing honest to draw yet outside of
-// those sampled windows. Pass null (the current call site does) and this
-// renders as a plain dot-thumb track with no fabricated bars. Wiring a
-// real full-length timeline is a separate task: it means AutoSyncEngine
-// running VAD continuously rather than in sparse windows.
-@Composable
-private fun WaveformSlider(
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    valueRange: ClosedFloatingPointRange<Float>,
-    speechTimeline: FloatArray?,
-    modifier: Modifier = Modifier
-) {
-    val haptics = LocalHapticFeedback.current
-    var lastBucket by remember { mutableStateOf(-1) }
-    val density = LocalDensity.current
-    var widthPx by remember { mutableStateOf(0f) }
-
-    fun fractionFor(x: Float) = (x / widthPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
-    fun valueFor(fraction: Float) = valueRange.start + fraction * (valueRange.endInclusive - valueRange.start)
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(30.dp)
-            .onGloballyPositioned { widthPx = it.size.width.toFloat() }
-            .pointerInput(speechTimeline, valueRange) {
-                detectDragGestures(
-                    onDragStart = { lastBucket = -1 },
-                    onDrag = { change, _ ->
-                        val fraction = fractionFor(change.position.x)
-                        onValueChange(valueFor(fraction))
-                        if (speechTimeline != null && speechTimeline.isNotEmpty()) {
-                            val bucket = (fraction * speechTimeline.size).toInt().coerceIn(0, speechTimeline.size - 1)
-                            val active = speechTimeline[bucket] > 0.5f
-                            val wasActive = lastBucket >= 0 && speechTimeline[lastBucket] > 0.5f
-                            if (bucket != lastBucket && active != wasActive) {
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            }
-                            lastBucket = bucket
-                        }
-                    }
-                )
-            },
-        contentAlignment = Alignment.CenterStart
-    ) {
-        if (speechTimeline != null && speechTimeline.isNotEmpty()) {
-            Canvas(modifier = Modifier.fillMaxWidth().height(28.dp)) {
-                val barCount = speechTimeline.size
-                val barWidth = (size.width / barCount) * 0.6f
-                val gap = (size.width / barCount) - barWidth
-                speechTimeline.forEachIndexed { i, amp ->
-                    val h = (size.height * amp.coerceIn(0.05f, 1f))
-                    drawRect(
-                        color = AmberGlow.copy(alpha = if (amp > 0.5f) 0.85f else 0.25f),
-                        topLeft = androidx.compose.ui.geometry.Offset(i * (barWidth + gap), (size.height - h) / 2f),
-                        size = androidx.compose.ui.geometry.Size(barWidth, h)
-                    )
-                }
-            }
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(3.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color.White.copy(alpha = 0.12f))
-            )
-        }
-        val thumbFraction = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
-        Box(
-            modifier = Modifier
-                .offset { IntOffset((thumbFraction * widthPx).roundToInt() - with(density) { 7.dp.roundToPx() }, 0) }
-                .size(14.dp)
-                .clip(CircleShape)
-                .background(AmberCore)
-                .border(2.dp, Color(0xFF1A1206), CircleShape)
-        )
-    }
-}
+// WaveformSlider moved to SubtitleWaveformSlider.kt — shared with the new
+// Quick HUD, which is where Delay actually lives now. Kept as an internal
+// (not private) declaration there so this file's existing call site below
+// still resolves unchanged.
 
 @Composable
 private fun StudioActionButton(label: String, onClick: () -> Unit) {
