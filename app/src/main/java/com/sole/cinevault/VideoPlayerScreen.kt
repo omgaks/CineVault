@@ -2174,14 +2174,43 @@ fun VideoPlayerScreen(
             }
         )
 
-        // Tap CC -> HUD Dock (Track / Sync / Style / Super subs)
+        // Tap CC -> Quick HUD (filename, Delay/Size/Position), draggable
+        // anywhere in the player frame. Filename resolution mirrors the
+        // same key-matching Track's selector already does — not invented
+        // fresh here, so it can't quietly drift out of sync with what
+        // Track actually shows as selected.
+        val quickHudFileName = remember(
+            trackUi.selectedKey, embeddedTrackChoices, downloadedTrackChoice,
+            localFileChoices, generatedSubtitleFiles
+        ) {
+            val key = trackUi.selectedKey
+            when {
+                key == null || key == SubtitleTrackChoice.Off.key -> null
+                downloadedTrackChoice?.key == key -> SubtitleLanguageRegistry.displayName(downloadedTrackChoice.language)
+                else -> localFileChoices.firstOrNull { SubtitleTrackChoice.Local(it).key == key }?.name
+                    ?: generatedSubtitleFiles.firstOrNull {
+                        SubtitleTrackChoice.Generated(it, it.fileName.contains("-translated-")).key == key
+                    }?.label
+                    ?: embeddedTrackChoices.firstOrNull { it.key == key }
+                        ?.let { SubtitleLanguageRegistry.displayName(it.language) }
+            }
+        }
         if (showSubtitleDock && !CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
-            com.sole.cinevault.subtitles.SubtitleHudDock(
-                activeItem = activeDockItem,
-                onItemSelected = { onDockItemTapped(it) },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = bottomDockPadding + playButton + 26.dp)
+            val density = LocalDensity.current
+            val containerPx = with(density) {
+                androidx.compose.ui.unit.IntSize(playerMaxWidth.roundToPx(), playerMaxHeight.roundToPx())
+            }
+            com.sole.cinevault.subtitles.QuickHud(
+                subtitleFileName = quickHudFileName,
+                delaySeconds = coreUi.syncOffset,
+                onDelayChange = { coreUi.syncOffset = it; studioUi.menuTouchKey++ },
+                speechTimeline = autoSyncSpeechTimeline,
+                fontSizeSp = appearanceUi.textSizeSp,
+                onFontSizeChange = { appearanceUi.textSizeSp = it },
+                bottomPadding = appearanceUi.bottomPadding,
+                onBottomPaddingChange = { appearanceUi.bottomPadding = it },
+                containerSize = containerPx,
+                initialOffset = with(density) { Offset(sidePadding.toPx(), (playerMaxHeight - bottomDockPadding - playButton - 150.dp).toPx()) }
             )
         }
 
