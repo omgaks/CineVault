@@ -211,7 +211,9 @@ fun VideoPlayerScreen(
     val studioUi = remember { SubtitleStudioUiState() }
     var showSubtitleDock by remember { mutableStateOf(false) }
     var showSubtitleBloom by remember { mutableStateOf(false) }
-    var showAiSheet by remember { mutableStateOf(false) }
+    var studioCategory by remember { mutableStateOf<com.sole.cinevault.subtitles.StudioCategory?>(null) }
+    var showDualSubsWindow by remember { mutableStateOf(false) }
+    var trackSelectorManageMode by remember { mutableStateOf(false) }
     var activeDockItem by remember { mutableStateOf<com.sole.cinevault.subtitles.SubtitleDockItem?>(null) }
 
     fun onDockItemTapped(item: com.sole.cinevault.subtitles.SubtitleDockItem) {
@@ -236,18 +238,30 @@ fun VideoPlayerScreen(
         }
     }
 
-    fun onBloomItemTapped(item: com.sole.cinevault.subtitles.SubtitleBloomItem) {
-        showSubtitleBloom = false
-        when (item) {
-            // Settings routes to the existing Behaviour tab (Dual Sub,
-            // Language Priority, Cleaner, Clean Noise) until that content
-            // gets its own dedicated sheet in the next build pass.
-            com.sole.cinevault.subtitles.SubtitleBloomItem.SETTINGS -> {
+    fun onStudioCategoryTapped(category: com.sole.cinevault.subtitles.StudioCategory) {
+        studioCategory = category
+        when (category) {
+            // Style and Settings temporarily route to the old grid sheet's
+            // matching tab until they get their own dedicated windows —
+            // same interim pattern used for Settings before this pass,
+            // now applied consistently to both. Download and Power Tools
+            // are the two categories that are fully on the new system.
+            com.sole.cinevault.subtitles.StudioCategory.STYLE -> {
+                studioUi.initialTab = SubtitleStudioTab.APPEARANCE
+                studioUi.showStudio = true
+                showSubtitleBloom = false
+                studioCategory = null
+            }
+            com.sole.cinevault.subtitles.StudioCategory.SETTINGS -> {
                 studioUi.initialTab = SubtitleStudioTab.BEHAVIOUR
                 studioUi.showStudio = true
+                showSubtitleBloom = false
+                studioCategory = null
             }
-            com.sole.cinevault.subtitles.SubtitleBloomItem.AI -> {
-                showAiSheet = true
+            com.sole.cinevault.subtitles.StudioCategory.DOWNLOAD,
+            com.sole.cinevault.subtitles.StudioCategory.POWER_TOOLS -> {
+                // Handled by the list window itself opening below —
+                // studioCategory being non-null is what shows it.
             }
         }
     }
@@ -407,7 +421,8 @@ fun VideoPlayerScreen(
         searchUi.pendingImportCandidates = null
         showSubtitleDock = false
         showSubtitleBloom = false
-        showAiSheet = false
+        studioCategory = null
+        showDualSubsWindow = false
     }
 
     var pendingSrtUri by remember { mutableStateOf<Uri?>(null) }
@@ -1663,12 +1678,20 @@ fun VideoPlayerScreen(
             embeddedTrackChoices = embeddedTrackChoices,
             downloadedTrackChoice = downloadedTrackChoice,
             localFileChoices = localFileChoices,
+            generatedSubtitleFiles = generatedSubtitleFiles.filter { g ->
+                java.io.File(g.uri.path ?: "").absolutePath !in pendingDeletePaths
+            },
             selectedTrackKey = trackUi.selectedKey,
             onSelectTrack = { choice -> selectSubtitleTrack(choice); trackUi.showSelector = false; showControls = true },
             onDeleteLocalTrack = { file -> requestDeleteSubtitle(file) },
+            onDeleteGeneratedTrack = { generated ->
+                val path = generated.uri.path
+                if (path != null) requestDeleteSubtitle(java.io.File(path))
+            },
             onOpenFilePickerFromTrackSelector = { trackUi.showSelector = false; srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
             onDismissTrackSelector = { trackUi.showSelector = false; showControls = true },
             onTrackSelectorUserInteraction = { studioUi.menuTouchKey++ },
+            initialManageMode = trackSelectorManageMode,
         )
 
         val subtitleSearchLayout = calculateSubtitleSearchLayout(
@@ -2214,37 +2237,143 @@ fun VideoPlayerScreen(
             )
         }
 
-        // Long-press CC -> 2-petal Bloom (Settings / AI)
+        // Long-press CC -> Studio pill (Download / Style / Power tools / Settings)
         if (showSubtitleBloom && !CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
-            com.sole.cinevault.subtitles.SubtitleBloomMenu(
-                onItemSelected = { onBloomItemTapped(it) },
-                onDismiss = { showSubtitleBloom = false },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(bottom = bottomDockPadding + playButton + 10.dp, end = sidePadding)
-                    .size(160.dp)
+            val studioDensity = LocalDensity.current
+            val studioContainerPx = with(studioDensity) {
+                androidx.compose.ui.unit.IntSize(playerMaxWidth.roundToPx(), playerMaxHeight.roundToPx())
+            }
+            val pillOffset = with(studioDensity) {
+                Offset(sidePadding.toPx(), (playerMaxHeight - bottomDockPadding - playButton - 90.dp).toPx())
+            }
+            val windowOffset = with(studioDensity) {
+                Offset(sidePadding.toPx(), (playerMaxHeight - bottomDockPadding - playButton - 320.dp).toPx())
+            }
+
+            when (studioCategory) {
+                null -> com.sole.cinevault.subtitles.SubtitleStudioPill(
+                    activeCategory = null,
+                    onCategorySelected = { onStudioCategoryTapped(it) },
+                    containerSize = studioContainerPx,
+                    initialOffset = pillOffset
+                )
+                com.sole.cinevault.subtitles.StudioCategory.DOWNLOAD -> com.sole.cinevault.subtitles.StudioListWindow(
+                    title = "Download",
+                    onBack = { studioCategory = null },
+                    containerSize = studioContainerPx,
+                    initialOffset = windowOffset,
+                    items = listOf(
+                        com.sole.cinevault.subtitles.StudioListItem(
+                            icon = com.sole.cinevault.subtitles.StudioRowIcons.Manage,
+                            label = "Manage",
+                            onClick = { trackSelectorManageMode = true; trackUi.showSelector = true; showSubtitleBloom = false; studioCategory = null }
+                        ),
+                        com.sole.cinevault.subtitles.StudioListItem(
+                            icon = com.sole.cinevault.subtitles.StudioRowIcons.Tracks,
+                            label = "Tracks",
+                            onClick = { trackSelectorManageMode = false; trackUi.showSelector = true; showSubtitleBloom = false; studioCategory = null }
+                        ),
+                        com.sole.cinevault.subtitles.StudioListItem(
+                            icon = com.sole.cinevault.subtitles.StudioRowIcons.Web,
+                            label = "Web",
+                            onClick = { searchUi.showFallback = true; showSubtitleBloom = false; studioCategory = null }
+                        ),
+                        com.sole.cinevault.subtitles.StudioListItem(
+                            icon = com.sole.cinevault.subtitles.StudioRowIcons.SmartSearch,
+                            label = "Smart search",
+                            onClick = { searchUi.showSearch = true; showSubtitleBloom = false; studioCategory = null }
+                        ),
+                        com.sole.cinevault.subtitles.StudioListItem(
+                            icon = com.sole.cinevault.subtitles.StudioRowIcons.AutoDownload,
+                            label = "Auto download",
+                            toggledOn = coreUi.behaviorPrefs.autoDownloadWhenMissing,
+                            onClick = {
+                                coreUi.behaviorPrefs = coreUi.behaviorPrefs.copy(autoDownloadWhenMissing = !coreUi.behaviorPrefs.autoDownloadWhenMissing)
+                                saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
+                            }
+                        )
+                    )
+                )
+                com.sole.cinevault.subtitles.StudioCategory.POWER_TOOLS -> com.sole.cinevault.subtitles.StudioListWindow(
+                    title = "Power tools",
+                    onBack = { studioCategory = null },
+                    containerSize = studioContainerPx,
+                    initialOffset = windowOffset,
+                    items = listOf(
+                        com.sole.cinevault.subtitles.StudioListItem(
+                            icon = com.sole.cinevault.subtitles.StudioRowIcons.SpeechToSubs,
+                            label = "Speech to subs",
+                            onClick = { showSpeechSubtitlePanel = true; showSubtitleBloom = false; studioCategory = null }
+                        ),
+                        com.sole.cinevault.subtitles.StudioListItem(
+                            icon = com.sole.cinevault.subtitles.StudioRowIcons.AiTranslate,
+                            label = "AI translate",
+                            onClick = { showSubtitleTranslationPanel = true; showSubtitleBloom = false; studioCategory = null }
+                        ),
+                        com.sole.cinevault.subtitles.StudioListItem(
+                            icon = com.sole.cinevault.subtitles.StudioRowIcons.AutoSync,
+                            label = "Auto sync",
+                            onClick = { runAutoSync(); showSubtitleBloom = false; studioCategory = null }
+                        ),
+                        com.sole.cinevault.subtitles.StudioListItem(
+                            icon = com.sole.cinevault.subtitles.StudioRowIcons.DialogueSync,
+                            label = "Dialogue sync",
+                            onClick = { armDialogueSync(); showSubtitleBloom = false; studioCategory = null }
+                        ),
+                        com.sole.cinevault.subtitles.StudioListItem(
+                            icon = com.sole.cinevault.subtitles.StudioRowIcons.DriftSync,
+                            label = "Drift sync",
+                            onClick = { driftUi.showDialog = true; showSubtitleBloom = false; studioCategory = null }
+                        ),
+                        com.sole.cinevault.subtitles.StudioListItem(
+                            icon = com.sole.cinevault.subtitles.StudioRowIcons.DualSubs,
+                            label = "Dual subs",
+                            onClick = { showDualSubsWindow = true; showSubtitleBloom = false; studioCategory = null }
+                        )
+                    )
+                )
+                else -> Unit
+            }
+        }
+
+        if (showDualSubsWindow && !CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
+            val density3 = LocalDensity.current
+            val containerPx3 = with(density3) {
+                androidx.compose.ui.unit.IntSize(playerMaxWidth.roundToPx(), playerMaxHeight.roundToPx())
+            }
+            val languages = SubtitleLanguageRegistry.allLanguages()
+            com.sole.cinevault.subtitles.DualSubsWindow(
+                enabled = dualUi.enabled,
+                onEnabledChange = { enabled ->
+                    dualUi.enabled = enabled
+                    if (enabled) fetchAndApplyDualSecondary() else disableDualSubtitles()
+                },
+                canEnable = trackUi.primaryUri != null,
+                primaryLabel = quickHudFileName ?: "None",
+                secondaryLanguage = dualUi.secondaryLanguage,
+                secondaryLanguageLabel = languages.firstOrNull { it.first == dualUi.secondaryLanguage }?.second ?: dualUi.secondaryLanguage.uppercase(),
+                onSecondaryLanguageChange = { lang ->
+                    dualUi.secondaryLanguage = lang
+                    coreUi.behaviorPrefs = coreUi.behaviorPrefs.copy(dualSecondaryLanguage = lang)
+                    saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
+                    if (dualUi.enabled) fetchAndApplyDualSecondary()
+                },
+                availableLanguages = languages,
+                gapLines = dualUi.gapLines,
+                onGapLinesChange = { gap ->
+                    dualUi.gapLines = gap
+                    if (dualUi.enabled) fetchAndApplyDualSecondary()
+                },
+                statusText = dualUi.statusText,
+                onBack = { showDualSubsWindow = false; showSubtitleBloom = true },
+                containerSize = containerPx3,
+                initialOffset = with(density3) { Offset(sidePadding.toPx(), (playerMaxHeight * 0.25f).toPx()) }
             )
         }
 
-        // AI sheet - deduplicated to Speech to subs + AI translate only
-        if (showAiSheet && !CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .width(220.dp)
-            ) {
-                com.sole.cinevault.subtitles.SubtitleAiSheet(
-                    onSpeechToSubs = {
-                        showAiSheet = false
-                        showSpeechSubtitlePanel = true
-                    },
-                    onAiTranslate = {
-                        showAiSheet = false
-                        showSubtitleTranslationPanel = true
-                    }
-                )
-            }
-        }
+        // AI sheet removed — Speech to subs / AI translate are now direct
+        // rows inside the Power Tools list window, so this intermediate
+        // sheet was a third path to the same two actions.
 
         // Speech to subs / AI Translate are reachable through the Bloom's
         // AI sheet now (same showSpeechSubtitlePanel/showSubtitleTranslationPanel
