@@ -76,14 +76,13 @@ fun SubtitleTrackSelectorSheet(
     onDeleteLocal: (File) -> Unit,
     onDeleteGenerated: (GeneratedSubtitleFile) -> Unit = {},
     onOpenFilePicker: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    // "Manage" in the Studio's Download list opens this same sheet with
+    // delete icons already showing, instead of being a separate screen —
+    // "Tracks" opens it with this false. One sheet, two entry points.
+    initialManageMode: Boolean = false
 ) {
-    // Own, self-contained display toggle — not lifted to VideoPlayerScreen
-    // since nothing outside this sheet needs to know whether delete icons
-    // are currently showing. Off by default: a first-glance list of
-    // sources shouldn't be cluttered with delete affordances for tracks
-    // nobody asked to manage yet.
-    var manageMode by remember { mutableStateOf(false) }
+    var manageMode by remember(initialManageMode) { mutableStateOf(initialManageMode) }
 
     Column(
         modifier = Modifier
