@@ -35,6 +35,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.sole.cinevault.ui.theme.AmberCore
+import com.sole.cinevault.ui.theme.AmberGlow
 import kotlin.math.roundToInt
 
 // ── Waveform slider (Delay) ─────────────────────────────────────────────

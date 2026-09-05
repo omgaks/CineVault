@@ -26,6 +26,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sole.cinevault.ui.theme.AmberCore
+import com.sole.cinevault.ui.theme.GlassSurfaceStrong
+import com.sole.cinevault.ui.theme.TextBright
+import com.sole.cinevault.ui.theme.TextFaint
+import com.sole.cinevault.ui.theme.TextMuted
 
 /**
  * Tap-CC destination — replaces the old 4-item Dock entirely. A single
