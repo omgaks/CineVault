@@ -32,6 +32,12 @@ internal fun PlayerAutoHideEffects(
     onHideSrtBrowser: () -> Unit,
     onHideBrightnessHud: () -> Unit,
     onHideVolumeHud: () -> Unit,
+    showSubtitleDock: Boolean,
+    showSubtitleBloom: Boolean,
+    showDualSubsWindow: Boolean,
+    onHideSubtitleDock: () -> Unit,
+    onHideSubtitleBloom: () -> Unit,
+    onHideDualSubsWindow: () -> Unit,
 ) {
     LaunchedEffect(
         showControls,
@@ -146,6 +152,31 @@ internal fun PlayerAutoHideEffects(
         if (volumeGestureKey > 0) {
             delay(1400)
             onHideVolumeHud()
+        }
+    }
+
+    // Quick HUD, the Studio pill/category windows, and Dual Subs were
+    // added after this file — none of them had an auto-hide timer at
+    // all until now, which is the actual reason Quick HUD stayed open
+    // indefinitely. Same pattern as every other menu above: reset on
+    // studioUi.menuTouchKey (bumped by each control's own callbacks),
+    // close after a period of no interaction.
+    LaunchedEffect(showSubtitleDock, studioUi.menuTouchKey) {
+        if (showSubtitleDock) {
+            delay(10000)
+            onHideSubtitleDock()
+        }
+    }
+    LaunchedEffect(showSubtitleBloom, studioUi.menuTouchKey) {
+        if (showSubtitleBloom) {
+            delay(15000)
+            onHideSubtitleBloom()
+        }
+    }
+    LaunchedEffect(showDualSubsWindow, studioUi.menuTouchKey) {
+        if (showDualSubsWindow) {
+            delay(15000)
+            onHideDualSubsWindow()
         }
     }
 }

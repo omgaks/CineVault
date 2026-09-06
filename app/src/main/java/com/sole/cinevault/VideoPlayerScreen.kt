@@ -885,6 +885,12 @@ fun VideoPlayerScreen(
         onHideSrtBrowser = { showSrtBrowser = false },
         onHideBrightnessHud = { showBrightnessCircle = false },
         onHideVolumeHud = { showVolumeCircle = false },
+        showSubtitleDock = showSubtitleDock,
+        showSubtitleBloom = showSubtitleBloom,
+        showDualSubsWindow = showDualSubsWindow,
+        onHideSubtitleDock = { showSubtitleDock = false },
+        onHideSubtitleBloom = { showSubtitleBloom = false; studioCategory = null },
+        onHideDualSubsWindow = { showDualSubsWindow = false },
     )
 
     // Shared by both the standalone Track Selector sheet and the Subtitle
@@ -1229,6 +1235,29 @@ fun VideoPlayerScreen(
             isLandscape = isLandscape,
             appearanceUi = appearanceUi,
         )
+
+        // Extracted so both the old quick menu and Quick HUD's new Reset
+        // row call the exact same logic instead of two copies drifting
+        // apart. Declared here (not further up) because it needs
+        // displayProfileType/isLandscape, both scoped to this
+        // BoxWithConstraints — same reason Quick HUD's own render call is
+        // down here too.
+        fun resetSubtitleSettings() {
+            clearSubtitleProfileSettings(context, displayProfileType, isLandscape)
+            val defaults = defaultSubtitleProfileSettings(displayProfileType, isLandscape)
+            appearanceUi.textSizeSp = defaults.fontSizeSp
+            appearanceUi.bottomPadding = defaults.bottomPadding
+            appearanceUi.preset = defaults.presetName
+            appearanceUi.appearance = SubtitleAppearance(defaults.foregroundColor, defaults.edgeType, defaults.edgeColor, defaults.backgroundColor)
+            appearanceUi.preserveOriginalStyling = false
+            coreUi.syncOffset = 0f
+            trackUi.appliedOffsetMs = 0L
+            driftUi.scale = 1f; driftUi.appliedScale = 1f
+            driftUi.pointA = null; driftUi.pointB = null
+            AudioSyncHolder.offsetUs = 0L; audioSyncMs = 0
+            Toast.makeText(context, "Subtitle settings reset for ${displayProfileType.label}", Toast.LENGTH_SHORT).show()
+            showControls = true; studioUi.menuTouchKey++
+        }
 
         val popupDimensions = calculatePlayerPopupDimensions(
             maxWidth = maxWidth,
@@ -1652,22 +1681,7 @@ fun VideoPlayerScreen(
             onVerticalPositionChange = { appearanceUi.bottomPadding = it; showControls = true; studioUi.menuTouchKey++ },
             onSyncClick = { coreUi.showSettings = false; studioUi.initialTab = SubtitleStudioTab.TIMING; studioUi.showStudio = true; showControls = true },
             onStyleClick = { coreUi.showSettings = false; coreUi.showAppearanceStudio = true; showControls = true },
-            onResetSubtitleSettings = {
-                clearSubtitleProfileSettings(context, displayProfileType, isLandscape)
-                val defaults = defaultSubtitleProfileSettings(displayProfileType, isLandscape)
-                appearanceUi.textSizeSp = defaults.fontSizeSp
-                appearanceUi.bottomPadding = defaults.bottomPadding
-                appearanceUi.preset = defaults.presetName
-                appearanceUi.appearance = SubtitleAppearance(defaults.foregroundColor, defaults.edgeType, defaults.edgeColor, defaults.backgroundColor)
-                appearanceUi.preserveOriginalStyling = false
-                coreUi.syncOffset = 0f
-                trackUi.appliedOffsetMs = 0L
-                driftUi.scale = 1f; driftUi.appliedScale = 1f
-                driftUi.pointA = null; driftUi.pointB = null
-                AudioSyncHolder.offsetUs = 0L; audioSyncMs = 0
-                Toast.makeText(context, "Subtitle settings reset for ${displayProfileType.label}", Toast.LENGTH_SHORT).show()
-                showControls = true; studioUi.menuTouchKey++
-            },
+            onResetSubtitleSettings = { resetSubtitleSettings() },
             onSettingsUserInteraction = { studioUi.menuTouchKey++; showControls = true },
             trackSelectorBottomPadding = playerPopupBottomPadding(popupBottomPadding),
             trackSelectorOffsetX = calculatePlayerPopupOffsetX(subIconX, trackSelectorWidth, screenWidthPx, density),
@@ -2226,14 +2240,24 @@ fun VideoPlayerScreen(
             com.sole.cinevault.subtitles.QuickHud(
                 subtitleFileName = quickHudFileName,
                 delaySeconds = coreUi.syncOffset,
-                onDelayChange = { coreUi.syncOffset = it; studioUi.menuTouchKey++ },
+                onDelayChange = { coreUi.syncOffset = it; showControls = true; studioUi.menuTouchKey++ },
                 speechTimeline = autoSyncSpeechTimeline,
                 fontSizeSp = appearanceUi.textSizeSp,
-                onFontSizeChange = { appearanceUi.textSizeSp = it },
+                onFontSizeChange = { appearanceUi.textSizeSp = it; showControls = true; studioUi.menuTouchKey++ },
                 bottomPadding = appearanceUi.bottomPadding,
-                onBottomPaddingChange = { appearanceUi.bottomPadding = it },
+                onBottomPaddingChange = { appearanceUi.bottomPadding = it; showControls = true; studioUi.menuTouchKey++ },
+                onReset = { resetSubtitleSettings() },
                 containerSize = containerPx,
-                initialOffset = with(density) { Offset(sidePadding.toPx(), (playerMaxHeight - bottomDockPadding - playButton - 150.dp).toPx()) }
+                // Right side, not left — estimated at Quick HUD's max
+                // width (300dp) since real measurement isn't known yet;
+                // DraggableStudioWindow's own re-clamp corrects this once
+                // it is, so this estimate only has to be reasonable, not exact.
+                initialOffset = with(density) {
+                    Offset(
+                        (playerMaxWidth - 300.dp - sidePadding).toPx().coerceAtLeast(0f),
+                        (playerMaxHeight - bottomDockPadding - playButton - 150.dp).toPx()
+                    )
+                }
             )
         }
 
