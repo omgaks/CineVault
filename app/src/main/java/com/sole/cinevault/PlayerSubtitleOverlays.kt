@@ -33,7 +33,6 @@ import java.io.File
  *     Candidate picker (the "getting a subtitle onto the device" chain)
  *   - SubtitleSyncAndAppearancePopups: Dialogue Sync bar, Drift Correction,
  *     Appearance Studio
- *   - SubtitleStudioOverlay: the big "everything in one place" sheet
  *
  * Deliberately NOT decomposing the original inline callbacks into new
  * named parameters — every onXxx lambda here is forwarded straight
@@ -44,10 +43,7 @@ import java.io.File
  * rewrite of what they do.
  *
  * embeddedTrackChoices/downloadedTrackChoice/localFileChoices are computed
- * ONCE in VideoPlayerScreen.kt (unchanged) and passed into both
- * SubtitleQuickMenuAndTrackSelector and SubtitleStudioOverlay, exactly
- * like the original shared them between Track Selector and Studio without
- * recomputing.
+ * once in VideoPlayerScreen.kt and passed to the dedicated subtitle surfaces.
  */
 
 @androidx.compose.runtime.Composable
@@ -343,130 +339,5 @@ fun BoxScope.SubtitleSyncAndAppearancePopups(
                 onDismiss = onDismissAppearanceStudio
             )
         }
-    }
-}
-
-@androidx.compose.runtime.Composable
-fun BoxScope.SubtitleStudioOverlay(
-    showSubtitleStudio: Boolean,
-    studioWidth: Dp,
-    studioMaxHeight: Dp,
-    containerWidth: Dp,
-    containerHeight: Dp,
-    initialTab: SubtitleStudioTab?,
-    videoPath: String,
-    onOpenSearch: () -> Unit,
-    onOpenManualSearch: () -> Unit,
-    embeddedTracks: List<SubtitleTrackChoice.Embedded>,
-    downloadedTrack: SubtitleTrackChoice.Downloaded?,
-    localFiles: List<File>,
-    generatedFiles: List<GeneratedSubtitleFile> = emptyList(),
-    selectedTrackKey: String?,
-    onSelectTrack: (SubtitleTrackChoice) -> Unit,
-    onDeleteLocalTrack: (File) -> Unit,
-    onDeleteGeneratedTrack: (GeneratedSubtitleFile) -> Unit = {},
-    onOpenFilePicker: () -> Unit,
-    currentSyncOffset: Float,
-    onSyncOffsetChange: (Float) -> Unit,
-    onDialogueSyncClick: () -> Unit,
-    onDriftFixClick: () -> Unit,
-    autoSyncStatus: AutoSyncStatus,
-    autoSyncSpeechTimeline: FloatArray? = null,
-    autoSyncAvailable: Boolean,
-    onAutoSyncClick: () -> Unit,
-    onApplyAutoSync: (SubtitleSyncResult) -> Unit,
-    onCancelAutoSync: () -> Unit,
-    presetName: String,
-    appearance: SubtitleAppearance,
-    fontSizeSp: Float,
-    onFontSizeChange: (Float) -> Unit,
-    onApplyPreset: (String, SubtitleAppearance) -> Unit,
-    onForegroundChange: (Int) -> Unit,
-    onEdgeTypeChange: (Int) -> Unit,
-    onEdgeColorChange: (Int) -> Unit,
-    onBackgroundChange: (Int) -> Unit,
-    isAssOrSsaFormat: Boolean,
-    preserveOriginalStyling: Boolean,
-    onPreserveOriginalStylingChange: (Boolean) -> Unit,
-    bottomPadding: Float,
-    onBottomPaddingChange: (Float) -> Unit,
-    behaviorPrefs: SubtitleBehaviorPrefs,
-    onBehaviorPrefsChange: (SubtitleBehaviorPrefs) -> Unit,
-    cleaningOptions: SubtitleCleaningOptions,
-    onCleaningOptionsChange: (SubtitleCleaningOptions) -> Unit,
-    dualSubtitlesEnabled: Boolean,
-    dualCanEnable: Boolean,
-    dualSecondaryLanguage: String,
-    dualGapLines: Int,
-    dualStatusText: String,
-    onToggleDual: (Boolean) -> Unit,
-    onDualSecondaryLanguageChange: (String) -> Unit,
-    onDualGapLinesChange: (Int) -> Unit,
-    onDismiss: () -> Unit,
-    onUserInteraction: () -> Unit,
-) {
-    AnimatedVisibility(
-        visible = showSubtitleStudio,
-        enter = fadeIn(animationSpec = tween(180)),
-        exit = fadeOut(animationSpec = tween(200)),
-        modifier = Modifier.align(Alignment.Center)
-    ) {
-        SubtitleStudioSheet(
-            panelWidth = studioWidth,
-            panelMaxHeight = studioMaxHeight,
-            containerWidth = containerWidth,
-            containerHeight = containerHeight,
-            initialTab = initialTab,
-            videoPath = videoPath,
-            onOpenSearch = onOpenSearch,
-            onOpenManualSearch = onOpenManualSearch,
-            embeddedTracks = embeddedTracks,
-            downloadedTrack = downloadedTrack,
-            localFiles = localFiles,
-            generatedFiles = generatedFiles,
-            selectedTrackKey = selectedTrackKey,
-            onSelectTrack = onSelectTrack,
-            onDeleteLocalTrack = onDeleteLocalTrack,
-            onDeleteGeneratedTrack = onDeleteGeneratedTrack,
-            onOpenFilePicker = onOpenFilePicker,
-            currentSyncOffset = currentSyncOffset,
-            onSyncOffsetChange = onSyncOffsetChange,
-            onDialogueSyncClick = onDialogueSyncClick,
-            onDriftFixClick = onDriftFixClick,
-            autoSyncStatus = autoSyncStatus,
-            autoSyncSpeechTimeline = autoSyncSpeechTimeline,
-            autoSyncAvailable = autoSyncAvailable,
-            onAutoSyncClick = onAutoSyncClick,
-            onApplyAutoSync = onApplyAutoSync,
-            onCancelAutoSync = onCancelAutoSync,
-            presetName = presetName,
-            appearance = appearance,
-            fontSizeSp = fontSizeSp,
-            onFontSizeChange = onFontSizeChange,
-            onApplyPreset = onApplyPreset,
-            onForegroundChange = onForegroundChange,
-            onEdgeTypeChange = onEdgeTypeChange,
-            onEdgeColorChange = onEdgeColorChange,
-            onBackgroundChange = onBackgroundChange,
-            isAssOrSsaFormat = isAssOrSsaFormat,
-            preserveOriginalStyling = preserveOriginalStyling,
-            onPreserveOriginalStylingChange = onPreserveOriginalStylingChange,
-            bottomPadding = bottomPadding,
-            onBottomPaddingChange = onBottomPaddingChange,
-            behaviorPrefs = behaviorPrefs,
-            onBehaviorPrefsChange = onBehaviorPrefsChange,
-            cleaningOptions = cleaningOptions,
-            onCleaningOptionsChange = onCleaningOptionsChange,
-            dualSubtitlesEnabled = dualSubtitlesEnabled,
-            dualCanEnable = dualCanEnable,
-            dualSecondaryLanguage = dualSecondaryLanguage,
-            dualGapLines = dualGapLines,
-            dualStatusText = dualStatusText,
-            onToggleDual = onToggleDual,
-            onDualSecondaryLanguageChange = onDualSecondaryLanguageChange,
-            onDualGapLinesChange = onDualGapLinesChange,
-            onDismiss = onDismiss,
-            onUserInteraction = onUserInteraction
-        )
     }
 }

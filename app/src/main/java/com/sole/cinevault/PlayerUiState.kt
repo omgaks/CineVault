@@ -79,8 +79,6 @@ class DualSubtitleState {
 // unlike the previous three slices, which were each one self-contained
 // flow.
 class SubtitleStudioUiState {
-    var showStudio by mutableStateOf(false)
-    var initialTab by mutableStateOf<SubtitleStudioTab?>(null)
     var menuTouchKey by mutableIntStateOf(0)
     var gestureFeedback by mutableStateOf("")
     var playerView by mutableStateOf<PlayerView?>(null)

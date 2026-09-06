@@ -12,11 +12,10 @@ internal fun shouldShowMainPlayerControls(
     dialogueSyncArmed: Boolean,
     showSpeedMenu: Boolean,
     showSleepMenu: Boolean,
-    showSubtitleStudio: Boolean,
     showSubtitleSearch: Boolean,
     isInPipMode: Boolean,
 ): Boolean {
-    val largeSheetVisible = showSubtitleStudio || showSubtitleSearch
+    val largeSheetVisible = showSubtitleSearch
 
     val anyControlSurfaceVisible =
         showControls ||

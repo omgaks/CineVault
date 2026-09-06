@@ -415,7 +415,6 @@ fun VideoPlayerScreen(
         searchUi.showSearch = false
         driftUi.showDialog = false
         coreUi.showAppearanceStudio = false
-        studioUi.showStudio = false
         showSpeedMenu = false
         showSleepMenu = false
         showSrtBrowser = false
@@ -1064,7 +1063,6 @@ fun VideoPlayerScreen(
             getCurrentVideoPath = { currentVideo.path },
             getAutoSyncStatus = { autoSyncStatus },
             setAutoSyncStatus = { autoSyncStatus = it },
-            setStudioVisible = { studioUi.showStudio = it },
             resetPreviewFrames = { previewFrames = emptyList(); previewBitmap = null },
             incrementPreviewReloadKey = { previewReloadKey++ },
             setSyncOffsetSeconds = { coreUi.syncOffset = it },
@@ -1521,7 +1519,6 @@ fun VideoPlayerScreen(
                             searchUi.showSearch -> searchUi.showSearch = false
                             driftUi.showDialog -> driftUi.showDialog = false
                             coreUi.showAppearanceStudio -> coreUi.showAppearanceStudio = false
-                            studioUi.showStudio -> studioUi.showStudio = false
                             coreUi.dialogueSyncArmed -> cancelDialogueSync()
                             showSubtitleDock -> showSubtitleDock = false
                             showSubtitleBloom -> { showSubtitleBloom = false; studioCategory = null }
@@ -1883,131 +1880,13 @@ fun VideoPlayerScreen(
             onAppearanceUserInteraction = { studioUi.menuTouchKey++ },
         )
 
-        // FIX: sizing only ever reacted to ORIENTATION (isLandscape/
-        // isCompactLandscape), never to actual physical screen size — so a
-        // phone in landscape got the exact same width/height caps as a
-        // tablet in landscape, even though the phone has far less real
-        // estate. isTabletSized uses the SMALLER of the two dimensions
-        // (Android's own sw600dp convention for "this is a 7"+ tablet"),
-        // which stays correct regardless of which way the device is held
-        // — unlike maxWidth alone, which would misclassify a phone turned
-        // sideways as tablet-sized. Phones now get meaningfully smaller
-        // caps in every orientation; tablets get meaningfully bigger ones.
-        // Safe to shrink on phones specifically because Studio already
-        // scrolls internally (every tab's content is in a
-        // verticalScroll'd Column) and is already independently
-        // draggable (its own long-press-drag handle, not this sizing) —
-        // nothing gets cut off, it just needs to scroll a bit more.
-        val subtitleStudioLayout = calculateSubtitleStudioLayout(
-            maxWidth = maxWidth,
-            maxHeight = maxHeight,
-            isLandscape = isLandscape,
-            isCompactLandscape = isCompactLandscape
-        )
-        val studioWidth = subtitleStudioLayout.width
-        val studioMaxHeight = subtitleStudioLayout.maxHeight
-        SubtitleStudioOverlay(
-            showSubtitleStudio = studioUi.showStudio,
-            studioWidth = studioWidth,
-            studioMaxHeight = studioMaxHeight,
-            containerWidth = maxWidth,
-            containerHeight = maxHeight,
-            initialTab = studioUi.initialTab,
-            videoPath = currentVideo.path,
-            onOpenSearch = {
-                studioUi.showStudio = false
-                searchUi.showSearch = true
-                showControls = true
-                if (searchUi.searchResults.isEmpty() && !searchUi.searchLoading) {
-                    performSubtitleSearch(playerSubtitleSearchQuery(currentVideo.path), "", "")
-                }
-            },
-            onOpenManualSearch = {
-                studioUi.showStudio = false
-                searchUi.showFallback = true
-                showControls = true
-            },
-            embeddedTracks = embeddedTrackChoices,
-            downloadedTrack = downloadedTrackChoice,
-            localFiles = localFileChoices,
-            generatedFiles = generatedSubtitleFiles.filter { g ->
-                java.io.File(g.uri.path ?: "").absolutePath !in pendingDeletePaths
-            },
-            selectedTrackKey = trackUi.selectedKey,
-            onSelectTrack = { choice -> selectSubtitleTrack(choice) },
-            onDeleteLocalTrack = { file -> requestDeleteSubtitle(file) },
-            onDeleteGeneratedTrack = { generated ->
-                val path = generated.uri.path
-                if (path != null) requestDeleteSubtitle(java.io.File(path))
-            },
-            onOpenFilePicker = { srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
-            currentSyncOffset = coreUi.syncOffset,
-            onSyncOffsetChange = { coreUi.syncOffset = it; studioUi.menuTouchKey++ },
-            onDialogueSyncClick = { armDialogueSync() },
-            onDriftFixClick = { studioUi.showStudio = false; driftUi.showDialog = true },
-            autoSyncStatus = autoSyncStatus,
-            autoSyncSpeechTimeline = autoSyncSpeechTimeline,
-            autoSyncAvailable = autoSyncAvailable,
-            onAutoSyncClick = { runAutoSync() },
-            onApplyAutoSync = { result -> applyAutoSyncResult(result) },
-            onCancelAutoSync = { autoSyncStatus = AutoSyncStatus.Idle },
-            presetName = appearanceUi.preset,
-            appearance = appearanceUi.appearance,
-            fontSizeSp = appearanceUi.textSizeSp,
-            onFontSizeChange = { appearanceUi.textSizeSp = it },
-            onApplyPreset = { name, preset -> appearanceUi.preset = name; appearanceUi.appearance = preset },
-            onForegroundChange = { c -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(foregroundColor = c) },
-            onEdgeTypeChange = { t -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(edgeType = t) },
-            onEdgeColorChange = { c -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(edgeColor = c) },
-            onBackgroundChange = { c -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(backgroundColor = c) },
-            isAssOrSsaFormat = isAssOrSsaFormat,
-            preserveOriginalStyling = appearanceUi.preserveOriginalStyling,
-            onPreserveOriginalStylingChange = { appearanceUi.preserveOriginalStyling = it },
-            bottomPadding = appearanceUi.bottomPadding,
-            onBottomPaddingChange = { appearanceUi.bottomPadding = it },
-            behaviorPrefs = coreUi.behaviorPrefs,
-            onBehaviorPrefsChange = { coreUi.behaviorPrefs = it; saveSubtitleBehaviorPrefs(context, it) },
-            cleaningOptions = coreUi.cleaningOptions,
-            onCleaningOptionsChange = { coreUi.cleaningOptions = it; saveSubtitleCleaningOptions(context, it) },
-            dualSubtitlesEnabled = dualUi.enabled,
-            dualCanEnable = trackUi.primaryUri != null,
-            dualSecondaryLanguage = dualUi.secondaryLanguage,
-            dualGapLines = dualUi.gapLines,
-            dualStatusText = dualUi.statusText,
-            onToggleDual = { enabled ->
-                dualUi.enabled = enabled
-                if (enabled) fetchAndApplyDualSecondary() else disableDualSubtitles()
-            },
-            onDualSecondaryLanguageChange = { lang ->
-                dualUi.secondaryLanguage = lang
-                coreUi.behaviorPrefs = coreUi.behaviorPrefs.copy(dualSecondaryLanguage = lang)
-                saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
-                if (dualUi.enabled) fetchAndApplyDualSecondary()
-            },
-            onDualGapLinesChange = { gap ->
-                dualUi.gapLines = gap
-                if (dualUi.enabled) fetchAndApplyDualSecondary()
-            },
-            onDismiss = { studioUi.showStudio = false; showControls = true },
-            onUserInteraction = { studioUi.menuTouchKey++ },
-        )
-
-        // Studio and Search are large, self-contained sheets that cover
-        // most of the screen — showing the transport dock/seek bar/top
-        // cluster underneath them just doubles up the UI for no reason
-        // (confirmed on-device: Vivo X300 Pro screenshots showed both
-        // layers competing for the same space). Both are explicitly
-        // EXCLUDED from the trigger list and explicitly HIDE this whole
-        // block via the trailing && clause, unlike the smaller anchored
-        // popups (Track Selector, Drift, Appearance, quick menu) which
-        // were designed to sit alongside visible controls and still do.
+        // Subtitle Studio now uses only the dedicated overlay windows.
         val subtitleOverlayActive =
             coreUi.showSettings ||
             trackUi.showSelector ||
             searchUi.showSearch ||
             driftUi.showDialog ||
             coreUi.showAppearanceStudio ||
-            studioUi.showStudio ||
             coreUi.dialogueSyncArmed ||
             showSubtitleDock ||
             showSubtitleBloom ||
@@ -2028,7 +1907,6 @@ fun VideoPlayerScreen(
             dialogueSyncArmed = coreUi.dialogueSyncArmed,
             showSpeedMenu = showSpeedMenu,
             showSleepMenu = showSleepMenu,
-            showSubtitleStudio = studioUi.showStudio,
             showSubtitleSearch = searchUi.showSearch,
             isInPipMode = CineVaultPlayerHolder.isInPipMode
         )
@@ -2143,7 +2021,7 @@ fun VideoPlayerScreen(
                     hasNextVideo = hasNextVideo,
                     autoPlayEnabled = autoPlayEnabled,
                     showAudioSelector = showAudioSelector,
-                    showSubtitleActive = coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio,
+                    showSubtitleActive = coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio,
                     isStreamMedia = isStreamMedia,
                     onBack = onBack,
                     onReplay10 = {
@@ -2189,7 +2067,7 @@ fun VideoPlayerScreen(
                     },
                     onAudioCenterMeasured = { audioIconX = it },
                     onSubtitleClick = {
-                        val wasOpen = showSubtitleDock || showSubtitleBloom || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio
+                        val wasOpen = showSubtitleDock || showSubtitleBloom || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio
                         closeAllMenus()
                         showSubtitleDock = !wasOpen
                         if (showSubtitleDock) {
@@ -2282,7 +2160,7 @@ fun VideoPlayerScreen(
         )
 
         PlayerAutoSyncFloatingOverlay(
-            visible = !studioUi.showStudio && !CineVaultPlayerHolder.isInPipMode,
+            visible = !CineVaultPlayerHolder.isInPipMode,
             containerWidth = playerMaxWidth,
             containerHeight = playerMaxHeight,
             status = autoSyncStatus,
