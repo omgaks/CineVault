@@ -34,14 +34,15 @@ class SpeechSubtitleCoordinator(
     private var generationJob: Job? = null
     private var downloadJob: Job? = null
 
-    fun downloadModel() {
+    fun downloadModel(modelId: WhisperModelManager.ModelId = WhisperModelManager.selectedModel(context)) {
         if (downloadJob?.isActive == true || generationJob?.isActive == true) return
 
+        WhisperModelManager.selectModel(context, modelId)
         setStatus(SpeechSubtitleStatus.DownloadingModel("Starting", 0))
         downloadJob = scope.launch {
             try {
                 when (
-                    val result = WhisperModelManager.downloadStandardModel(context) { progress ->
+                    val result = WhisperModelManager.downloadModel(context, modelId) { progress ->
                         setStatus(
                             SpeechSubtitleStatus.DownloadingModel(
                                 progress.fileName,
@@ -54,7 +55,7 @@ class SpeechSubtitleCoordinator(
                         setStatus(SpeechSubtitleStatus.Idle)
                         Toast.makeText(
                             context,
-                            "${WhisperModelManager.modelDisplayName()} is ready",
+                            "${WhisperModelManager.modelDisplayName(context)} is ready",
                             Toast.LENGTH_SHORT,
                         ).show()
                     }
@@ -70,6 +71,21 @@ class SpeechSubtitleCoordinator(
                 downloadJob = null
             }
         }
+    }
+
+    fun selectModel(modelId: WhisperModelManager.ModelId) {
+        if (generationJob?.isActive == true || downloadJob?.isActive == true) return
+        WhisperModelManager.selectModel(context, modelId)
+        setStatus(SpeechSubtitleStatus.Idle)
+    }
+
+    fun deleteModel(modelId: WhisperModelManager.ModelId) {
+        if (generationJob?.isActive == true || downloadJob?.isActive == true) return
+        val deleted = WhisperModelManager.deleteModel(context, modelId)
+        setStatus(
+            if (deleted) SpeechSubtitleStatus.Idle
+            else SpeechSubtitleStatus.Failed("Couldn't delete the selected Whisper model.")
+        )
     }
 
     fun generateSubtitles() {
