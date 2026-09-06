@@ -2636,12 +2636,15 @@ fun VideoPlayerScreen(
                     Box(modifier = Modifier.width(panelWidth)) {
                         SpeechSubtitlePanel(
                             status = speechSubtitleStatus,
-                            modelReady = WhisperModelManager.isModelReady(context),
-                            modelName = WhisperModelManager.modelDisplayName(),
-                            modelSizeLabel = WhisperModelManager.modelDownloadSizeLabel(),
-                            onDownloadModel = {
-                                showSpeechSubtitlePanel = false
-                                speechSubtitleCoordinator.downloadModel()
+                            models = WhisperModelManager.modelCatalog(context),
+                            onSelectModel = { modelId ->
+                                speechSubtitleCoordinator.selectModel(modelId)
+                            },
+                            onDownloadModel = { modelId ->
+                                speechSubtitleCoordinator.downloadModel(modelId)
+                            },
+                            onDeleteModel = { modelId ->
+                                speechSubtitleCoordinator.deleteModel(modelId)
                             },
                             onGenerate = {
                                 showSpeechSubtitlePanel = false
