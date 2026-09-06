@@ -1,17 +1,22 @@
 package com.sole.cinevault.subtitles
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -39,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntSize
@@ -404,4 +410,89 @@ object StudioRowIcons {
     val DualSubs: ImageVector = Icons.Rounded.Language
     val Style: ImageVector = Icons.Rounded.Palette
     val SettingsIcon: ImageVector = Icons.Rounded.Settings
+}
+
+/**
+ * Standalone Settings destination for the long-press Sub Studio.
+ *
+ * This intentionally reuses the already-working StudioBehaviourTab content,
+ * but removes SubtitleStudioSheet / the legacy 8-tile grid from the navigation
+ * path.  A later visual pass can freely restyle the internals without ever
+ * needing to bring that grid back.
+ */
+@Composable
+fun SubtitleBehaviourWindow(
+    prefs: SubtitleBehaviorPrefs,
+    onChange: (SubtitleBehaviorPrefs) -> Unit,
+    cleaningOptions: SubtitleCleaningOptions,
+    onCleaningOptionsChange: (SubtitleCleaningOptions) -> Unit,
+    onBack: () -> Unit,
+    containerSize: IntSize,
+    initialOffset: Offset,
+    onUserInteraction: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val containerHeightDp = with(density) { containerSize.height.toDp() }
+    val maxWindowHeight = (containerHeightDp - 40.dp).coerceAtLeast(220.dp)
+
+    DraggableStudioWindow(
+        initialOffset = initialOffset,
+        containerSize = containerSize,
+        modifier = modifier
+    ) { dragHandleModifier ->
+        Column(
+            modifier = Modifier
+                .widthIn(min = 280.dp, max = 330.dp)
+                .heightIn(max = maxWindowHeight)
+                .clip(RoundedCornerShape(18.dp))
+                .background(GlassSurfaceStrong)
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        onUserInteraction()
+                    }
+                }
+                .padding(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().then(dragHandleModifier),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Rounded.ChevronLeft,
+                    contentDescription = "Back to Studio",
+                    tint = AmberCore,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(AmberCore.copy(alpha = 0.12f))
+                        .clickable { onBack() }
+                        .padding(2.dp)
+                )
+                Spacer(modifier = Modifier.width(7.dp))
+                Text(
+                    text = "Settings",
+                    color = AmberCore,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(AmberCore.copy(alpha = 0.12f))
+                        .border(1.dp, AmberCore.copy(alpha = 0.28f), RoundedCornerShape(50))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                )
+                Spacer(modifier = Modifier.weight(1f))
+            }
+            Spacer(modifier = Modifier.height(7.dp))
+            Box(modifier = Modifier.weight(1f, fill = false).fillMaxWidth()) {
+                StudioBehaviourTab(
+                    prefs = prefs,
+                    onChange = onChange,
+                    cleaningOptions = cleaningOptions,
+                    onCleaningOptionsChange = onCleaningOptionsChange
+                )
+            }
+        }
+    }
 }
