@@ -4,6 +4,9 @@ import android.content.Context
 import com.k2fsa.sherpa.onnx.SileroVadModelConfig
 import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
@@ -38,8 +41,11 @@ object SubtitleGenerationEngine {
         data class Failed(val reason: String) : Result()
     }
 
-    private const val CHUNK_DURATION_MS = 6 * 60 * 1000L // fewer extractor restarts; still bounded-memory
+    // Four-minute windows keep peak memory sensible when one upcoming
+    // chunk is prefetched while Whisper is transcribing the current one.
+    private const val CHUNK_DURATION_MS = 4 * 60 * 1000L
     private const val VAD_WINDOW_SAMPLES = 512
+    private const val PREFETCH_MIN_CPU_CORES = 4
 
     suspend fun generate(
         context: Context,
@@ -84,62 +90,124 @@ object SubtitleGenerationEngine {
         var detectedLanguage: String? = null
 
         try {
-            var chunkStartMs = 0L
-            while (chunkStartMs < videoDurationMs) {
-                currentCoroutineContext().ensureActive()
-                val chunkDurationMs = CHUNK_DURATION_MS.coerceAtMost(videoDurationMs - chunkStartMs)
-                onProgress(
-                    Progress(
-                        phase = "Transcribing • ${WhisperModelManager.modelDisplayName(context)}",
-                        percent = ((chunkStartMs * 100) / videoDurationMs).toInt().coerceIn(0, 99)
-                    )
-                )
+            coroutineScope {
+                val canPrefetch =
+                    Runtime.getRuntime().availableProcessors() >= PREFETCH_MIN_CPU_CORES
 
-                val audio = AutoSyncAudioExtractor.extractWindow(
-                    context = context,
-                    filePath = filePath,
-                    trackLanguage = trackLanguage,
-                    startMs = chunkStartMs,
-                    durationMs = chunkDurationMs,
-                    targetSampleRate = 16_000,
-                )
+                var chunkStartMs = 0L
+                var pendingStartMs = 0L
+                var pendingDurationMs =
+                    CHUNK_DURATION_MS.coerceAtMost(videoDurationMs - pendingStartMs)
 
-                if (audio != null && audio.samples.isNotEmpty()) {
-                    var sampleIdx = 0
-                    val vadFrame = FloatArray(VAD_WINDOW_SAMPLES)
-                    while (sampleIdx + VAD_WINDOW_SAMPLES <= audio.samples.size) {
-                        currentCoroutineContext().ensureActive()
-                        System.arraycopy(
-                            audio.samples,
-                            sampleIdx,
-                            vadFrame,
-                            0,
-                            VAD_WINDOW_SAMPLES
-                        )
-                        vad.acceptWaveform(vadFrame)
-                        sampleIdx += VAD_WINDOW_SAMPLES
-
-                        while (!vad.empty()) {
-                            currentCoroutineContext().ensureActive()
-                            val segment = vad.front()
-                            vad.pop()
-                            cueIndex = transcribeSegment(
-                                recognizer = recognizer,
-                                segment = segment,
-                                sampleRate = audio.sampleRate,
-                                cueIndex = cueIndex,
-                                srt = srt,
-                                onLanguageDetected = { if (detectedLanguage == null) detectedLanguage = it }
+                var pendingAudio =
+                    if (canPrefetch && pendingDurationMs > 0L) {
+                        async(Dispatchers.IO) {
+                            AutoSyncAudioExtractor.extractWindow(
+                                context = context,
+                                filePath = filePath,
+                                trackLanguage = trackLanguage,
+                                startMs = pendingStartMs,
+                                durationMs = pendingDurationMs,
+                                targetSampleRate = 16_000,
                             )
                         }
+                    } else {
+                        null
                     }
+
+                while (chunkStartMs < videoDurationMs) {
+                    currentCoroutineContext().ensureActive()
+                    val chunkDurationMs =
+                        CHUNK_DURATION_MS.coerceAtMost(videoDurationMs - chunkStartMs)
+
+                    onProgress(
+                        Progress(
+                            phase = "Transcribing • ${WhisperModelManager.modelDisplayName(context)}",
+                            percent = ((chunkStartMs * 100) / videoDurationMs)
+                                .toInt()
+                                .coerceIn(0, 99)
+                        )
+                    )
+
+                    val audio =
+                        if (pendingAudio != null && pendingStartMs == chunkStartMs) {
+                            pendingAudio.await()
+                        } else {
+                            AutoSyncAudioExtractor.extractWindow(
+                                context = context,
+                                filePath = filePath,
+                                trackLanguage = trackLanguage,
+                                startMs = chunkStartMs,
+                                durationMs = chunkDurationMs,
+                                targetSampleRate = 16_000,
+                            )
+                        }
+
+                    // Start preparing the NEXT window before Whisper works on
+                    // this one. MediaCodec extraction is mostly independent of
+                    // Whisper inference, so capable devices can overlap them.
+                    // Only one future chunk is held, keeping memory bounded.
+                    val nextStartMs = chunkStartMs + chunkDurationMs
+                    val nextDurationMs =
+                        if (nextStartMs < videoDurationMs) {
+                            CHUNK_DURATION_MS.coerceAtMost(videoDurationMs - nextStartMs)
+                        } else {
+                            0L
+                        }
+
+                    pendingStartMs = nextStartMs
+                    pendingDurationMs = nextDurationMs
+                    pendingAudio =
+                        if (canPrefetch && nextDurationMs > 0L) {
+                            async(Dispatchers.IO) {
+                                AutoSyncAudioExtractor.extractWindow(
+                                    context = context,
+                                    filePath = filePath,
+                                    trackLanguage = trackLanguage,
+                                    startMs = nextStartMs,
+                                    durationMs = nextDurationMs,
+                                    targetSampleRate = 16_000,
+                                )
+                            }
+                        } else {
+                            null
+                        }
+
+                    if (audio != null && audio.samples.isNotEmpty()) {
+                        var sampleIdx = 0
+                        val vadFrame = FloatArray(VAD_WINDOW_SAMPLES)
+                        while (sampleIdx + VAD_WINDOW_SAMPLES <= audio.samples.size) {
+                            currentCoroutineContext().ensureActive()
+                            System.arraycopy(
+                                audio.samples,
+                                sampleIdx,
+                                vadFrame,
+                                0,
+                                VAD_WINDOW_SAMPLES
+                            )
+                            vad.acceptWaveform(vadFrame)
+                            sampleIdx += VAD_WINDOW_SAMPLES
+
+                            while (!vad.empty()) {
+                                currentCoroutineContext().ensureActive()
+                                val segment = vad.front()
+                                vad.pop()
+                                cueIndex = transcribeSegment(
+                                    recognizer = recognizer,
+                                    segment = segment,
+                                    sampleRate = audio.sampleRate,
+                                    cueIndex = cueIndex,
+                                    srt = srt,
+                                    onLanguageDetected = {
+                                        if (detectedLanguage == null) detectedLanguage = it
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    chunkStartMs += chunkDurationMs
                 }
-                // No mid-track chunk boundary chops here — vad is fed
-                // continuously across chunks and its own state (not this
-                // loop) decides where a speech segment actually ends. Only
-                // the trailing partial segment at end-of-track needs an
-                // explicit flush, done once below after the loop.
-                chunkStartMs += chunkDurationMs
             }
 
             vad.flush()
