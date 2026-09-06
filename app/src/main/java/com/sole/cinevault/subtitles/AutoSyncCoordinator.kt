@@ -38,7 +38,6 @@ class AutoSyncCoordinator(
     private val getCurrentVideoPath: () -> String,
     private val getAutoSyncStatus: () -> AutoSyncStatus,
     private val setAutoSyncStatus: (AutoSyncStatus) -> Unit,
-    private val setStudioVisible: (Boolean) -> Unit,
     private val resetPreviewFrames: () -> Unit,
     private val incrementPreviewReloadKey: () -> Unit,
     private val setSyncOffsetSeconds: (Float) -> Unit,
@@ -62,10 +61,6 @@ class AutoSyncCoordinator(
             Toast.makeText(context, "Auto-Sync needs a downloaded or local subtitle loaded first", Toast.LENGTH_LONG).show()
             return
         }
-        // Studio closes the moment analysis actually starts — the
-        // floating indicator shows progress and results on its own from
-        // here.
-        setStudioVisible(false)
         setAutoSyncStatus(AutoSyncStatus.Analyzing("Extracting audio…"))
         // Clears the currently-playing video's own resident preview
         // bitmaps (not just the LruCache) right before the memory-heavy
