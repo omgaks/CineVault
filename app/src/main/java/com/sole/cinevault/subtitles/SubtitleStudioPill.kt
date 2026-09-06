@@ -230,6 +230,7 @@ fun DualSubsWindow(
     onBack: () -> Unit,
     containerSize: IntSize,
     initialOffset: Offset,
+    onUserInteraction: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showLanguagePicker by remember { mutableStateOf(false) }
@@ -290,7 +291,7 @@ fun DualSubsWindow(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color.White.copy(alpha = 0.03f))
-                    .clickable { showLanguagePicker = !showLanguagePicker }
+                    .clickable { showLanguagePicker = !showLanguagePicker; onUserInteraction() }
                     .padding(horizontal = 9.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
