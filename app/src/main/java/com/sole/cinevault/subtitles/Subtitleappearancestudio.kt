@@ -82,35 +82,25 @@ fun SubtitleAppearanceStudioSheet(
     isAssOrSsaFormat: Boolean = false,
     preserveOriginalStyling: Boolean = false,
     onPreserveOriginalStylingChange: (Boolean) -> Unit = {},
+    onFontSizeChange: ((Float) -> Unit)? = null,
+    bottomPadding: Float? = null,
+    onBottomPaddingChange: ((Float) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .width(popupWidth)
             .heightIn(max = popupMaxHeight)
-            .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.98f))
-            .padding(12.dp)
+            .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.82f))
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Icon(imageVector = Icons.Default.FormatColorText, contentDescription = null, tint = AmberCore, modifier = Modifier.size(15.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(text = "Subtitle Style", color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Icon(
-                // FIX: restyled as the same amber-filled pill used
-                // everywhere else now — was a plain glass circle.
-                imageVector = Icons.Default.Close, contentDescription = "Close", tint = Color.Black,
-                modifier = Modifier.size(30.dp).clip(RoundedCornerShape(50)).background(AmberCore).padding(6.dp).clickable { onDismiss() }
-            )
-        }
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Live preview — sample line styled with the exact same
-        // ForegroundColor/edge/background combo about to be applied, so
-        // changes are visible immediately without leaving this sheet.
+        // A single clean Style surface. The outer draggable popup already
+        // supplies dismissal, so no duplicate Close/Back chrome is needed.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp)
+                .height(46.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(Brush.verticalGradient(listOf(Color(0xFF1A1A1A), Color(0xFF0A0A0A)))),
             contentAlignment = Alignment.Center
@@ -118,58 +108,144 @@ fun SubtitleAppearanceStudioSheet(
             StyledPreviewText(appearance = appearance, fontSizeSp = fontSizeSp)
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(9.dp))
 
-        Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-            if (isAssOrSsaFormat) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "Preserve original ASS/SSA styling", color = TextBright, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
-                        Text(text = "Uses this subtitle's own fonts/colors/positioning instead of CineVault's", color = TextMuted, fontSize = 9.sp, lineHeight = 12.sp)
-                    }
-                    androidx.compose.material3.Switch(
-                        checked = preserveOriginalStyling, onCheckedChange = onPreserveOriginalStylingChange,
-                        colors = androidx.compose.material3.SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
+        if (isAssOrSsaFormat) {
+            AmberSectionPill("Original styling")
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = "Preserve ASS/SSA styling", color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text(text = "Use this subtitle's embedded fonts, colours and positioning", color = TextMuted, fontSize = 9.sp, lineHeight = 12.sp)
+                }
+                Switch(
+                    checked = preserveOriginalStyling,
+                    onCheckedChange = onPreserveOriginalStylingChange,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = AmberCore,
+                        checkedTrackColor = AmberGlow.copy(alpha = 0.4f)
                     )
-                }
-                if (preserveOriginalStyling) {
-                    Text(
-                        text = "The controls below are ignored while this is on — this subtitle renders with its own embedded styling.",
-                        color = AmberCore, fontSize = 9.5.sp, fontWeight = FontWeight.SemiBold, lineHeight = 13.sp,
-                        modifier = Modifier.padding(bottom = 10.dp)
-                    )
-                }
+                )
             }
-
-            SectionLabel2("Presets")
-            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                SubtitlePresets.all.forEach { (name, preset) ->
-                    PresetChip(label = name, selected = presetName == name, onClick = { onApplyPreset(name, preset) })
-                }
+            if (preserveOriginalStyling) {
+                Text(
+                    text = "CineVault styling controls are ignored while original styling is enabled.",
+                    color = AmberCore,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 12.sp,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
             }
-
-            Spacer(modifier = Modifier.height(10.dp))
-            SectionLabel2("Text Color")
-            SwatchRow(swatches = textColorSwatches, selectedColor = appearance.foregroundColor, onSelect = onForegroundChange)
-
-            Spacer(modifier = Modifier.height(10.dp))
-            SectionLabel2("Outline / Shadow")
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                EdgeTypeChip("None", CaptionStyleCompat.EDGE_TYPE_NONE, appearance.edgeType, onEdgeTypeChange)
-                EdgeTypeChip("Outline", CaptionStyleCompat.EDGE_TYPE_OUTLINE, appearance.edgeType, onEdgeTypeChange)
-                EdgeTypeChip("Shadow", CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW, appearance.edgeType, onEdgeTypeChange)
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-            SwatchRow(swatches = edgeColorSwatches, selectedColor = appearance.edgeColor, onSelect = onEdgeColorChange)
-
-            Spacer(modifier = Modifier.height(10.dp))
-            SectionLabel2("Background Box")
-            SwatchRow(swatches = backgroundSwatches, selectedColor = appearance.backgroundColor, onSelect = onBackgroundChange)
         }
+
+        AmberSectionPill("Presets")
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            SubtitlePresets.all.forEach { (name, preset) ->
+                PresetChip(label = name, selected = presetName == name, onClick = { onApplyPreset(name, preset) })
+            }
+        }
+
+        Spacer(modifier = Modifier.height(9.dp))
+        AmberSectionPill("Text colour")
+        SwatchRow(swatches = textColorSwatches, selectedColor = appearance.foregroundColor, onSelect = onForegroundChange)
+
+        Spacer(modifier = Modifier.height(9.dp))
+        AmberSectionPill("Outline / shadow")
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            EdgeTypeChip("None", CaptionStyleCompat.EDGE_TYPE_NONE, appearance.edgeType, onEdgeTypeChange)
+            EdgeTypeChip("Outline", CaptionStyleCompat.EDGE_TYPE_OUTLINE, appearance.edgeType, onEdgeTypeChange)
+            EdgeTypeChip("Shadow", CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW, appearance.edgeType, onEdgeTypeChange)
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        SwatchRow(swatches = edgeColorSwatches, selectedColor = appearance.edgeColor, onSelect = onEdgeColorChange)
+
+        Spacer(modifier = Modifier.height(9.dp))
+        AmberSectionPill("Background")
+        SwatchRow(swatches = backgroundSwatches, selectedColor = appearance.backgroundColor, onSelect = onBackgroundChange)
+
+        if (onFontSizeChange != null) {
+            Spacer(modifier = Modifier.height(9.dp))
+            AmberSectionPill("Text size")
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp)
+            ) {
+                DotThumbSlider(
+                    value = fontSizeSp,
+                    onValueChange = onFontSizeChange,
+                    valueRange = 12f..32f,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "${fontSizeSp.toInt()}sp",
+                    color = AmberCore,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.width(34.dp)
+                )
+            }
+        }
+
+        if (bottomPadding != null && onBottomPaddingChange != null) {
+            Spacer(modifier = Modifier.height(9.dp))
+            AmberSectionPill("Placement")
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                positionPresets.forEach { (label, value) ->
+                    val selected = kotlin.math.abs(bottomPadding - value) < 0.005f
+                    Text(
+                        text = label,
+                        color = if (selected) Color.Black else TextBright,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(if (selected) AmberCore else Color.Transparent)
+                            .border(
+                                1.dp,
+                                if (selected) AmberCore else AmberCore.copy(alpha = 0.28f),
+                                RoundedCornerShape(50)
+                            )
+                            .clickable { onBottomPaddingChange(value) }
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(7.dp))
+            Text(
+                text = "Fine position",
+                color = TextMuted,
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            DotThumbSlider(
+                value = bottomPadding,
+                onValueChange = onBottomPaddingChange,
+                valueRange = 0.02f..0.90f,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text(
+                text = "Placement stays clear of player controls while they are visible.",
+                color = TextFaint,
+                fontSize = 9.sp,
+                lineHeight = 12.sp,
+                modifier = Modifier.padding(top = 3.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
     }
+
 }
 
 @Composable
@@ -189,24 +265,36 @@ private fun StyledPreviewText(appearance: SubtitleAppearance, fontSizeSp: Float)
             listOf(-1 to 0, 1 to 0, 0 to -1, 0 to 1).forEach { (dx, dy) ->
                 Text(
                     text = "Sample Subtitle Line",
-                    color = edgeColor, fontSize = (fontSizeSp * 0.75f).sp, fontWeight = FontWeight.Bold,
+                    color = edgeColor, fontSize = fontSizeSp.coerceIn(12f, 14f).sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.offset(x = dx.dp, y = dy.dp)
                 )
             }
         } else if (appearance.edgeType == CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW && appearance.edgeColor != AndroidColor.TRANSPARENT) {
             Text(
                 text = "Sample Subtitle Line",
-                color = Color(appearance.edgeColor).copy(alpha = 0.7f), fontSize = (fontSizeSp * 0.75f).sp, fontWeight = FontWeight.Bold,
+                color = Color(appearance.edgeColor).copy(alpha = 0.7f), fontSize = fontSizeSp.coerceIn(12f, 14f).sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.offset(x = 1.5.dp, y = 1.5.dp)
             )
         }
-        Text(text = "Sample Subtitle Line", color = textColor, fontSize = (fontSizeSp * 0.75f).sp, fontWeight = FontWeight.Bold)
+        Text(text = "Sample Subtitle Line", color = textColor, fontSize = fontSizeSp.coerceIn(12f, 14f).sp, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
-private fun SectionLabel2(text: String) {
-    Text(text = text.uppercase(), color = Color(0xFFC9A765), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp, modifier = Modifier.padding(bottom = 5.dp))
+private fun AmberSectionPill(text: String) {
+    Text(
+        text = text.uppercase(),
+        color = AmberCore,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 0.45.sp,
+        modifier = Modifier
+            .padding(bottom = 6.dp)
+            .clip(RoundedCornerShape(50))
+            .background(AmberCore.copy(alpha = 0.12f))
+            .border(1.dp, AmberCore.copy(alpha = 0.30f), RoundedCornerShape(50))
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+    )
 }
 
 @Composable

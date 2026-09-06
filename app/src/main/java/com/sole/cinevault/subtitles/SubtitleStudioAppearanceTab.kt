@@ -84,72 +84,25 @@ internal fun StudioAppearanceTab(
     bottomPadding: Float,
     onBottomPaddingChange: (Float) -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        SubtitleAppearanceStudioSheet(
-            presetName = presetName,
-            appearance = appearance,
-            fontSizeSp = fontSizeSp,
-            popupWidth = popupWidth,
-            popupMaxHeight = popupMaxHeight,
-            onApplyPreset = onApplyPreset,
-            onForegroundChange = onForegroundChange,
-            onEdgeTypeChange = onEdgeTypeChange,
-            onEdgeColorChange = onEdgeColorChange,
-            onBackgroundChange = onBackgroundChange,
-            isAssOrSsaFormat = isAssOrSsaFormat,
-            preserveOriginalStyling = preserveOriginalStyling,
-            onPreserveOriginalStylingChange = onPreserveOriginalStylingChange,
-            onDismiss = {}
-        )
-
-        DotThumbSliderDivider()
-
-        StudioSectionLabel("Text Size", tight = true)
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp)) {
-            DotThumbSlider(
-                value = fontSizeSp, onValueChange = onFontSizeChange, valueRange = 12f..32f,
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = "${fontSizeSp.toInt()}sp", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(34.dp))
-        }
-
-        DotThumbSliderDivider()
-
-        StudioSectionLabel("Placement presets", tight = true)
-        androidx.compose.foundation.layout.FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.padding(horizontal = 8.dp)
-        ) {
-            positionPresets.forEach { (label, value) ->
-                val selected = kotlin.math.abs(bottomPadding - value) < 0.005f
-                Text(
-                    text = label, color = if (selected) Color.Black else TextBright, fontSize = 10.sp, fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(if (selected) AmberCore else Color.Transparent)
-                        .border(1.dp, if (selected) AmberCore else Color.White.copy(alpha = 0.12f), RoundedCornerShape(50))
-                        .clickable { onBottomPaddingChange(value) }
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                )
-            }
-        }
-
-        DotThumbSliderDivider()
-
-        StudioSectionLabel("Fine vertical position", tight = true)
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp)) {
-            DotThumbSlider(
-                value = bottomPadding, onValueChange = onBottomPaddingChange, valueRange = 0.02f..0.90f,
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Text(
-            text = "Placement automatically stays clear of the player controls while they're visible.",
-            color = TextFaint, fontSize = 9.sp, lineHeight = 13.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-    }
+    SubtitleAppearanceStudioSheet(
+        presetName = presetName,
+        appearance = appearance,
+        fontSizeSp = fontSizeSp,
+        popupWidth = popupWidth,
+        popupMaxHeight = popupMaxHeight,
+        onApplyPreset = onApplyPreset,
+        onForegroundChange = onForegroundChange,
+        onEdgeTypeChange = onEdgeTypeChange,
+        onEdgeColorChange = onEdgeColorChange,
+        onBackgroundChange = onBackgroundChange,
+        isAssOrSsaFormat = isAssOrSsaFormat,
+        preserveOriginalStyling = preserveOriginalStyling,
+        onPreserveOriginalStylingChange = onPreserveOriginalStylingChange,
+        onFontSizeChange = onFontSizeChange,
+        bottomPadding = bottomPadding,
+        onBottomPaddingChange = onBottomPaddingChange,
+        onDismiss = {}
+    )
 }
 
 @Composable
