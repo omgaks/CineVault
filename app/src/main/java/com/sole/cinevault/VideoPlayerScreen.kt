@@ -426,28 +426,6 @@ fun VideoPlayerScreen(
         studioCategory = null
         showDualSubsWindow = false
         showSubtitleBehaviourWindow = false
-        showSpeechSubtitlePanel = false
-        showSubtitleTranslationPanel = false
-        if (coreUi.dialogueSyncArmed) cancelDialogueSync()
-    }
-
-    fun dismissSubtitleOverlay(): Boolean {
-        return when {
-            coreUi.showSettings -> { coreUi.showSettings = false; true }
-            trackUi.showSelector -> { trackUi.showSelector = false; true }
-            searchUi.showSearch -> { searchUi.showSearch = false; true }
-            driftUi.showDialog -> { driftUi.showDialog = false; true }
-            coreUi.showAppearanceStudio -> { coreUi.showAppearanceStudio = false; true }
-            studioUi.showStudio -> { studioUi.showStudio = false; true }
-            coreUi.dialogueSyncArmed -> { cancelDialogueSync(); true }
-            showSubtitleDock -> { showSubtitleDock = false; true }
-            showSubtitleBloom -> { showSubtitleBloom = false; studioCategory = null; true }
-            showDualSubsWindow -> { showDualSubsWindow = false; true }
-            showSubtitleBehaviourWindow -> { showSubtitleBehaviourWindow = false; true }
-            showSpeechSubtitlePanel -> { showSpeechSubtitlePanel = false; true }
-            showSubtitleTranslationPanel -> { showSubtitleTranslationPanel = false; true }
-            else -> false
-        }
     }
 
     var pendingSrtUri by remember { mutableStateOf<Uri?>(null) }
@@ -1488,7 +1466,19 @@ fun VideoPlayerScreen(
                     onTap = {
                         when {
                             showAudioSelector -> showAudioSelector = false
-                            dismissSubtitleOverlay() -> Unit
+                            coreUi.showSettings -> coreUi.showSettings = false
+                            trackUi.showSelector -> trackUi.showSelector = false
+                            searchUi.showSearch -> searchUi.showSearch = false
+                            driftUi.showDialog -> driftUi.showDialog = false
+                            coreUi.showAppearanceStudio -> coreUi.showAppearanceStudio = false
+                            studioUi.showStudio -> studioUi.showStudio = false
+                            coreUi.dialogueSyncArmed -> cancelDialogueSync()
+                            showSubtitleDock -> showSubtitleDock = false
+                            showSubtitleBloom -> { showSubtitleBloom = false; studioCategory = null }
+                            showDualSubsWindow -> showDualSubsWindow = false
+                            showSubtitleBehaviourWindow -> showSubtitleBehaviourWindow = false
+                            showSpeechSubtitlePanel -> showSpeechSubtitlePanel = false
+                            showSubtitleTranslationPanel -> showSubtitleTranslationPanel = false
                             showSpeedMenu -> showSpeedMenu = false
                             showSleepMenu -> showSleepMenu = false
                             showSrtBrowser -> showSrtBrowser = false
