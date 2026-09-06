@@ -214,6 +214,7 @@ fun VideoPlayerScreen(
     var studioCategory by remember { mutableStateOf<com.sole.cinevault.subtitles.StudioCategory?>(null) }
     var showDualSubsWindow by remember { mutableStateOf(false) }
     var showSubtitleBehaviourWindow by remember { mutableStateOf(false) }
+    var pendingDualAiLanguage by remember(currentVideo.path) { mutableStateOf<String?>(null) }
     var trackSelectorManageMode by remember { mutableStateOf(false) }
     var activeDockItem by remember { mutableStateOf<com.sole.cinevault.subtitles.SubtitleDockItem?>(null) }
 
@@ -601,17 +602,6 @@ fun VideoPlayerScreen(
             setPendingSrtUri = { pendingSrtUri = it },
             playSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle ->
                 playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
-            },
-            findCachedAiSecondary = { language ->
-                val normalized = SubtitleLanguageRegistry.normalize(language)
-                    ?: language.take(2).lowercase()
-                GeneratedSubtitleStore.listForVideo(context, currentVideo.path)
-                    .firstOrNull { file ->
-                        file.fileName.contains("translated-$normalized-", ignoreCase = true)
-                    }?.uri
-            },
-            requestAiSecondary = { language ->
-                pendingDualAiLanguage = language
             }
         )
     }
@@ -1009,6 +999,17 @@ fun VideoPlayerScreen(
             getCurrentVideoPath = { currentVideo.path },
             playSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle ->
                 playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
+            },
+            findCachedAiSecondary = { language ->
+                val normalized = SubtitleLanguageRegistry.normalize(language)
+                    ?: language.take(2).lowercase()
+                GeneratedSubtitleStore.listForVideo(context, currentVideo.path)
+                    .firstOrNull { file ->
+                        file.fileName.contains("translated-$normalized-", ignoreCase = true)
+                    }?.uri
+            },
+            requestAiSecondary = { language ->
+                pendingDualAiLanguage = language
             }
         )
     }
@@ -1089,7 +1090,6 @@ fun VideoPlayerScreen(
     var showSubtitleTranslationPanel by remember { mutableStateOf(false) }
 
     var generatedSubtitleRefreshKey by remember(currentVideo.path) { mutableIntStateOf(0) }
-    var pendingDualAiLanguage by remember(currentVideo.path) { mutableStateOf<String?>(null) }
     var generatedSubtitleFiles by remember(currentVideo.path) {
         mutableStateOf<List<GeneratedSubtitleFile>>(emptyList())
     }
