@@ -267,6 +267,9 @@ fun BoxScope.SubtitleSyncAndAppearancePopups(
     appearancePresetName: String,
     appearance: SubtitleAppearance,
     appearanceFontSizeSp: Float,
+    onAppearanceFontSizeChange: (Float) -> Unit,
+    appearanceBottomPaddingFraction: Float,
+    onAppearanceBottomPaddingChange: (Float) -> Unit,
     onApplyPreset: (String, SubtitleAppearance) -> Unit,
     onForegroundChange: (Int) -> Unit,
     onEdgeTypeChange: (Int) -> Unit,
@@ -333,6 +336,9 @@ fun BoxScope.SubtitleSyncAndAppearancePopups(
                 isAssOrSsaFormat = isAssOrSsaFormat,
                 preserveOriginalStyling = preserveOriginalStyling,
                 onPreserveOriginalStylingChange = onPreserveOriginalStylingChange,
+                onFontSizeChange = onAppearanceFontSizeChange,
+                bottomPadding = appearanceBottomPaddingFraction,
+                onBottomPaddingChange = onAppearanceBottomPaddingChange,
                 onDismiss = onDismissAppearanceStudio
             )
         }
