@@ -1469,10 +1469,17 @@ fun VideoPlayerScreen(
                             driftUi.showDialog -> driftUi.showDialog = false
                             coreUi.showAppearanceStudio -> coreUi.showAppearanceStudio = false
                             studioUi.showStudio -> studioUi.showStudio = false
-                            coreUi.dialogueSyncArmed -> {}
+                            // Was `{}` — did nothing on tap, which is exactly why
+                            // this box never closed on outside tap before.
+                            coreUi.dialogueSyncArmed -> cancelDialogueSync()
                             showSpeedMenu -> showSpeedMenu = false
                             showSleepMenu -> showSleepMenu = false
                             showSrtBrowser -> showSrtBrowser = false
+                            showSubtitleDock -> showSubtitleDock = false
+                            showSubtitleBloom -> { showSubtitleBloom = false; studioCategory = null }
+                            showDualSubsWindow -> showDualSubsWindow = false
+                            showSpeechSubtitlePanel -> showSpeechSubtitlePanel = false
+                            showSubtitleTranslationPanel -> showSubtitleTranslationPanel = false
                             else -> {
                                 if (externalPlayerView != null) {
                                     externalPresentation?.showControls()
@@ -2110,7 +2117,15 @@ fun VideoPlayerScreen(
                         val wasOpen = showSubtitleDock || showSubtitleBloom || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio
                         closeAllMenus()
                         showSubtitleDock = !wasOpen
-                        showControls = true
+                        if (showSubtitleDock) {
+                            // "Only the HUD remains visible" — hide the
+                            // transport dock/top bar immediately rather
+                            // than leaving them up alongside it.
+                            showControls = false
+                            showTopBar = false
+                        } else {
+                            showControls = true
+                        }
                         menuTouchKey++
                     },
                     onSubtitleLongClick = {
@@ -2119,7 +2134,8 @@ fun VideoPlayerScreen(
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         closeAllMenus()
                         showSubtitleBloom = true
-                        showControls = true
+                        showControls = false
+                        showTopBar = false
                     },
                     onSubtitleCenterMeasured = { subIconX = it }
                 )
@@ -2240,12 +2256,12 @@ fun VideoPlayerScreen(
             com.sole.cinevault.subtitles.QuickHud(
                 subtitleFileName = quickHudFileName,
                 delaySeconds = coreUi.syncOffset,
-                onDelayChange = { coreUi.syncOffset = it; showControls = true; studioUi.menuTouchKey++ },
+                onDelayChange = { coreUi.syncOffset = it; studioUi.menuTouchKey++ },
                 speechTimeline = autoSyncSpeechTimeline,
                 fontSizeSp = appearanceUi.textSizeSp,
-                onFontSizeChange = { appearanceUi.textSizeSp = it; showControls = true; studioUi.menuTouchKey++ },
+                onFontSizeChange = { appearanceUi.textSizeSp = it; studioUi.menuTouchKey++ },
                 bottomPadding = appearanceUi.bottomPadding,
-                onBottomPaddingChange = { appearanceUi.bottomPadding = it; showControls = true; studioUi.menuTouchKey++ },
+                onBottomPaddingChange = { appearanceUi.bottomPadding = it; studioUi.menuTouchKey++ },
                 onReset = { resetSubtitleSettings() },
                 containerSize = containerPx,
                 // Right side, not left — estimated at Quick HUD's max
@@ -2267,11 +2283,19 @@ fun VideoPlayerScreen(
             val studioContainerPx = with(studioDensity) {
                 androidx.compose.ui.unit.IntSize(playerMaxWidth.roundToPx(), playerMaxHeight.roundToPx())
             }
+            // Right side, not left. The pill is short (one row) so bottom-
+            // anchoring it is safe height-wise, but list windows are much
+            // taller — anchoring THOSE from the bottom with a large assumed
+            // height risked going negative in landscape's shorter frame,
+            // which is exactly why they showed up half off-screen at the
+            // top with an unreachable drag handle. Anchoring from the top
+            // with a small fixed margin instead avoids that class of bug
+            // entirely, regardless of landscape vs portrait height.
             val pillOffset = with(studioDensity) {
-                Offset(sidePadding.toPx(), (playerMaxHeight - bottomDockPadding - playButton - 90.dp).toPx())
+                Offset((playerMaxWidth - 220.dp - sidePadding).toPx().coerceAtLeast(0f), (playerMaxHeight - bottomDockPadding - playButton - 90.dp).toPx())
             }
             val windowOffset = with(studioDensity) {
-                Offset(sidePadding.toPx(), (playerMaxHeight - bottomDockPadding - playButton - 320.dp).toPx())
+                Offset((playerMaxWidth - 240.dp - sidePadding).toPx().coerceAtLeast(0f), 24.dp.toPx())
             }
 
             when (studioCategory) {
@@ -2371,6 +2395,7 @@ fun VideoPlayerScreen(
                 onEnabledChange = { enabled ->
                     dualUi.enabled = enabled
                     if (enabled) fetchAndApplyDualSecondary() else disableDualSubtitles()
+                    studioUi.menuTouchKey++
                 },
                 canEnable = trackUi.primaryUri != null,
                 primaryLabel = quickHudFileName ?: "None",
@@ -2381,17 +2406,29 @@ fun VideoPlayerScreen(
                     coreUi.behaviorPrefs = coreUi.behaviorPrefs.copy(dualSecondaryLanguage = lang)
                     saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
                     if (dualUi.enabled) fetchAndApplyDualSecondary()
+                    studioUi.menuTouchKey++
                 },
                 availableLanguages = languages,
                 gapLines = dualUi.gapLines,
                 onGapLinesChange = { gap ->
                     dualUi.gapLines = gap
                     if (dualUi.enabled) fetchAndApplyDualSecondary()
+                    studioUi.menuTouchKey++
                 },
+                // Covers interactions that don't change a value (e.g. just
+                // opening the language picker) — those still count as
+                // "actively using this window" and should reset the idle
+                // timer the same as a value change would.
+                onUserInteraction = { studioUi.menuTouchKey++ },
                 statusText = dualUi.statusText,
                 onBack = { showDualSubsWindow = false; showSubtitleBloom = true },
                 containerSize = containerPx3,
-                initialOffset = with(density3) { Offset(sidePadding.toPx(), (playerMaxHeight * 0.25f).toPx()) }
+                initialOffset = with(density3) {
+                    Offset(
+                        (playerMaxWidth - 260.dp - sidePadding).toPx().coerceAtLeast(0f),
+                        (playerMaxHeight * 0.2f).toPx()
+                    )
+                }
             )
         }
 
