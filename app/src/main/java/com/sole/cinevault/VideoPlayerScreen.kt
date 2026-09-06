@@ -425,6 +425,29 @@ fun VideoPlayerScreen(
         showSubtitleBloom = false
         studioCategory = null
         showDualSubsWindow = false
+        showSubtitleBehaviourWindow = false
+        showSpeechSubtitlePanel = false
+        showSubtitleTranslationPanel = false
+        if (coreUi.dialogueSyncArmed) cancelDialogueSync()
+    }
+
+    fun dismissSubtitleOverlay(): Boolean {
+        return when {
+            coreUi.showSettings -> { coreUi.showSettings = false; true }
+            trackUi.showSelector -> { trackUi.showSelector = false; true }
+            searchUi.showSearch -> { searchUi.showSearch = false; true }
+            driftUi.showDialog -> { driftUi.showDialog = false; true }
+            coreUi.showAppearanceStudio -> { coreUi.showAppearanceStudio = false; true }
+            studioUi.showStudio -> { studioUi.showStudio = false; true }
+            coreUi.dialogueSyncArmed -> { cancelDialogueSync(); true }
+            showSubtitleDock -> { showSubtitleDock = false; true }
+            showSubtitleBloom -> { showSubtitleBloom = false; studioCategory = null; true }
+            showDualSubsWindow -> { showDualSubsWindow = false; true }
+            showSubtitleBehaviourWindow -> { showSubtitleBehaviourWindow = false; true }
+            showSpeechSubtitlePanel -> { showSpeechSubtitlePanel = false; true }
+            showSubtitleTranslationPanel -> { showSubtitleTranslationPanel = false; true }
+            else -> false
+        }
     }
 
     var pendingSrtUri by remember { mutableStateOf<Uri?>(null) }
@@ -1465,24 +1488,10 @@ fun VideoPlayerScreen(
                     onTap = {
                         when {
                             showAudioSelector -> showAudioSelector = false
-                            coreUi.showSettings -> coreUi.showSettings = false
-                            trackUi.showSelector -> trackUi.showSelector = false
-                            searchUi.showSearch -> searchUi.showSearch = false
-                            driftUi.showDialog -> driftUi.showDialog = false
-                            coreUi.showAppearanceStudio -> coreUi.showAppearanceStudio = false
-                            studioUi.showStudio -> studioUi.showStudio = false
-                            // Was `{}` — did nothing on tap, which is exactly why
-                            // this box never closed on outside tap before.
-                            coreUi.dialogueSyncArmed -> cancelDialogueSync()
+                            dismissSubtitleOverlay() -> Unit
                             showSpeedMenu -> showSpeedMenu = false
                             showSleepMenu -> showSleepMenu = false
                             showSrtBrowser -> showSrtBrowser = false
-                            showSubtitleDock -> showSubtitleDock = false
-                            showSubtitleBloom -> { showSubtitleBloom = false; studioCategory = null }
-                            showDualSubsWindow -> showDualSubsWindow = false
-                            showSubtitleBehaviourWindow -> showSubtitleBehaviourWindow = false
-                            showSpeechSubtitlePanel -> showSpeechSubtitlePanel = false
-                            showSubtitleTranslationPanel -> showSubtitleTranslationPanel = false
                             else -> {
                                 if (externalPlayerView != null) {
                                     externalPresentation?.showControls()
@@ -1949,7 +1958,22 @@ fun VideoPlayerScreen(
         // block via the trailing && clause, unlike the smaller anchored
         // popups (Track Selector, Drift, Appearance, quick menu) which
         // were designed to sit alongside visible controls and still do.
-        val mainControlsVisible = shouldShowMainPlayerControls(
+        val subtitleOverlayActive =
+            coreUi.showSettings ||
+            trackUi.showSelector ||
+            searchUi.showSearch ||
+            driftUi.showDialog ||
+            coreUi.showAppearanceStudio ||
+            studioUi.showStudio ||
+            coreUi.dialogueSyncArmed ||
+            showSubtitleDock ||
+            showSubtitleBloom ||
+            showDualSubsWindow ||
+            showSubtitleBehaviourWindow ||
+            showSpeechSubtitlePanel ||
+            showSubtitleTranslationPanel
+
+        val mainControlsVisible = !subtitleOverlayActive && shouldShowMainPlayerControls(
             externalDisplayActive = externalPlayerView != null,
             showControls = showControls,
             isDraggingSeekbar = isDraggingSeekbar,
@@ -2014,7 +2038,7 @@ fun VideoPlayerScreen(
                     isZoomMode = isZoomMode
                 )
 
-                val anyMenuOpenForSmartSkip = showAudioSelector || coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio || studioUi.showStudio || coreUi.dialogueSyncArmed || showSpeedMenu || showSleepMenu || showSrtBrowser
+                val anyMenuOpenForSmartSkip = showAudioSelector || subtitleOverlayActive || showSpeedMenu || showSleepMenu || showSrtBrowser
                 val suppressCreditsPillForScene = activeSmartSegment?.type == SegmentType.CREDITS &&
                     (smartSegmentResult.hasMidCreditsScene || smartSegmentResult.hasPostCreditsScene)
                 val creditNoticeVisible = !isCurrentTvShow && creditsSegment != null && position >= creditsSegment.startMs &&
