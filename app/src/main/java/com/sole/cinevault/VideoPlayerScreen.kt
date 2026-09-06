@@ -2567,12 +2567,12 @@ fun VideoPlayerScreen(
             !CineVaultPlayerHolder.isInPipMode &&
             externalPlayerView == null
         ) {
-            val panelWidth = (playerMaxWidth - 28.dp)
-                .coerceAtMost(360.dp)
-                .coerceAtLeast(280.dp)
-            val panelHeight = (playerMaxHeight - 36.dp)
-                .coerceAtMost(390.dp)
-                .coerceAtLeast(280.dp)
+            val panelWidth = (playerMaxWidth * 0.46f)
+                .coerceAtMost(320.dp)
+                .coerceAtLeast(250.dp)
+            val panelHeight = (playerMaxHeight * 0.72f)
+                .coerceAtMost(340.dp)
+                .coerceAtLeast(240.dp)
 
             Box(modifier = Modifier.align(Alignment.Center)) {
                 DraggableFloatingPopup(
@@ -2611,12 +2611,12 @@ fun VideoPlayerScreen(
             !CineVaultPlayerHolder.isInPipMode &&
             externalPlayerView == null
         ) {
-            val panelWidth = (playerMaxWidth - 28.dp)
-                .coerceAtMost(390.dp)
-                .coerceAtLeast(290.dp)
-            val panelHeight = (playerMaxHeight - 36.dp)
-                .coerceAtMost(500.dp)
-                .coerceAtLeast(340.dp)
+            val panelWidth = (playerMaxWidth * 0.50f)
+                .coerceAtMost(330.dp)
+                .coerceAtLeast(255.dp)
+            val panelHeight = (playerMaxHeight * 0.76f)
+                .coerceAtMost(410.dp)
+                .coerceAtLeast(270.dp)
 
             Box(modifier = Modifier.align(Alignment.Center)) {
                 DraggableFloatingPopup(

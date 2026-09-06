@@ -2,6 +2,8 @@ package com.sole.cinevault
 
 import android.content.Context
 import android.net.Uri
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
@@ -32,11 +35,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.sole.cinevault.subtitles.GeneratedSubtitleFile
 import com.sole.cinevault.subtitles.SubtitleSourceResolver
 import com.sole.cinevault.subtitles.SubtitleTranslationEngine
@@ -71,18 +77,25 @@ fun SubtitleTranslationPanel(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .glassPanel(cornerRadius = 22.dp, fill = GlassSurfaceStrong)
-            .padding(16.dp)
+            .glassPanel(cornerRadius = 20.dp, fill = GlassSurfaceStrong.copy(alpha = 0.82f))
+            .border(1.dp, AmberCore.copy(alpha = 0.18f), RoundedCornerShape(20.dp))
+            .padding(12.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
-                "AI Translation",
-                color = TextBright,
+                "AI TRANSLATION",
+                color = AmberCore,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(50))
+                    .background(AmberCore.copy(alpha = 0.12f))
+                    .border(1.dp, AmberCore.copy(alpha = 0.28f), RoundedCornerShape(50))
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
             )
             IconButton(onClick = onDismiss, modifier = Modifier.size(34.dp)) {
                 Icon(Icons.Rounded.Close, "Close", tint = TextMuted)
@@ -105,9 +118,16 @@ fun SubtitleTranslationPanel(
 
         if (generatedFiles.isNotEmpty()) {
             Text(
-                "Generated / translated files",
-                color = TextBright,
-                modifier = Modifier.padding(top = 12.dp, bottom = 6.dp),
+                "GENERATED / TRANSLATED FILES",
+                color = AmberCore,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .padding(top = 10.dp, bottom = 6.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(AmberCore.copy(alpha = 0.10f))
+                    .border(1.dp, AmberCore.copy(alpha = 0.24f), RoundedCornerShape(50))
+                    .padding(horizontal = 9.dp, vertical = 4.dp),
             )
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -174,9 +194,16 @@ fun SubtitleTranslationPanel(
 
         if (favorites.isNotEmpty()) {
             Text(
-                "Favorites",
-                color = TextBright,
-                modifier = Modifier.padding(top = 12.dp, bottom = 5.dp),
+                "FAVORITES",
+                color = AmberCore,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .padding(top = 10.dp, bottom = 5.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(AmberCore.copy(alpha = 0.10f))
+                    .border(1.dp, AmberCore.copy(alpha = 0.24f), RoundedCornerShape(50))
+                    .padding(horizontal = 9.dp, vertical = 4.dp),
             )
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(favorites, key = { it.mlKitCode }) { language ->
@@ -200,14 +227,19 @@ fun SubtitleTranslationPanel(
         Text(
             "Languages",
             color = TextBright,
-            modifier = Modifier.padding(top = 12.dp, bottom = 5.dp),
+            modifier = Modifier
+                .padding(top = 10.dp, bottom = 5.dp)
+                .clip(RoundedCornerShape(50))
+                .background(AmberCore.copy(alpha = 0.10f))
+                .border(1.dp, AmberCore.copy(alpha = 0.24f), RoundedCornerShape(50))
+                .padding(horizontal = 9.dp, vertical = 4.dp),
         )
 
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.height(155.dp),
+            modifier = Modifier.height(132.dp),
         ) {
             items(others + favorites, key = { it.mlKitCode }) { language ->
                 val favorite = language.mlKitCode in favoriteCodes
