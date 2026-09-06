@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -56,6 +56,7 @@ fun QuickHud(
     onReset: () -> Unit,
     containerSize: IntSize,
     initialOffset: Offset,
+    windowWidth: androidx.compose.ui.unit.Dp = 240.dp,
     modifier: Modifier = Modifier
 ) {
     DraggableStudioWindow(
@@ -65,8 +66,10 @@ fun QuickHud(
     ) { dragHandleModifier ->
         Column(
             modifier = Modifier
-                // 20% narrower than the original 240-300dp range.
-                .widthIn(min = 192.dp, max = 240.dp)
+                // Width is selected by the player from its real measured
+                // landscape size. This keeps the same design line while
+                // avoiding a one-size-fits-all 240dp panel on small/large screens.
+                .width(windowWidth)
                 .clip(RoundedCornerShape(16.dp))
                 .background(GlassSurfaceStrong)
                 .padding(9.dp)
