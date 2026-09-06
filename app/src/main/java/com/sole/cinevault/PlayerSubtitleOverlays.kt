@@ -302,6 +302,7 @@ fun BoxScope.SubtitleSyncAndAppearancePopups(
             pointA = driftPointA,
             pointB = driftPointB,
             popupWidth = driftPopupWidth,
+            popupMaxHeight = (containerHeight * 0.82f).coerceAtLeast(250.dp),
             onMarkPointA = onMarkPointA,
             onMarkPointB = onMarkPointB,
             onApply = onApplyDrift,

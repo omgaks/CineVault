@@ -1807,7 +1807,7 @@ fun VideoPlayerScreen(
             onMarkPointA = { correction -> markDriftPointA(correction) },
             onMarkPointB = { correction -> markDriftPointB(correction) },
             onApplyDrift = { applyDriftFix() },
-            onDismissDrift = { driftUi.showDialog = false; showControls = true },
+            onDismissDrift = { driftUi.showDialog = false; showControls = false; showTopBar = false },
             showAppearanceStudio = coreUi.showAppearanceStudio,
             appearanceBottomPadding = playerPopupBottomPadding(popupBottomPadding),
             appearanceOffsetX = calculatePlayerPopupOffsetX(subIconX, trackSelectorWidth, screenWidthPx, density),
