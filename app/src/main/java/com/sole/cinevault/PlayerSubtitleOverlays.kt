@@ -80,12 +80,15 @@ fun BoxScope.SubtitleQuickMenuAndTrackSelector(
     embeddedTrackChoices: List<SubtitleTrackChoice.Embedded>,
     downloadedTrackChoice: SubtitleTrackChoice.Downloaded?,
     localFileChoices: List<File>,
+    generatedSubtitleFiles: List<GeneratedSubtitleFile> = emptyList(),
     selectedTrackKey: String?,
     onSelectTrack: (SubtitleTrackChoice) -> Unit,
     onDeleteLocalTrack: (File) -> Unit,
+    onDeleteGeneratedTrack: (GeneratedSubtitleFile) -> Unit = {},
     onOpenFilePickerFromTrackSelector: () -> Unit,
     onDismissTrackSelector: () -> Unit,
     onTrackSelectorUserInteraction: () -> Unit,
+    initialManageMode: Boolean = false,
 ) {
     AnimatedVisibility(
         visible = showSubtitleSettings,
@@ -127,13 +130,16 @@ fun BoxScope.SubtitleQuickMenuAndTrackSelector(
                 embeddedTracks = embeddedTrackChoices,
                 downloadedTrack = downloadedTrackChoice,
                 localFiles = localFileChoices,
+                generatedFiles = generatedSubtitleFiles,
                 selectedKey = selectedTrackKey,
                 popupWidth = trackSelectorWidth,
                 popupMaxHeight = trackSelectorMaxHeight,
                 onSelect = onSelectTrack,
                 onDeleteLocal = onDeleteLocalTrack,
+                onDeleteGenerated = onDeleteGeneratedTrack,
                 onOpenFilePicker = onOpenFilePickerFromTrackSelector,
-                onDismiss = onDismissTrackSelector
+                onDismiss = onDismissTrackSelector,
+                initialManageMode = initialManageMode
             )
         }
     }
