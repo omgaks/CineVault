@@ -2275,6 +2275,22 @@ fun VideoPlayerScreen(
             val containerPx = with(density) {
                 androidx.compose.ui.unit.IntSize(playerMaxWidth.roundToPx(), playerMaxHeight.roundToPx())
             }
+            val quickHudWidth = (playerMaxWidth * 0.30f).coerceIn(192.dp, 240.dp)
+            val quickHudOffsetX = calculatePlayerPopupOffsetX(
+                iconCenterX = subIconX,
+                popupWidth = quickHudWidth,
+                screenWidthPx = with(density) { playerMaxWidth.toPx() },
+                density = density
+            ).toFloat()
+            // Rest directly above the transport area where CC lives. The
+            // window is also clamped by DraggableStudioWindow after its
+            // actual size is measured, so unusual aspect ratios stay safe.
+            val quickHudOffsetY = with(density) {
+                (playerMaxHeight - bottomDockPadding - playButton - 158.dp)
+                    .coerceAtLeast(8.dp)
+                    .toPx()
+            }
+
             com.sole.cinevault.subtitles.QuickHud(
                 subtitleFileName = quickHudFileName,
                 delaySeconds = coreUi.syncOffset,
@@ -2286,16 +2302,8 @@ fun VideoPlayerScreen(
                 onBottomPaddingChange = { appearanceUi.bottomPadding = it; studioUi.menuTouchKey++ },
                 onReset = { resetSubtitleSettings() },
                 containerSize = containerPx,
-                // Right side, not left — estimated at Quick HUD's max
-                // width (300dp) since real measurement isn't known yet;
-                // DraggableStudioWindow's own re-clamp corrects this once
-                // it is, so this estimate only has to be reasonable, not exact.
-                initialOffset = with(density) {
-                    Offset(
-                        (playerMaxWidth - 300.dp - sidePadding).toPx().coerceAtLeast(0f),
-                        (playerMaxHeight - bottomDockPadding - playButton - 150.dp).toPx()
-                    )
-                }
+                initialOffset = Offset(quickHudOffsetX, quickHudOffsetY),
+                windowWidth = quickHudWidth
             )
         }
 
