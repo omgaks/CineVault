@@ -601,6 +601,17 @@ fun VideoPlayerScreen(
             setPendingSrtUri = { pendingSrtUri = it },
             playSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle ->
                 playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
+            },
+            findCachedAiSecondary = { language ->
+                val normalized = SubtitleLanguageRegistry.normalize(language)
+                    ?: language.take(2).lowercase()
+                GeneratedSubtitleStore.listForVideo(context, currentVideo.path)
+                    .firstOrNull { file ->
+                        file.fileName.contains("translated-$normalized-", ignoreCase = true)
+                    }?.uri
+            },
+            requestAiSecondary = { language ->
+                pendingDualAiLanguage = language
             }
         )
     }
@@ -1008,7 +1019,10 @@ fun VideoPlayerScreen(
     fun markDriftPointB(correctionSeconds: Float) = subtitleSyncTools.markDriftPointB(correctionSeconds)
     fun applyDriftFix() = subtitleSyncTools.applyDriftFix()
     fun fetchAndApplyDualSecondary() = subtitleSyncTools.fetchAndApplyDualSecondary()
-    fun disableDualSubtitles() = subtitleSyncTools.disableDualSubtitles()
+    fun disableDualSubtitles() {
+        pendingDualAiLanguage = null
+        subtitleSyncTools.disableDualSubtitles()
+    }
 
     // ── Auto-Sync (Phase 1: speech-timing only) ──────────────────────────
     // Runs entirely off-main-thread (audio decode + VAD are real CPU work,
@@ -1075,6 +1089,7 @@ fun VideoPlayerScreen(
     var showSubtitleTranslationPanel by remember { mutableStateOf(false) }
 
     var generatedSubtitleRefreshKey by remember(currentVideo.path) { mutableIntStateOf(0) }
+    var pendingDualAiLanguage by remember(currentVideo.path) { mutableStateOf<String?>(null) }
     var generatedSubtitleFiles by remember(currentVideo.path) {
         mutableStateOf<List<GeneratedSubtitleFile>>(emptyList())
     }
@@ -1144,15 +1159,50 @@ fun VideoPlayerScreen(
             getStatus = { subtitleTranslationStatus },
             setStatus = { subtitleTranslationStatus = it },
             onSubtitleReady = { file, language ->
-                applyAiSubtitle(file, language, "AI Translation")
-                translationSuccessLanguage = SubtitleLanguageRegistry.displayName(language)
-                scope.launch {
-                    delay(3000)
-                    translationSuccessLanguage = null
+                val pendingDual = pendingDualAiLanguage
+                val normalizedPending = pendingDual?.let(SubtitleLanguageRegistry::normalize)
+                val normalizedReady = SubtitleLanguageRegistry.normalize(language)
+                if (
+                    dualUi.enabled &&
+                    pendingDual != null &&
+                    normalizedPending == normalizedReady
+                ) {
+                    pendingDualAiLanguage = null
+                    subtitleSyncTools.applyDualSecondaryUri(file.uri, "AI")
+                } else {
+                    applyAiSubtitle(file, language, "AI Translation")
+                    translationSuccessLanguage = SubtitleLanguageRegistry.displayName(language)
+                    scope.launch {
+                        delay(3000)
+                        translationSuccessLanguage = null
+                    }
                 }
             },
             onGeneratedLibraryChanged = { generatedSubtitleRefreshKey++ },
         )
+    }
+
+    LaunchedEffect(pendingDualAiLanguage) {
+        val requested = pendingDualAiLanguage ?: return@LaunchedEffect
+        if (!dualUi.enabled) {
+            pendingDualAiLanguage = null
+            return@LaunchedEffect
+        }
+        val normalized = SubtitleLanguageRegistry.normalize(requested)
+            ?: requested.take(2).lowercase()
+        val target = SubtitleTranslationEngine.commonTargetLanguages
+            .firstOrNull {
+                SubtitleLanguageRegistry.normalize(it.mlKitCode) == normalized ||
+                    it.mlKitCode.equals(normalized, ignoreCase = true)
+            }
+        if (target == null) {
+            dualUi.statusText =
+                "AI translation isn't available for ${SubtitleLanguageRegistry.displayName(requested)}"
+            dualUi.enabled = false
+            pendingDualAiLanguage = null
+        } else {
+            subtitleTranslationCoordinator.translateActive(target)
+        }
     }
 
     fun loadGeneratedSubtitle(file: GeneratedSubtitleFile) =
@@ -2506,6 +2556,7 @@ fun VideoPlayerScreen(
                 // timer the same as a value change would.
                 onUserInteraction = { studioUi.menuTouchKey++ },
                 statusText = dualUi.statusText,
+                secondarySourceLabel = dualUi.secondarySourceLabel,
                 onBack = { showDualSubsWindow = false; showSubtitleBloom = true },
                 containerSize = containerPx3,
                 initialOffset = with(density3) {

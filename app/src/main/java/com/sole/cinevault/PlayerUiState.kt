@@ -68,6 +68,7 @@ class DualSubtitleState {
     var secondaryLanguage by mutableStateOf("hi")
     var gapLines by mutableStateOf(1)
     var statusText by mutableStateOf("")
+    var secondarySourceLabel by mutableStateOf("")
 }
 
 // Fourth slice: Subtitle Studio's own visibility/tab state, the shared
