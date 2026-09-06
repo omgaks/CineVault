@@ -2321,11 +2321,26 @@ fun VideoPlayerScreen(
             // top with an unreachable drag handle. Anchoring from the top
             // with a small fixed margin instead avoids that class of bug
             // entirely, regardless of landscape vs portrait height.
+            val studioSideMargin = if (playerMaxWidth < 700.dp) 10.dp else 18.dp
+            val studioTopMargin = if (playerMaxHeight < 420.dp) 10.dp else 16.dp
+            val pillWidth = 220.dp
+            val listWindowWidth = if (playerMaxWidth < 700.dp) 220.dp else 250.dp
+
+            // Compact Studio surfaces always rest on the right side.  The
+            // values are derived from the actual player frame instead of a
+            // hard-coded phone assumption, and DraggableStudioWindow still
+            // performs the final measured-size clamp after composition.
             val pillOffset = with(studioDensity) {
-                Offset((playerMaxWidth - 220.dp - sidePadding).toPx().coerceAtLeast(0f), (playerMaxHeight - bottomDockPadding - playButton - 90.dp).toPx())
+                val xDp = (playerMaxWidth - pillWidth - studioSideMargin)
+                    .coerceAtLeast(studioSideMargin)
+                val yDp = (playerMaxHeight - bottomDockPadding - playButton - 90.dp)
+                    .coerceIn(studioTopMargin, (playerMaxHeight - 72.dp).coerceAtLeast(studioTopMargin))
+                Offset(xDp.toPx(), yDp.toPx())
             }
             val windowOffset = with(studioDensity) {
-                Offset((playerMaxWidth - 240.dp - sidePadding).toPx().coerceAtLeast(0f), 24.dp.toPx())
+                val xDp = (playerMaxWidth - listWindowWidth - studioSideMargin)
+                    .coerceAtLeast(studioSideMargin)
+                Offset(xDp.toPx(), studioTopMargin.toPx())
             }
 
             when (studioCategory) {
@@ -2439,9 +2454,12 @@ fun VideoPlayerScreen(
                 },
                 containerSize = settingsContainerPx,
                 initialOffset = with(settingsDensity) {
+                    val margin = if (playerMaxWidth < 700.dp) 10.dp else 18.dp
+                    val width = if (playerMaxWidth < 700.dp) 290.dp else 330.dp
+                    val top = if (playerMaxHeight < 420.dp) 10.dp else 16.dp
                     Offset(
-                        (playerMaxWidth - 330.dp - sidePadding).toPx().coerceAtLeast(0f),
-                        20.dp.toPx()
+                        (playerMaxWidth - width - margin).coerceAtLeast(margin).toPx(),
+                        top.toPx()
                     )
                 },
                 onUserInteraction = { studioUi.menuTouchKey++ }
@@ -2488,9 +2506,12 @@ fun VideoPlayerScreen(
                 onBack = { showDualSubsWindow = false; showSubtitleBloom = true },
                 containerSize = containerPx3,
                 initialOffset = with(density3) {
+                    val margin = if (playerMaxWidth < 700.dp) 10.dp else 18.dp
+                    val width = if (playerMaxWidth < 700.dp) 240.dp else 270.dp
+                    val top = if (playerMaxHeight < 420.dp) 10.dp else 16.dp
                     Offset(
-                        (playerMaxWidth - 260.dp - sidePadding).toPx().coerceAtLeast(0f),
-                        (playerMaxHeight * 0.2f).toPx()
+                        (playerMaxWidth - width - margin).coerceAtLeast(margin).toPx(),
+                        top.toPx()
                     )
                 }
             )
