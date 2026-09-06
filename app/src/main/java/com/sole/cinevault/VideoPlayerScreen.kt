@@ -213,6 +213,7 @@ fun VideoPlayerScreen(
     var showSubtitleBloom by remember { mutableStateOf(false) }
     var studioCategory by remember { mutableStateOf<com.sole.cinevault.subtitles.StudioCategory?>(null) }
     var showDualSubsWindow by remember { mutableStateOf(false) }
+    var showSubtitleBehaviourWindow by remember { mutableStateOf(false) }
     var trackSelectorManageMode by remember { mutableStateOf(false) }
     var activeDockItem by remember { mutableStateOf<com.sole.cinevault.subtitles.SubtitleDockItem?>(null) }
 
@@ -220,17 +221,19 @@ fun VideoPlayerScreen(
         activeDockItem = item
         showSubtitleDock = false
         when (item) {
+            // Legacy dock destinations now route into the same standalone
+            // destinations as the new Sub Studio. Nothing re-opens the old
+            // 8-tile SubtitleStudioSheet anymore.
             com.sole.cinevault.subtitles.SubtitleDockItem.TRACK -> {
-                studioUi.initialTab = SubtitleStudioTab.TRACK
-                studioUi.showStudio = true
+                trackSelectorManageMode = false
+                trackUi.showSelector = true
             }
             com.sole.cinevault.subtitles.SubtitleDockItem.SYNC -> {
-                studioUi.initialTab = SubtitleStudioTab.TIMING
-                studioUi.showStudio = true
+                showSubtitleBloom = true
+                studioCategory = com.sole.cinevault.subtitles.StudioCategory.POWER_TOOLS
             }
             com.sole.cinevault.subtitles.SubtitleDockItem.STYLE -> {
-                studioUi.initialTab = SubtitleStudioTab.APPEARANCE
-                studioUi.showStudio = true
+                coreUi.showAppearanceStudio = true
             }
             com.sole.cinevault.subtitles.SubtitleDockItem.SUPER_SUBS -> {
                 searchUi.showSearch = true
@@ -241,20 +244,19 @@ fun VideoPlayerScreen(
     fun onStudioCategoryTapped(category: com.sole.cinevault.subtitles.StudioCategory) {
         studioCategory = category
         when (category) {
-            // Style and Settings temporarily route to the old grid sheet's
-            // matching tab until they get their own dedicated windows —
-            // same interim pattern used for Settings before this pass,
-            // now applied consistently to both. Download and Power Tools
-            // are the two categories that are fully on the new system.
+            // Style already has a standalone appearance window. Route the
+            // long-press Studio shortcut directly there instead of bouncing
+            // through SubtitleStudioSheet's 8-tile grid.
             com.sole.cinevault.subtitles.StudioCategory.STYLE -> {
-                studioUi.initialTab = SubtitleStudioTab.APPEARANCE
-                studioUi.showStudio = true
+                coreUi.showAppearanceStudio = true
                 showSubtitleBloom = false
                 studioCategory = null
             }
+            // Behaviour/settings now gets its own standalone draggable
+            // window below. This removes the final functional dependency on
+            // the old 8-tile SubtitleStudioSheet.
             com.sole.cinevault.subtitles.StudioCategory.SETTINGS -> {
-                studioUi.initialTab = SubtitleStudioTab.BEHAVIOUR
-                studioUi.showStudio = true
+                showSubtitleBehaviourWindow = true
                 showSubtitleBloom = false
                 studioCategory = null
             }
@@ -1478,6 +1480,7 @@ fun VideoPlayerScreen(
                             showSubtitleDock -> showSubtitleDock = false
                             showSubtitleBloom -> { showSubtitleBloom = false; studioCategory = null }
                             showDualSubsWindow -> showDualSubsWindow = false
+                            showSubtitleBehaviourWindow -> showSubtitleBehaviourWindow = false
                             showSpeechSubtitlePanel -> showSpeechSubtitlePanel = false
                             showSubtitleTranslationPanel -> showSubtitleTranslationPanel = false
                             else -> {
@@ -1686,8 +1689,13 @@ fun VideoPlayerScreen(
             onDismissSettings = { coreUi.showSettings = false; showControls = true },
             onFontSizeChange = { appearanceUi.textSizeSp = it; showControls = true; studioUi.menuTouchKey++ },
             onVerticalPositionChange = { appearanceUi.bottomPadding = it; showControls = true; studioUi.menuTouchKey++ },
-            onSyncClick = { coreUi.showSettings = false; studioUi.initialTab = SubtitleStudioTab.TIMING; studioUi.showStudio = true; showControls = true },
-            onStyleClick = { coreUi.showSettings = false; coreUi.showAppearanceStudio = true; showControls = true },
+            onSyncClick = {
+                coreUi.showSettings = false
+                showSubtitleBloom = true
+                studioCategory = com.sole.cinevault.subtitles.StudioCategory.POWER_TOOLS
+                showControls = false
+            },
+            onStyleClick = { coreUi.showSettings = false; coreUi.showAppearanceStudio = true; showControls = false },
             onResetSubtitleSettings = { resetSubtitleSettings() },
             onSettingsUserInteraction = { studioUi.menuTouchKey++; showControls = true },
             trackSelectorBottomPadding = playerPopupBottomPadding(popupBottomPadding),
@@ -2382,6 +2390,40 @@ fun VideoPlayerScreen(
                 )
                 else -> Unit
             }
+        }
+
+        if (showSubtitleBehaviourWindow && !CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
+            val settingsDensity = LocalDensity.current
+            val settingsContainerPx = with(settingsDensity) {
+                androidx.compose.ui.unit.IntSize(playerMaxWidth.roundToPx(), playerMaxHeight.roundToPx())
+            }
+            com.sole.cinevault.subtitles.SubtitleBehaviourWindow(
+                prefs = coreUi.behaviorPrefs,
+                onChange = {
+                    coreUi.behaviorPrefs = it
+                    saveSubtitleBehaviorPrefs(context, it)
+                    studioUi.menuTouchKey++
+                },
+                cleaningOptions = coreUi.cleaningOptions,
+                onCleaningOptionsChange = {
+                    coreUi.cleaningOptions = it
+                    saveSubtitleCleaningOptions(context, it)
+                    studioUi.menuTouchKey++
+                },
+                onBack = {
+                    showSubtitleBehaviourWindow = false
+                    showSubtitleBloom = true
+                    studioCategory = null
+                },
+                containerSize = settingsContainerPx,
+                initialOffset = with(settingsDensity) {
+                    Offset(
+                        (playerMaxWidth - 330.dp - sidePadding).toPx().coerceAtLeast(0f),
+                        20.dp.toPx()
+                    )
+                },
+                onUserInteraction = { studioUi.menuTouchKey++ }
+            )
         }
 
         if (showDualSubsWindow && !CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
