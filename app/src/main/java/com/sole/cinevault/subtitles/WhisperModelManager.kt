@@ -173,6 +173,12 @@ object WhisperModelManager {
         ),
     ).associateBy { it.id }
 
+    // A model is SHA-256 checked before installation. We also verify it on
+    // first recognizer creation in each app process; later transcription jobs
+    // reuse that successful verification instead of hashing hundreds of MB
+    // again every time the user generates subtitles.
+    private val verifiedThisProcess = mutableSetOf<ModelId>()
+
     private val httpClient by lazy {
         OkHttpClient.Builder()
             .followRedirects(true)
@@ -362,6 +368,7 @@ object WhisperModelManager {
 
             onProgress(DownloadProgress(id, "Verified", 100))
             if (isModelCryptographicallyVerified(context, id)) {
+                synchronized(verifiedThisProcess) { verifiedThisProcess.add(id) }
                 selectModel(context, id)
                 DownloadResult.Success
             } else {
@@ -379,14 +386,26 @@ object WhisperModelManager {
 
     fun deleteModel(context: Context, id: ModelId): Boolean =
         try {
+            synchronized(verifiedThisProcess) { verifiedThisProcess.remove(id) }
             modelDir(context, id).deleteRecursively()
         } catch (_: Exception) {
             false
         }
 
+    fun recommendedThreadCount(): Int =
+        Runtime.getRuntime().availableProcessors().coerceIn(2, 6)
+
     fun createRecognizer(context: Context): OfflineRecognizer? {
         val id = selectedModel(context)
-        if (!isModelCryptographicallyVerified(context, id)) return null
+        val verified = synchronized(verifiedThisProcess) {
+            if (id in verifiedThisProcess) true
+            else {
+                val ok = isModelCryptographicallyVerified(context, id)
+                if (ok) verifiedThisProcess.add(id)
+                ok
+            }
+        }
+        if (!verified) return null
         val s = spec(id)
         val dir = modelDir(context, id)
 
@@ -400,7 +419,7 @@ object WhisperModelManager {
                 ),
                 tokens = "${dir.absolutePath}/${s.prefix}-tokens.txt",
                 modelType = "whisper",
-                numThreads = 4,
+                numThreads = recommendedThreadCount(),
                 provider = "cpu",
             )
             OfflineRecognizer(

@@ -38,7 +38,7 @@ object SubtitleGenerationEngine {
         data class Failed(val reason: String) : Result()
     }
 
-    private const val CHUNK_DURATION_MS = 4 * 60 * 1000L // 4-minute extraction windows
+    private const val CHUNK_DURATION_MS = 6 * 60 * 1000L // fewer extractor restarts; still bounded-memory
     private const val VAD_WINDOW_SAMPLES = 512
 
     suspend fun generate(
@@ -74,7 +74,7 @@ object SubtitleGenerationEngine {
                 maxSpeechDuration = 20f,
             ),
             sampleRate = 16_000,
-            numThreads = 1,
+            numThreads = WhisperModelManager.recommendedThreadCount().coerceAtMost(3),
             provider = "cpu",
         )
         val vad = Vad(assetManager = context.assets, config = vadConfig)
@@ -90,7 +90,7 @@ object SubtitleGenerationEngine {
                 val chunkDurationMs = CHUNK_DURATION_MS.coerceAtMost(videoDurationMs - chunkStartMs)
                 onProgress(
                     Progress(
-                        phase = "Transcribing",
+                        phase = "Transcribing • ${WhisperModelManager.modelDisplayName(context)}",
                         percent = ((chunkStartMs * 100) / videoDurationMs).toInt().coerceIn(0, 99)
                     )
                 )
@@ -106,9 +106,17 @@ object SubtitleGenerationEngine {
 
                 if (audio != null && audio.samples.isNotEmpty()) {
                     var sampleIdx = 0
+                    val vadFrame = FloatArray(VAD_WINDOW_SAMPLES)
                     while (sampleIdx + VAD_WINDOW_SAMPLES <= audio.samples.size) {
                         currentCoroutineContext().ensureActive()
-                        vad.acceptWaveform(audio.samples.copyOfRange(sampleIdx, sampleIdx + VAD_WINDOW_SAMPLES))
+                        System.arraycopy(
+                            audio.samples,
+                            sampleIdx,
+                            vadFrame,
+                            0,
+                            VAD_WINDOW_SAMPLES
+                        )
+                        vad.acceptWaveform(vadFrame)
                         sampleIdx += VAD_WINDOW_SAMPLES
 
                         while (!vad.empty()) {
