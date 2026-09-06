@@ -241,6 +241,7 @@ fun DualSubsWindow(
     gapLines: Int,
     onGapLinesChange: (Int) -> Unit,
     statusText: String,
+    secondarySourceLabel: String = "",
     onBack: () -> Unit,
     containerSize: IntSize,
     initialOffset: Offset,
@@ -311,12 +312,26 @@ fun DualSubsWindow(
             ) {
                 Text(text = "Secondary", color = TextMuted, fontSize = 8.5.sp)
                 Text(
-                    text = "AI \u00b7 $secondaryLanguageLabel",
+                    text = secondaryLanguageLabel,
                     color = AmberCore,
                     fontSize = 10.sp,
                     modifier = Modifier.weight(1f),
                     textAlign = TextAlign.End
                 )
+                if (secondarySourceLabel.isNotBlank()) {
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text(
+                        text = secondarySourceLabel.uppercase(),
+                        color = AmberCore,
+                        fontSize = 7.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(AmberCore.copy(alpha = 0.10f))
+                            .border(1.dp, AmberCore.copy(alpha = 0.24f), RoundedCornerShape(50))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                    )
+                }
                 Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = TextFaint, modifier = Modifier.size(13.dp))
             }
 

@@ -41,7 +41,9 @@ class SubtitleSyncToolsCoordinator(
     private val trackUi: SubtitleTrackSelectionState,
     private val dualSecondaryColorHex: String,
     private val getCurrentVideoPath: () -> String,
-    private val playSubtitle: (subtitleUri: Uri?, resumePosition: Long, isOriginalSubtitle: Boolean) -> Unit
+    private val playSubtitle: (subtitleUri: Uri?, resumePosition: Long, isOriginalSubtitle: Boolean) -> Unit,
+    private val findCachedAiSecondary: (String) -> Uri?,
+    private val requestAiSecondary: (String) -> Unit
 ) {
     // ── Dialogue Sync Tap ─────────────────────────────────────────────
     fun armDialogueSync() {
@@ -87,12 +89,9 @@ class SubtitleSyncToolsCoordinator(
     }
 
     // ── Dual Subtitles ─────────────────────────────────────────────────
-    // Finds a genuine secondary-language subtitle (not machine-translated
-    // — see SubtitleDualMerge.kt), downloads it to a LANGUAGE-SPECIFIC
-    // cache file (never the primary's cache slot), merges it under the
-    // primary via overlap-join, and applies the merged file as the active
-    // subtitle. Rebuilds automatically if the secondary language changes
-    // while dual mode is already on.
+    // Priority: cached real subtitle -> cached AI translation -> online real
+    // subtitle -> AI translation fallback. Regardless of origin, the result
+    // becomes the secondary track and is merged through the same pipeline.
     fun fetchAndApplyDualSecondary() {
         val primary = trackUi.primaryUri
         if (primary == null) {
@@ -105,77 +104,131 @@ class SubtitleSyncToolsCoordinator(
             dualUi.enabled = false
             return
         }
-        // A secondary the same as the primary would silently "merge" a
-        // subtitle with itself — blocked here with a clear message, using
-        // the real tracked primary language rather than guessing from
-        // preferences.
+
         val normalizedSecondary = SubtitleLanguageRegistry.normalize(dualUi.secondaryLanguage)
         if (trackUi.primaryLanguage != null && normalizedSecondary != null && trackUi.primaryLanguage == normalizedSecondary) {
             Toast.makeText(context, "Secondary language can't be the same as the primary (${SubtitleLanguageRegistry.displayName(trackUi.primaryLanguage)}) — pick a different one", Toast.LENGTH_LONG).show()
             dualUi.enabled = false
             return
         }
-        dualUi.statusText = "Searching ${SubtitleLanguageRegistry.displayName(dualUi.secondaryLanguage)} subtitles..."
+
+        val languageLabel = SubtitleLanguageRegistry.displayName(dualUi.secondaryLanguage)
+        dualUi.statusText = "Finding $languageLabel secondary subtitle…"
+
         scope.launch {
+            // 1) Prefer a previously downloaded real subtitle.
+            val cachedReal = withContext(Dispatchers.IO) {
+                OpenSubtitlesClient.findCachedSubtitle(
+                    context,
+                    getCurrentVideoPath(),
+                    listOf(dualUi.secondaryLanguage)
+                )
+            }
+            if (cachedReal != null) {
+                applyDualSecondaryUri(cachedReal.uri, "Downloaded")
+                return@launch
+            }
+
+            // 2) Reuse a persistent AI translation from an earlier session.
+            val cachedAi = withContext(Dispatchers.IO) {
+                findCachedAiSecondary(dualUi.secondaryLanguage)
+            }
+            if (cachedAi != null) {
+                applyDualSecondaryUri(cachedAi, "AI")
+                return@launch
+            }
+
+            // 3) Search for a genuine subtitle release.
+            dualUi.statusText = "Searching $languageLabel subtitles…"
             val searchQuery = OpenSubtitlesClient.cleanMovieNamePublic(getCurrentVideoPath())
-            val searchResult = OpenSubtitlesClient.searchSubtitlesDetailed(searchQuery, language = dualUi.secondaryLanguage)
-            val bestFileId = (searchResult as? SubtitleSearchListResult.Success)?.results?.firstOrNull()?.fileId
-            if (bestFileId == null) {
-                dualUi.statusText = "No ${SubtitleLanguageRegistry.displayName(dualUi.secondaryLanguage)} subtitle found for this video"
-                Toast.makeText(context, dualUi.statusText, Toast.LENGTH_LONG).show()
-                dualUi.enabled = false
-                return@launch
+            val searchResult = OpenSubtitlesClient.searchSubtitlesDetailed(
+                searchQuery,
+                language = dualUi.secondaryLanguage
+            )
+            val bestFileId =
+                (searchResult as? SubtitleSearchListResult.Success)?.results?.firstOrNull()?.fileId
+
+            if (bestFileId != null) {
+                dualUi.statusText = "Downloading $languageLabel subtitle…"
+                val targetFile = OpenSubtitlesClient.subtitleCacheFile(
+                    context,
+                    getCurrentVideoPath(),
+                    dualUi.secondaryLanguage
+                )
+                val downloadResult = OpenSubtitlesClient.downloadSubtitleToFile(
+                    targetFile,
+                    bestFileId,
+                    dualUi.secondaryLanguage
+                )
+                if (downloadResult is SubtitleDownloadResult.Success) {
+                    applyDualSecondaryUri(downloadResult.uri, "Downloaded")
+                    return@launch
+                }
             }
-            dualUi.statusText = "Downloading ${SubtitleLanguageRegistry.displayName(dualUi.secondaryLanguage)} subtitle..."
-            val targetFile = OpenSubtitlesClient.subtitleCacheFile(context, getCurrentVideoPath(), dualUi.secondaryLanguage)
-            val downloadResult = OpenSubtitlesClient.downloadSubtitleToFile(targetFile, bestFileId, dualUi.secondaryLanguage)
-            if (downloadResult !is SubtitleDownloadResult.Success) {
-                dualUi.statusText = downloadResult.summary()
-                Toast.makeText(context, dualUi.statusText, Toast.LENGTH_LONG).show()
-                dualUi.enabled = false
-                return@launch
-            }
+
+            // 4) Nothing suitable online: create the preferred secondary
+            // language from the primary subtitle with the existing ML Kit
+            // translation pipeline. Completion comes back through
+            // applyDualSecondaryUri().
+            dualUi.statusText = "Creating $languageLabel secondary with AI…"
+            dualUi.secondarySourceLabel = "AI"
+            requestAiSecondary(dualUi.secondaryLanguage)
+        }
+    }
+
+    fun applyDualSecondaryUri(secondaryUri: Uri, sourceLabel: String) {
+        val primary = trackUi.primaryUri
+        if (primary == null || !dualUi.enabled) return
+
+        val normalizedSecondary =
+            SubtitleLanguageRegistry.normalize(dualUi.secondaryLanguage)
+                ?: dualUi.secondaryLanguage.take(2).lowercase()
+
+        scope.launch {
             val merged = withContext(Dispatchers.IO) {
                 val primaryText = readTextFromUri(context, primary) ?: return@withContext null
-                val secondaryText = readTextFromUri(context, downloadResult.uri) ?: return@withContext null
-                val mergedText = mergeDualSubtitles(primaryText, secondaryText, dualSecondaryColorHex, dualUi.gapLines)
+                val secondaryText = readTextFromUri(context, secondaryUri) ?: return@withContext null
+                val mergedText = mergeDualSubtitles(
+                    primaryText,
+                    secondaryText,
+                    dualSecondaryColorHex,
+                    dualUi.gapLines
+                )
                 try {
-                    // Unique per video + secondary language — a single
-                    // fixed filename shared by every video would let a
-                    // rapid change or overlapping coroutine's write
-                    // clobber a file another request/ExoPlayer was still
-                    // reading.
-                    val uniqueName = "cinevault_dual_${OpenSubtitlesClient.cleanMovieNamePublic(getCurrentVideoPath()).hashCode()}_$normalizedSecondary.srt"
+                    val uniqueName =
+                        "cinevault_dual_${OpenSubtitlesClient.cleanMovieNamePublic(getCurrentVideoPath()).hashCode()}_$normalizedSecondary.srt"
                     val outFile = java.io.File(context.cacheDir, uniqueName)
                     outFile.writeText(mergedText)
                     Uri.fromFile(outFile)
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     null
                 }
             }
+
             if (merged == null) {
                 dualUi.statusText = "Couldn't merge subtitles"
                 Toast.makeText(context, dualUi.statusText, Toast.LENGTH_LONG).show()
                 dualUi.enabled = false
                 return@launch
             }
+
             val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
             playSubtitle(merged, resumeAt, false)
             trackUi.originalUri = merged
             trackUi.appliedOffsetMs = (coreUi.syncOffset * 1000f).toLong()
-            dualUi.statusText = "Dual subtitles: ${if (trackUi.primaryLanguage != null) SubtitleLanguageRegistry.displayName(trackUi.primaryLanguage) else "Primary"} + ${SubtitleLanguageRegistry.displayName(dualUi.secondaryLanguage)}"
+            dualUi.secondarySourceLabel = sourceLabel
+            dualUi.statusText =
+                "Dual subtitles: ${if (trackUi.primaryLanguage != null) SubtitleLanguageRegistry.displayName(trackUi.primaryLanguage) else "Primary"} + ${SubtitleLanguageRegistry.displayName(dualUi.secondaryLanguage)}"
         }
     }
 
     fun disableDualSubtitles() {
         dualUi.enabled = false
         dualUi.statusText = ""
+        dualUi.secondarySourceLabel = ""
         val primary = trackUi.primaryUri ?: return
         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
-        // isOriginalSubtitle matched the original call's implicit
-        // default (true) — playCurrentVideoWithSubtitle's own default
-        // parameter doesn't carry over through a lambda type, so it's
-        // passed explicitly here to preserve the exact original behavior.
         playSubtitle(primary, resumeAt, true)
     }
+
 }
