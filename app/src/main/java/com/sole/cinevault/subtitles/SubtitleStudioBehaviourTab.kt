@@ -78,10 +78,10 @@ internal fun StudioBehaviourTab(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .clip(RoundedCornerShape(16.dp))
-            .background(GlassSurfaceStrong)
+            .background(GlassSurfaceStrong.copy(alpha = 0.42f))
             .padding(2.dp)
     ) {
-        StudioSectionLabel("Language priority", tight = true)
+        BehaviourSectionPill("Language priority")
         Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(horizontal = 8.dp)) {
             prefs.preferredLanguages.forEachIndexed { index, code ->
                 val label = languages.firstOrNull { it.first == code }?.second ?: code.uppercase()
@@ -134,7 +134,7 @@ internal fun StudioBehaviourTab(
         StudioToggleRow(label = "Prefer SDH (hearing-impaired) subtitles", checked = prefs.preferSdh) { onChange(prefs.copy(preferSdh = it)) }
 
         StudioDivider()
-        StudioSectionLabel("Automatic behavior", tight = true)
+        BehaviourSectionPill("Automatic behavior")
         StudioToggleRow(label = "Automatically enable embedded subtitles", checked = prefs.autoEnableEmbeddedSubtitles) { onChange(prefs.copy(autoEnableEmbeddedSubtitles = it)) }
         StudioToggleRow(label = "Automatically load matching local subtitle", checked = prefs.autoLoadMatchingLocalFile) { onChange(prefs.copy(autoLoadMatchingLocalFile = it)) }
         StudioToggleRow(label = "Automatically download when none exists", checked = prefs.autoDownloadWhenMissing) { onChange(prefs.copy(autoDownloadWhenMissing = it)) }
@@ -142,7 +142,7 @@ internal fun StudioBehaviourTab(
         StudioToggleRow(label = "Disable subtitles when audio matches preferred language", checked = prefs.disableWhenAudioMatchesPreferred) { onChange(prefs.copy(disableWhenAudioMatchesPreferred = it)) }
 
         StudioDivider()
-        StudioSectionLabel("Gestures", tight = true)
+        BehaviourSectionPill("Gestures")
         StudioToggleRow(label = "Enable subtitle gestures (swipe/pinch/long-press)", checked = prefs.enableSubtitleGestures) { onChange(prefs.copy(enableSubtitleGestures = it)) }
         Text(
             text = "Off by default. When on, a zone above the player controls responds to: drag up/down for position, drag left/right for sync, pinch to resize, long-press to pause, double-tap to reset sync. Off elsewhere on screen — brightness, volume, and seek gestures are unaffected either way.",
@@ -154,7 +154,7 @@ internal fun StudioBehaviourTab(
         )
 
         StudioDivider()
-        StudioSectionLabel("Subtitle cleaning", tight = true)
+        BehaviourSectionPill("Subtitle cleaning")
         Text(
             text = "Applies to downloaded and local .srt files only — embedded tracks can't be rewritten this way. SDH users who want the sound descriptions should leave the first toggle off.",
             color = TextMuted, fontSize = 9.5.sp, lineHeight = 13.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
@@ -192,6 +192,23 @@ internal fun StudioBehaviourTab(
         }
         Spacer(modifier = Modifier.height(4.dp))
     }
+}
+
+@Composable
+private fun BehaviourSectionPill(text: String) {
+    Text(
+        text = text.uppercase(),
+        color = AmberCore,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 0.4.sp,
+        modifier = Modifier
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(50))
+            .background(AmberCore.copy(alpha = 0.12f))
+            .border(1.dp, AmberCore.copy(alpha = 0.28f), RoundedCornerShape(50))
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+    )
 }
 
 @Composable

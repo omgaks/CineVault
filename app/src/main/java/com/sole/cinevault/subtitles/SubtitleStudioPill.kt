@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -54,6 +55,7 @@ import com.sole.cinevault.ui.theme.GlassSurfaceStrong
 import com.sole.cinevault.ui.theme.TextBright
 import com.sole.cinevault.ui.theme.TextFaint
 import com.sole.cinevault.ui.theme.TextMuted
+import com.sole.cinevault.ui.theme.glassPanel
 
 enum class StudioCategory { DOWNLOAD, STYLE, POWER_TOOLS, SETTINGS }
 
@@ -85,7 +87,8 @@ fun SubtitleStudioPill(
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
-                .background(GlassSurfaceStrong)
+                .glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong.copy(alpha = 0.82f))
+                .border(1.dp, AmberCore.copy(alpha = 0.20f), RoundedCornerShape(50))
                 .then(dragHandleModifier)
                 .padding(6.dp),
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp)
@@ -99,7 +102,8 @@ fun SubtitleStudioPill(
                     fontSize = 9.5.sp,
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .then(if (active) Modifier.background(AmberCore.copy(alpha = 0.16f)) else Modifier)
+                        .background(if (active) AmberCore.copy(alpha = 0.18f) else AmberCore.copy(alpha = 0.07f))
+                        .border(1.dp, AmberCore.copy(alpha = if (active) 0.38f else 0.18f), RoundedCornerShape(50))
                         .clickable { onCategorySelected(category) }
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 )
@@ -142,8 +146,8 @@ fun StudioListWindow(
         Column(
             modifier = Modifier
                 .widthIn(min = 210.dp, max = 260.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(GlassSurfaceStrong)
+                .glassPanel(cornerRadius = 16.dp, fill = GlassSurfaceStrong.copy(alpha = 0.82f))
+                .border(1.dp, AmberCore.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
                 .padding(10.dp)
         ) {
             Row(
@@ -157,11 +161,16 @@ fun StudioListWindow(
                     modifier = Modifier.size(16.dp).clickable { onBack() }
                 )
                 Text(
-                    text = title,
-                    color = TextBright,
+                    text = title.uppercase(),
+                    color = AmberCore,
                     fontSize = 10.5.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.weight(1f),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(50))
+                        .background(AmberCore.copy(alpha = 0.12f))
+                        .border(1.dp, AmberCore.copy(alpha = 0.28f), RoundedCornerShape(50))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.width(16.dp))
@@ -173,7 +182,8 @@ fun StudioListWindow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(9.dp))
-                        .background(if (isOnToggle) AmberCore.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.03f))
+                        .background(if (isOnToggle) AmberCore.copy(alpha = 0.16f) else AmberCore.copy(alpha = 0.045f))
+                        .border(1.dp, AmberCore.copy(alpha = if (isOnToggle) 0.30f else 0.10f), RoundedCornerShape(9.dp))
                         .clickable { item.onClick() }
                         .padding(horizontal = 7.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -444,8 +454,8 @@ fun SubtitleBehaviourWindow(
             modifier = Modifier
                 .widthIn(min = 280.dp, max = 330.dp)
                 .heightIn(max = maxWindowHeight)
-                .clip(RoundedCornerShape(18.dp))
-                .background(GlassSurfaceStrong)
+                .glassPanel(cornerRadius = 18.dp, fill = GlassSurfaceStrong.copy(alpha = 0.82f))
+                .border(1.dp, AmberCore.copy(alpha = 0.18f), RoundedCornerShape(18.dp))
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false)

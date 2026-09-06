@@ -1,6 +1,7 @@
 package com.sole.cinevault.subtitles
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,6 +35,7 @@ import com.sole.cinevault.ui.theme.GlassSurfaceStrong
 import com.sole.cinevault.ui.theme.TextBright
 import com.sole.cinevault.ui.theme.TextFaint
 import com.sole.cinevault.ui.theme.TextMuted
+import com.sole.cinevault.ui.theme.glassPanel
 
 private const val DELAY_STEP_SECONDS = 0.1f
 
@@ -70,8 +72,8 @@ fun QuickHud(
                 // landscape size. This keeps the same design line while
                 // avoiding a one-size-fits-all 240dp panel on small/large screens.
                 .width(windowWidth)
-                .clip(RoundedCornerShape(16.dp))
-                .background(GlassSurfaceStrong)
+                .glassPanel(cornerRadius = 16.dp, fill = GlassSurfaceStrong.copy(alpha = 0.82f))
+                .border(1.dp, AmberCore.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
                 .padding(9.dp)
         ) {
             Row(
@@ -149,15 +151,16 @@ fun QuickHud(
 
             Spacer(modifier = Modifier.height(7.dp))
             Text(
-                text = "Reset",
-                color = TextMuted,
-                fontSize = 8.5.sp,
-                fontWeight = FontWeight.Medium,
+                text = "↺  RESET",
+                color = AmberCore,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color.White.copy(alpha = 0.05f))
+                    .clip(RoundedCornerShape(50))
+                    .background(AmberCore.copy(alpha = 0.10f))
+                    .border(1.dp, AmberCore.copy(alpha = 0.30f), RoundedCornerShape(50))
                     .clickable { onReset() }
                     .padding(vertical = 5.dp)
             )
