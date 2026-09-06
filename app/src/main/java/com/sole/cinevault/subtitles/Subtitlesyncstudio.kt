@@ -37,11 +37,29 @@ fun DialogueTapSyncBar(isLandscape: Boolean, onTap: () -> Unit, onCancel: () -> 
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .amberGlow(radius = 18.dp, alpha = 0.55f)
-            .glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong)
-            .padding(horizontal = 14.dp, vertical = if (isLandscape) 8.dp else 10.dp)
+            .amberGlow(radius = 18.dp, alpha = 0.45f)
+            .glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong.copy(alpha = 0.82f))
+            .border(1.dp, AmberCore.copy(alpha = 0.22f), RoundedCornerShape(50))
+            .padding(horizontal = 13.dp, vertical = if (isLandscape) 7.dp else 9.dp)
     ) {
-        Text(text = "Listening… tap when you hear the line", color = TextBright, fontSize = if (isLandscape) 11.sp else 12.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            text = "LISTENING",
+            color = AmberCore,
+            fontSize = if (isLandscape) 10.sp else 11.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(AmberCore.copy(alpha = 0.12f))
+                .border(1.dp, AmberCore.copy(alpha = 0.26f), RoundedCornerShape(50))
+                .padding(horizontal = 9.dp, vertical = 4.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = "Tap when you hear the matching line",
+            color = TextBright,
+            fontSize = if (isLandscape) 10.5.sp else 11.5.sp,
+            fontWeight = FontWeight.SemiBold
+        )
         Spacer(modifier = Modifier.width(10.dp))
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -75,6 +93,7 @@ fun DriftCorrectionSheet(
     pointA: DriftPoint?,
     pointB: DriftPoint?,
     popupWidth: Dp,
+    popupMaxHeight: Dp,
     onMarkPointA: (Float) -> Unit,
     onMarkPointB: (Float) -> Unit,
     onApply: () -> Unit,
@@ -86,13 +105,26 @@ fun DriftCorrectionSheet(
     Column(
         modifier = Modifier
             .width(popupWidth)
-            .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.98f))
-            .padding(12.dp)
+            .heightIn(max = popupMaxHeight)
+            .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.82f))
+            .border(1.dp, AmberCore.copy(alpha = 0.18f), RoundedCornerShape(20.dp))
+            .padding(11.dp)
     ) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Icon(imageVector = Icons.Default.TrendingUp, contentDescription = null, tint = AmberCore, modifier = Modifier.size(15.dp))
             Spacer(modifier = Modifier.width(6.dp))
-            Text(text = "Fix Gradual Drift", color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text(
+                text = "FIX GRADUAL DRIFT",
+                color = AmberCore,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(50))
+                    .background(AmberCore.copy(alpha = 0.12f))
+                    .border(1.dp, AmberCore.copy(alpha = 0.28f), RoundedCornerShape(50))
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            )
             Icon(
                 imageVector = Icons.Default.Close, contentDescription = "Close", tint = TextBright,
                 modifier = Modifier.size(16.dp).clip(CircleShape).background(GlassSurface).padding(2.dp).clickable { onDismiss() }
@@ -101,7 +133,7 @@ fun DriftCorrectionSheet(
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = "Play to a spot early in the video, dial in perfect sync, mark it. Do the same later in the video where it's drifted. CineVault fixes the slope between them.",
-            color = TextMuted, fontSize = 10.sp, lineHeight = 13.sp
+            color = TextMuted, fontSize = 9.5.sp, lineHeight = 12.sp
         )
         Spacer(modifier = Modifier.height(10.dp))
 
@@ -123,7 +155,7 @@ fun DriftCorrectionSheet(
             currentPositionMs = currentPositionMs
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(9.dp))
         val canApply = pointA != null && pointB != null && pointA.positionMs != pointB.positionMs
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -157,7 +189,7 @@ private fun DriftPointRow(
             .clip(RoundedCornerShape(12.dp))
             .background(SpaceDeep.copy(alpha = 0.6f))
             .border(1.dp, Brush.verticalGradient(listOf(AmberGlow.copy(alpha = if (positionMs != null) 0.6f else 0.2f), AmberDeep.copy(alpha = 0.2f))), RoundedCornerShape(12.dp))
-            .padding(10.dp)
+            .padding(9.dp)
     ) {
         Text(text = label, color = Color(0xFFC9A765), fontSize = 10.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(4.dp))
