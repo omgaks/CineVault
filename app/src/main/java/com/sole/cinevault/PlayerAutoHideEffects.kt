@@ -52,7 +52,7 @@ internal fun PlayerAutoHideEffects(
     ) {
         val anyMenuOpen = showAudioSelector || coreUi.showSettings || trackUi.showSelector ||
             searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio ||
-            studioUi.showStudio || coreUi.dialogueSyncArmed || showSpeedMenu ||
+            coreUi.dialogueSyncArmed || showSpeedMenu ||
             showSleepMenu || showSrtBrowser
         if (showControls && !anyMenuOpen && !isDraggingSeekbar) {
             delay(4500)
@@ -80,7 +80,7 @@ internal fun PlayerAutoHideEffects(
     ) {
         val anyMenuOpen = showAudioSelector || coreUi.showSettings || trackUi.showSelector ||
             searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio ||
-            studioUi.showStudio || coreUi.dialogueSyncArmed || showSpeedMenu ||
+            coreUi.dialogueSyncArmed || showSpeedMenu ||
             showSleepMenu || showSrtBrowser
         if (showTopBar && !anyMenuOpen && !isDraggingSeekbar) {
             delay(2800)
@@ -118,13 +118,7 @@ internal fun PlayerAutoHideEffects(
             coreUi.showAppearanceStudio = false
         }
     }
-    LaunchedEffect(studioUi.showStudio, studioUi.menuTouchKey) {
-        if (studioUi.showStudio) {
-            delay(30000)
-            studioUi.showStudio = false
-        }
-    }
-    LaunchedEffect(showSrtBrowser) {
+LaunchedEffect(showSrtBrowser) {
         if (showSrtBrowser) {
             delay(20000)
             onHideSrtBrowser()
