@@ -100,24 +100,6 @@ internal fun PlayerAutoHideEffects(
             coreUi.showSettings = false
         }
     }
-    LaunchedEffect(trackUi.showSelector, studioUi.menuTouchKey) {
-        if (trackUi.showSelector) {
-            delay(12000)
-            trackUi.showSelector = false
-        }
-    }
-    LaunchedEffect(searchUi.showSearch, studioUi.menuTouchKey) {
-        if (searchUi.showSearch) {
-            delay(18000)
-            searchUi.showSearch = false
-        }
-    }
-    LaunchedEffect(coreUi.showAppearanceStudio, studioUi.menuTouchKey) {
-        if (coreUi.showAppearanceStudio) {
-            delay(15000)
-            coreUi.showAppearanceStudio = false
-        }
-    }
 LaunchedEffect(showSrtBrowser) {
         if (showSrtBrowser) {
             delay(20000)

@@ -1328,6 +1328,36 @@ fun VideoPlayerScreen(
         val subtitlePopupHeightEstimate = popupDimensions.subtitlePopupHeightEstimate
         val trackSelectorWidth = popupDimensions.trackSelectorWidth
         val trackSelectorMaxHeight = popupDimensions.trackSelectorMaxHeight
+
+        // Slice 15: position Sub Studio surfaces against the ACTUAL visible
+        // movie picture, not the physical screen edge. Letter/pillar-box
+        // bars are symmetric, so only the horizontal content inset is
+        // needed for our right-centred landscape resting zone.
+        val rawVideoWidth = exoPlayer.videoSize.width
+        val rawVideoHeight = exoPlayer.videoSize.height
+        val rawPixelRatio = exoPlayer.videoSize.pixelWidthHeightRatio.takeIf { it > 0f } ?: 1f
+        val videoAspect = if (rawVideoWidth > 0 && rawVideoHeight > 0)
+            (rawVideoWidth.toFloat() * rawPixelRatio) / rawVideoHeight.toFloat()
+        else 0f
+        val containerAspect = if (maxHeight.value > 0f) maxWidth.value / maxHeight.value else 0f
+        val visibleMovieWidth = when {
+            videoAspect <= 0f || containerAspect <= 0f -> maxWidth
+            videoAspect >= containerAspect -> maxWidth
+            else -> (maxHeight.value * videoAspect).dp.coerceAtMost(maxWidth)
+        }
+        val movieFrameHorizontalInset = ((maxWidth - visibleMovieWidth) / 2f).coerceAtLeast(0.dp)
+        val studioFrameInset = movieFrameHorizontalInset + if (maxWidth < 700.dp) 12.dp else 22.dp
+
+        // Pad reference: Tracks ~20% broader/taller, Style ~28% broader and
+        // ~22% taller. coerceAtMost keeps the same design usable on phones.
+        val trackStudioWidth = (trackSelectorWidth * 1.20f)
+            .coerceAtMost((visibleMovieWidth - studioFrameInset * 2).coerceAtLeast(250.dp))
+        val trackStudioMaxHeight = (trackSelectorMaxHeight * 1.18f)
+            .coerceAtMost((maxHeight - 24.dp).coerceAtLeast(250.dp))
+        val styleStudioWidth = (trackSelectorWidth * 1.28f)
+            .coerceAtMost((visibleMovieWidth - studioFrameInset * 2).coerceAtLeast(270.dp))
+        val styleStudioMaxHeight = (trackSelectorMaxHeight * 1.22f)
+            .coerceAtMost((maxHeight - 24.dp).coerceAtLeast(270.dp))
         val srtPopupWidth = popupDimensions.srtPopupWidth
         val srtPopupMaxHeight = popupDimensions.srtPopupMaxHeight
         val audioPopupWidth = popupDimensions.audioPopupWidth
@@ -1745,9 +1775,10 @@ fun VideoPlayerScreen(
             onResetSubtitleSettings = { resetSubtitleSettings() },
             onSettingsUserInteraction = { studioUi.menuTouchKey++; showControls = true },
             trackSelectorBottomPadding = playerPopupBottomPadding(popupBottomPadding),
-            trackSelectorOffsetX = calculatePlayerPopupOffsetX(subIconX, trackSelectorWidth, screenWidthPx, density),
-            trackSelectorWidth = trackSelectorWidth,
-            trackSelectorMaxHeight = trackSelectorMaxHeight,
+            trackSelectorOffsetX = calculatePlayerPopupOffsetX(subIconX, trackStudioWidth, screenWidthPx, density),
+            trackSelectorWidth = trackStudioWidth,
+            trackSelectorMaxHeight = trackStudioMaxHeight,
+            studioRightInset = studioFrameInset,
             containerWidth = maxWidth,
             containerHeight = maxHeight,
             embeddedTrackChoices = embeddedTrackChoices,
@@ -1764,6 +1795,13 @@ fun VideoPlayerScreen(
                 if (path != null) requestDeleteSubtitle(java.io.File(path))
             },
             onOpenFilePickerFromTrackSelector = { trackUi.showSelector = false; srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
+            onBackFromTrackSelector = {
+                trackUi.showSelector = false
+                showSubtitleBloom = true
+                studioCategory = null
+                showControls = false
+                showTopBar = false
+            },
             onDismissTrackSelector = { trackUi.showSelector = false; showControls = true },
             onTrackSelectorUserInteraction = { studioUi.menuTouchKey++ },
             initialManageMode = trackSelectorManageMode,
@@ -1775,8 +1813,10 @@ fun VideoPlayerScreen(
             isLandscape = isLandscape,
             isCompactLandscape = isCompactLandscape
         )
-        val searchWidth = subtitleSearchLayout.width
-        val searchMaxHeight = subtitleSearchLayout.maxHeight
+        val searchWidth = (subtitleSearchLayout.width * 1.12f)
+            .coerceAtMost((visibleMovieWidth - studioFrameInset * 2).coerceAtLeast(280.dp))
+        val searchMaxHeight = (subtitleSearchLayout.maxHeight * 1.10f)
+            .coerceAtMost((maxHeight - 24.dp).coerceAtLeast(280.dp))
         val subtitleWebQuery = playerSubtitleSearchQuery(currentVideo.path)
         SubtitleAcquisitionFlow(
             showSubtitleSearch = searchUi.showSearch,
@@ -1784,6 +1824,7 @@ fun VideoPlayerScreen(
             searchMaxHeight = searchMaxHeight,
             containerWidth = maxWidth,
             containerHeight = maxHeight,
+            studioRightInset = studioFrameInset,
             initialSearchQuery = remember(currentVideo.path) { playerSubtitleSearchQuery(currentVideo.path) },
             searchResults = searchUi.searchResults,
             isSearching = searchUi.searchLoading,
@@ -1792,7 +1833,14 @@ fun VideoPlayerScreen(
             onSearch = { q, s, e -> studioUi.menuTouchKey++; performSubtitleSearch(q, s, e) },
             onDownloadAndApply = { result -> studioUi.menuTouchKey++; applySearchResult(result, alsoPlay = true) },
             onDownloadOnly = { result -> studioUi.menuTouchKey++; applySearchResult(result, alsoPlay = false) },
-            onWebsiteFallbackFromSearch = { searchUi.showSearch = false; searchUi.showFallback = true; showControls = true },
+            onWebsiteFallbackFromSearch = { searchUi.showSearch = false; searchUi.showFallback = true; showControls = false },
+            onBackFromSearch = {
+                searchUi.showSearch = false
+                showSubtitleBloom = true
+                studioCategory = null
+                showControls = false
+                showTopBar = false
+            },
             onDismissSearch = { searchUi.showSearch = false; showControls = true },
             showSubtitleFallback = searchUi.showFallback,
             fallbackSearchQuery = subtitleWebQuery,
@@ -1820,6 +1868,13 @@ fun VideoPlayerScreen(
                         "application/octet-stream"
                     )
                 )
+            },
+            onBackFromFallback = {
+                searchUi.showFallback = false
+                showSubtitleBloom = true
+                studioCategory = null
+                showControls = false
+                showTopBar = false
             },
             onDismissFallback = { searchUi.showFallback = false },
             showEmbeddedSubtitleBrowser = searchUi.showEmbeddedBrowser,
@@ -1857,11 +1912,12 @@ fun VideoPlayerScreen(
             onDismissDrift = { driftUi.showDialog = false; showControls = false; showTopBar = false },
             showAppearanceStudio = coreUi.showAppearanceStudio,
             appearanceBottomPadding = playerPopupBottomPadding(popupBottomPadding),
-            appearanceOffsetX = calculatePlayerPopupOffsetX(subIconX, trackSelectorWidth, screenWidthPx, density),
-            appearancePopupWidth = trackSelectorWidth,
-            appearancePopupMaxHeight = trackSelectorMaxHeight,
+            appearanceOffsetX = calculatePlayerPopupOffsetX(subIconX, styleStudioWidth, screenWidthPx, density),
+            appearancePopupWidth = styleStudioWidth,
+            appearancePopupMaxHeight = styleStudioMaxHeight,
             containerWidth = maxWidth,
             containerHeight = maxHeight,
+            studioRightInset = studioFrameInset,
             appearancePresetName = appearanceUi.preset,
             appearance = appearanceUi.appearance,
             appearanceFontSizeSp = appearanceUi.textSizeSp,
@@ -1876,6 +1932,13 @@ fun VideoPlayerScreen(
             isAssOrSsaFormat = isAssOrSsaFormat,
             preserveOriginalStyling = appearanceUi.preserveOriginalStyling,
             onPreserveOriginalStylingChange = { appearanceUi.preserveOriginalStyling = it },
+            onBackFromAppearanceStudio = {
+                coreUi.showAppearanceStudio = false
+                showSubtitleBloom = true
+                studioCategory = null
+                showControls = false
+                showTopBar = false
+            },
             onDismissAppearanceStudio = { coreUi.showAppearanceStudio = false; showControls = true },
             onAppearanceUserInteraction = { studioUi.menuTouchKey++ },
         )

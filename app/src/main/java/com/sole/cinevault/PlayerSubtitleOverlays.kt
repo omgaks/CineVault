@@ -71,6 +71,7 @@ fun BoxScope.SubtitleQuickMenuAndTrackSelector(
     trackSelectorOffsetX: Int,
     trackSelectorWidth: Dp,
     trackSelectorMaxHeight: Dp,
+    studioRightInset: Dp,
     containerWidth: Dp,
     containerHeight: Dp,
     embeddedTrackChoices: List<SubtitleTrackChoice.Embedded>,
@@ -82,6 +83,7 @@ fun BoxScope.SubtitleQuickMenuAndTrackSelector(
     onDeleteLocalTrack: (File) -> Unit,
     onDeleteGeneratedTrack: (GeneratedSubtitleFile) -> Unit = {},
     onOpenFilePickerFromTrackSelector: () -> Unit,
+    onBackFromTrackSelector: () -> Unit,
     onDismissTrackSelector: () -> Unit,
     onTrackSelectorUserInteraction: () -> Unit,
     initialManageMode: Boolean = false,
@@ -113,7 +115,7 @@ fun BoxScope.SubtitleQuickMenuAndTrackSelector(
         visible = showTrackSelector,
         enter = fadeIn(animationSpec = tween(150)),
         exit = fadeOut(animationSpec = tween(180)),
-        modifier = Modifier.align(Alignment.BottomStart).padding(bottom = trackSelectorBottomPadding).offset { IntOffset(trackSelectorOffsetX, 0) }
+        modifier = Modifier.align(Alignment.CenterEnd).padding(end = studioRightInset)
     ) {
         DraggableFloatingPopup(
             containerWidth = containerWidth,
@@ -134,6 +136,7 @@ fun BoxScope.SubtitleQuickMenuAndTrackSelector(
                 onDeleteLocal = onDeleteLocalTrack,
                 onDeleteGenerated = onDeleteGeneratedTrack,
                 onOpenFilePicker = onOpenFilePickerFromTrackSelector,
+                onBack = onBackFromTrackSelector,
                 onDismiss = onDismissTrackSelector,
                 initialManageMode = initialManageMode
             )
@@ -148,6 +151,7 @@ fun BoxScope.SubtitleAcquisitionFlow(
     searchMaxHeight: Dp,
     containerWidth: Dp,
     containerHeight: Dp,
+    studioRightInset: Dp,
     initialSearchQuery: String,
     searchResults: List<SubtitleSearchResult>,
     isSearching: Boolean,
@@ -157,6 +161,7 @@ fun BoxScope.SubtitleAcquisitionFlow(
     onDownloadAndApply: (SubtitleSearchResult) -> Unit,
     onDownloadOnly: (SubtitleSearchResult) -> Unit,
     onWebsiteFallbackFromSearch: () -> Unit,
+    onBackFromSearch: () -> Unit,
     onDismissSearch: () -> Unit,
 
     showSubtitleFallback: Boolean,
@@ -165,6 +170,7 @@ fun BoxScope.SubtitleAcquisitionFlow(
     onSecureBrowser: () -> Unit,
     onEmbeddedBrowser: () -> Unit,
     onImportFile: () -> Unit,
+    onBackFromFallback: () -> Unit,
     onDismissFallback: () -> Unit,
 
     showEmbeddedSubtitleBrowser: Boolean,
@@ -182,7 +188,7 @@ fun BoxScope.SubtitleAcquisitionFlow(
         visible = showSubtitleSearch,
         enter = fadeIn(animationSpec = tween(150)),
         exit = fadeOut(animationSpec = tween(180)),
-        modifier = Modifier.align(Alignment.Center)
+        modifier = Modifier.align(Alignment.CenterEnd).padding(end = studioRightInset)
     ) {
         SubtitleSearchSheet(
             initialQuery = initialSearchQuery,
@@ -200,6 +206,7 @@ fun BoxScope.SubtitleAcquisitionFlow(
             onDownloadAndApply = onDownloadAndApply,
             onDownloadOnly = onDownloadOnly,
             onWebsiteFallback = onWebsiteFallbackFromSearch,
+            onBack = onBackFromSearch,
             onDismiss = onDismissSearch
         )
     }
@@ -211,6 +218,8 @@ fun BoxScope.SubtitleAcquisitionFlow(
             onSecureBrowser = onSecureBrowser,
             onEmbeddedBrowser = onEmbeddedBrowser,
             onImportFile = onImportFile,
+            onBack = onBackFromFallback,
+            rightInset = studioRightInset,
             onDismiss = onDismissFallback
         )
     }
@@ -260,6 +269,7 @@ fun BoxScope.SubtitleSyncAndAppearancePopups(
     appearancePopupMaxHeight: Dp,
     containerWidth: Dp,
     containerHeight: Dp,
+    studioRightInset: Dp,
     appearancePresetName: String,
     appearance: SubtitleAppearance,
     appearanceFontSizeSp: Float,
@@ -274,6 +284,7 @@ fun BoxScope.SubtitleSyncAndAppearancePopups(
     isAssOrSsaFormat: Boolean,
     preserveOriginalStyling: Boolean,
     onPreserveOriginalStylingChange: (Boolean) -> Unit,
+    onBackFromAppearanceStudio: () -> Unit,
     onDismissAppearanceStudio: () -> Unit,
     onAppearanceUserInteraction: () -> Unit,
 ) {
@@ -310,7 +321,7 @@ fun BoxScope.SubtitleSyncAndAppearancePopups(
         visible = showAppearanceStudio,
         enter = fadeIn(animationSpec = tween(150)),
         exit = fadeOut(animationSpec = tween(180)),
-        modifier = Modifier.align(Alignment.BottomStart).padding(bottom = appearanceBottomPadding).offset { IntOffset(appearanceOffsetX, 0) }
+        modifier = Modifier.align(Alignment.CenterEnd).padding(end = studioRightInset)
     ) {
         DraggableFloatingPopup(
             containerWidth = containerWidth,
@@ -336,6 +347,7 @@ fun BoxScope.SubtitleSyncAndAppearancePopups(
                 onFontSizeChange = onAppearanceFontSizeChange,
                 bottomPadding = appearanceBottomPaddingFraction,
                 onBottomPaddingChange = onAppearanceBottomPaddingChange,
+                onBack = onBackFromAppearanceStudio,
                 onDismiss = onDismissAppearanceStudio
             )
         }
