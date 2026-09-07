@@ -2484,6 +2484,7 @@ fun VideoPlayerScreen(
                 secondaryLanguage = dualUi.secondaryLanguage,
                 secondaryLanguageLabel = languages.firstOrNull { it.first == dualUi.secondaryLanguage }?.second ?: dualUi.secondaryLanguage.uppercase(),
                 onSecondaryLanguageChange = { lang ->
+                    pendingDualAiLanguage = null
                     dualUi.secondaryLanguage = lang
                     coreUi.behaviorPrefs = coreUi.behaviorPrefs.copy(dualSecondaryLanguage = lang)
                     saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
