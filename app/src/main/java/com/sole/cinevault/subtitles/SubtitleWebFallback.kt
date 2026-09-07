@@ -11,6 +11,7 @@ import androidx.activity.compose.BackHandler
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -54,8 +56,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.sole.cinevault.ui.theme.*
 import kotlinx.coroutines.launch
 
 fun launchSubtitleCustomTab(context: Context, query: String) {
@@ -74,32 +79,93 @@ fun launchSubtitleCustomTab(context: Context, query: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SubtitleFallbackSheet(searchQuery: String, statusText: String, onSecureBrowser: () -> Unit, onEmbeddedBrowser: () -> Unit, onImportFile: () -> Unit, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Color(0xFF161622)) {
-        Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Need another subtitle?", style = MaterialTheme.typography.titleLarge, color = Color.White)
-            if (statusText.isNotBlank()) {
-                Text(statusText, style = MaterialTheme.typography.bodySmall, color = Color(0xFFB8B8C8))
+fun SubtitleFallbackSheet(
+    searchQuery: String,
+    statusText: String,
+    onSecureBrowser: () -> Unit,
+    onEmbeddedBrowser: () -> Unit,
+    onImportFile: () -> Unit,
+    onBack: (() -> Unit)? = null,
+    rightInset: Dp = 20.dp,
+    onDismiss: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.18f))
+            .padding(end = rightInset),
+        contentAlignment = Alignment.CenterEnd
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(min = 300.dp, max = 390.dp)
+                .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.84f))
+                .border(1.dp, AmberCore.copy(alpha = 0.20f), RoundedCornerShape(20.dp))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (onBack != null) {
+                    Text(
+                        "‹",
+                        color = AmberCore,
+                        fontSize = 22.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        modifier = Modifier
+                            .background(AmberCore.copy(alpha = 0.10f), RoundedCornerShape(50))
+                            .clickable { onBack?.invoke() }
+                            .padding(horizontal = 8.dp, vertical = 1.dp)
+                    )
+                    Spacer(Modifier.size(7.dp))
+                }
+                Text(
+                    "WEB",
+                    color = AmberCore,
+                    fontSize = 12.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(AmberCore.copy(alpha = 0.12f), RoundedCornerShape(50))
+                        .border(1.dp, AmberCore.copy(alpha = 0.28f), RoundedCornerShape(50))
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                )
+                IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Rounded.Close, "Close", tint = AmberCore)
+                }
             }
-            Text(searchQuery, style = MaterialTheme.typography.labelMedium, color = Color(0xFFFFD166), maxLines = 2)
+
+            Text("Need another subtitle?", color = TextBright, fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+            if (statusText.isNotBlank()) {
+                Text(statusText, color = TextMuted, fontSize = 10.5.sp)
+            }
+            Text(
+                searchQuery,
+                color = AmberCore,
+                fontSize = 10.5.sp,
+                maxLines = 2,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(AmberCore.copy(alpha = 0.07f), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 9.dp, vertical = 7.dp)
+            )
             Button(onClick = onSecureBrowser, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Rounded.OpenInBrowser, null)
                 Spacer(Modifier.size(8.dp))
                 Text("Search website securely")
             }
-            Text("Recommended · Opens a protected browser panel with your search prepared.", color = Color(0xFF9D9DAC), style = MaterialTheme.typography.labelSmall)
+            Text("Recommended · Opens a protected browser panel with your search prepared.", color = TextMuted, fontSize = 9.5.sp)
             OutlinedButton(onClick = onImportFile, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Rounded.FolderOpen, null)
                 Spacer(Modifier.size(8.dp))
                 Text("Import downloaded subtitle")
             }
-            HorizontalDivider(color = Color.White.copy(alpha = 0.10f))
+            HorizontalDivider(color = AmberCore.copy(alpha = 0.14f))
             OutlinedButton(onClick = onEmbeddedBrowser, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Rounded.Language, null)
                 Spacer(Modifier.size(8.dp))
                 Text("Embedded browser — experimental")
             }
-            Text("May stop working if the website changes its login or download process.", color = Color(0xFF9D9DAC), style = MaterialTheme.typography.labelSmall)
+            Text("May stop working if the website changes its login or download process.", color = TextMuted, fontSize = 9.5.sp)
         }
     }
 }
@@ -142,11 +208,11 @@ fun EmbeddedSubtitleBrowser(query: String, preferredLanguage: String, onImported
         }
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f)), contentAlignment = Alignment.Center) {
-        Column(Modifier.padding(12.dp).widthIn(max = 720.dp).fillMaxWidth().heightIn(min = 58.dp, max = 620.dp).background(Color(0xFF161622), RoundedCornerShape(20.dp))) {
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.42f)).padding(end = 20.dp), contentAlignment = Alignment.CenterEnd) {
+        Column(Modifier.padding(12.dp).widthIn(min = 420.dp, max = 720.dp).fillMaxWidth(0.72f).heightIn(min = 58.dp, max = 620.dp).glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.92f)).border(1.dp, AmberCore.copy(alpha = 0.18f), RoundedCornerShape(20.dp))) {
             Row(Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.Language, null, tint = Color(0xFFFFD166))
-                Text("  OpenSubtitles · English preferred", color = Color.White, modifier = Modifier.weight(1f))
+                Icon(Icons.Rounded.Language, null, tint = AmberCore)
+                Text("  WEB · OpenSubtitles", color = AmberCore, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.weight(1f))
                 if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 IconButton(onClick = {
                     minimized = !minimized

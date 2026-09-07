@@ -85,6 +85,7 @@ fun SubtitleAppearanceStudioSheet(
     onFontSizeChange: ((Float) -> Unit)? = null,
     bottomPadding: Float? = null,
     onBottomPaddingChange: ((Float) -> Unit)? = null,
+    onBack: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     Column(
@@ -95,8 +96,51 @@ fun SubtitleAppearanceStudioSheet(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        // A single clean Style surface. The outer draggable popup already
-        // supplies dismissal, so no duplicate Close/Back chrome is needed.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (onBack != null) {
+                Text(
+                    text = "‹",
+                    color = AmberCore,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(AmberCore.copy(alpha = 0.10f))
+                        .clickable { onBack?.invoke() }
+                        .padding(horizontal = 8.dp, vertical = 1.dp)
+                )
+                Spacer(modifier = Modifier.width(7.dp))
+            }
+            Text(
+                text = "STYLE",
+                color = AmberCore,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(50))
+                    .background(AmberCore.copy(alpha = 0.12f))
+                    .border(1.dp, AmberCore.copy(alpha = 0.28f), RoundedCornerShape(50))
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            )
+            Spacer(modifier = Modifier.width(7.dp))
+            Text(
+                text = "×",
+                color = AmberCore,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(AmberCore.copy(alpha = 0.10f))
+                    .clickable { onDismiss() }
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(9.dp))
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -117,8 +161,8 @@ fun SubtitleAppearanceStudioSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = "Preserve ASS/SSA styling", color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    Text(text = "Use this subtitle's embedded fonts, colours and positioning", color = TextMuted, fontSize = 9.sp, lineHeight = 12.sp)
+                    Text(text = "Preserve ASS/SSA styling", color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text(text = "Use this subtitle's embedded fonts, colours and positioning", color = TextMuted, fontSize = 11.sp, lineHeight = 13.sp)
                 }
                 Switch(
                     checked = preserveOriginalStyling,
@@ -205,7 +249,7 @@ fun SubtitleAppearanceStudioSheet(
                     Text(
                         text = label,
                         color = if (selected) Color.Black else TextBright,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier
                             .clip(RoundedCornerShape(50))
@@ -285,7 +329,7 @@ private fun AmberSectionPill(text: String) {
     Text(
         text = text.uppercase(),
         color = AmberCore,
-        fontSize = 10.sp,
+        fontSize = 11.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = 0.45.sp,
         modifier = Modifier
@@ -303,7 +347,7 @@ private fun PresetChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Text(
         text = label,
         color = if (selected) Color.Black else TextBright,
-        fontSize = 10.sp, fontWeight = FontWeight.Bold,
+        fontSize = 11.sp, fontWeight = FontWeight.Bold,
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .background(if (selected) AmberCore else SpaceDeep.copy(alpha = 0.7f))
@@ -352,6 +396,6 @@ private fun EdgeTypeChip(label: String, type: Int, currentType: Int, onSelect: (
     ) {
         if (label == "Shadow") Icon(imageVector = Icons.Default.BlurOn, contentDescription = null, tint = if (selected) AmberCore else TextMuted, modifier = Modifier.size(12.dp))
         if (label == "Shadow") Spacer(modifier = Modifier.width(4.dp))
-        Text(text = label, color = if (selected) AmberCore else TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        Text(text = label, color = if (selected) AmberCore else TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }

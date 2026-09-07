@@ -63,6 +63,7 @@ fun SubtitleSearchSheet(
     onDownloadAndApply: (SubtitleSearchResult) -> Unit,
     onDownloadOnly: (SubtitleSearchResult) -> Unit,
     onWebsiteFallback: () -> Unit,
+    onBack: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     onUserInteraction: () -> Unit = {}
 ) {
@@ -88,7 +89,8 @@ fun SubtitleSearchSheet(
             .offset { IntOffset(dragOffsetX.roundToInt(), dragOffsetY.roundToInt()) }
             .width(popupWidth)
             .heightIn(max = popupMaxHeight)
-            .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.98f))
+            .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.84f))
+            .border(1.dp, AmberCore.copy(alpha = 0.20f), RoundedCornerShape(20.dp))
             .pointerInput(Unit) { detectTapGestures { } }
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -112,7 +114,33 @@ fun SubtitleSearchSheet(
                 },
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text = "Download Subtitles", color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            if (onBack != null) {
+                Text(
+                    text = "‹",
+                    color = AmberCore,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(AmberCore.copy(alpha = 0.10f))
+                        .clickable { onBack?.invoke() }
+                        .padding(horizontal = 8.dp, vertical = 1.dp)
+                )
+                Spacer(modifier = Modifier.width(7.dp))
+            }
+            Text(
+                text = "SMART SEARCH",
+                color = AmberCore,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(50))
+                    .background(AmberCore.copy(alpha = 0.12f))
+                    .border(1.dp, AmberCore.copy(alpha = 0.28f), RoundedCornerShape(50))
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            )
+            Spacer(modifier = Modifier.width(7.dp))
             IconCircleSmall2(icon = Icons.Default.Close, onClick = onDismiss)
         }
         Spacer(modifier = Modifier.height(8.dp))
@@ -121,8 +149,8 @@ fun SubtitleSearchSheet(
             value = query,
             onValueChange = { query = it },
             singleLine = true,
-            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = TextBright),
-            placeholder = { Text("Movie or show title", fontSize = 12.sp, color = TextMuted) },
+            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = TextBright),
+            placeholder = { Text("Movie or show title", fontSize = 12.5.sp, color = TextMuted) },
             trailingIcon = {
                 Icon(
                     imageVector = Icons.Default.Search, contentDescription = "Search", tint = AmberCore,
@@ -160,7 +188,7 @@ fun SubtitleSearchSheet(
                 OutlinedTextField(
                     value = season, onValueChange = { season = it.filter { c -> c.isDigit() } },
                     singleLine = true, label = { Text("Season", fontSize = 9.sp) },
-                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = TextBright),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = TextBright),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AmberCore.copy(alpha = 0.6f), unfocusedBorderColor = AmberCore.copy(alpha = 0.25f))
@@ -168,7 +196,7 @@ fun SubtitleSearchSheet(
                 OutlinedTextField(
                     value = episode, onValueChange = { episode = it.filter { c -> c.isDigit() } },
                     singleLine = true, label = { Text("Episode", fontSize = 9.sp) },
-                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = TextBright),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = TextBright),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AmberCore.copy(alpha = 0.6f), unfocusedBorderColor = AmberCore.copy(alpha = 0.25f))
@@ -221,7 +249,7 @@ fun SubtitleSearchSheet(
                         modifier = Modifier.padding(bottom = 6.dp)
                     )
                     if (subDlResults.isEmpty()) {
-                        Text(text = "No SubDL results", color = TextMuted, fontSize = 10.sp)
+                        Text(text = "No SubDL results", color = TextMuted, fontSize = 11.sp)
                     } else {
                         Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                             subDlResults.forEachIndexed { index, result ->
@@ -242,7 +270,7 @@ fun SubtitleSearchSheet(
                         modifier = Modifier.padding(bottom = 6.dp)
                     )
                     if (openSubsResults.isEmpty()) {
-                        Text(text = "No OpenSubtitles results", color = TextMuted, fontSize = 10.sp)
+                        Text(text = "No OpenSubtitles results", color = TextMuted, fontSize = 11.sp)
                     } else {
                         Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                             openSubsResults.forEachIndexed { index, result ->

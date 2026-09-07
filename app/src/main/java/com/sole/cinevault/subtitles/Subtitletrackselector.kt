@@ -76,6 +76,7 @@ fun SubtitleTrackSelectorSheet(
     onDeleteLocal: (File) -> Unit,
     onDeleteGenerated: (GeneratedSubtitleFile) -> Unit = {},
     onOpenFilePicker: () -> Unit,
+    onBack: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     // "Manage" in the Studio's Download list opens this same sheet with
     // delete icons already showing, instead of being a separate screen —
@@ -88,15 +89,66 @@ fun SubtitleTrackSelectorSheet(
         modifier = Modifier
             .width(popupWidth)
             .heightIn(max = popupMaxHeight)
-            .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.98f))
-            .padding(12.dp)
+            .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.84f))
+            .border(1.dp, AmberCore.copy(alpha = 0.20f), RoundedCornerShape(20.dp))
+            .padding(13.dp)
     ) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(text = "Subtitle Tracks", color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            if (onBack != null) {
+                Text(
+                    text = "‹",
+                    color = AmberCore,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(AmberCore.copy(alpha = 0.10f))
+                        .clickable { onBack?.invoke() }
+                        .padding(horizontal = 8.dp, vertical = 1.dp)
+                )
+                Spacer(modifier = Modifier.width(7.dp))
+            }
+            Text(
+                text = "SUBTITLE TRACKS",
+                color = AmberCore,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(50))
+                    .background(AmberCore.copy(alpha = 0.12f))
+                    .border(1.dp, AmberCore.copy(alpha = 0.28f), RoundedCornerShape(50))
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            )
+            Spacer(modifier = Modifier.width(7.dp))
             ManageToggleChip(active = manageMode, onClick = { manageMode = !manageMode })
             Spacer(modifier = Modifier.width(6.dp))
             IconCircleSmall(icon = Icons.Default.Close, onClick = onDismiss)
         }
+
+        val activeTrackLabel = when {
+            selectedKey == SubtitleTrackChoice.Off.key -> "Subtitles off"
+            downloadedTrack != null && selectedKey == downloadedTrack.key -> downloadedTrack.file.name
+            else -> localFiles.firstOrNull { selectedKey == "local:${it.absolutePath}" }?.name
+                ?: generatedFiles.firstOrNull { selectedKey == "generated:${it.fileName}" }?.fileName
+                ?: embeddedTracks.firstOrNull { selectedKey == it.key }?.let { "${friendlyLanguageDisplay(it.language)} · Embedded" }
+                ?: "No subtitle selected"
+        }
+        Text(
+            text = "ACTIVE  ·  $activeTrackLabel",
+            color = TextBright,
+            fontSize = 10.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(AmberCore.copy(alpha = 0.07f))
+                .border(1.dp, AmberCore.copy(alpha = 0.14f), RoundedCornerShape(10.dp))
+                .padding(horizontal = 10.dp, vertical = 7.dp)
+        )
         Spacer(modifier = Modifier.height(8.dp))
         HorizontalDivider(color = GlassBorderBottom)
         Spacer(modifier = Modifier.height(6.dp))
@@ -167,7 +219,7 @@ fun SubtitleTrackSelectorSheet(
             Spacer(modifier = Modifier.height(10.dp))
             TrackSectionLabel("Local files")
             if (localFiles.isEmpty()) {
-                Text(text = "No local subtitle files found nearby", color = TextMuted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                Text(text = "No local subtitle files found nearby", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
             } else {
                 localFiles.forEach { file ->
                     val choice = SubtitleTrackChoice.Local(file)
@@ -202,7 +254,7 @@ private fun ManageToggleChip(active: Boolean, onClick: () -> Unit) {
     ) {
         Icon(imageVector = Icons.Rounded.Delete, contentDescription = null, tint = if (active) AmberCore else TextMuted, modifier = Modifier.size(13.dp))
         Spacer(modifier = Modifier.width(5.dp))
-        Text(text = "Manage", color = if (active) AmberCore else TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+        Text(text = "Manage", color = if (active) AmberCore else TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -262,7 +314,7 @@ private fun TrackRow(
                 }
             }
             if (subtitle != null) {
-                Text(text = subtitle, color = TextMuted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(text = subtitle, color = TextMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         if (selected) {
