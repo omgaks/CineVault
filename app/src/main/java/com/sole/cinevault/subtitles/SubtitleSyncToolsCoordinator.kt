@@ -113,6 +113,7 @@ class SubtitleSyncToolsCoordinator(
         }
 
         val languageLabel = SubtitleLanguageRegistry.displayName(dualUi.secondaryLanguage)
+        dualUi.secondarySourceLabel = ""
         dualUi.statusText = "Finding $languageLabel secondary subtitle…"
 
         scope.launch {
@@ -194,6 +195,9 @@ class SubtitleSyncToolsCoordinator(
                     dualSecondaryColorHex,
                     dualUi.gapLines
                 )
+                if (!dualMergeContainsSecondary(mergedText)) {
+                    return@withContext null
+                }
                 try {
                     val uniqueName =
                         "cinevault_dual_${OpenSubtitlesClient.cleanMovieNamePublic(getCurrentVideoPath()).hashCode()}_$normalizedSecondary.srt"
@@ -206,13 +210,24 @@ class SubtitleSyncToolsCoordinator(
             }
 
             if (merged == null) {
-                dualUi.statusText = "Couldn't merge subtitles"
+                if (!sourceLabel.equals("AI", ignoreCase = true)) {
+                    val languageLabel =
+                        SubtitleLanguageRegistry.displayName(dualUi.secondaryLanguage)
+                    dualUi.statusText =
+                        "$languageLabel subtitle did not align — creating AI secondary…"
+                    dualUi.secondarySourceLabel = "AI"
+                    requestAiSecondary(dualUi.secondaryLanguage)
+                    return@launch
+                }
+
+                dualUi.statusText = "Couldn't build the AI secondary subtitle"
                 Toast.makeText(context, dualUi.statusText, Toast.LENGTH_LONG).show()
                 dualUi.enabled = false
                 return@launch
             }
 
             val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+            coreUi.subtitlesEnabled = true
             playSubtitle(merged, resumeAt, false)
             trackUi.originalUri = merged
             trackUi.appliedOffsetMs = (coreUi.syncOffset * 1000f).toLong()
@@ -228,6 +243,9 @@ class SubtitleSyncToolsCoordinator(
         dualUi.secondarySourceLabel = ""
         val primary = trackUi.primaryUri ?: return
         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+        coreUi.subtitlesEnabled = true
+        trackUi.originalUri = primary
+        trackUi.appliedOffsetMs = 0L
         playSubtitle(primary, resumeAt, true)
     }
 
