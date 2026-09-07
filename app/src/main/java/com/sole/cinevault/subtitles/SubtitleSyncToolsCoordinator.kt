@@ -107,71 +107,81 @@ class SubtitleSyncToolsCoordinator(
 
         val normalizedSecondary = SubtitleLanguageRegistry.normalize(dualUi.secondaryLanguage)
         if (trackUi.primaryLanguage != null && normalizedSecondary != null && trackUi.primaryLanguage == normalizedSecondary) {
-            Toast.makeText(context, "Secondary language can't be the same as the primary (${SubtitleLanguageRegistry.displayName(trackUi.primaryLanguage)}) — pick a different one", Toast.LENGTH_LONG).show()
+            Toast.makeText(
+                context,
+                "Secondary language can't be the same as the primary (${SubtitleLanguageRegistry.displayName(trackUi.primaryLanguage)}) — pick a different one",
+                Toast.LENGTH_LONG
+            ).show()
             dualUi.enabled = false
             return
         }
 
         val languageLabel = SubtitleLanguageRegistry.displayName(dualUi.secondaryLanguage)
         dualUi.secondarySourceLabel = ""
-        dualUi.statusText = "Finding $languageLabel secondary subtitle…"
+        dualUi.statusText = "Finding exact $languageLabel match…"
 
         scope.launch {
-            // 1) Prefer a previously downloaded real subtitle.
-            val cachedReal = withContext(Dispatchers.IO) {
-                OpenSubtitlesClient.findCachedSubtitle(
-                    context,
-                    getCurrentVideoPath(),
-                    listOf(dualUi.secondaryLanguage)
-                )
-            }
-            if (cachedReal != null) {
-                applyDualSecondaryUri(cachedReal.uri, "Downloaded")
-                return@launch
+            val videoPath = getCurrentVideoPath()
+
+            // Automatic Dual Subs must NOT trust a title-only cached/search
+            // result. Ambiguous titles (Avatar, Crash, Frozen, etc.) can
+            // return a perfectly valid subtitle for the wrong movie/release.
+            // First attempt an exact OpenSubtitles movie-hash match.
+            val movieHash = withContext(Dispatchers.IO) {
+                if (videoPath.startsWith("content://", ignoreCase = true)) {
+                    MovieHash.compute(context, Uri.parse(videoPath))
+                } else {
+                    MovieHash.compute(videoPath)
+                }
             }
 
-            // 2) Reuse a persistent AI translation from an earlier session.
+            if (movieHash != null) {
+                dualUi.statusText = "Checking exact $languageLabel movie match…"
+                val hashResult = OpenSubtitlesClient.searchByHash(
+                    movieHash,
+                    dualUi.secondaryLanguage
+                )
+                val exact = (hashResult as? SubtitleSearchListResult.Success)
+                    ?.results
+                    ?.firstOrNull { it.hashMatch }
+
+                if (exact != null) {
+                    dualUi.statusText = "Downloading exact $languageLabel subtitle…"
+                    val targetFile = OpenSubtitlesClient.subtitleCacheFile(
+                        context,
+                        videoPath,
+                        dualUi.secondaryLanguage,
+                        exact.provider
+                    )
+                    val result = OpenSubtitlesClient.downloadSubtitleToFile(
+                        targetFile,
+                        exact.fileId,
+                        dualUi.secondaryLanguage,
+                        exact.provider
+                    )
+                    if (result is SubtitleDownloadResult.Success) {
+                        applyDualSecondaryUri(result.uri, "Exact match")
+                        return@launch
+                    }
+                }
+            }
+
+            // Reuse an AI subtitle previously generated from this movie's
+            // active primary subtitle before translating again.
             val cachedAi = withContext(Dispatchers.IO) {
                 findCachedAiSecondary(dualUi.secondaryLanguage)
             }
             if (cachedAi != null) {
+                dualUi.statusText = "Using saved AI $languageLabel secondary…"
                 applyDualSecondaryUri(cachedAi, "AI")
                 return@launch
             }
 
-            // 3) Search for a genuine subtitle release.
-            dualUi.statusText = "Searching $languageLabel subtitles…"
-            val searchQuery = OpenSubtitlesClient.cleanMovieNamePublic(getCurrentVideoPath())
-            val searchResult = OpenSubtitlesClient.searchSubtitlesDetailed(
-                searchQuery,
-                language = dualUi.secondaryLanguage
-            )
-            val bestFileId =
-                (searchResult as? SubtitleSearchListResult.Success)?.results?.firstOrNull()?.fileId
-
-            if (bestFileId != null) {
-                dualUi.statusText = "Downloading $languageLabel subtitle…"
-                val targetFile = OpenSubtitlesClient.subtitleCacheFile(
-                    context,
-                    getCurrentVideoPath(),
-                    dualUi.secondaryLanguage
-                )
-                val downloadResult = OpenSubtitlesClient.downloadSubtitleToFile(
-                    targetFile,
-                    bestFileId,
-                    dualUi.secondaryLanguage
-                )
-                if (downloadResult is SubtitleDownloadResult.Success) {
-                    applyDualSecondaryUri(downloadResult.uri, "Downloaded")
-                    return@launch
-                }
-            }
-
-            // 4) Nothing suitable online: create the preferred secondary
-            // language from the primary subtitle with the existing ML Kit
-            // translation pipeline. Completion comes back through
-            // applyDualSecondaryUri().
-            dualUi.statusText = "Creating $languageLabel secondary with AI…"
+            // No provably-correct external subtitle: translate the PRIMARY
+            // subtitle instead of guessing from a title search. Since the
+            // primary already matches the movie, this keeps both content and
+            // cue timing tied to the actual file being watched.
+            dualUi.statusText = "Creating $languageLabel secondary from primary…"
             dualUi.secondarySourceLabel = "AI"
             requestAiSecondary(dualUi.secondaryLanguage)
         }
