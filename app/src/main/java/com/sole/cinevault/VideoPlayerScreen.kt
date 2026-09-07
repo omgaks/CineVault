@@ -2206,7 +2206,7 @@ fun VideoPlayerScreen(
             val containerPx = with(density) {
                 androidx.compose.ui.unit.IntSize(playerMaxWidth.roundToPx(), playerMaxHeight.roundToPx())
             }
-            val quickHudWidth = (playerMaxWidth * 0.30f).coerceIn(192.dp, 240.dp)
+            val quickHudWidth = (playerMaxWidth * 0.33f).coerceIn(211.dp, 264.dp)
             val quickHudOffsetX = calculatePlayerPopupOffsetX(
                 iconCenterX = subIconX,
                 popupWidth = quickHudWidth,
@@ -2254,8 +2254,11 @@ fun VideoPlayerScreen(
             // entirely, regardless of landscape vs portrait height.
             val studioSideMargin = if (playerMaxWidth < 700.dp) 10.dp else 18.dp
             val studioTopMargin = if (playerMaxHeight < 420.dp) 10.dp else 16.dp
-            val pillWidth = 220.dp
-            val listWindowWidth = if (playerMaxWidth < 700.dp) 220.dp else 250.dp
+            // Slice 14: Studio surfaces are ~10% larger and share one
+            // comfortable right-centre resting zone inside the measured
+            // player frame.
+            val pillWidth = 242.dp
+            val listWindowWidth = if (playerMaxWidth < 700.dp) 242.dp else 275.dp
 
             // Compact Studio surfaces always rest on the right side.  The
             // values are derived from the actual player frame instead of a
@@ -2264,14 +2267,17 @@ fun VideoPlayerScreen(
             val pillOffset = with(studioDensity) {
                 val xDp = (playerMaxWidth - pillWidth - studioSideMargin)
                     .coerceAtLeast(studioSideMargin)
-                val yDp = (playerMaxHeight - bottomDockPadding - playButton - 90.dp)
-                    .coerceIn(studioTopMargin, (playerMaxHeight - 72.dp).coerceAtLeast(studioTopMargin))
+                val yDp = (playerMaxHeight * 0.5f - 28.dp)
+                    .coerceIn(studioTopMargin, (playerMaxHeight - 62.dp).coerceAtLeast(studioTopMargin))
                 Offset(xDp.toPx(), yDp.toPx())
             }
             val windowOffset = with(studioDensity) {
                 val xDp = (playerMaxWidth - listWindowWidth - studioSideMargin)
                     .coerceAtLeast(studioSideMargin)
-                Offset(xDp.toPx(), studioTopMargin.toPx())
+                val estimatedWindowHeight = if (playerMaxHeight < 420.dp) 250.dp else 290.dp
+                val yDp = (playerMaxHeight * 0.5f - estimatedWindowHeight * 0.5f)
+                    .coerceAtLeast(studioTopMargin)
+                Offset(xDp.toPx(), yDp.toPx())
             }
 
             when (studioCategory) {

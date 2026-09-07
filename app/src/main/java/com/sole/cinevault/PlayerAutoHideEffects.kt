@@ -149,28 +149,10 @@ LaunchedEffect(showSrtBrowser) {
         }
     }
 
-    // Quick HUD, the Studio pill/category windows, and Dual Subs were
-    // added after this file — none of them had an auto-hide timer at
-    // all until now, which is the actual reason Quick HUD stayed open
-    // indefinitely. Same pattern as every other menu above: reset on
-    // studioUi.menuTouchKey (bumped by each control's own callbacks),
-    // close after a period of no interaction.
-    LaunchedEffect(showSubtitleDock, studioUi.menuTouchKey) {
-        if (showSubtitleDock) {
-            delay(10000)
-            onHideSubtitleDock()
-        }
-    }
-    LaunchedEffect(showSubtitleBloom, studioUi.menuTouchKey) {
-        if (showSubtitleBloom) {
-            delay(15000)
-            onHideSubtitleBloom()
-        }
-    }
-    LaunchedEffect(showDualSubsWindow, studioUi.menuTouchKey) {
-        if (showDualSubsWindow) {
-            delay(15000)
-            onHideDualSubsWindow()
-        }
-    }
+    // Subtitle floating surfaces are intentionally NOT auto-hidden.
+    // They are working tools, not transient notifications: a timer that
+    // closes them while the user is reading, dragging or adjusting a
+    // control makes the Studio feel broken. They close explicitly from
+    // the player surface/back actions instead.
+
 }
