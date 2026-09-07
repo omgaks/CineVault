@@ -58,7 +58,7 @@ fun QuickHud(
     onReset: () -> Unit,
     containerSize: IntSize,
     initialOffset: Offset,
-    windowWidth: androidx.compose.ui.unit.Dp = 240.dp,
+    windowWidth: androidx.compose.ui.unit.Dp = 264.dp,
     modifier: Modifier = Modifier
 ) {
     DraggableStudioWindow(
@@ -74,7 +74,7 @@ fun QuickHud(
                 .width(windowWidth)
                 .glassPanel(cornerRadius = 16.dp, fill = GlassSurfaceStrong.copy(alpha = 0.82f))
                 .border(1.dp, AmberCore.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
-                .padding(9.dp)
+                .padding(10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().then(dragHandleModifier),
@@ -84,13 +84,13 @@ fun QuickHud(
                     Icons.Rounded.DragHandle,
                     contentDescription = "Drag to move",
                     tint = TextFaint,
-                    modifier = Modifier.size(13.dp)
+                    modifier = Modifier.size(14.dp)
                 )
                 Spacer(modifier = Modifier.width(5.dp))
                 Text(
                     text = subtitleFileName ?: "No subtitle loaded",
                     color = TextBright,
-                    fontSize = 9.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -106,7 +106,7 @@ fun QuickHud(
             // fine drag — cramming that into the generic single-line
             // HudRow would either hide the buttons or crush the slider.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "Delay", color = TextMuted, fontSize = 8.sp, modifier = Modifier.weight(1f))
+                Text(text = "Delay", color = TextMuted, fontSize = 9.sp, modifier = Modifier.weight(1f))
                 HudValuePill(formatDelay(delaySeconds))
             }
             Spacer(modifier = Modifier.height(3.dp))
@@ -204,7 +204,7 @@ private fun HudValuePill(text: String) {
 @Composable
 private fun HudRow(label: String, valueText: String?, slider: @Composable () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(text = label, color = TextMuted, fontSize = 8.sp, modifier = Modifier.width(34.dp))
+        Text(text = label, color = TextMuted, fontSize = 9.sp, modifier = Modifier.width(34.dp))
         slider()
         if (valueText != null) {
             Spacer(modifier = Modifier.width(5.dp))

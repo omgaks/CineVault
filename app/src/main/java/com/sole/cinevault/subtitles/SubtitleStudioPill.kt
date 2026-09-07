@@ -98,13 +98,13 @@ fun SubtitleStudioPill(
                     text = category.label(),
                     color = if (active) AmberCore else TextMuted,
                     fontWeight = FontWeight.Medium,
-                    fontSize = 9.5.sp,
+                    fontSize = 11.5.sp,
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
                         .background(if (active) AmberCore.copy(alpha = 0.18f) else AmberCore.copy(alpha = 0.07f))
                         .border(1.dp, AmberCore.copy(alpha = if (active) 0.38f else 0.18f), RoundedCornerShape(50))
                         .clickable { onCategorySelected(category) }
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .padding(horizontal = 13.dp, vertical = 9.dp)
                 )
             }
         }
@@ -144,7 +144,7 @@ fun StudioListWindow(
     ) { dragHandleModifier ->
         Column(
             modifier = Modifier
-                .widthIn(min = 210.dp, max = 260.dp)
+                .widthIn(min = 232.dp, max = 286.dp)
                 .glassPanel(cornerRadius = 16.dp, fill = GlassSurfaceStrong.copy(alpha = 0.82f))
                 .border(1.dp, AmberCore.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
                 .padding(10.dp)
@@ -157,7 +157,7 @@ fun StudioListWindow(
                     Icons.Rounded.ChevronLeft,
                     contentDescription = "Back to Studio",
                     tint = TextMuted,
-                    modifier = Modifier.size(16.dp).clickable { onBack() }
+                    modifier = Modifier.size(18.dp).clickable { onBack() }
                 )
                 Text(
                     text = title.uppercase(),
@@ -191,21 +191,21 @@ fun StudioListWindow(
                         item.icon,
                         contentDescription = null,
                         tint = if (isOnToggle) AmberCore else TextMuted,
-                        modifier = Modifier.size(13.dp)
+                        modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = item.label,
                         color = if (isOnToggle) AmberCore else TextBright,
                         fontWeight = FontWeight.Medium,
-                        fontSize = 9.5.sp,
+                        fontSize = 10.5.sp,
                         modifier = Modifier.weight(1f)
                     )
                     if (item.toggledOn != null) {
                         Text(
                             text = if (item.toggledOn) "ON" else "OFF",
                             color = if (isOnToggle) Color(0xFF1A1206) else TextFaint,
-                            fontSize = 7.5.sp,
+                            fontSize = 8.5.sp,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
