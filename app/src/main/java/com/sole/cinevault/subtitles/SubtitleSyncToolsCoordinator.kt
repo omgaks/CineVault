@@ -39,11 +39,12 @@ class SubtitleSyncToolsCoordinator(
     private val driftUi: DriftCorrectionState,
     private val dualUi: DualSubtitleState,
     private val trackUi: SubtitleTrackSelectionState,
-    private val dualSecondaryColorHex: String,
+    private val getDualSecondaryColorHex: () -> String,
     private val getCurrentVideoPath: () -> String,
     private val playSubtitle: (subtitleUri: Uri?, resumePosition: Long, isOriginalSubtitle: Boolean) -> Unit,
     private val findCachedAiSecondary: (String) -> Uri?,
-    private val requestAiSecondary: (String) -> Unit
+    private val requestAiSecondary: (String) -> Unit,
+    private val clearPendingAiSecondary: () -> Unit
 ) {
     // ── Dialogue Sync Tap ─────────────────────────────────────────────
     fun armDialogueSync() {
@@ -202,7 +203,7 @@ class SubtitleSyncToolsCoordinator(
                 val mergedText = mergeDualSubtitles(
                     primaryText,
                     secondaryText,
-                    dualSecondaryColorHex,
+                    getDualSecondaryColorHex(),
                     dualUi.gapLines
                 )
                 if (!dualMergeContainsSecondary(mergedText)) {
@@ -248,6 +249,10 @@ class SubtitleSyncToolsCoordinator(
     }
 
     fun disableDualSubtitles() {
+        // Slice 25: cancelling Dual Subs also cancels any pending AI-secondary
+        // request here, so the player wrapper no longer owns one piece of the
+        // dual-subtitle lifecycle.
+        clearPendingAiSecondary()
         dualUi.enabled = false
         dualUi.statusText = ""
         dualUi.secondarySourceLabel = ""
