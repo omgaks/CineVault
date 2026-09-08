@@ -1,5 +1,8 @@
 package com.sole.cinevault
 
+import com.sole.cinevault.library.VideoFile
+import com.sole.cinevault.library.VideoWithMetadata
+
 /**
  * Slice 27: owns the decision and state transition at the end of the
  * next-episode countdown.
@@ -10,13 +13,13 @@ package com.sole.cinevault
  * navigation/state mutation.
  */
 class NextEpisodeCoordinator(
-    private val getPendingNextEpisode: () -> EpisodePlaybackItem?,
+    private val getPendingNextEpisode: () -> VideoWithMetadata?,
     private val getShowNextEpisodeOverlay: () -> Boolean,
     private val setShowNextEpisodeOverlay: (Boolean) -> Unit,
-    private val setPendingNextEpisode: (EpisodePlaybackItem?) -> Unit,
+    private val setPendingNextEpisode: (VideoWithMetadata?) -> Unit,
     private val setCurrentMediaType: (String) -> Unit,
     private val setCurrentVideo: (VideoFile) -> Unit,
-    private val onPlayNext: (EpisodePlaybackItem) -> Unit,
+    private val onPlayNext: (VideoWithMetadata) -> Unit,
 ) {
     fun shouldRunCountdown(): Boolean =
         getShowNextEpisodeOverlay() && getPendingNextEpisode() != null
