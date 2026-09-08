@@ -128,7 +128,6 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
-import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.CaptionStyleCompat
@@ -474,40 +473,41 @@ fun VideoPlayerScreen(
     // playCurrentVideoWithSubtitle exists — its detach/restore callbacks
     // need to call it directly.
 
+    // Slice 21: playback-speed and sleep-timer session actions now live
+    // outside VideoPlayerScreen. This keeps the composable responsible for
+    // displaying state while the coordinator owns the mutations, haptics,
+    // player calls and user feedback for these two small session features.
+    val playerSessionActionsCoordinator = remember(exoPlayer) {
+        PlayerSessionActionsCoordinator(
+            context = context,
+            exoPlayer = exoPlayer,
+            performSelectionHaptic = {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            },
+            setPlaybackSpeedState = { playbackSpeed = it },
+            setSleepTimerMinutes = { sleepTimerMinutes = it },
+            getSleepTimerActive = { sleepTimerActive },
+            setSleepTimerActive = { sleepTimerActive = it },
+            getSleepTimerRemainingMs = { sleepTimerRemainingMs },
+            setSleepTimerRemainingMs = { sleepTimerRemainingMs = it },
+            closeSpeedMenu = { showSpeedMenu = false },
+            closeSleepMenu = { showSleepMenu = false },
+            showControls = { showControls = true },
+        )
+    }
+
     LaunchedEffect(sleepTimerActive, sleepTimerRemainingMs) {
-        if (playerShouldTickSleepTimer(sleepTimerActive, sleepTimerRemainingMs)) {
+        if (playerSessionActionsCoordinator.shouldTickSleepTimer()) {
             delay(playerSleepTimerTickIntervalMs())
-            sleepTimerRemainingMs = playerSleepTimerRemainingAfterTick(sleepTimerRemainingMs)
-            if (playerSleepTimerHasExpired(sleepTimerRemainingMs)) {
-                sleepTimerActive = false
-                sleepTimerRemainingMs = 0
-                exoPlayer.pause()
-                Toast.makeText(context, "Sleep timer — playback paused", Toast.LENGTH_SHORT).show()
-            }
+            playerSessionActionsCoordinator.tickSleepTimer()
         }
     }
 
-    fun setPlaybackSpeed(speed: Float) {
-        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        playbackSpeed = speed
-        exoPlayer.playbackParameters = PlaybackParameters(speed)
-        showSpeedMenu = false; showControls = true
-        Toast.makeText(context, "${speed}x speed", Toast.LENGTH_SHORT).show()
-    }
+    fun setPlaybackSpeed(speed: Float) =
+        playerSessionActionsCoordinator.setPlaybackSpeed(speed)
 
-    fun setSleepTimer(minutes: Int) {
-        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        sleepTimerMinutes = minutes
-        if (playerSleepTimerIsOff(minutes)) {
-            sleepTimerActive = false; sleepTimerRemainingMs = 0
-            Toast.makeText(context, "Sleep timer off", Toast.LENGTH_SHORT).show()
-        } else {
-            sleepTimerRemainingMs = playerSleepTimerDurationMs(minutes)
-            sleepTimerActive = true
-            Toast.makeText(context, "Sleep timer: ${minutes}min", Toast.LENGTH_SHORT).show()
-        }
-        showSleepMenu = false; showControls = true
-    }
+    fun setSleepTimer(minutes: Int) =
+        playerSessionActionsCoordinator.setSleepTimer(minutes)
 
     // FIX: these three functions used to be plain local functions defined
     // right here — now orchestration glue calling into
