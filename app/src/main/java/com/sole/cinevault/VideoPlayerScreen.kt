@@ -1012,7 +1012,7 @@ fun VideoPlayerScreen(
             driftUi = driftUi,
             dualUi = dualUi,
             trackUi = trackUi,
-            dualSecondaryColorHex = dualSecondaryColorHex,
+            getDualSecondaryColorHex = { dualSecondaryColorHex },
             getCurrentVideoPath = { currentVideo.path },
             playSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle ->
                 playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
