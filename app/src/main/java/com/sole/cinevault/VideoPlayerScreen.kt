@@ -1261,17 +1261,30 @@ fun VideoPlayerScreen(
         }
     }
 
+    // Slice 27: next-episode countdown completion/navigation is now owned
+    // by a small coordinator. Compose still owns the cancellable timer effect.
+    val nextEpisodeCoordinator = remember {
+        NextEpisodeCoordinator(
+            getPendingNextEpisode = { pendingNextEpisode },
+            getShowNextEpisodeOverlay = { showNextEpisodeOverlay },
+            setShowNextEpisodeOverlay = { showNextEpisodeOverlay = it },
+            setPendingNextEpisode = { pendingNextEpisode = it },
+            setCurrentMediaType = { currentMediaType = it },
+            setCurrentVideo = { currentVideo = it },
+            onPlayNext = onPlayNext,
+        )
+    }
+
     LaunchedEffect(showNextEpisodeOverlay, pendingNextEpisode) {
-        if (showNextEpisodeOverlay && pendingNextEpisode != null) {
+        if (nextEpisodeCoordinator.shouldRunCountdown()) {
             var count = 15
             while (count > 0) {
                 nextEpisodeCountdown = count
                 delay(playerNextEpisodeCountdownIntervalMs())
-                if (!showNextEpisodeOverlay || pendingNextEpisode == null) return@LaunchedEffect
+                if (!nextEpisodeCoordinator.shouldRunCountdown()) return@LaunchedEffect
                 if (isPlaying || isVideoEnded) count--
             }
-            val next = pendingNextEpisode
-            if (next != null) { showNextEpisodeOverlay = false; pendingNextEpisode = null; currentMediaType = next.type; currentVideo = next.video; onPlayNext(next) }
+            nextEpisodeCoordinator.playPendingNextEpisode()
         }
     }
 
