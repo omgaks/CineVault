@@ -1411,28 +1411,25 @@ fun VideoPlayerScreen(
             )
         }
 
-        // Extracted so both the old quick menu and Quick HUD's new Reset
-        // row call the exact same logic instead of two copies drifting
-        // apart. Declared here (not further up) because it needs
-        // displayProfileType/isLandscape, both scoped to this
-        // BoxWithConstraints — same reason Quick HUD's own render call is
-        // down here too.
-        fun resetSubtitleSettings() {
-            clearSubtitleProfileSettings(context, displayProfileType, isLandscape)
-            val defaults = defaultSubtitleProfileSettings(displayProfileType, isLandscape)
-            appearanceUi.textSizeSp = defaults.fontSizeSp
-            appearanceUi.bottomPadding = defaults.bottomPadding
-            appearanceUi.preset = defaults.presetName
-            appearanceUi.appearance = SubtitleAppearance(defaults.foregroundColor, defaults.edgeType, defaults.edgeColor, defaults.backgroundColor)
-            appearanceUi.preserveOriginalStyling = false
-            coreUi.syncOffset = 0f
-            trackUi.appliedOffsetMs = 0L
-            driftUi.scale = 1f; driftUi.appliedScale = 1f
-            driftUi.pointA = null; driftUi.pointB = null
-            AudioSyncHolder.offsetUs = 0L; audioSyncMs = 0
-            Toast.makeText(context, "Subtitle settings reset for ${displayProfileType.label}", Toast.LENGTH_SHORT).show()
-            showControls = true; studioUi.menuTouchKey++
-        }
+        // Slice 23: the complete subtitle reset operation now lives outside
+        // VideoPlayerScreen. This keeps the player composable from directly
+        // coordinating appearance, subtitle sync, drift and audio-sync reset
+        // state in one local function.
+        val subtitleResetCoordinator = SubtitleResetCoordinator(
+            context = context,
+            displayProfileType = displayProfileType,
+            isLandscape = isLandscape,
+            appearanceUi = appearanceUi,
+            coreUi = coreUi,
+            trackUi = trackUi,
+            driftUi = driftUi,
+            setAudioSyncMs = { audioSyncMs = it },
+            setShowControls = { showControls = it },
+            incrementMenuTouchKey = { studioUi.menuTouchKey++ },
+        )
+
+        fun resetSubtitleSettings() =
+            subtitleResetCoordinator.reset()
 
         val popupDimensions = calculatePlayerPopupDimensions(
             maxWidth = maxWidth,
