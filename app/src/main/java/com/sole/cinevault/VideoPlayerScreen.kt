@@ -223,56 +223,27 @@ fun VideoPlayerScreen(
     var trackSelectorManageMode by remember { mutableStateOf(false) }
     var activeDockItem by remember { mutableStateOf<com.sole.cinevault.subtitles.SubtitleDockItem?>(null) }
 
-    fun onDockItemTapped(item: com.sole.cinevault.subtitles.SubtitleDockItem) {
-        activeDockItem = item
-        showSubtitleDock = false
-        when (item) {
-            // Legacy dock destinations now route into the same standalone
-            // destinations as the new Sub Studio. Nothing re-opens the old
-            // 8-tile SubtitleStudioSheet anymore.
-            com.sole.cinevault.subtitles.SubtitleDockItem.TRACK -> {
-                trackSelectorManageMode = false
-                trackUi.showSelector = true
-            }
-            com.sole.cinevault.subtitles.SubtitleDockItem.SYNC -> {
-                showSubtitleBloom = true
-                studioCategory = com.sole.cinevault.subtitles.StudioCategory.POWER_TOOLS
-            }
-            com.sole.cinevault.subtitles.SubtitleDockItem.STYLE -> {
-                coreUi.showAppearanceStudio = true
-            }
-            com.sole.cinevault.subtitles.SubtitleDockItem.SUPER_SUBS -> {
-                searchUi.showSearch = true
-            }
-        }
-    }
+    // Slice 22: Sub Studio navigation is now routed through one small
+    // coordinator. The composable still owns the actual visibility state;
+    // the coordinator only decides which standalone destination each dock
+    // or category tap should open.
+    val subtitleStudioNavigation = SubtitleStudioNavigationCoordinator(
+        setActiveDockItem = { activeDockItem = it },
+        setShowSubtitleDock = { showSubtitleDock = it },
+        setTrackSelectorManageMode = { trackSelectorManageMode = it },
+        setShowTrackSelector = { trackUi.showSelector = it },
+        setShowSubtitleBloom = { showSubtitleBloom = it },
+        setStudioCategory = { studioCategory = it },
+        setShowAppearanceStudio = { coreUi.showAppearanceStudio = it },
+        setShowSubtitleSearch = { searchUi.showSearch = it },
+        setShowSubtitleBehaviourWindow = { showSubtitleBehaviourWindow = it },
+    )
 
-    fun onStudioCategoryTapped(category: com.sole.cinevault.subtitles.StudioCategory) {
-        studioCategory = category
-        when (category) {
-            // Style already has a standalone appearance window. Route the
-            // long-press Studio shortcut directly there instead of bouncing
-            // through SubtitleStudioSheet's 8-tile grid.
-            com.sole.cinevault.subtitles.StudioCategory.STYLE -> {
-                coreUi.showAppearanceStudio = true
-                showSubtitleBloom = false
-                studioCategory = null
-            }
-            // Behaviour/settings now gets its own standalone draggable
-            // window below. This removes the final functional dependency on
-            // the old 8-tile SubtitleStudioSheet.
-            com.sole.cinevault.subtitles.StudioCategory.SETTINGS -> {
-                showSubtitleBehaviourWindow = true
-                showSubtitleBloom = false
-                studioCategory = null
-            }
-            com.sole.cinevault.subtitles.StudioCategory.DOWNLOAD,
-            com.sole.cinevault.subtitles.StudioCategory.POWER_TOOLS -> {
-                // Handled by the list window itself opening below —
-                // studioCategory being non-null is what shows it.
-            }
-        }
-    }
+    fun onDockItemTapped(item: SubtitleDockItem) =
+        subtitleStudioNavigation.onDockItemTapped(item)
+
+    fun onStudioCategoryTapped(category: StudioCategory) =
+        subtitleStudioNavigation.onStudioCategoryTapped(category)
     var autoSyncStatus by remember { mutableStateOf<AutoSyncStatus>(AutoSyncStatus.Idle) }
     var autoSyncSpeechTimeline by remember { mutableStateOf<FloatArray?>(null) }
     val autoSubtitleFetch = remember { AutoSubtitleFetchState() }
@@ -418,21 +389,17 @@ fun VideoPlayerScreen(
     fun closeAllMenus() {
         showAudioSelector = false
         coreUi.showSettings = false
-        trackUi.showSelector = false
-        searchUi.showSearch = false
         driftUi.showDialog = false
-        coreUi.showAppearanceStudio = false
         showSpeedMenu = false
         showSleepMenu = false
         showSrtBrowser = false
-        searchUi.showFallback = false
-        searchUi.showEmbeddedBrowser = false
-        searchUi.pendingImportCandidates = null
-        showSubtitleDock = false
-        showSubtitleBloom = false
-        studioCategory = null
-        showDualSubsWindow = false
-        showSubtitleBehaviourWindow = false
+
+        subtitleStudioNavigation.closeSubtitleSurfaces(
+            clearPendingImportCandidates = { searchUi.pendingImportCandidates = null },
+            setShowFallback = { searchUi.showFallback = it },
+            setShowEmbeddedBrowser = { searchUi.showEmbeddedBrowser = it },
+            setShowDualSubsWindow = { showDualSubsWindow = it },
+        )
     }
 
     var pendingSrtUri by remember { mutableStateOf<Uri?>(null) }
