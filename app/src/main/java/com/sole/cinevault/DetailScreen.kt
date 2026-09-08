@@ -1,6 +1,7 @@
 package com.sole.cinevault
 
 import com.sole.cinevault.metadata.*
+import com.sole.cinevault.metadata.artworkstudio.*
 import com.sole.cinevault.library.*
 
 import android.content.Context
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.rounded.Audiotrack
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Collections
 import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.Button
@@ -106,6 +108,7 @@ fun DetailScreen(
     // or not at all (e.g. "Akira 30th Anniversary" before the filename
     // cleaner handled edition tags). See RematchDialog.kt / RematchViewModel.kt.
     var showRematch by remember { mutableStateOf(false) }
+    var showMetadataStudio by remember { mutableStateOf(false) }
 
     // Cast list — keyed consistently on item.tmdbId/item.type now (the
     // original had remember() keyed on item.video.path but the effect keyed
@@ -361,6 +364,30 @@ fun DetailScreen(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Fix Match", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
                     }
+                    val metadataStudioGlow = rememberPillGlowAlpha()
+                    Button(
+                        onClick = { showMetadataStudio = true },
+                        shape = RoundedCornerShape(40.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = GlassSurface,
+                            contentColor = TextBright
+                        ),
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 9.dp),
+                        modifier = Modifier.strongPillGlow(
+                            glow = metadataStudioGlow,
+                            cornerRadius = 40.dp,
+                            glowRadius = 40.dp
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Collections,
+                            contentDescription = null,
+                            tint = AmberCore,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Metadata Studio", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -392,6 +419,17 @@ fun DetailScreen(
         // Back button — glass circle
         Box(modifier = Modifier.align(Alignment.TopStart).padding(14.dp).size(42.dp).clip(CircleShape).background(GlassSurfaceStrong).clickable { onBack() }, contentAlignment = Alignment.Center) {
             Icon(imageVector = Icons.Rounded.ArrowBack, contentDescription = "Back", tint = TextBright, modifier = Modifier.size(22.dp))
+        }
+
+        if (showMetadataStudio) {
+            ArtworkStudioDialog(
+                items = listOf(item),
+                initialTool = ArtworkStudioTool.OVERVIEW,
+                onDismiss = { showMetadataStudio = false },
+                onApplied = { updatedItems ->
+                    updatedItems.firstOrNull()?.let(onMetadataUpdated)
+                }
+            )
         }
 
         if (showRematch) {

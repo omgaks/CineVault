@@ -369,6 +369,12 @@ sealed class Destination {
     data class RestrictedFolderPage(val folderId: String, val folderName: String, val lastPlayedVideoPath: String? = null) : Destination()
 }
 
+private fun validLibraryVideoEntry(item: VideoWithMetadata): Boolean =
+    runCatching { item.video.path.isNotBlank() }.getOrDefault(false)
+
+private fun sanitizeLibraryVideos(items: List<VideoWithMetadata>): List<VideoWithMetadata> =
+    items.filter(::validLibraryVideoEntry)
+
 @Composable
 fun CineVaultApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -406,7 +412,7 @@ fun CineVaultApp() {
 
     suspend fun reloadAfterSecretChange() {
         val cached = loadLibraryCache(context)
-        if (cached != null) libraryVideos = cached.videos
+        if (cached != null) libraryVideos = sanitizeLibraryVideos(cached.videos)
     }
 
     // FIX: loadLibraryCache() was previously called directly inside this
@@ -421,7 +427,7 @@ fun CineVaultApp() {
     LaunchedEffect(Unit) {
         val cached = withContext(Dispatchers.IO) { loadLibraryCache(context) }
         if (cached != null && cached.videos.isNotEmpty()) {
-            libraryVideos = cached.videos
+            libraryVideos = sanitizeLibraryVideos(cached.videos)
         }
     }
 
@@ -439,7 +445,8 @@ fun CineVaultApp() {
     val secretVideoPaths = loadSecretVideoPaths(context)
     val secretFolderPaths = loadSecretFolderPaths(context)
     val homeVisibleVideos = libraryVideos.filter { item ->
-        !secretVideoPaths.contains(item.video.path) &&
+        val videoPath = runCatching { item.video.path }.getOrNull() ?: return@filter false
+        !secretVideoPaths.contains(videoPath) &&
             !videoIsInsideSecretFolder(item, secretFolderPaths) &&
             !isRestrictedFolderItem(item)
     }
@@ -527,8 +534,10 @@ fun CineVaultApp() {
                             // Patch the in-memory library so Library/Home/Search
                             // rows also show the corrected title/poster immediately,
                             // not just after the next full rescan.
-                            libraryVideos = libraryVideos.map { v ->
-                                if (v.video.path == updated.video.path) updated else v
+                            libraryVideos = libraryVideos.mapNotNull { v ->
+                                val path = runCatching { v.video.path }.getOrNull()
+                                    ?: return@mapNotNull null
+                                if (path == updated.video.path) updated else v
                             }
                         }
                     )
@@ -626,7 +635,7 @@ fun CineVaultApp() {
                         1 -> LocalVideoLibraryScreen(
                             videos = libraryVideos,
                             onVideosLoaded = { loadedVideos ->
-                                libraryVideos = loadedVideos
+                                libraryVideos = sanitizeLibraryVideos(loadedVideos)
                                 // FIX: saveLibraryCache is now suspend
                                 // (see PlaybackMemory.kt) — onVideosLoaded
                                 // itself is a plain non-suspend callback
@@ -635,7 +644,7 @@ fun CineVaultApp() {
                                 // caller, so this specific call needs its
                                 // own launch rather than relying on
                                 // whatever context invoked the lambda.
-                                scope.launch { saveLibraryCache(context = context, videos = loadedVideos) }
+                                scope.launch { saveLibraryCache(context = context, videos = sanitizeLibraryVideos(loadedVideos)) }
                             },
                             onItemClick = { item -> push(Destination.Detail(item)) },
                             onPlayClick = { item -> push(Destination.Player(item.video, item.type, libraryVideos)) },
@@ -658,8 +667,8 @@ fun CineVaultApp() {
                             // Home actually populates libraryVideos instead
                             // of just navigating to an empty Library screen.
                             onVideosLoaded = { loadedVideos ->
-                                libraryVideos = loadedVideos
-                                scope.launch { saveLibraryCache(context = context, videos = loadedVideos) }
+                                libraryVideos = sanitizeLibraryVideos(loadedVideos)
+                                scope.launch { saveLibraryCache(context = context, videos = sanitizeLibraryVideos(loadedVideos)) }
                             }
                         )
                     }
