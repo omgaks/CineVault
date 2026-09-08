@@ -1,7 +1,6 @@
 package com.sole.cinevault
 
 import com.sole.cinevault.library.VideoFile
-import com.sole.cinevault.library.VideoWithMetadata
 
 /**
  * Slice 27: owns the decision and state transition at the end of the
