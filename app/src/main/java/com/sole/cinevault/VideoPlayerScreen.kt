@@ -1350,9 +1350,10 @@ fun VideoPlayerScreen(
 
         // Pad reference: Tracks ~20% broader/taller, Style ~28% broader and
         // ~22% taller. coerceAtMost keeps the same design usable on phones.
-        val trackStudioWidth = (trackSelectorWidth * 1.20f)
+        val trackStudioWidth = (trackSelectorWidth * if (maxWidth >= 900.dp) 1.38f else 1.24f)
+            .coerceAtLeast(if (maxWidth >= 900.dp) 330.dp else 270.dp)
             .coerceAtMost((visibleMovieWidth - studioFrameInset * 2).coerceAtLeast(250.dp))
-        val trackStudioMaxHeight = (trackSelectorMaxHeight * 1.18f)
+        val trackStudioMaxHeight = (trackSelectorMaxHeight * if (maxHeight >= 600.dp) 1.30f else 1.20f)
             .coerceAtMost((maxHeight - 24.dp).coerceAtLeast(250.dp))
         val styleStudioWidth = (trackSelectorWidth * 1.28f)
             .coerceAtMost((visibleMovieWidth - studioFrameInset * 2).coerceAtLeast(270.dp))

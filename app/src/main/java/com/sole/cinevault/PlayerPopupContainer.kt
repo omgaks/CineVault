@@ -51,7 +51,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.horizontalScroll
@@ -113,9 +112,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -170,7 +167,6 @@ fun DraggableFloatingPopup(
     content: @Composable () -> Unit
 ) {
     val density = LocalDensity.current
-    val haptics = LocalHapticFeedback.current
     var dragOffsetX by remember { mutableStateOf(0f) }
     var dragOffsetY by remember { mutableStateOf(0f) }
     val maxOffsetXPx = with(density) { ((containerWidth - popupWidth) / 2).coerceAtLeast(0.dp).toPx() }
@@ -190,18 +186,17 @@ fun DraggableFloatingPopup(
                     onUserInteraction()
                 }
             }
-            // Long-press ANYWHERE in the popup (not just a header, since
-            // this wrapper has no header of its own to isolate) starts a
-            // drag. Quick taps/scrolls inside the shared composable's own
-            // content resolve well before the long-press timeout elapses,
-            // so this doesn't compete with normal clicking or scrolling.
+            // Slice 17: immediate "grab and move" behaviour, matching the
+            // Sub Studio pill. No hold delay. A normal tap still goes to the
+            // child control; once the pointer crosses drag slop the popup
+            // follows the finger immediately.
             .pointerInput(maxOffsetXPx, maxOffsetYPx) {
-                detectDragGesturesAfterLongPress(
-                    onDragStart = { haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
-                ) { change, dragAmount ->
+                detectDragGestures { change, dragAmount ->
                     change.consume()
-                    dragOffsetX = (dragOffsetX + dragAmount.x).coerceIn(-maxOffsetXPx, maxOffsetXPx)
-                    dragOffsetY = (dragOffsetY + dragAmount.y).coerceIn(-maxOffsetYPx, maxOffsetYPx)
+                    dragOffsetX =
+                        (dragOffsetX + dragAmount.x).coerceIn(-maxOffsetXPx, maxOffsetXPx)
+                    dragOffsetY =
+                        (dragOffsetY + dragAmount.y).coerceIn(-maxOffsetYPx, maxOffsetYPx)
                 }
             }
     ) {
