@@ -17,6 +17,64 @@ sealed class SubtitleTranslationStatus {
     data class Failed(val reason: String) : SubtitleTranslationStatus()
 }
 
+
+/**
+ * Slice 20: shared glue for generated subtitle sources.
+ *
+ * VideoPlayerScreen previously owned two separate responsibilities here:
+ * resolving the currently selected subtitle into a translation-readable source,
+ * and mutating all track-selection fields when Speech-to-Subs / AI Translation /
+ * the generated library produced a new subtitle. Keeping those mutations here
+ * makes every generated-subtitle path use the same application behavior.
+ */
+class GeneratedSubtitleOrchestrator(
+    private val getResumePosition: () -> Long,
+    private val getPrimaryUri: () -> Uri?,
+    private val getOriginalUri: () -> Uri?,
+    private val getSelectedKey: () -> String?,
+    private val getSelectedLabel: () -> String,
+    private val getSelectedSource: () -> String,
+    private val getPrimaryLanguage: () -> String?,
+    private val setSubtitlesEnabled: (Boolean) -> Unit,
+    private val setPrimaryUri: (Uri) -> Unit,
+    private val setOriginalUri: (Uri) -> Unit,
+    private val setPrimaryLanguage: (String?) -> Unit,
+    private val setSelectedKey: (String) -> Unit,
+    private val setSelectedLabel: (String) -> Unit,
+    private val setSelectedSource: (String) -> Unit,
+    private val playWithSubtitle: (Uri, Long) -> Unit,
+) {
+    fun resolveActiveSubtitle(): SubtitleSourceResolver.Resolved? =
+        SubtitleSourceResolver.resolve(
+            SubtitleSourceResolver.Snapshot(
+                primaryUri = getPrimaryUri(),
+                originalUri = getOriginalUri(),
+                selectedKey = getSelectedKey(),
+                selectedLabel = getSelectedLabel(),
+                selectedSource = getSelectedSource(),
+                primaryLanguage = getPrimaryLanguage(),
+            )
+        )
+
+    fun apply(
+        file: GeneratedSubtitleFile,
+        language: String?,
+        sourceLabel: String,
+    ) {
+        val resumeAt = getResumePosition()
+
+        setSubtitlesEnabled(true)
+        setPrimaryUri(file.uri)
+        setOriginalUri(file.uri)
+        setPrimaryLanguage(language)
+        setSelectedKey("local:${file.uri.path ?: file.fileName}")
+        setSelectedLabel(file.label)
+        setSelectedSource(sourceLabel)
+
+        playWithSubtitle(file.uri, resumeAt)
+    }
+}
+
 class SubtitleTranslationCoordinator(
     private val context: Context,
     private val scope: CoroutineScope,
