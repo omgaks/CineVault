@@ -13,12 +13,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
@@ -35,9 +32,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -73,12 +69,17 @@ fun SubtitleTranslationPanel(
     val allLanguages = SubtitleTranslationEngine.commonTargetLanguages
     val favorites = allLanguages.filter { it.mlKitCode in favoriteCodes }
     val others = allLanguages.filterNot { it.mlKitCode in favoriteCodes }
+    val scrollState = rememberScrollState()
 
+    // One vertical scroll owner for the ENTIRE window. Generated files,
+    // favorites and languages are normal rows inside it — no nested
+    // LazyVerticalGrid fighting for the tiny remaining viewport.
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .glassPanel(cornerRadius = 20.dp, fill = GlassSurfaceStrong.copy(alpha = 0.82f))
-            .border(1.dp, AmberCore.copy(alpha = 0.18f), RoundedCornerShape(20.dp))
+            .border(1.dp, AmberCore.copy(alpha = 0.20f), RoundedCornerShape(20.dp))
+            .verticalScroll(scrollState)
             .padding(12.dp)
     ) {
         Row(
@@ -88,14 +89,14 @@ fun SubtitleTranslationPanel(
             Text(
                 "AI TRANSLATION",
                 color = AmberCore,
-                fontSize = 11.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(50))
                     .background(AmberCore.copy(alpha = 0.12f))
-                    .border(1.dp, AmberCore.copy(alpha = 0.28f), RoundedCornerShape(50))
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                    .border(1.dp, AmberCore.copy(alpha = 0.30f), RoundedCornerShape(50))
+                    .padding(horizontal = 11.dp, vertical = 6.dp),
             )
             IconButton(onClick = onDismiss, modifier = Modifier.size(34.dp)) {
                 Icon(Icons.Rounded.Close, "Close", tint = TextMuted)
@@ -103,180 +104,160 @@ fun SubtitleTranslationPanel(
         }
 
         Text(
-            activeSource?.let {
-                "Active: ${it.label} • ${it.source}"
-            } ?: "Load a Subtitle Studio download or local/generated SRT first.",
+            activeSource?.let { "Active: ${it.label} • ${it.source}" }
+                ?: "Load a Subtitle Studio download or local/generated SRT first.",
             color = if (activeSource != null) TextBright else AmberCore,
-            modifier = Modifier.padding(top = 6.dp),
+            fontSize = 11.5.sp,
+            modifier = Modifier.padding(top = 7.dp),
         )
 
         Text(
             "Whisper download is not required for translation.",
             color = TextMuted,
+            fontSize = 10.5.sp,
             modifier = Modifier.padding(top = 3.dp),
         )
-
-        if (generatedFiles.isNotEmpty()) {
-            Text(
-                "GENERATED / TRANSLATED FILES",
-                color = AmberCore,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .padding(top = 10.dp, bottom = 6.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(AmberCore.copy(alpha = 0.10f))
-                    .border(1.dp, AmberCore.copy(alpha = 0.24f), RoundedCornerShape(50))
-                    .padding(horizontal = 9.dp, vertical = 4.dp),
-            )
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                items(generatedFiles, key = { it.fileName }) { file ->
-                    val selected = activeSubtitleUri?.toString() == file.uri.toString()
-                    OutlinedButton(
-                        onClick = { onLoadGenerated(file) },
-                        enabled = !busy,
-                    ) {
-                        if (selected) {
-                            Icon(Icons.Rounded.Check, null, modifier = Modifier.size(15.dp))
-                            Spacer(Modifier.width(5.dp))
-                        }
-                        Text(
-                            if (file.cueCount >= 0) "${file.label} • ${file.cueCount}" else file.label,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-        }
 
         when (status) {
             is SubtitleTranslationStatus.Translating -> {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
                 ) {
-                    Text(status.phase, color = TextBright, modifier = Modifier.weight(1f))
-                    Text("${status.percent}%", color = TextMuted)
+                    Text(status.phase, color = TextBright, fontSize = 10.5.sp, modifier = Modifier.weight(1f))
+                    Text("${status.percent}%", color = TextMuted, fontSize = 10.5.sp)
                 }
                 LinearProgressIndicator(
                     progress = { status.percent.coerceIn(0, 100) / 100f },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 6.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 5.dp),
                 )
-                OutlinedButton(onClick = onStop, modifier = Modifier.padding(top = 8.dp)) {
-                    Text("Stop translation")
+                OutlinedButton(onClick = onStop, modifier = Modifier.padding(top = 6.dp)) {
+                    Text("Stop translation", fontSize = 10.5.sp)
                 }
             }
-
             is SubtitleTranslationStatus.Ready ->
                 Text(
                     "Translation ready • ${status.cueCount} cues",
                     color = TextBright,
-                    modifier = Modifier.padding(top = 10.dp),
+                    fontSize = 10.5.sp,
+                    modifier = Modifier.padding(top = 8.dp),
                 )
-
             is SubtitleTranslationStatus.Failed ->
                 Text(
                     status.reason,
                     color = AmberCore,
-                    modifier = Modifier.padding(top = 10.dp),
+                    fontSize = 10.5.sp,
+                    modifier = Modifier.padding(top = 8.dp),
                 )
-
             SubtitleTranslationStatus.Idle -> Unit
         }
 
-        if (favorites.isNotEmpty()) {
-            Text(
-                "FAVORITES",
-                color = AmberCore,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .padding(top = 10.dp, bottom = 5.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(AmberCore.copy(alpha = 0.10f))
-                    .border(1.dp, AmberCore.copy(alpha = 0.24f), RoundedCornerShape(50))
-                    .padding(horizontal = 9.dp, vertical = 4.dp),
-            )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(favorites, key = { it.mlKitCode }) { language ->
-                    OutlinedButton(
-                        onClick = { onTranslate(language) },
-                        enabled = !busy && activeSource != null,
-                    ) {
-                        Icon(
-                            Icons.Rounded.Star,
-                            null,
-                            tint = AmberCore,
-                            modifier = Modifier.size(15.dp),
-                        )
+        if (generatedFiles.isNotEmpty()) {
+            SectionPill("GENERATED / TRANSLATED FILES")
+            generatedFiles.forEach { file ->
+                val selected = activeSubtitleUri?.toString() == file.uri.toString()
+                OutlinedButton(
+                    onClick = { onLoadGenerated(file) },
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 5.dp),
+                ) {
+                    if (selected) {
+                        Icon(Icons.Rounded.Check, null, modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(5.dp))
-                        Text(language.label, maxLines = 1)
                     }
+                    Text(
+                        if (file.cueCount >= 0) "${file.label} • ${file.cueCount}" else file.label,
+                        fontSize = 10.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }
 
-        Text(
-            "Languages",
-            color = TextBright,
-            modifier = Modifier
-                .padding(top = 10.dp, bottom = 5.dp)
-                .clip(RoundedCornerShape(50))
-                .background(AmberCore.copy(alpha = 0.10f))
-                .border(1.dp, AmberCore.copy(alpha = 0.24f), RoundedCornerShape(50))
-                .padding(horizontal = 9.dp, vertical = 4.dp),
-        )
-
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.height(132.dp),
-        ) {
-            items(others + favorites, key = { it.mlKitCode }) { language ->
-                val favorite = language.mlKitCode in favoriteCodes
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    OutlinedButton(
-                        onClick = { onTranslate(language) },
-                        enabled = !busy && activeSource != null,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text(
-                            language.label,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+        if (favorites.isNotEmpty()) {
+            SectionPill("FAVORITES")
+            favorites.forEach { language ->
+                LanguageChoiceRow(
+                    language = language,
+                    favorite = true,
+                    enabled = !busy && activeSource != null,
+                    onTranslate = { onTranslate(language) },
+                    onFavorite = {
+                        favoriteCodes = toggleFavoriteLanguage(
+                            context, favoriteCodes, language.mlKitCode
                         )
-                    }
-                    IconButton(
-                        onClick = {
-                            favoriteCodes = toggleFavoriteLanguage(
-                                context,
-                                favoriteCodes,
-                                language.mlKitCode,
-                            )
-                        },
-                        modifier = Modifier.size(34.dp),
-                    ) {
-                        Icon(
-                            if (favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder,
-                            if (favorite) "Remove favorite" else "Add favorite",
-                            tint = if (favorite) AmberCore else TextMuted,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                }
+                    },
+                )
             }
+        }
+
+        SectionPill("LANGUAGES")
+        others.forEach { language ->
+            LanguageChoiceRow(
+                language = language,
+                favorite = false,
+                enabled = !busy && activeSource != null,
+                onTranslate = { onTranslate(language) },
+                onFavorite = {
+                    favoriteCodes = toggleFavoriteLanguage(
+                        context, favoriteCodes, language.mlKitCode
+                    )
+                },
+            )
+        }
+
+        Spacer(Modifier.height(4.dp))
+    }
+}
+
+@Composable
+private fun SectionPill(text: String) {
+    Text(
+        text,
+        color = AmberCore,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier
+            .padding(top = 10.dp, bottom = 6.dp)
+            .clip(RoundedCornerShape(50))
+            .background(AmberCore.copy(alpha = 0.10f))
+            .border(1.dp, AmberCore.copy(alpha = 0.24f), RoundedCornerShape(50))
+            .padding(horizontal = 9.dp, vertical = 4.dp),
+    )
+}
+
+@Composable
+private fun LanguageChoiceRow(
+    language: SubtitleTranslationEngine.SupportedLanguage,
+    favorite: Boolean,
+    enabled: Boolean,
+    onTranslate: () -> Unit,
+    onFavorite: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedButton(
+            onClick = onTranslate,
+            enabled = enabled,
+            modifier = Modifier.weight(1f),
+        ) {
+            if (favorite) {
+                Icon(Icons.Rounded.Star, null, tint = AmberCore, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(5.dp))
+            }
+            Text(language.label, maxLines = 1, fontSize = 10.5.sp)
+        }
+        Spacer(Modifier.width(5.dp))
+        IconButton(onClick = onFavorite, modifier = Modifier.size(34.dp)) {
+            Icon(
+                if (favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+                if (favorite) "Remove favorite" else "Add favorite",
+                tint = if (favorite) AmberCore else TextMuted,
+                modifier = Modifier.size(17.dp),
+            )
         }
     }
 }

@@ -299,7 +299,9 @@ fun VideoPlayerScreen(
     // auto-contrast against arbitrary video would need real-time color
     // sampling, a much bigger feature) — this is a safer general-purpose
     // default, not a guarantee for every possible background.
-    val dualSecondaryColorHex = "#00E5FF"
+    var dualSecondaryColorHex by remember(currentVideo.path) {
+        mutableStateOf("#00E5FF")
+    }
 
     // Which subtitle source/track is actually active right now — the single
     // source of truth for both the checkmark in SubtitleTrackSelectorSheet
@@ -696,6 +698,7 @@ fun VideoPlayerScreen(
             dualUi.secondaryLanguage = memory.dualSecondaryLanguage
             dualUi.gapLines = memory.dualGapLines
             dualUi.secondarySourceLabel = memory.dualSecondarySource
+            dualSecondaryColorHex = memory.dualSecondaryColorHex
             appearanceUi.preserveOriginalStyling = memory.preserveOriginalStyling
         }
 
@@ -1048,7 +1051,7 @@ fun VideoPlayerScreen(
     // SubtitleSyncToolsCoordinator (see that file for the full reasoning).
     // Every field read/written matches exactly what the original inline
     // functions touched; only where the code lives changed.
-    val subtitleSyncTools = remember(exoPlayer) {
+    val subtitleSyncTools = remember(exoPlayer, dualSecondaryColorHex) {
         SubtitleSyncToolsCoordinator(
             context = context,
             scope = scope,
@@ -1402,6 +1405,7 @@ fun VideoPlayerScreen(
             dualUi.secondaryLanguage,
             dualUi.gapLines,
             dualUi.secondarySourceLabel,
+            dualSecondaryColorHex,
             coreUi.syncOffset,
             appearanceUi.textSizeSp,
             appearanceUi.bottomPadding,
@@ -1428,6 +1432,7 @@ fun VideoPlayerScreen(
                     dualSecondaryLanguage = dualUi.secondaryLanguage,
                     dualGapLines = dualUi.gapLines,
                     dualSecondarySource = dualUi.secondarySourceLabel,
+                    dualSecondaryColorHex = dualSecondaryColorHex,
                     syncOffsetSeconds = coreUi.syncOffset,
                     textSizeSp = appearanceUi.textSizeSp,
                     bottomPadding = appearanceUi.bottomPadding,
@@ -2653,6 +2658,12 @@ fun VideoPlayerScreen(
                     if (dualUi.enabled) fetchAndApplyDualSecondary()
                     studioUi.menuTouchKey++
                 },
+                secondaryColorHex = dualSecondaryColorHex,
+                onSecondaryColorChange = { color ->
+                    dualSecondaryColorHex = color
+                    if (dualUi.enabled) fetchAndApplyDualSecondary()
+                    studioUi.menuTouchKey++
+                },
                 // Covers interactions that don't change a value (e.g. just
                 // opening the language picker) — those still count as
                 // "actively using this window" and should reset the idle
@@ -2768,12 +2779,12 @@ fun VideoPlayerScreen(
             !CineVaultPlayerHolder.isInPipMode &&
             externalPlayerView == null
         ) {
-            val panelWidth = (playerMaxWidth * 0.50f)
-                .coerceAtMost(330.dp)
-                .coerceAtLeast(255.dp)
-            val panelHeight = (playerMaxHeight * 0.76f)
-                .coerceAtMost(410.dp)
-                .coerceAtLeast(270.dp)
+            val panelWidth = (playerMaxWidth * 0.44f)
+                .coerceAtMost(310.dp)
+                .coerceAtLeast(245.dp)
+            val panelHeight = (playerMaxHeight * 0.60f)
+                .coerceAtMost(350.dp)
+                .coerceAtLeast(245.dp)
 
             Box(modifier = Modifier.align(Alignment.Center)) {
                 DraggableFloatingPopup(
