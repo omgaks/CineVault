@@ -1496,10 +1496,17 @@ fun VideoPlayerScreen(
         }
         val currentMeta = playlistNavigation.currentMeta
 
+        // Slice 28: Smart Segment loading plus credits-driven next-episode
+        // decisions now live in PlayerSmartSegmentCoordinator. Compose still
+        // owns these effects so cancellation remains tied to their keys.
+        val playerSmartSegmentCoordinator = remember(smartSegmentRepository) {
+            PlayerSmartSegmentCoordinator(smartSegmentRepository)
+        }
+
         LaunchedEffect(currentMeta?.video?.path, playerHasSmartSegmentDuration(duration)) {
-            val meta = currentMeta ?: return@LaunchedEffect
-            if (!shouldLoadSmartSegments(meta, duration)) return@LaunchedEffect
-            smartSegmentResult = smartSegmentRepository.load(meta, duration)
+            playerSmartSegmentCoordinator
+                .loadIfNeeded(currentMeta, duration)
+                ?.let { smartSegmentResult = it }
         }
 
         val smartPlaybackSegments = deriveSmartPlaybackSegments(
@@ -1511,26 +1518,26 @@ fun VideoPlayerScreen(
         val creditsSegment = smartPlaybackSegments.creditsSegment
 
         LaunchedEffect(currentVideo.path, position, creditsSegment?.startMs, showNextEpisodeOverlay) {
-            val next = findNextEpisodeForCredits(
+            playerSmartSegmentCoordinator.findCreditsNextEpisode(
                 currentVideoPath = currentVideo.path,
                 episodeList = episodeList,
                 isCurrentTvShow = isCurrentTvShow,
                 showNextEpisodeOverlay = showNextEpisodeOverlay,
                 nextEpisodeDismissed = nextEpisodeDismissed,
                 creditsStartMs = creditsSegment?.startMs,
-                position = position
-            ) ?: return@LaunchedEffect
-
-            pendingNextEpisode = next
-            nextEpisodeCountdown = 15
-            showNextEpisodeOverlay = true
+                position = position,
+            )?.let { next ->
+                pendingNextEpisode = next
+                nextEpisodeCountdown = 15
+                showNextEpisodeOverlay = true
+            }
         }
 
         LaunchedEffect(position, creditsSegment?.startMs) {
-            if (shouldResetNextEpisodeOverlay(
+            if (playerSmartSegmentCoordinator.shouldResetCreditsOverlay(
                     showNextEpisodeOverlay = showNextEpisodeOverlay,
                     creditsStartMs = creditsSegment?.startMs,
-                    position = position
+                    position = position,
                 )
             ) {
                 showNextEpisodeOverlay = false
