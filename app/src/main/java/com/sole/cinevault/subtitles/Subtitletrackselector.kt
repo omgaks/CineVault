@@ -88,12 +88,20 @@ fun SubtitleTrackSelectorSheet(
     Column(
         modifier = Modifier
             .width(popupWidth)
-            .heightIn(max = popupMaxHeight)
+            .heightIn(
+                min = (popupMaxHeight * 0.72f).coerceAtMost(popupMaxHeight),
+                max = popupMaxHeight
+            )
             .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.84f))
             .border(1.dp, AmberCore.copy(alpha = 0.20f), RoundedCornerShape(20.dp))
             .padding(13.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        // Two-row chrome prevents the title from collapsing vertically on
+        // tablet/compact landscape when Back + Manage + Close all need space.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             if (onBack != null) {
                 Text(
                     text = "‹",
@@ -103,27 +111,45 @@ fun SubtitleTrackSelectorSheet(
                     modifier = Modifier
                         .clip(CircleShape)
                         .background(AmberCore.copy(alpha = 0.10f))
-                        .clickable { onBack?.invoke() }
+                        .clickable { onBack.invoke() }
                         .padding(horizontal = 8.dp, vertical = 1.dp)
                 )
                 Spacer(modifier = Modifier.width(7.dp))
             }
+
             Text(
                 text = "SUBTITLE TRACKS",
                 color = AmberCore,
-                fontSize = 12.sp,
+                fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(50))
                     .background(AmberCore.copy(alpha = 0.12f))
                     .border(1.dp, AmberCore.copy(alpha = 0.28f), RoundedCornerShape(50))
-                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
             )
+
             Spacer(modifier = Modifier.width(7.dp))
-            ManageToggleChip(active = manageMode, onClick = { manageMode = !manageMode })
-            Spacer(modifier = Modifier.width(6.dp))
             IconCircleSmall(icon = Icons.Default.Close, onClick = onDismiss)
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "TRACK LIBRARY",
+                color = TextMuted,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            ManageToggleChip(active = manageMode, onClick = { manageMode = !manageMode })
         }
 
         val activeTrackLabel = when {
@@ -137,9 +163,9 @@ fun SubtitleTrackSelectorSheet(
         Text(
             text = "ACTIVE  ·  $activeTrackLabel",
             color = TextBright,
-            fontSize = 10.5.sp,
+            fontSize = 11.5.sp,
             fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .fillMaxWidth()
@@ -153,7 +179,12 @@ fun SubtitleTrackSelectorSheet(
         HorizontalDivider(color = GlassBorderBottom)
         Spacer(modifier = Modifier.height(6.dp))
 
-        Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+        ) {
 
             TrackSectionLabel("Off")
             TrackRow(
@@ -263,7 +294,7 @@ private fun TrackSectionLabel(text: String) {
     Text(
         text = text.uppercase(),
         color = Color(0xFFC9A765),
-        fontSize = 9.5.sp,
+        fontSize = 10.5.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = 0.6.sp,
         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
