@@ -215,6 +215,12 @@ fun VideoPlayerScreen(
     var showDualSubsWindow by remember { mutableStateOf(false) }
     var showSubtitleBehaviourWindow by remember { mutableStateOf(false) }
     var pendingDualAiLanguage by remember(currentVideo.path) { mutableStateOf<String?>(null) }
+    var movieSubtitleMemory by remember(currentVideo.path) {
+        mutableStateOf<MovieSubtitleMemory?>(null)
+    }
+    var movieSubtitleMemoryReady by remember(currentVideo.path) { mutableStateOf(false) }
+    var movieAppearanceMemoryReady by remember(currentVideo.path) { mutableStateOf(false) }
+    var restoredDualNeedsApply by remember(currentVideo.path) { mutableStateOf(false) }
     var trackSelectorManageMode by remember { mutableStateOf(false) }
     var activeDockItem by remember { mutableStateOf<com.sole.cinevault.subtitles.SubtitleDockItem?>(null) }
 
@@ -655,7 +661,15 @@ fun VideoPlayerScreen(
 
 
     LaunchedEffect(currentVideo.path) {
+        movieSubtitleMemoryReady = false
+        movieAppearanceMemoryReady = false
+        restoredDualNeedsApply = false
+
         val savedPosition = if (isStreamMedia) 0L else loadPlaybackPosition(context, currentVideo.path)
+        val savedSubtitleMemory = withContext(Dispatchers.IO) {
+            loadMovieSubtitleMemory(context, currentVideo.path)
+        }
+        movieSubtitleMemory = savedSubtitleMemory
         position = savedPosition; duration = 1L; showControls = true; showTopBar = true
         showAudioSelector = false; coreUi.showSettings = false; trackUi.showSelector = false; searchUi.showSearch = false; showSpeedMenu = false; showSleepMenu = false; showSrtBrowser = false
         searchUi.showFallback = false; searchUi.showEmbeddedBrowser = false; searchUi.pendingImportCandidates = null
@@ -675,24 +689,68 @@ fun VideoPlayerScreen(
         autoSyncSpeechTimeline = null
         trackUi.selectedKey = null; trackUi.selectedLabel = ""; trackUi.selectedSource = ""
         droppedFrameNudgeCount = 0; lastNudgeAtMs = 0L
+
+        savedSubtitleMemory?.let { memory ->
+            coreUi.subtitlesEnabled = memory.subtitlesEnabled
+            coreUi.syncOffset = memory.syncOffsetSeconds
+            dualUi.secondaryLanguage = memory.dualSecondaryLanguage
+            dualUi.gapLines = memory.dualGapLines
+            dualUi.secondarySourceLabel = memory.dualSecondarySource
+            appearanceUi.preserveOriginalStyling = memory.preserveOriginalStyling
+        }
+
         if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
         if (isRestrictedFolderMedia) updateRestrictedFolderLastPlayed(context, currentVideo.path, currentVideo.folderPath)
 
-        // FIX: local-file match is now checked BEFORE the cached network
-        // subtitle, not after — previously an old cached OpenSubtitles
-        // download always won even when a local .srt sitting right next to
-        // the video (almost always more release-accurate) was available.
-        // A local match is also generally free/instant to check, so trying
-        // it first doesn't cost anything even when it doesn't pan out.
-        val localMatch = if (!isStreamMedia && coreUi.behaviorPrefs.autoLoadMatchingLocalFile) {
+        val rememberedPrimaryUri = savedSubtitleMemory
+            ?.primaryUri
+            ?.takeIf { canRestoreMovieSubtitleUri(context, it) }
+            ?.let(Uri::parse)
+        val restoredRememberedPrimary = rememberedPrimaryUri != null
+
+        // If this movie has a still-readable remembered primary track, it
+        // wins. Otherwise fall back to CineVault's normal local/cache search.
+        val localMatch = if (
+            !restoredRememberedPrimary &&
+            !isStreamMedia &&
+            coreUi.behaviorPrefs.autoLoadMatchingLocalFile
+        ) {
             withContext(Dispatchers.IO) { findBestMatchingLocalSubtitle(currentVideo.path, coreUi.behaviorPrefs.preferredLanguages) }
         } else null
 
-        val cachedSubtitle = if (localMatch == null && !isStreamMedia && canDownloadExternalSubtitles) {
+        val cachedSubtitle = if (
+            !restoredRememberedPrimary &&
+            localMatch == null &&
+            !isStreamMedia &&
+            canDownloadExternalSubtitles
+        ) {
             withContext(Dispatchers.IO) { OpenSubtitlesClient.findCachedSubtitle(context, currentVideo.path, coreUi.behaviorPrefs.preferredLanguages) }
         } else null
 
         when {
+            rememberedPrimaryUri != null && savedSubtitleMemory != null -> {
+                coreUi.subtitlesEnabled = savedSubtitleMemory.subtitlesEnabled
+                trackSelector.parameters = trackSelector.buildUponParameters()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !coreUi.subtitlesEnabled)
+                    .build()
+                trackUi.primaryUri = rememberedPrimaryUri
+                trackUi.primaryLanguage = savedSubtitleMemory.primaryLanguage
+                trackUi.selectedKey = savedSubtitleMemory.selectedKey
+                trackUi.selectedLabel = savedSubtitleMemory.selectedLabel
+                trackUi.selectedSource = savedSubtitleMemory.selectedSource
+                if (coreUi.subtitlesEnabled) {
+                    playCurrentVideoWithSubtitle(
+                        rememberedPrimaryUri,
+                        savedPosition,
+                        isOriginalSubtitle = true,
+                    )
+                } else {
+                    playCurrentVideoWithSubtitle(resumePosition = savedPosition)
+                }
+                dualUi.enabled = savedSubtitleMemory.dualEnabled && coreUi.subtitlesEnabled
+                restoredDualNeedsApply = dualUi.enabled
+                autoSubtitleFetch.attemptedForPath = currentVideo.path
+            }
             localMatch != null -> {
                 coreUi.subtitlesEnabled = true
                 trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
@@ -722,7 +780,10 @@ fun VideoPlayerScreen(
         }
 
         if (!isStreamMedia && canDownloadExternalSubtitles && !isRestrictedFolderMedia &&
-            coreUi.behaviorPrefs.autoDownloadWhenMissing && cachedSubtitle == null && localMatch == null &&
+            coreUi.behaviorPrefs.autoDownloadWhenMissing &&
+            !restoredRememberedPrimary &&
+            cachedSubtitle == null &&
+            localMatch == null &&
             autoSubtitleFetch.attemptedForPath != currentVideo.path
         ) {
             autoSubtitleFetch.attemptedForPath = currentVideo.path
@@ -753,6 +814,8 @@ fun VideoPlayerScreen(
                 finally { autoSubtitleFetch.downloadInProgress = false }
             }
         }
+
+        movieSubtitleMemoryReady = true
     }
 
     PlayerSessionLifecycle(
@@ -1024,6 +1087,24 @@ fun VideoPlayerScreen(
         subtitleSyncTools.disableDualSubtitles()
     }
 
+    LaunchedEffect(
+        currentVideo.path,
+        movieSubtitleMemoryReady,
+        restoredDualNeedsApply,
+        trackUi.primaryUri,
+    ) {
+        if (
+            movieSubtitleMemoryReady &&
+            restoredDualNeedsApply &&
+            dualUi.enabled &&
+            trackUi.primaryUri != null
+        ) {
+            restoredDualNeedsApply = false
+            fetchAndApplyDualSecondary()
+        }
+    }
+
+
     // ── Auto-Sync (Phase 1: speech-timing only) ──────────────────────────
     // Runs entirely off-main-thread (audio decode + VAD are real CPU work,
     // not something to do on the composition thread). Reads the CURRENTLY
@@ -1286,6 +1367,79 @@ fun VideoPlayerScreen(
             isLandscape = isLandscape,
             appearanceUi = appearanceUi,
         )
+
+        val movieAppearanceProfileKey =
+            "${currentVideo.path}|${displayProfileType.name}|$isLandscape"
+
+        LaunchedEffect(movieAppearanceProfileKey, movieSubtitleMemory, movieSubtitleMemoryReady) {
+            val memory = movieSubtitleMemory
+            if (movieSubtitleMemoryReady && memory != null) {
+                appearanceUi.textSizeSp = memory.textSizeSp
+                appearanceUi.bottomPadding = memory.bottomPadding
+                appearanceUi.preset = memory.presetName
+                appearanceUi.appearance = SubtitleAppearance(
+                    memory.foregroundColor,
+                    memory.edgeType,
+                    memory.edgeColor,
+                    memory.backgroundColor,
+                )
+                appearanceUi.preserveOriginalStyling = memory.preserveOriginalStyling
+            }
+            movieAppearanceMemoryReady = true
+        }
+
+        LaunchedEffect(
+            currentVideo.path,
+            movieSubtitleMemoryReady,
+            movieAppearanceMemoryReady,
+            coreUi.subtitlesEnabled,
+            trackUi.primaryUri,
+            trackUi.primaryLanguage,
+            trackUi.selectedKey,
+            trackUi.selectedLabel,
+            trackUi.selectedSource,
+            dualUi.enabled,
+            dualUi.secondaryLanguage,
+            dualUi.gapLines,
+            dualUi.secondarySourceLabel,
+            coreUi.syncOffset,
+            appearanceUi.textSizeSp,
+            appearanceUi.bottomPadding,
+            appearanceUi.preset,
+            appearanceUi.appearance,
+            appearanceUi.preserveOriginalStyling,
+        ) {
+            if (!movieSubtitleMemoryReady || !movieAppearanceMemoryReady) {
+                return@LaunchedEffect
+            }
+
+            delay(600)
+            saveMovieSubtitleMemory(
+                context = context,
+                videoPath = currentVideo.path,
+                memory = MovieSubtitleMemory(
+                    subtitlesEnabled = coreUi.subtitlesEnabled,
+                    primaryUri = trackUi.primaryUri?.toString(),
+                    primaryLanguage = trackUi.primaryLanguage,
+                    selectedKey = trackUi.selectedKey,
+                    selectedLabel = trackUi.selectedLabel,
+                    selectedSource = trackUi.selectedSource,
+                    dualEnabled = dualUi.enabled,
+                    dualSecondaryLanguage = dualUi.secondaryLanguage,
+                    dualGapLines = dualUi.gapLines,
+                    dualSecondarySource = dualUi.secondarySourceLabel,
+                    syncOffsetSeconds = coreUi.syncOffset,
+                    textSizeSp = appearanceUi.textSizeSp,
+                    bottomPadding = appearanceUi.bottomPadding,
+                    presetName = appearanceUi.preset,
+                    foregroundColor = appearanceUi.appearance.foregroundColor,
+                    edgeType = appearanceUi.appearance.edgeType,
+                    edgeColor = appearanceUi.appearance.edgeColor,
+                    backgroundColor = appearanceUi.appearance.backgroundColor,
+                    preserveOriginalStyling = appearanceUi.preserveOriginalStyling,
+                )
+            )
+        }
 
         // Extracted so both the old quick menu and Quick HUD's new Reset
         // row call the exact same logic instead of two copies drifting
