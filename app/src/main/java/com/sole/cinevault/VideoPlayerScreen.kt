@@ -1185,35 +1185,33 @@ fun VideoPlayerScreen(
         }
     }
 
-    fun currentTranslationSource(): SubtitleSourceResolver.Resolved? =
-        SubtitleSourceResolver.resolve(
-            SubtitleSourceResolver.Snapshot(
-                primaryUri = trackUi.primaryUri,
-                originalUri = trackUi.originalUri,
-                selectedKey = trackUi.selectedKey,
-                selectedLabel = trackUi.selectedLabel,
-                selectedSource = trackUi.selectedSource,
-                primaryLanguage = trackUi.primaryLanguage,
-            )
-        )
-
-    fun applyAiSubtitle(
-        file: GeneratedSubtitleFile,
-        language: String?,
-        sourceLabel: String,
-    ) {
-        val resumeAt = playerSafeResumePosition(exoPlayer.currentPosition)
-        coreUi.subtitlesEnabled = true
-        trackUi.primaryUri = file.uri
-        trackUi.originalUri = file.uri
-        trackUi.primaryLanguage = language
-        trackUi.selectedKey = "local:${file.uri.path ?: file.fileName}"
-        trackUi.selectedLabel = file.label
-        trackUi.selectedSource = sourceLabel
-        playCurrentVideoWithSubtitle(
-            file.uri,
-            resumePosition = resumeAt,
-            isOriginalSubtitle = true,
+    // Slice 20: keep generated/translated subtitle source resolution and
+    // application out of VideoPlayerScreen. Speech-to-subs, AI Translation,
+    // Dual Subs and the generated-subtitle library now share one small
+    // orchestrator instead of duplicating track-selection mutations here.
+    val generatedSubtitleOrchestrator = remember(exoPlayer) {
+        GeneratedSubtitleOrchestrator(
+            getResumePosition = { playerSafeResumePosition(exoPlayer.currentPosition) },
+            getPrimaryUri = { trackUi.primaryUri },
+            getOriginalUri = { trackUi.originalUri },
+            getSelectedKey = { trackUi.selectedKey },
+            getSelectedLabel = { trackUi.selectedLabel },
+            getSelectedSource = { trackUi.selectedSource },
+            getPrimaryLanguage = { trackUi.primaryLanguage },
+            setSubtitlesEnabled = { coreUi.subtitlesEnabled = it },
+            setPrimaryUri = { trackUi.primaryUri = it },
+            setOriginalUri = { trackUi.originalUri = it },
+            setPrimaryLanguage = { trackUi.primaryLanguage = it },
+            setSelectedKey = { trackUi.selectedKey = it },
+            setSelectedLabel = { trackUi.selectedLabel = it },
+            setSelectedSource = { trackUi.selectedSource = it },
+            playWithSubtitle = { uri, resumeAt ->
+                playCurrentVideoWithSubtitle(
+                    uri,
+                    resumePosition = resumeAt,
+                    isOriginalSubtitle = true,
+                )
+            },
         )
     }
 
@@ -1226,7 +1224,7 @@ fun VideoPlayerScreen(
             getStatus = { speechSubtitleStatus },
             setStatus = { speechSubtitleStatus = it },
             onSubtitleReady = { file, language ->
-                applyAiSubtitle(file, language, "Speech recognition")
+                generatedSubtitleOrchestrator.apply(file, language, "Speech recognition")
             },
             onGeneratedLibraryChanged = { generatedSubtitleRefreshKey++ },
         )
@@ -1237,7 +1235,7 @@ fun VideoPlayerScreen(
             context = context,
             scope = scope,
             getCurrentVideoPath = { currentVideo.path },
-            resolveActiveSubtitle = { currentTranslationSource() },
+            resolveActiveSubtitle = { generatedSubtitleOrchestrator.resolveActiveSubtitle() },
             getStatus = { subtitleTranslationStatus },
             setStatus = { subtitleTranslationStatus = it },
             onSubtitleReady = { file, language ->
@@ -1252,7 +1250,7 @@ fun VideoPlayerScreen(
                     pendingDualAiLanguage = null
                     subtitleSyncTools.applyDualSecondaryUri(file.uri, "AI")
                 } else {
-                    applyAiSubtitle(file, language, "AI Translation")
+                    generatedSubtitleOrchestrator.apply(file, language, "AI Translation")
                     translationSuccessLanguage = SubtitleLanguageRegistry.displayName(language)
                     scope.launch {
                         delay(3000)
@@ -1288,7 +1286,7 @@ fun VideoPlayerScreen(
     }
 
     fun loadGeneratedSubtitle(file: GeneratedSubtitleFile) =
-        applyAiSubtitle(file, null, "Generated subtitle")
+        generatedSubtitleOrchestrator.apply(file, null, "Generated subtitle")
 
     val speechJobLabel: String? = when (speechSubtitleStatus) {
         is SpeechSubtitleStatus.DownloadingModel -> "Whisper model"
@@ -2797,7 +2795,7 @@ fun VideoPlayerScreen(
                     Box(modifier = Modifier.width(panelWidth)) {
                         SubtitleTranslationPanel(
                             status = subtitleTranslationStatus,
-                            activeSource = currentTranslationSource(),
+                            activeSource = generatedSubtitleOrchestrator.resolveActiveSubtitle(),
                             generatedFiles = generatedSubtitleFiles,
                             activeSubtitleUri = trackUi.primaryUri ?: trackUi.originalUri,
                             onLoadGenerated = { file ->
