@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -29,8 +31,12 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -44,6 +50,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntSize
@@ -240,6 +247,8 @@ fun DualSubsWindow(
     availableLanguages: List<Pair<String, String>>,
     gapLines: Int,
     onGapLinesChange: (Int) -> Unit,
+    secondaryColorHex: String,
+    onSecondaryColorChange: (String) -> Unit,
     statusText: String,
     secondarySourceLabel: String = "",
     onBack: () -> Unit,
@@ -248,7 +257,12 @@ fun DualSubsWindow(
     onUserInteraction: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var showLanguagePicker by remember { mutableStateOf(false) }
+    var languageQuery by remember { mutableStateOf("") }
+    var favoriteLanguages by remember {
+        mutableStateOf(loadDualFavoriteLanguages(context))
+    }
 
     DraggableStudioWindow(
         initialOffset = initialOffset,
@@ -336,24 +350,100 @@ fun DualSubsWindow(
             }
 
             if (showLanguagePicker) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
+
+                OutlinedTextField(
+                    value = languageQuery,
+                    onValueChange = {
+                        languageQuery = it
+                        onUserInteraction()
+                    },
+                    singleLine = true,
+                    leadingIcon = {
+                        Icon(
+                            Icons.Rounded.Search,
+                            contentDescription = null,
+                            tint = AmberCore,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    },
+                    placeholder = { Text("Search language", fontSize = 9.5.sp) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                val visibleLanguages = availableLanguages.filter { (_, label) ->
+                    languageQuery.isBlank() ||
+                        label.contains(languageQuery, ignoreCase = true)
+                }
+                val favoriteRows = availableLanguages.filter { it.first in favoriteLanguages }
+
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.Black.copy(alpha = 0.3f))
-                        .padding(4.dp)
+                        .heightIn(max = 210.dp)
+                        .padding(top = 5.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.Black.copy(alpha = 0.28f))
+                        .verticalScroll(rememberScrollState())
+                        .padding(5.dp)
                 ) {
-                    availableLanguages.forEach { (code, label) ->
+                    if (languageQuery.isBlank() && favoriteRows.isNotEmpty()) {
                         Text(
-                            text = label,
-                            color = if (code == secondaryLanguage) AmberCore else TextBright,
-                            fontSize = 9.5.sp,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSecondaryLanguageChange(code); showLanguagePicker = false }
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                            "FAVORITES",
+                            color = AmberCore,
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
                         )
+                        favoriteRows.forEach { (code, label) ->
+                            DualLanguageRow(
+                                code = code,
+                                label = label,
+                                selected = code == secondaryLanguage,
+                                favorite = true,
+                                onSelect = {
+                                    onSecondaryLanguageChange(code)
+                                    showLanguagePicker = false
+                                    languageQuery = ""
+                                },
+                                onFavorite = {
+                                    favoriteLanguages = toggleDualFavoriteLanguage(
+                                        context, favoriteLanguages, code
+                                    )
+                                }
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
+                    }
+
+                    if (visibleLanguages.isEmpty()) {
+                        Text(
+                            "No matching language",
+                            color = TextMuted,
+                            fontSize = 9.5.sp,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    } else {
+                        visibleLanguages.forEach { (code, label) ->
+                            if (languageQuery.isNotBlank() || code !in favoriteLanguages) {
+                                DualLanguageRow(
+                                    code = code,
+                                    label = label,
+                                    selected = code == secondaryLanguage,
+                                    favorite = code in favoriteLanguages,
+                                    onSelect = {
+                                        onSecondaryLanguageChange(code)
+                                        showLanguagePicker = false
+                                        languageQuery = ""
+                                    },
+                                    onFavorite = {
+                                        favoriteLanguages = toggleDualFavoriteLanguage(
+                                            context, favoriteLanguages, code
+                                        )
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -385,6 +475,51 @@ fun DualSubsWindow(
                 )
             }
 
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "SECONDARY COLOUR",
+                color = AmberCore,
+                fontSize = 8.5.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(AmberCore.copy(alpha = 0.10f))
+                    .border(1.dp, AmberCore.copy(alpha = 0.22f), RoundedCornerShape(50))
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            )
+            Spacer(modifier = Modifier.height(5.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(7.dp)
+            ) {
+                listOf(
+                    "#00E5FF", // cyan
+                    "#FFD740", // amber/yellow
+                    "#FFFFFF", // white
+                    "#69F0AE", // mint
+                    "#FF80AB", // pink
+                    "#B388FF", // lavender
+                ).forEach { hex ->
+                    val selectedColor = hex.equals(secondaryColorHex, ignoreCase = true)
+                    val swatch = Color(android.graphics.Color.parseColor(hex))
+                    Box(
+                        modifier = Modifier
+                            .size(if (selectedColor) 27.dp else 24.dp)
+                            .clip(CircleShape)
+                            .background(swatch)
+                            .border(
+                                if (selectedColor) 2.dp else 1.dp,
+                                if (selectedColor) AmberCore else Color.White.copy(alpha = 0.35f),
+                                CircleShape
+                            )
+                            .clickable {
+                                onSecondaryColorChange(hex)
+                                onUserInteraction()
+                            }
+                    )
+                }
+            }
+
             if (statusText.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(text = statusText, color = TextFaint, fontSize = 8.sp)
@@ -393,6 +528,75 @@ fun DualSubsWindow(
             Spacer(modifier = Modifier.height(4.dp))
             Text(text = "Picked up automatically once enabled.", color = TextFaint, fontSize = 8.sp)
         }
+    }
+}
+
+private const val DUAL_LANGUAGE_PREFS = "dual_subtitle_language_preferences"
+private const val DUAL_FAVORITES_KEY = "favorite_dual_languages"
+private val DEFAULT_DUAL_FAVORITES = setOf("hi", "ta", "es")
+
+private fun loadDualFavoriteLanguages(context: android.content.Context): Set<String> =
+    context.getSharedPreferences(DUAL_LANGUAGE_PREFS, android.content.Context.MODE_PRIVATE)
+        .getStringSet(DUAL_FAVORITES_KEY, DEFAULT_DUAL_FAVORITES)
+        ?.toSet()
+        ?.ifEmpty { DEFAULT_DUAL_FAVORITES }
+        ?: DEFAULT_DUAL_FAVORITES
+
+private fun toggleDualFavoriteLanguage(
+    context: android.content.Context,
+    current: Set<String>,
+    code: String,
+): Set<String> {
+    val mutable = current.toMutableSet()
+    if (code in mutable) {
+        // Keep at least three favorites as requested.
+        if (mutable.size > 3) mutable.remove(code)
+    } else {
+        mutable.add(code)
+    }
+    val updated = mutable.toSet()
+    context.getSharedPreferences(DUAL_LANGUAGE_PREFS, android.content.Context.MODE_PRIVATE)
+        .edit()
+        .putStringSet(DUAL_FAVORITES_KEY, updated)
+        .apply()
+    return updated
+}
+
+@Composable
+private fun DualLanguageRow(
+    code: String,
+    label: String,
+    selected: Boolean,
+    favorite: Boolean,
+    onSelect: () -> Unit,
+    onFavorite: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (selected) AmberCore.copy(alpha = 0.10f) else Color.Transparent)
+            .padding(start = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = if (selected) AmberCore else TextBright,
+            fontSize = 9.8.sp,
+            modifier = Modifier
+                .weight(1f)
+                .clickable { onSelect() }
+                .padding(horizontal = 7.dp, vertical = 7.dp)
+        )
+        Icon(
+            if (favorite) Icons.Rounded.Star else Icons.Rounded.StarBorder,
+            contentDescription = if (favorite) "Favorite" else "Add favorite",
+            tint = if (favorite) AmberCore else TextMuted,
+            modifier = Modifier
+                .size(28.dp)
+                .clickable { onFavorite() }
+                .padding(6.dp)
+        )
     }
 }
 

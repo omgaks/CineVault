@@ -24,6 +24,7 @@ data class MovieSubtitleMemory(
     val dualSecondaryLanguage: String,
     val dualGapLines: Int,
     val dualSecondarySource: String,
+    val dualSecondaryColorHex: String,
     val syncOffsetSeconds: Float,
     val textSizeSp: Float,
     val bottomPadding: Float,
@@ -62,6 +63,7 @@ fun loadMovieSubtitleMemory(
         dualSecondaryLanguage = prefs.getString("$key.dualSecondaryLanguage", "hi") ?: "hi",
         dualGapLines = prefs.getInt("$key.dualGapLines", 1).coerceIn(0, 2),
         dualSecondarySource = prefs.getString("$key.dualSecondarySource", "") ?: "",
+        dualSecondaryColorHex = prefs.getString("$key.dualSecondaryColorHex", "#00E5FF") ?: "#00E5FF",
         syncOffsetSeconds = prefs.getFloat("$key.syncOffsetSeconds", 0f),
         textSizeSp = prefs.getFloat("$key.textSizeSp", 18f),
         bottomPadding = prefs.getFloat("$key.bottomPadding", 0.02f),
@@ -94,6 +96,7 @@ fun saveMovieSubtitleMemory(
         putString("$key.dualSecondaryLanguage", memory.dualSecondaryLanguage)
         putInt("$key.dualGapLines", memory.dualGapLines.coerceIn(0, 2))
         putString("$key.dualSecondarySource", memory.dualSecondarySource)
+        putString("$key.dualSecondaryColorHex", memory.dualSecondaryColorHex)
         putFloat("$key.syncOffsetSeconds", memory.syncOffsetSeconds)
         putFloat("$key.textSizeSp", memory.textSizeSp)
         putFloat("$key.bottomPadding", memory.bottomPadding)

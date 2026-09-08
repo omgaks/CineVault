@@ -78,12 +78,12 @@ fun SubtitleTrackSelectorSheet(
     onOpenFilePicker: () -> Unit,
     onBack: (() -> Unit)? = null,
     onDismiss: () -> Unit,
-    // "Manage" in the Studio's Download list opens this same sheet with
-    // delete icons already showing, instead of being a separate screen —
-    // "Tracks" opens it with this false. One sheet, two entry points.
+    // Tracks and Manage share the same visual shell but NOT the same
+    // content anymore. Tracks selects/loads. Manage only shows files that
+    // CineVault can actually delete or inspect.
     initialManageMode: Boolean = false
 ) {
-    var manageMode by remember(initialManageMode) { mutableStateOf(initialManageMode) }
+    val manageMode = initialManageMode
 
     Column(
         modifier = Modifier
@@ -118,7 +118,7 @@ fun SubtitleTrackSelectorSheet(
             }
 
             Text(
-                text = "SUBTITLE TRACKS",
+                text = if (manageMode) "MANAGE SUBTITLES" else "SUBTITLE TRACKS",
                 color = AmberCore,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
@@ -143,21 +143,37 @@ fun SubtitleTrackSelectorSheet(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "TRACK LIBRARY",
+                text = if (manageMode) "STORED FILES" else "TRACK LIBRARY",
                 color = TextMuted,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
             )
-            ManageToggleChip(active = manageMode, onClick = { manageMode = !manageMode })
+            if (manageMode) {
+                Text(
+                    text = "DELETE MODE",
+                    color = AmberCore,
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(AmberCore.copy(alpha = 0.10f))
+                        .border(1.dp, AmberCore.copy(alpha = 0.22f), RoundedCornerShape(50))
+                        .padding(horizontal = 7.dp, vertical = 3.dp)
+                )
+            }
         }
 
         val activeTrackLabel = when {
             selectedKey == SubtitleTrackChoice.Off.key -> "Subtitles off"
-            downloadedTrack != null && selectedKey == downloadedTrack.key -> downloadedTrack.file.name
-            else -> localFiles.firstOrNull { selectedKey == "local:${it.absolutePath}" }?.name
-                ?: generatedFiles.firstOrNull { selectedKey == "generated:${it.fileName}" }?.fileName
-                ?: embeddedTracks.firstOrNull { selectedKey == it.key }?.let { "${friendlyLanguageDisplay(it.language)} · Embedded" }
+            downloadedTrack != null && selectedKey == downloadedTrack.key ->
+                "${friendlyLanguageDisplay(downloadedTrack.language)} · OpenSubtitles"
+            else -> localFiles.firstOrNull { selectedKey == "local:${it.absolutePath}" }
+                    ?.let { "${it.nameWithoutExtension} · Local" }
+                ?: generatedFiles.firstOrNull { selectedKey == "generated:${it.fileName}" }
+                    ?.let { "${it.label} · Generated" }
+                ?: embeddedTracks.firstOrNull { selectedKey == it.key }
+                    ?.let { "${friendlyLanguageDisplay(it.language)} · Embedded" }
                 ?: "No subtitle selected"
         }
         Text(
@@ -186,106 +202,156 @@ fun SubtitleTrackSelectorSheet(
                 .verticalScroll(rememberScrollState())
         ) {
 
-            TrackSectionLabel("Off")
-            TrackRow(
-                icon = Icons.Default.SubtitlesOff,
-                title = "Subtitles Off",
-                subtitle = null,
-                badges = emptyList(),
-                selected = selectedKey == SubtitleTrackChoice.Off.key,
-                onClick = { onSelect(SubtitleTrackChoice.Off) }
-            )
+            if (!manageMode) {
+                TrackSectionLabel("Off")
+                TrackRow(
+                    icon = Icons.Default.SubtitlesOff,
+                    title = "Subtitles Off",
+                    subtitle = null,
+                    badges = emptyList(),
+                    selected = selectedKey == SubtitleTrackChoice.Off.key,
+                    onClick = { onSelect(SubtitleTrackChoice.Off) }
+                )
 
-            if (embeddedTracks.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(10.dp))
-                TrackSectionLabel("Embedded tracks")
-                embeddedTracks.forEach { track ->
-                    val badges = buildList {
-                        if (track.isSdh) add("SDH")
-                        if (track.isForced) add("Forced")
+                if (embeddedTracks.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    TrackSectionLabel("Embedded tracks")
+                    embeddedTracks.forEach { item ->
+                        val badges = buildList {
+                            if (item.isSdh) add("SDH")
+                            if (item.isForced) add("Forced")
+                        }
+                        TrackRow(
+                            icon = null,
+                            title = friendlyLanguageDisplay(item.language),
+                            subtitle = "Embedded",
+                            badges = badges,
+                            selected = selectedKey == item.key,
+                            onClick = { onSelect(item) }
+                        )
                     }
+                }
+
+                if (downloadedTrack != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    TrackSectionLabel("Downloaded subtitles")
                     TrackRow(
                         icon = null,
-                        title = friendlyLanguageDisplay(track.language),
-                        subtitle = "Embedded",
-                        badges = badges,
-                        selected = selectedKey == track.key,
-                        onClick = { onSelect(track) }
+                        title = friendlyLanguageDisplay(downloadedTrack.language),
+                        subtitle = "OpenSubtitles",
+                        badges = emptyList(),
+                        selected = selectedKey == downloadedTrack.key,
+                        onClick = { onSelect(downloadedTrack) }
                     )
                 }
-            }
 
-            if (downloadedTrack != null) {
+                if (generatedFiles.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    TrackSectionLabel("Generated & translated")
+                    generatedFiles.forEach { file ->
+                        val isTranslated = file.fileName.contains("-translated-")
+                        val choice = SubtitleTrackChoice.Generated(file, isTranslated)
+                        TrackRow(
+                            icon = if (isTranslated) Icons.Rounded.AutoAwesome else Icons.Rounded.Mic,
+                            title = file.label,
+                            subtitle = if (isTranslated) "AI translated" else "Speech-generated",
+                            badges = emptyList(),
+                            selected = selectedKey == choice.key,
+                            onClick = { onSelect(choice) }
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(10.dp))
-                TrackSectionLabel("Downloaded subtitles")
+                TrackSectionLabel("Local files")
+                if (localFiles.isEmpty()) {
+                    Text(
+                        text = "No local subtitle files found nearby",
+                        color = TextMuted,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                } else {
+                    localFiles.forEach { file ->
+                        val choice = SubtitleTrackChoice.Local(file)
+                        TrackRow(
+                            icon = null,
+                            title = file.name,
+                            subtitle = null,
+                            badges = emptyList(),
+                            selected = selectedKey == choice.key,
+                            onClick = { onSelect(choice) }
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
                 TrackRow(
                     icon = null,
-                    title = friendlyLanguageDisplay(downloadedTrack.language),
-                    subtitle = "OpenSubtitles",
+                    title = "Open subtitle file…",
+                    subtitle = null,
                     badges = emptyList(),
-                    selected = selectedKey == downloadedTrack.key,
-                    onClick = { onSelect(downloadedTrack) },
-                    onDelete = if (manageMode) ({ onDeleteLocal(downloadedTrack.file) }) else null
+                    selected = false,
+                    onClick = onOpenFilePicker
                 )
-            }
-
-            if (generatedFiles.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(10.dp))
-                TrackSectionLabel("Generated & translated")
-                generatedFiles.forEach { file ->
-                    val isTranslated = file.fileName.contains("-translated-")
-                    val choice = SubtitleTrackChoice.Generated(file, isTranslated)
-                    TrackRow(
-                        icon = if (isTranslated) Icons.Rounded.AutoAwesome else Icons.Rounded.Mic,
-                        title = file.label,
-                        subtitle = if (isTranslated) "AI translated" else "Speech-generated",
-                        badges = emptyList(),
-                        selected = selectedKey == choice.key,
-                        onClick = { onSelect(choice) },
-                        onDelete = if (manageMode) ({ onDeleteGenerated(file) }) else null
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-            TrackSectionLabel("Local files")
-            if (localFiles.isEmpty()) {
-                Text(text = "No local subtitle files found nearby", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
             } else {
-                localFiles.forEach { file ->
-                    val choice = SubtitleTrackChoice.Local(file)
+                // Manage deliberately excludes Off + embedded tracks because
+                // neither corresponds to a CineVault-owned file that can be deleted.
+                if (downloadedTrack != null) {
+                    TrackSectionLabel("Downloaded")
                     TrackRow(
                         icon = null,
-                        title = file.name,
-                        subtitle = null,
+                        title = friendlyLanguageDisplay(downloadedTrack.language),
+                        subtitle = "OpenSubtitles file",
                         badges = emptyList(),
-                        selected = selectedKey == choice.key,
-                        onClick = { onSelect(choice) },
-                        onDelete = if (manageMode) ({ onDeleteLocal(file) }) else null
+                        selected = selectedKey == downloadedTrack.key,
+                        onClick = {},
+                        onDelete = { onDeleteLocal(downloadedTrack.file) }
+                    )
+                }
+
+                if (generatedFiles.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    TrackSectionLabel("AI / generated")
+                    generatedFiles.forEach { file ->
+                        val isTranslated = file.fileName.contains("-translated-")
+                        TrackRow(
+                            icon = if (isTranslated) Icons.Rounded.AutoAwesome else Icons.Rounded.Mic,
+                            title = file.label,
+                            subtitle = if (isTranslated) "AI translated" else "Speech-generated",
+                            badges = emptyList(),
+                            selected = selectedKey == "generated:${file.fileName}",
+                            onClick = {},
+                            onDelete = { onDeleteGenerated(file) }
+                        )
+                    }
+                }
+
+                if (localFiles.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    TrackSectionLabel("Local files")
+                    localFiles.forEach { file ->
+                        TrackRow(
+                            icon = null,
+                            title = file.name,
+                            subtitle = "Local subtitle",
+                            badges = emptyList(),
+                            selected = selectedKey == "local:${file.absolutePath}",
+                            onClick = {},
+                            onDelete = { onDeleteLocal(file) }
+                        )
+                    }
+                }
+
+                if (downloadedTrack == null && generatedFiles.isEmpty() && localFiles.isEmpty()) {
+                    Text(
+                        text = "No subtitle files available to manage.",
+                        color = TextMuted,
+                        fontSize = 11.5.sp,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 14.dp)
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(4.dp))
-            TrackRow(icon = null, title = "Open subtitle file…", subtitle = null, badges = emptyList(), selected = false, onClick = onOpenFilePicker)
         }
-    }
-}
-
-@Composable
-private fun ManageToggleChip(active: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .height(34.dp)
-            .clip(RoundedCornerShape(50))
-            .background(if (active) AmberCore.copy(alpha = 0.16f) else Color.Transparent)
-            .border(1.dp, if (active) AmberCore else Color.White.copy(alpha = 0.12f), RoundedCornerShape(50))
-            .clickable { onClick() }
-            .padding(horizontal = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(imageVector = Icons.Rounded.Delete, contentDescription = null, tint = if (active) AmberCore else TextMuted, modifier = Modifier.size(13.dp))
-        Spacer(modifier = Modifier.width(5.dp))
-        Text(text = "Manage", color = if (active) AmberCore else TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }
 

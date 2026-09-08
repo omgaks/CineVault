@@ -32,7 +32,15 @@ object SubtitleLanguageRegistry {
         SubtitleLanguage("pt", "Portuguese", listOf("por", "portuguese")),
         SubtitleLanguage("zh", "Chinese", listOf("chi", "zho", "chinese")),
         SubtitleLanguage("ar", "Arabic", listOf("ara", "arabic")),
-        SubtitleLanguage("ru", "Russian", listOf("rus", "russian"))
+        SubtitleLanguage("ru", "Russian", listOf("rus", "russian")),
+        SubtitleLanguage("ta", "Tamil", listOf("tam", "tamil")),
+        SubtitleLanguage("te", "Telugu", listOf("tel", "telugu")),
+        SubtitleLanguage("bn", "Bengali", listOf("ben", "bengali")),
+        SubtitleLanguage("nl", "Dutch", listOf("dut", "nld", "dutch")),
+        SubtitleLanguage("pl", "Polish", listOf("pol", "polish")),
+        SubtitleLanguage("tr", "Turkish", listOf("tur", "turkish")),
+        SubtitleLanguage("id", "Indonesian", listOf("ind", "indonesian")),
+        SubtitleLanguage("th", "Thai", listOf("tha", "thai"))
     )
 
     // code (2-letter) or any alias (3-letter/full-name), lowercase -> entry
