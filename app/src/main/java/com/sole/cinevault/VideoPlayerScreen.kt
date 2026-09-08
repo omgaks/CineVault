@@ -354,37 +354,22 @@ fun VideoPlayerScreen(
     val isStreamMedia = currentMediaType.equals("stream", ignoreCase = true)
     val isRestrictedFolderMedia = folderIdFromRestrictedMarker(currentVideo.folderPath) != null
 
-    // Closing the player while something is actively playing now enters
-    // Picture-in-Picture instead of just tearing down the full-screen view
-    // — previously "closing" left the video with no visible window at all
-    // while the foreground service kept it playing audio-only in the
-    // background, which read as the app losing track of what was
-    // happening. Falls back to a normal exit when paused, when PiP isn't
-    // supported (pre-API 26), or if entering PiP throws for any device-
-    // specific reason (same defensive pattern already used elsewhere on
-    // this screen for orientation-lock calls).
-    //
-    // NOT wired to system back anymore (see removed BackHandler below) —
-    // BackHandler fires on EVERY back action, including left-edge swipe
-    // and the hardware back button, which are legitimate "go to the
-    // previous screen" gestures and should never trigger PiP. Only
-    // Home/Recents/task-switch (Activity.onUserLeaveHint(), which lives in
-    // MainActivity.kt, not this file) should ever trigger PiP-on-close.
-    // Left unused here until that's wired up — kept as a plain function so
-    // it's ready to call from the right place once MainActivity exposes
-    // that hook, instead of rebuilding this logic from scratch then.
-    fun handleExitRequest() {
-        if (isPlaying && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                val actions = buildPipActions(context, exoPlayer.isPlaying)
-                val entered = activity?.enterPictureInPictureMode(
-                    PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).setActions(actions).build()
-                )
-                if (entered == true) return
-            } catch (_: Exception) {}
-        }
-        onBack()
+    // Slice 24: the player exit/PiP decision now lives outside the giant
+    // composable. The same rule is preserved: if an explicit exit request
+    // happens while playing and PiP can be entered, keep playback visible
+    // there; otherwise fall back to the normal onBack navigation.
+    val playerExitCoordinator = remember(exoPlayer, activity) {
+        PlayerExitCoordinator(
+            context = context,
+            activity = activity,
+            exoPlayer = exoPlayer,
+            isPlaying = { isPlaying },
+            onBack = onBack,
+        )
     }
+
+    fun handleExitRequest() =
+        playerExitCoordinator.handleExitRequest()
 
     fun closeAllMenus() {
         showAudioSelector = false
@@ -1042,6 +1027,9 @@ fun VideoPlayerScreen(
             },
             requestAiSecondary = { language ->
                 pendingDualAiLanguage = language
+            },
+            clearPendingAiSecondary = {
+                pendingDualAiLanguage = null
             }
         )
     }
@@ -1052,10 +1040,8 @@ fun VideoPlayerScreen(
     fun markDriftPointB(correctionSeconds: Float) = subtitleSyncTools.markDriftPointB(correctionSeconds)
     fun applyDriftFix() = subtitleSyncTools.applyDriftFix()
     fun fetchAndApplyDualSecondary() = subtitleSyncTools.fetchAndApplyDualSecondary()
-    fun disableDualSubtitles() {
-        pendingDualAiLanguage = null
+    fun disableDualSubtitles() =
         subtitleSyncTools.disableDualSubtitles()
-    }
 
     LaunchedEffect(
         currentVideo.path,
