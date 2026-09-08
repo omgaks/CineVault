@@ -17,7 +17,6 @@ import android.app.PendingIntent
 import android.app.PictureInPictureParams
 import android.app.RemoteAction
 import android.content.Context
-import android.content.Intent
 import android.graphics.drawable.Icon as AndroidIcon
 import android.media.AudioManager
 import android.util.TypedValue
@@ -566,39 +565,31 @@ fun VideoPlayerScreen(
     }
     fun applyImportedWebsiteSubtitle(imported: ImportedSubtitle) = subtitleSearchCoordinator.applyImportedWebsiteSubtitle(imported)
 
-    // FIX: fresh picks from the system file picker now go through
-    // SubtitleImportEngine's real content validation (rejects HTML/binary,
-    // ranks candidates inside a ZIP) instead of the old flow, which
-    // assumed any picked file was already a trustworthy subtitle. Re-
-    // selecting an ALREADY-KNOWN local file (nearby-discovered or
-    // previously imported) still goes through the simpler pendingSrtUri
-    // path elsewhere in this file — that file doesn't need re-validating.
-    val srtPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
-        scope.launch {
-            val result = context.contentResolver.openInputStream(uri)?.use { stream ->
-                SubtitleImportEngine.import(
-                    context = context,
-                    input = stream,
-                    suggestedName = uri.lastPathSegment,
-                    releaseHint = currentVideo.path,
-                    preferredLanguage = coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en"
-                )
-            } ?: SubtitleImportResult.Failure("CineVault couldn't open that file.")
-
-            when (result) {
-                is SubtitleImportResult.Success -> {
-                    if (result.alternatives.isEmpty()) {
-                        applyImportedWebsiteSubtitle(result.selected)
-                    } else {
-                        searchUi.pendingImportCandidates = result
-                    }
-                }
-                is SubtitleImportResult.Failure -> Toast.makeText(context, result.userMessage, Toast.LENGTH_LONG).show()
-            }
-        }
+    // Slice 26: the system picker stays composable-owned, but everything
+    // after the user chooses a file now lives in SubtitleLocalImportCoordinator:
+    // persistable permission, content validation/import, ZIP candidate handling
+    // and failure feedback.
+    val subtitleLocalImportCoordinator = remember {
+        SubtitleLocalImportCoordinator(
+            context = context,
+            scope = scope,
+            getCurrentVideoPath = { currentVideo.path },
+            getPreferredLanguage = {
+                coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en"
+            },
+            applyImportedSubtitle = { imported ->
+                applyImportedWebsiteSubtitle(imported)
+            },
+            setPendingImportCandidates = { result ->
+                searchUi.pendingImportCandidates = result
+            },
+        )
     }
+
+    val srtPickerLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            subtitleLocalImportCoordinator.importPickedUri(uri)
+        }
 
     // FIX: findHttpStatusDetail/friendlyPlaybackError/isTransientPlaybackError
     // used to be defined right here — now plain top-level functions in
