@@ -1246,10 +1246,22 @@ fun VideoPlayerScreen(
     val translationJobLabel = translationJobPresentation.label
     val translationJobProgress = translationJobPresentation.progress
 
+    // Slice 36: subtitle AI panel back handling is now driven by a pure,
+    // unit-tested decision so panel-close priority cannot silently regress.
     BackHandler(enabled = showSpeechSubtitlePanel || showSubtitleTranslationPanel) {
-        when {
-            showSubtitleTranslationPanel -> showSubtitleTranslationPanel = false
-            showSpeechSubtitlePanel -> showSpeechSubtitlePanel = false
+        when (
+            subtitlePanelBackAction(
+                showSpeechSubtitlePanel = showSpeechSubtitlePanel,
+                showSubtitleTranslationPanel = showSubtitleTranslationPanel,
+            )
+        ) {
+            SubtitlePanelBackAction.CLOSE_TRANSLATION ->
+                showSubtitleTranslationPanel = false
+
+            SubtitlePanelBackAction.CLOSE_SPEECH ->
+                showSpeechSubtitlePanel = false
+
+            SubtitlePanelBackAction.NONE -> Unit
         }
     }
 
