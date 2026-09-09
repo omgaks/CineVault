@@ -1034,6 +1034,8 @@ fun VideoPlayerScreen(
     fun disableDualSubtitles() =
         subtitleSyncTools.disableDualSubtitles()
 
+    // Slice 34: restored Dual Subs re-apply is now a pure, unit-tested gate.
+    // The effect remains Compose-owned; only the decision is extracted.
     LaunchedEffect(
         currentVideo.path,
         movieSubtitleMemoryReady,
@@ -1041,10 +1043,12 @@ fun VideoPlayerScreen(
         trackUi.primaryUri,
     ) {
         if (
-            movieSubtitleMemoryReady &&
-            restoredDualNeedsApply &&
-            dualUi.enabled &&
-            trackUi.primaryUri != null
+            shouldApplyRestoredDualSubtitles(
+                movieSubtitleMemoryReady = movieSubtitleMemoryReady,
+                restoredDualNeedsApply = restoredDualNeedsApply,
+                dualSubtitlesEnabled = dualUi.enabled,
+                hasPrimarySubtitle = trackUi.primaryUri != null,
+            )
         ) {
             restoredDualNeedsApply = false
             fetchAndApplyDualSecondary()
