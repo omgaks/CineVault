@@ -1064,12 +1064,17 @@ fun VideoPlayerScreen(
     // silently fail deep inside the engine instead of being caught here)
     // or that the video itself is a genuinely readable local/content
     // source rather than some other unplayable state.
+    // Slice 33: Auto-Sync eligibility is now a pure, unit-tested decision.
+    // The player derives the current subtitle name from its Uri and passes
+    // only plain values into the eligibility function.
     val primarySubtitleForAutoSync = trackUi.primaryUri
-    val autoSyncAvailable = primarySubtitleForAutoSync != null &&
-        supportsCustomTextPipeline(detectSubtitleFormat(primarySubtitleForAutoSync)) &&
-        !isStreamMedia &&
-        !currentVideo.path.startsWith("smb://", ignoreCase = true) &&
-        (currentVideo.path.startsWith("content://", ignoreCase = true) || java.io.File(currentVideo.path).exists())
+    val autoSyncAvailable = isPlayerAutoSyncAvailable(
+        primarySubtitleName = primarySubtitleForAutoSync
+            ?.lastPathSegment
+            ?: primarySubtitleForAutoSync?.toString(),
+        isStreamMedia = isStreamMedia,
+        videoPath = currentVideo.path,
+    )
 
     // FIX: runAutoSync()/applyAutoSyncResult() used to be plain local
     // functions defined right here, inline in this composable's body —
