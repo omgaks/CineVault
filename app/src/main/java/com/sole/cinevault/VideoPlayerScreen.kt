@@ -19,13 +19,11 @@ import android.app.RemoteAction
 import android.content.Context
 import android.graphics.drawable.Icon as AndroidIcon
 import android.media.AudioManager
-import android.util.TypedValue
 import android.net.Uri
 import android.os.Build
 import android.util.Rational
 import android.view.WindowManager
 import android.widget.Toast
-import android.graphics.Color as AndroidColor
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -129,7 +127,6 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import com.sole.cinevault.ui.theme.*
@@ -945,26 +942,27 @@ fun VideoPlayerScreen(
     val activeSubtitleFormat = remember(trackUi.originalUri) { trackUi.originalUri?.let { detectSubtitleFormat(it) } ?: SubtitleFormat.UNKNOWN }
     val isAssOrSsaFormat = activeSubtitleFormat == SubtitleFormat.ASS || activeSubtitleFormat == SubtitleFormat.SSA
 
-    LaunchedEffect(studioUi.playerView, appearanceUi.textSizeSp, appearanceUi.bottomPadding, appearanceUi.appearance, dualUi.enabled, appearanceUi.preserveOriginalStyling, isAssOrSsaFormat) {
-        val sv = studioUi.playerView?.subtitleView
-        sv?.setUserDefaultStyle()
-        // Embedded styling is enabled in TWO cases: dual mode (needs the
-        // injected <font color> tag to render) or the person explicitly
-        // asked to preserve an ASS/SSA file's own styling. Off otherwise,
-        // so CineVault's own styling stays authoritative for plain SRT/VTT.
-        val useEmbeddedStyles = dualUi.enabled || (appearanceUi.preserveOriginalStyling && isAssOrSsaFormat)
-        sv?.setApplyEmbeddedStyles(useEmbeddedStyles); sv?.setApplyEmbeddedFontSizes(false)
-        sv?.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, appearanceUi.textSizeSp)
-        sv?.setBottomPaddingFraction(appearanceUi.bottomPadding)
-        sv?.setStyle(
-            CaptionStyleCompat(
-                appearanceUi.appearance.foregroundColor,
-                appearanceUi.appearance.backgroundColor,
-                AndroidColor.TRANSPARENT,
-                appearanceUi.appearance.edgeType,
-                appearanceUi.appearance.edgeColor,
-                null
-            )
+    // Slice 31: applying CineVault's live subtitle appearance to Media3's
+    // SubtitleView now lives outside VideoPlayerScreen. Compose still owns
+    // the effect keys; the actual style mutation is centralised.
+    val subtitleAppearanceCoordinator = remember {
+        SubtitleAppearanceCoordinator()
+    }
+
+    LaunchedEffect(
+        studioUi.playerView,
+        appearanceUi.textSizeSp,
+        appearanceUi.bottomPadding,
+        appearanceUi.appearance,
+        dualUi.enabled,
+        appearanceUi.preserveOriginalStyling,
+        isAssOrSsaFormat,
+    ) {
+        subtitleAppearanceCoordinator.apply(
+            playerView = studioUi.playerView,
+            appearanceUi = appearanceUi,
+            dualSubtitlesEnabled = dualUi.enabled,
+            isAssOrSsaFormat = isAssOrSsaFormat,
         )
     }
 
