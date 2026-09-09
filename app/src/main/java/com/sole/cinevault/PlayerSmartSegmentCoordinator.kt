@@ -2,9 +2,6 @@ package com.sole.cinevault
 
 import com.sole.cinevault.segments.SmartSegmentRepository
 import com.sole.cinevault.segments.SmartSegmentResult
-import com.sole.cinevault.segments.findNextEpisodeForCredits
-import com.sole.cinevault.segments.shouldLoadSmartSegments
-import com.sole.cinevault.segments.shouldResetNextEpisodeOverlay
 
 /**
  * Slice 28: owns Smart Segment loading decisions and the credits-driven
