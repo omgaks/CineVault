@@ -9,7 +9,7 @@ class SubtitleJobPresentationTest {
     @Test
     fun speechDownloadingModel_mapsLabelAndProgress() {
         val result = speechSubtitleJobPresentation(
-            SpeechSubtitleStatus.DownloadingModel(percent = 42)
+            SpeechSubtitleStatus.DownloadingModel(fileName = "ggml-base.en.bin", percent = 42)
         )
 
         assertEquals("Whisper model", result.label)
