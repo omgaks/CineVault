@@ -912,32 +912,34 @@ fun VideoPlayerScreen(
     // One function, both call sites use it.
     fun selectSubtitleTrack(choice: SubtitleTrackChoice) = subtitleSearchCoordinator.selectSubtitleTrack(choice)
 
+    // Slice 29: applying a pending local subtitle is now coordinated outside
+    // VideoPlayerScreen. The LaunchedEffect remains here only as lifecycle-safe
+    // Compose glue.
+    val pendingSubtitleApplyCoordinator = remember(exoPlayer, trackSelector) {
+        PendingSubtitleApplyCoordinator(
+            context = context,
+            coreUi = coreUi,
+            trackUi = trackUi,
+            autoSubtitleFetch = autoSubtitleFetch,
+            getResumePosition = { playerSafeResumePosition(exoPlayer.currentPosition) },
+            enableTextTracks = {
+                trackSelector.parameters = trackSelector.buildUponParameters()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .build()
+            },
+            playSubtitle = { subtitleUri, resumePosition ->
+                playCurrentVideoWithSubtitle(
+                    subtitleUri = subtitleUri,
+                    resumePosition = resumePosition,
+                )
+            },
+            showControls = { showControls = true },
+            clearPendingUri = { pendingSrtUri = null },
+        )
+    }
+
     LaunchedEffect(pendingSrtUri) {
-        val uri = pendingSrtUri ?: return@LaunchedEffect
-        val resumeAt = playerSafeResumePosition(exoPlayer.currentPosition)
-        coreUi.subtitlesEnabled = true
-        trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-        // FIX: previously hardcoded "SRT loaded"/"SRT file loaded" even
-        // when the picked file was .vtt/.ass/.ssa/.ttml — now reflects
-        // what was actually loaded.
-        val pickedFormat = detectSubtitleFormat(uri)
-        val formatLabel = if (pickedFormat == SubtitleFormat.SRT || pickedFormat == SubtitleFormat.UNKNOWN) "Subtitle" else pickedFormat.label.substringBefore(" (")
-        autoSubtitleFetch.status = "$formatLabel loaded"
-        val cleanedSrtUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, uri, coreUi.cleaningOptions) } ?: uri
-        trackUi.primaryUri = cleanedSrtUri
-        val pickedFile = uri.path?.let { java.io.File(it) }
-        // Best-effort language detection from the filename itself (e.g.
-        // "Movie.hi.srt") using the same parser the auto-matcher uses —
-        // stays null (unknown) for a bare "Movie.srt" with no language
-        // token, which is a safe/honest fallback rather than guessing.
-        trackUi.primaryLanguage = pickedFile?.name?.let { name -> parseSubtitleFilename(name).first }
-        playCurrentVideoWithSubtitle(subtitleUri = cleanedSrtUri, resumePosition = resumeAt)
-        trackUi.selectedKey = "local:${pickedFile?.absolutePath ?: uri.toString()}"
-        trackUi.selectedLabel = pickedFile?.name ?: "Subtitle file"; trackUi.selectedSource = "Local file"
-        coreUi.showSettings = false; trackUi.showSelector = false; showControls = true
-        Toast.makeText(context, "$formatLabel file loaded", Toast.LENGTH_SHORT).show()
-        delay(playerSubtitleStatusClearDelayMs()); autoSubtitleFetch.status = ""
-        pendingSrtUri = null
+        pendingSrtUri?.let { pendingSubtitleApplyCoordinator.apply(it) }
     }
 
     val activeSubtitleFormat = remember(trackUi.originalUri) { trackUi.originalUri?.let { detectSubtitleFormat(it) } ?: SubtitleFormat.UNKNOWN }
