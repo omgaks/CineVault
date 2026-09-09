@@ -1237,27 +1237,14 @@ fun VideoPlayerScreen(
     fun loadGeneratedSubtitle(file: GeneratedSubtitleFile) =
         generatedSubtitleOrchestrator.apply(file, null, "Generated subtitle")
 
-    val speechJobLabel: String? = when (speechSubtitleStatus) {
-        is SpeechSubtitleStatus.DownloadingModel -> "Whisper model"
-        is SpeechSubtitleStatus.Generating -> "Speech → Subs"
-        else -> null
-    }
+    // Slice 35: AI job label/progress presentation is now pure and tested.
+    val speechJobPresentation = speechSubtitleJobPresentation(speechSubtitleStatus)
+    val translationJobPresentation = subtitleTranslationJobPresentation(subtitleTranslationStatus)
 
-    val speechJobProgress: Int? = when (val status = speechSubtitleStatus) {
-        is SpeechSubtitleStatus.DownloadingModel -> status.percent
-        is SpeechSubtitleStatus.Generating -> status.percent
-        else -> null
-    }
-
-    val translationJobLabel: String? =
-        if (subtitleTranslationStatus is SubtitleTranslationStatus.Translating) {
-            "AI Translate"
-        } else {
-            null
-        }
-
-    val translationJobProgress: Int? =
-        (subtitleTranslationStatus as? SubtitleTranslationStatus.Translating)?.percent
+    val speechJobLabel = speechJobPresentation.label
+    val speechJobProgress = speechJobPresentation.progress
+    val translationJobLabel = translationJobPresentation.label
+    val translationJobProgress = translationJobPresentation.progress
 
     BackHandler(enabled = showSpeechSubtitlePanel || showSubtitleTranslationPanel) {
         when {
