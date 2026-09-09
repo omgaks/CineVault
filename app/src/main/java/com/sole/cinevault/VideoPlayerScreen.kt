@@ -1206,27 +1206,23 @@ fun VideoPlayerScreen(
         )
     }
 
+    // Slice 32: pending Dual Subs AI-translation request decisions now live
+    // in a plain Kotlin coordinator, which is unit-tested in app/src/test.
+    val dualAiTranslationCoordinator = remember {
+        DualAiTranslationCoordinator(
+            getPendingLanguage = { pendingDualAiLanguage },
+            clearPendingLanguage = { pendingDualAiLanguage = null },
+            isDualEnabled = { dualUi.enabled },
+            disableDual = { dualUi.enabled = false },
+            setStatusText = { dualUi.statusText = it },
+            translateActive = { target ->
+                subtitleTranslationCoordinator.translateActive(target)
+            },
+        )
+    }
+
     LaunchedEffect(pendingDualAiLanguage) {
-        val requested = pendingDualAiLanguage ?: return@LaunchedEffect
-        if (!dualUi.enabled) {
-            pendingDualAiLanguage = null
-            return@LaunchedEffect
-        }
-        val normalized = SubtitleLanguageRegistry.normalize(requested)
-            ?: requested.take(2).lowercase()
-        val target = SubtitleTranslationEngine.commonTargetLanguages
-            .firstOrNull {
-                SubtitleLanguageRegistry.normalize(it.mlKitCode) == normalized ||
-                    it.mlKitCode.equals(normalized, ignoreCase = true)
-            }
-        if (target == null) {
-            dualUi.statusText =
-                "AI translation isn't available for ${SubtitleLanguageRegistry.displayName(requested)}"
-            dualUi.enabled = false
-            pendingDualAiLanguage = null
-        } else {
-            subtitleTranslationCoordinator.translateActive(target)
-        }
+        dualAiTranslationCoordinator.processPendingRequest()
     }
 
     fun loadGeneratedSubtitle(file: GeneratedSubtitleFile) =
