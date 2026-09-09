@@ -6,7 +6,7 @@ package com.sole.cinevault
  *
  * Kept pure so the restore gate is covered by plain JVM/JUnit4 tests.
  */
-internal fun shouldApplyRestoredDualSubtitles(
+fun shouldApplyRestoredDualSubtitles(
     movieSubtitleMemoryReady: Boolean,
     restoredDualNeedsApply: Boolean,
     dualSubtitlesEnabled: Boolean,
