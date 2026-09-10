@@ -2471,127 +2471,42 @@ fun VideoPlayerScreen(
         // entry point and is removed rather than left as a second door to the
         // same two actions.
 
-        val activeSpeechJobLabel = speechJobLabel
-        PlayerFloatingJobOverlay(
-            visible = activeSpeechJobLabel != null &&
-                !showSpeechSubtitlePanel &&
-                !CineVaultPlayerHolder.isInPipMode &&
-                externalPlayerView == null,
+        // Slice 50: floating subtitle AI job pills and both draggable AI
+        // panels are now one cohesive presentation component.
+        PlayerSubtitleAiPanels(
+            context = context,
             containerWidth = playerMaxWidth,
             containerHeight = playerMaxHeight,
-            label = activeSpeechJobLabel ?: "Speech",
-            progress = speechJobProgress,
-            onOpen = {
+            isInPipMode = CineVaultPlayerHolder.isInPipMode,
+            externalDisplayActive = externalPlayerView != null,
+            speechJobLabel = speechJobLabel,
+            speechJobProgress = speechJobProgress,
+            translationJobLabel = translationJobLabel,
+            translationJobProgress = translationJobProgress,
+            showSpeechPanel = showSpeechSubtitlePanel,
+            showTranslationPanel = showSubtitleTranslationPanel,
+            speechStatus = speechSubtitleStatus,
+            translationStatus = subtitleTranslationStatus,
+            generatedFiles = generatedSubtitleFiles,
+            activeSubtitleUri = trackUi.primaryUri ?: trackUi.originalUri,
+            speechCoordinator = speechSubtitleCoordinator,
+            translationCoordinator = subtitleTranslationCoordinator,
+            generatedSubtitleOrchestrator = generatedSubtitleOrchestrator,
+            onShowSpeechPanel = {
                 showSubtitleTranslationPanel = false
                 showSpeechSubtitlePanel = true
             },
-        )
-
-        val activeTranslationJobLabel = translationJobLabel
-        PlayerFloatingJobOverlay(
-            visible = activeTranslationJobLabel != null &&
-                !showSubtitleTranslationPanel &&
-                !CineVaultPlayerHolder.isInPipMode &&
-                externalPlayerView == null,
-            containerWidth = playerMaxWidth,
-            containerHeight = playerMaxHeight,
-            label = activeTranslationJobLabel ?: "Translate",
-            progress = translationJobProgress,
-            onOpen = {
+            onHideSpeechPanel = {
+                showSpeechSubtitlePanel = false
+            },
+            onShowTranslationPanel = {
                 showSpeechSubtitlePanel = false
                 showSubtitleTranslationPanel = true
             },
+            onHideTranslationPanel = {
+                showSubtitleTranslationPanel = false
+            },
         )
-
-        if (
-            showSpeechSubtitlePanel &&
-            !CineVaultPlayerHolder.isInPipMode &&
-            externalPlayerView == null
-        ) {
-            val panelWidth = (playerMaxWidth * 0.46f)
-                .coerceAtMost(320.dp)
-                .coerceAtLeast(250.dp)
-            val panelHeight = (playerMaxHeight * 0.72f)
-                .coerceAtMost(340.dp)
-                .coerceAtLeast(240.dp)
-
-            Box(modifier = Modifier.align(Alignment.Center)) {
-                DraggableFloatingPopup(
-                    containerWidth = playerMaxWidth,
-                    containerHeight = playerMaxHeight,
-                    popupWidth = panelWidth,
-                    popupMaxHeight = panelHeight,
-                    onUserInteraction = {},
-                ) {
-                    Box(modifier = Modifier.width(panelWidth)) {
-                        SpeechSubtitlePanel(
-                            status = speechSubtitleStatus,
-                            models = WhisperModelManager.modelCatalog(context),
-                            onSelectModel = { modelId ->
-                                speechSubtitleCoordinator.selectModel(modelId)
-                            },
-                            onDownloadModel = { modelId ->
-                                speechSubtitleCoordinator.downloadModel(modelId)
-                            },
-                            onDeleteModel = { modelId ->
-                                speechSubtitleCoordinator.deleteModel(modelId)
-                            },
-                            onGenerate = {
-                                showSpeechSubtitlePanel = false
-                                speechSubtitleCoordinator.generateSubtitles()
-                            },
-                            onStop = {
-                                speechSubtitleCoordinator.cancelTranscription()
-                            },
-                            onDismiss = { showSpeechSubtitlePanel = false },
-                        )
-                    }
-                }
-            }
-        }
-
-        if (
-            showSubtitleTranslationPanel &&
-            !CineVaultPlayerHolder.isInPipMode &&
-            externalPlayerView == null
-        ) {
-            val panelWidth = (playerMaxWidth * 0.44f)
-                .coerceAtMost(310.dp)
-                .coerceAtLeast(245.dp)
-            val panelHeight = (playerMaxHeight * 0.60f)
-                .coerceAtMost(350.dp)
-                .coerceAtLeast(245.dp)
-
-            Box(modifier = Modifier.align(Alignment.Center)) {
-                DraggableFloatingPopup(
-                    containerWidth = playerMaxWidth,
-                    containerHeight = playerMaxHeight,
-                    popupWidth = panelWidth,
-                    popupMaxHeight = panelHeight,
-                    onUserInteraction = {},
-                ) {
-                    Box(modifier = Modifier.width(panelWidth)) {
-                        SubtitleTranslationPanel(
-                            status = subtitleTranslationStatus,
-                            activeSource = generatedSubtitleOrchestrator.resolveActiveSubtitle(),
-                            generatedFiles = generatedSubtitleFiles,
-                            activeSubtitleUri = trackUi.primaryUri ?: trackUi.originalUri,
-                            onLoadGenerated = { file ->
-                                generatedSubtitleOrchestrator.apply(file, null, "Generated subtitle")
-                            },
-                            onTranslate = { language ->
-                                showSubtitleTranslationPanel = false
-                                subtitleTranslationCoordinator.translateActive(language)
-                            },
-                            onStop = {
-                                subtitleTranslationCoordinator.cancelTranslation()
-                            },
-                            onDismiss = { showSubtitleTranslationPanel = false },
-                        )
-                    }
-                }
-            }
-        }
 
 
 
