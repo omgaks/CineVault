@@ -1192,6 +1192,35 @@ fun VideoPlayerScreen(
         )
     }
 
+    // Slice 39: completed AI translations are now routed outside the player.
+    // A finished subtitle either satisfies a pending Dual Subs request or
+    // becomes the active primary AI translation.
+    val subtitleTranslationResultCoordinator = remember {
+        SubtitleTranslationResultCoordinator(
+            scope = scope,
+            isDualEnabled = { dualUi.enabled },
+            getPendingDualLanguage = { pendingDualAiLanguage },
+            clearPendingDualLanguage = { pendingDualAiLanguage = null },
+            applyDualSecondary = { uri ->
+                subtitleSyncTools.applyDualSecondaryUri(uri, "AI")
+            },
+            applyPrimaryTranslation = { file, language ->
+                generatedSubtitleOrchestrator.apply(
+                    file,
+                    language,
+                    "AI Translation",
+                )
+            },
+            showTranslationSuccess = { language ->
+                translationSuccessLanguage =
+                    SubtitleLanguageRegistry.displayName(language)
+            },
+            clearTranslationSuccess = {
+                translationSuccessLanguage = null
+            },
+        )
+    }
+
     val subtitleTranslationCoordinator = remember(exoPlayer) {
         SubtitleTranslationCoordinator(
             context = context,
@@ -1201,24 +1230,10 @@ fun VideoPlayerScreen(
             getStatus = { subtitleTranslationStatus },
             setStatus = { subtitleTranslationStatus = it },
             onSubtitleReady = { file, language ->
-                val pendingDual = pendingDualAiLanguage
-                val normalizedPending = pendingDual?.let(SubtitleLanguageRegistry::normalize)
-                val normalizedReady = SubtitleLanguageRegistry.normalize(language)
-                if (
-                    dualUi.enabled &&
-                    pendingDual != null &&
-                    normalizedPending == normalizedReady
-                ) {
-                    pendingDualAiLanguage = null
-                    subtitleSyncTools.applyDualSecondaryUri(file.uri, "AI")
-                } else {
-                    generatedSubtitleOrchestrator.apply(file, language, "AI Translation")
-                    translationSuccessLanguage = SubtitleLanguageRegistry.displayName(language)
-                    scope.launch {
-                        delay(3000)
-                        translationSuccessLanguage = null
-                    }
-                }
+                subtitleTranslationResultCoordinator.onTranslationReady(
+                    file = file,
+                    language = language,
+                )
             },
             onGeneratedLibraryChanged = { generatedSubtitleRefreshKey++ },
         )
