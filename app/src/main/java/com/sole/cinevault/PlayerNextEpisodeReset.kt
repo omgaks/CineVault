@@ -1,6 +1,6 @@
 package com.sole.cinevault
 
-internal fun shouldResetNextEpisodeOverlay(
+fun shouldResetNextEpisodeOverlay(
     showNextEpisodeOverlay: Boolean,
     creditsStartMs: Long?,
     position: Long,

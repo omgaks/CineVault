@@ -1043,16 +1043,6 @@ fun VideoPlayerScreen(
             }
         )
     }
-    fun armDialogueSync() = subtitleSyncTools.armDialogueSync()
-    fun cancelDialogueSync() = subtitleSyncTools.cancelDialogueSync()
-    fun confirmDialogueSyncTap() = subtitleSyncTools.confirmDialogueSyncTap()
-    fun markDriftPointA(correctionSeconds: Float) = subtitleSyncTools.markDriftPointA(correctionSeconds)
-    fun markDriftPointB(correctionSeconds: Float) = subtitleSyncTools.markDriftPointB(correctionSeconds)
-    fun applyDriftFix() = subtitleSyncTools.applyDriftFix()
-    fun fetchAndApplyDualSecondary() = subtitleSyncTools.fetchAndApplyDualSecondary()
-    fun disableDualSubtitles() =
-        subtitleSyncTools.disableDualSubtitles()
-
     // Slice 34: restored Dual Subs re-apply is now a pure, unit-tested gate.
     // The effect remains Compose-owned; only the decision is extracted.
     LaunchedEffect(
@@ -1070,7 +1060,7 @@ fun VideoPlayerScreen(
             )
         ) {
             restoredDualNeedsApply = false
-            fetchAndApplyDualSecondary()
+            subtitleSyncTools.fetchAndApplyDualSecondary()
         }
     }
 
@@ -1669,7 +1659,7 @@ fun VideoPlayerScreen(
                             searchUi.showSearch -> searchUi.showSearch = false
                             driftUi.showDialog -> driftUi.showDialog = false
                             coreUi.showAppearanceStudio -> coreUi.showAppearanceStudio = false
-                            coreUi.dialogueSyncArmed -> cancelDialogueSync()
+                            coreUi.dialogueSyncArmed -> subtitleSyncTools.cancelDialogueSync()
                             showSubtitleDock -> showSubtitleDock = false
                             showSubtitleBloom -> { showSubtitleBloom = false; studioCategory = null }
                             showDualSubsWindow -> showDualSubsWindow = false
@@ -2018,17 +2008,17 @@ fun VideoPlayerScreen(
         SubtitleSyncAndAppearancePopups(
             dialogueSyncArmed = coreUi.dialogueSyncArmed,
             isLandscape = isLandscape,
-            onDialogueSyncTap = { confirmDialogueSyncTap() },
-            onDialogueSyncCancel = { cancelDialogueSync() },
+            onDialogueSyncTap = { subtitleSyncTools.confirmDialogueSyncTap() },
+            onDialogueSyncCancel = { subtitleSyncTools.cancelDialogueSync() },
             showDriftDialog = driftUi.showDialog,
             driftPopupWidth = playerDriftPopupWidth(trackSelectorWidth),
             videoDurationMs = duration,
             currentPositionMs = position,
             driftPointA = driftUi.pointA,
             driftPointB = driftUi.pointB,
-            onMarkPointA = { correction -> markDriftPointA(correction) },
-            onMarkPointB = { correction -> markDriftPointB(correction) },
-            onApplyDrift = { applyDriftFix() },
+            onMarkPointA = { correction -> subtitleSyncTools.markDriftPointA(correction) },
+            onMarkPointB = { correction -> subtitleSyncTools.markDriftPointB(correction) },
+            onApplyDrift = { subtitleSyncTools.applyDriftFix() },
             onDismissDrift = { driftUi.showDialog = false; showControls = false; showTopBar = false },
             showAppearanceStudio = coreUi.showAppearanceStudio,
             appearanceBottomPadding = playerPopupBottomPadding(popupBottomPadding),
@@ -2531,7 +2521,7 @@ fun VideoPlayerScreen(
                         com.sole.cinevault.subtitles.StudioListItem(
                             icon = com.sole.cinevault.subtitles.StudioRowIcons.DialogueSync,
                             label = "Dialogue sync",
-                            onClick = { armDialogueSync(); showSubtitleBloom = false; studioCategory = null }
+                            onClick = { subtitleSyncTools.armDialogueSync(); showSubtitleBloom = false; studioCategory = null }
                         ),
                         com.sole.cinevault.subtitles.StudioListItem(
                             icon = com.sole.cinevault.subtitles.StudioRowIcons.DriftSync,
@@ -2596,7 +2586,7 @@ fun VideoPlayerScreen(
                 enabled = dualUi.enabled,
                 onEnabledChange = { enabled ->
                     dualUi.enabled = enabled
-                    if (enabled) fetchAndApplyDualSecondary() else disableDualSubtitles()
+                    if (enabled) subtitleSyncTools.fetchAndApplyDualSecondary() else subtitleSyncTools.disableDualSubtitles()
                     studioUi.menuTouchKey++
                 },
                 canEnable = trackUi.primaryUri != null,
@@ -2608,20 +2598,20 @@ fun VideoPlayerScreen(
                     dualUi.secondaryLanguage = lang
                     coreUi.behaviorPrefs = coreUi.behaviorPrefs.copy(dualSecondaryLanguage = lang)
                     saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
-                    if (dualUi.enabled) fetchAndApplyDualSecondary()
+                    if (dualUi.enabled) subtitleSyncTools.fetchAndApplyDualSecondary()
                     studioUi.menuTouchKey++
                 },
                 availableLanguages = languages,
                 gapLines = dualUi.gapLines,
                 onGapLinesChange = { gap ->
                     dualUi.gapLines = gap
-                    if (dualUi.enabled) fetchAndApplyDualSecondary()
+                    if (dualUi.enabled) subtitleSyncTools.fetchAndApplyDualSecondary()
                     studioUi.menuTouchKey++
                 },
                 secondaryColorHex = dualSecondaryColorHex,
                 onSecondaryColorChange = { color ->
                     dualSecondaryColorHex = color
-                    if (dualUi.enabled) fetchAndApplyDualSecondary()
+                    if (dualUi.enabled) subtitleSyncTools.fetchAndApplyDualSecondary()
                     studioUi.menuTouchKey++
                 },
                 // Covers interactions that don't change a value (e.g. just
