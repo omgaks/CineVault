@@ -364,24 +364,29 @@ fun VideoPlayerScreen(
         )
     }
 
-    fun handleExitRequest() =
-        playerExitCoordinator.handleExitRequest()
-
-    fun closeAllMenus() {
-        showAudioSelector = false
-        coreUi.showSettings = false
-        driftUi.showDialog = false
-        showSpeedMenu = false
-        showSleepMenu = false
-        showSrtBrowser = false
-
-        subtitleStudioNavigation.closeSubtitleSurfaces(
-            clearPendingImportCandidates = { searchUi.pendingImportCandidates = null },
-            setShowFallback = { searchUi.showFallback = it },
-            setShowEmbeddedBrowser = { searchUi.showEmbeddedBrowser = it },
-            setShowDualSubsWindow = { showDualSubsWindow = it },
+    // Slice 43: closing all transient player menus is now coordinated outside
+    // VideoPlayerScreen. The player owns state; the coordinator owns the close sequence.
+    val playerMenuCloseCoordinator = remember {
+        PlayerMenuCloseCoordinator(
+            closeAudioSelector = { showAudioSelector = false },
+            closeSettings = { coreUi.showSettings = false },
+            closeDriftDialog = { driftUi.showDialog = false },
+            closeSpeedMenu = { showSpeedMenu = false },
+            closeSleepMenu = { showSleepMenu = false },
+            closeSrtBrowser = { showSrtBrowser = false },
+            closeSubtitleSurfaces = {
+                subtitleStudioNavigation.closeSubtitleSurfaces(
+                    clearPendingImportCandidates = { searchUi.pendingImportCandidates = null },
+                    setShowFallback = { searchUi.showFallback = it },
+                    setShowEmbeddedBrowser = { searchUi.showEmbeddedBrowser = it },
+                    setShowDualSubsWindow = { showDualSubsWindow = it },
+                )
+            },
         )
     }
+
+    fun closeAllMenus() =
+        playerMenuCloseCoordinator.closeAll()
 
     var pendingSrtUri by remember { mutableStateOf<Uri?>(null) }
 
