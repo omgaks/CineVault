@@ -604,164 +604,70 @@ fun VideoPlayerScreen(
 
 
 
-    LaunchedEffect(currentVideo.path) {
-        movieSubtitleMemoryReady = false
-        movieAppearanceMemoryReady = false
-        restoredDualNeedsApply = false
-
-        val savedPosition = if (isStreamMedia) 0L else loadPlaybackPosition(context, currentVideo.path)
-        val savedSubtitleMemory = withContext(Dispatchers.IO) {
-            loadMovieSubtitleMemory(context, currentVideo.path)
-        }
-        movieSubtitleMemory = savedSubtitleMemory
-        position = savedPosition; duration = 1L; showControls = true; showTopBar = true
-        showAudioSelector = false; coreUi.showSettings = false; trackUi.showSelector = false; searchUi.showSearch = false; showSpeedMenu = false; showSleepMenu = false; showSrtBrowser = false
-        searchUi.showFallback = false; searchUi.showEmbeddedBrowser = false; searchUi.pendingImportCandidates = null
-        searchUi.searchResults = emptyList(); searchUi.searchStatus = ""; searchUi.searchLoading = false
-        pendingNextEpisode = null; nextEpisodeCountdown = 0; showNextEpisodeOverlay = false
-        nextEpisodeDismissed = false
-        smartSegmentResult = SmartSegmentResult()
-        previewBitmap = null; previewFrames = emptyList(); isVideoEnded = false
-        playerErrorMessage = null; errorRetryCount = 0; stuckBufferingHint = false
-        trackUi.originalUri = null; trackUi.appliedOffsetMs = 0L; coreUi.syncOffset = 0.0f
-        driftUi.scale = 1.0f; driftUi.appliedScale = 1.0f; driftUi.pointA = null; driftUi.pointB = null
-        coreUi.dialogueSyncArmed = false; coreUi.dialogueSyncReferenceMs = null; driftUi.showDialog = false
-        dualUi.enabled = false; dualUi.statusText = ""; trackUi.primaryUri = null; trackUi.primaryLanguage = null; audioLanguageCheckedForPath = null
-        appearanceUi.preserveOriginalStyling = false
-        studioUi.gestureFeedback = ""
-        autoSyncStatus = AutoSyncStatus.Idle
-        autoSyncSpeechTimeline = null
-        trackUi.selectedKey = null; trackUi.selectedLabel = ""; trackUi.selectedSource = ""
-        droppedFrameNudgeCount = 0; lastNudgeAtMs = 0L
-
-        savedSubtitleMemory?.let { memory ->
-            coreUi.subtitlesEnabled = memory.subtitlesEnabled
-            coreUi.syncOffset = memory.syncOffsetSeconds
-            dualUi.secondaryLanguage = memory.dualSecondaryLanguage
-            dualUi.gapLines = memory.dualGapLines
-            dualUi.secondarySourceLabel = memory.dualSecondarySource
-            dualSecondaryColorHex = memory.dualSecondaryColorHex
-            appearanceUi.preserveOriginalStyling = memory.preserveOriginalStyling
-        }
-
-        if (!isStreamMedia) recordWatchHistory(context, currentVideo.path, cleanVideoTitle(currentVideo.path))
-        if (isRestrictedFolderMedia) updateRestrictedFolderLastPlayed(context, currentVideo.path, currentVideo.folderPath)
-
-        val rememberedPrimaryUri = savedSubtitleMemory
-            ?.primaryUri
-            ?.takeIf { canRestoreMovieSubtitleUri(context, it) }
-            ?.let(Uri::parse)
-        val restoredRememberedPrimary = rememberedPrimaryUri != null
-
-        // If this movie has a still-readable remembered primary track, it
-        // wins. Otherwise fall back to CineVault's normal local/cache search.
-        val localMatch = if (
-            !restoredRememberedPrimary &&
-            !isStreamMedia &&
-            coreUi.behaviorPrefs.autoLoadMatchingLocalFile
-        ) {
-            withContext(Dispatchers.IO) { findBestMatchingLocalSubtitle(currentVideo.path, coreUi.behaviorPrefs.preferredLanguages) }
-        } else null
-
-        val cachedSubtitle = if (
-            !restoredRememberedPrimary &&
-            localMatch == null &&
-            !isStreamMedia &&
-            canDownloadExternalSubtitles
-        ) {
-            withContext(Dispatchers.IO) { OpenSubtitlesClient.findCachedSubtitle(context, currentVideo.path, coreUi.behaviorPrefs.preferredLanguages) }
-        } else null
-
-        when {
-            rememberedPrimaryUri != null && savedSubtitleMemory != null -> {
-                coreUi.subtitlesEnabled = savedSubtitleMemory.subtitlesEnabled
-                trackSelector.parameters = trackSelector.buildUponParameters()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !coreUi.subtitlesEnabled)
-                    .build()
-                trackUi.primaryUri = rememberedPrimaryUri
-                trackUi.primaryLanguage = savedSubtitleMemory.primaryLanguage
-                trackUi.selectedKey = savedSubtitleMemory.selectedKey
-                trackUi.selectedLabel = savedSubtitleMemory.selectedLabel
-                trackUi.selectedSource = savedSubtitleMemory.selectedSource
-                if (coreUi.subtitlesEnabled) {
-                    playCurrentVideoWithSubtitle(
-                        rememberedPrimaryUri,
-                        savedPosition,
-                        isOriginalSubtitle = true,
-                    )
-                } else {
-                    playCurrentVideoWithSubtitle(resumePosition = savedPosition)
-                }
-                dualUi.enabled = savedSubtitleMemory.dualEnabled && coreUi.subtitlesEnabled
-                restoredDualNeedsApply = dualUi.enabled
-                autoSubtitleFetch.attemptedForPath = currentVideo.path
-            }
-            localMatch != null -> {
-                coreUi.subtitlesEnabled = true
-                trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-                val localUri = Uri.fromFile(localMatch.file)
-                val cleanedLocalUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, localUri, coreUi.cleaningOptions) } ?: localUri
-                trackUi.primaryUri = cleanedLocalUri
-                trackUi.primaryLanguage = localMatch.languageCode
-                playCurrentVideoWithSubtitle(cleanedLocalUri, savedPosition)
-                autoSubtitleFetch.attemptedForPath = currentVideo.path
-                trackUi.selectedKey = "local:${localMatch.file.absolutePath}"
-                trackUi.selectedLabel = localMatch.file.name; trackUi.selectedSource = "Local file"
-            }
-            cachedSubtitle != null -> {
-                coreUi.subtitlesEnabled = true
-                trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-                val cleanedCachedUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, cachedSubtitle.uri, coreUi.cleaningOptions) } ?: cachedSubtitle.uri
-                trackUi.primaryUri = cleanedCachedUri
-                trackUi.primaryLanguage = cachedSubtitle.language
-                playCurrentVideoWithSubtitle(cleanedCachedUri, savedPosition)
-                autoSubtitleFetch.attemptedForPath = currentVideo.path
-                trackUi.selectedKey = "downloaded"
-                trackUi.selectedLabel = friendlyLanguageName(cachedSubtitle.language); trackUi.selectedSource = "OpenSubtitles"
-            }
-            else -> {
-                playCurrentVideoWithSubtitle(resumePosition = savedPosition)
-            }
-        }
-
-        if (!isStreamMedia && canDownloadExternalSubtitles && !isRestrictedFolderMedia &&
-            coreUi.behaviorPrefs.autoDownloadWhenMissing &&
-            !restoredRememberedPrimary &&
-            cachedSubtitle == null &&
-            localMatch == null &&
-            autoSubtitleFetch.attemptedForPath != currentVideo.path
-        ) {
-            autoSubtitleFetch.attemptedForPath = currentVideo.path
-            scope.launch {
-                delay(playerSubtitleAutoFetchStartDelayMs()); if (autoSubtitleFetch.downloadInProgress) return@launch
-                autoSubtitleFetch.downloadInProgress = true
-                autoSubtitleFetch.status = "Searching subtitles..."
-                try {
-                    val result = OpenSubtitlesClient.downloadBestSubtitleDetailed(context, currentVideo.path, coreUi.behaviorPrefs.preferredLanguages)
-                    if (result is SubtitleDownloadResult.Success) {
-                        val resumeAt = playerSafeResumePosition(exoPlayer.currentPosition)
-                        coreUi.subtitlesEnabled = true
-                        trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
-                        autoSubtitleFetch.status = "Subtitle loaded"
-                        val cleanedResultUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, result.uri, coreUi.cleaningOptions) } ?: result.uri
-                        trackUi.primaryUri = cleanedResultUri
-                        trackUi.primaryLanguage = SubtitleLanguageRegistry.normalize(result.language)
-                        playCurrentVideoWithSubtitle(cleanedResultUri, resumeAt)
-                        trackUi.selectedKey = "downloaded"
-                        trackUi.selectedLabel = friendlyLanguageName(result.language); trackUi.selectedSource = "OpenSubtitles"
-                        delay(playerSubtitleStatusClearDelayMs()); autoSubtitleFetch.status = ""
-                    } else {
-                        autoSubtitleFetch.status = result.summary(); delay(playerSubtitleResultStatusDurationMs()); autoSubtitleFetch.status = ""
-                    }
-                } catch (e: Exception) {
-                    autoSubtitleFetch.status = "Subtitle failed: ${e.message ?: e.javaClass.simpleName}"; delay(playerSubtitleFailureStatusDurationMs()); autoSubtitleFetch.status = ""
-                }
-                finally { autoSubtitleFetch.downloadInProgress = false }
-            }
-        }
-
-        movieSubtitleMemoryReady = true
-    }
+    // Slice 47: the complete per-video startup/reset + subtitle restore/fallback
+    // pipeline now lives outside VideoPlayerScreen.
+    PlayerVideoSessionInitializationEffect(
+        context = context,
+        scope = scope,
+        video = currentVideo,
+        isStreamMedia = isStreamMedia,
+        isRestrictedFolderMedia = isRestrictedFolderMedia,
+        canDownloadExternalSubtitles = canDownloadExternalSubtitles,
+        coreUi = coreUi,
+        trackUi = trackUi,
+        searchUi = searchUi,
+        driftUi = driftUi,
+        dualUi = dualUi,
+        appearanceUi = appearanceUi,
+        studioUi = studioUi,
+        autoSubtitleFetch = autoSubtitleFetch,
+        setTextTracksDisabled = { disabled ->
+            trackSelector.parameters = trackSelector.buildUponParameters()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, disabled)
+                .build()
+        },
+        playVideoWithSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle ->
+            playCurrentVideoWithSubtitle(
+                subtitleUri = subtitleUri,
+                resumePosition = resumePosition,
+                isOriginalSubtitle = isOriginalSubtitle,
+            )
+        },
+        getCurrentSafeResumePosition = {
+            playerSafeResumePosition(exoPlayer.currentPosition)
+        },
+        setters = PlayerVideoSessionSetters(
+            setMovieSubtitleMemoryReady = { movieSubtitleMemoryReady = it },
+            setMovieAppearanceMemoryReady = { movieAppearanceMemoryReady = it },
+            setRestoredDualNeedsApply = { restoredDualNeedsApply = it },
+            setMovieSubtitleMemory = { movieSubtitleMemory = it },
+            setPosition = { position = it },
+            setDuration = { duration = it },
+            setShowControls = { showControls = it },
+            setShowTopBar = { showTopBar = it },
+            setShowAudioSelector = { showAudioSelector = it },
+            setShowSpeedMenu = { showSpeedMenu = it },
+            setShowSleepMenu = { showSleepMenu = it },
+            setShowSrtBrowser = { showSrtBrowser = it },
+            setPendingNextEpisode = { pendingNextEpisode = it },
+            setNextEpisodeCountdown = { nextEpisodeCountdown = it },
+            setShowNextEpisodeOverlay = { showNextEpisodeOverlay = it },
+            setNextEpisodeDismissed = { nextEpisodeDismissed = it },
+            setSmartSegmentResult = { smartSegmentResult = it },
+            setPreviewBitmap = { previewBitmap = it },
+            setPreviewFrames = { previewFrames = it },
+            setIsVideoEnded = { isVideoEnded = it },
+            setPlayerErrorMessage = { playerErrorMessage = it },
+            setErrorRetryCount = { errorRetryCount = it },
+            setStuckBufferingHint = { stuckBufferingHint = it },
+            setAudioLanguageCheckedForPath = { audioLanguageCheckedForPath = it },
+            setDualSecondaryColorHex = { dualSecondaryColorHex = it },
+            setAutoSyncStatus = { autoSyncStatus = it },
+            setAutoSyncSpeechTimeline = { autoSyncSpeechTimeline = it },
+            setDroppedFrameNudgeCount = { droppedFrameNudgeCount = it },
+            setLastNudgeAtMs = { lastNudgeAtMs = it },
+        ),
+    )
 
     PlayerSessionLifecycle(
         context = context,
