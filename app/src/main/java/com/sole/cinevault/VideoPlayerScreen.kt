@@ -1501,12 +1501,6 @@ fun VideoPlayerScreen(
             PlayerSmartSegmentCoordinator(smartSegmentRepository)
         }
 
-        LaunchedEffect(currentMeta?.video?.path, playerHasSmartSegmentDuration(duration)) {
-            playerSmartSegmentCoordinator
-                .loadIfNeeded(currentMeta, duration)
-                ?.let { smartSegmentResult = it }
-        }
-
         val smartPlaybackSegments = deriveSmartPlaybackSegments(
             result = smartSegmentResult,
             position = position
@@ -1515,34 +1509,31 @@ fun VideoPlayerScreen(
         val exactSceneSegment = smartPlaybackSegments.exactSceneSegment
         val creditsSegment = smartPlaybackSegments.creditsSegment
 
-        LaunchedEffect(currentVideo.path, position, creditsSegment?.startMs, showNextEpisodeOverlay) {
-            playerSmartSegmentCoordinator.findCreditsNextEpisode(
-                currentVideoPath = currentVideo.path,
-                episodeList = episodeList,
-                isCurrentTvShow = isCurrentTvShow,
-                showNextEpisodeOverlay = showNextEpisodeOverlay,
-                nextEpisodeDismissed = nextEpisodeDismissed,
-                creditsStartMs = creditsSegment?.startMs,
-                position = position,
-            )?.let { next ->
+        // Slice 45: Smart Segment / credits side effects now live outside the
+        // giant player composable. The player only supplies state and callbacks.
+        PlayerSmartSegmentEffects(
+            coordinator = playerSmartSegmentCoordinator,
+            currentMeta = currentMeta,
+            duration = duration,
+            currentVideoPath = currentVideo.path,
+            episodeList = episodeList,
+            isCurrentTvShow = isCurrentTvShow,
+            showNextEpisodeOverlay = showNextEpisodeOverlay,
+            nextEpisodeDismissed = nextEpisodeDismissed,
+            creditsStartMs = creditsSegment?.startMs,
+            position = position,
+            onSmartSegmentLoaded = { smartSegmentResult = it },
+            onNextEpisodeTriggered = { next ->
                 pendingNextEpisode = next
                 nextEpisodeCountdown = 15
                 showNextEpisodeOverlay = true
-            }
-        }
-
-        LaunchedEffect(position, creditsSegment?.startMs) {
-            if (playerSmartSegmentCoordinator.shouldResetCreditsOverlay(
-                    showNextEpisodeOverlay = showNextEpisodeOverlay,
-                    creditsStartMs = creditsSegment?.startMs,
-                    position = position,
-                )
-            ) {
+            },
+            onResetNextEpisodeOverlay = {
                 showNextEpisodeOverlay = false
                 pendingNextEpisode = null
                 nextEpisodeCountdown = 0
-            }
-        }
+            },
+        )
 
         val showPrevNextButtons = playlistNavigation.showPrevNextButtons
         val currentEpisodeIndex = playlistNavigation.currentIndex
