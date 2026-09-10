@@ -235,11 +235,6 @@ fun VideoPlayerScreen(
         setShowSubtitleBehaviourWindow = { showSubtitleBehaviourWindow = it },
     )
 
-    fun onDockItemTapped(item: SubtitleDockItem) =
-        subtitleStudioNavigation.onDockItemTapped(item)
-
-    fun onStudioCategoryTapped(category: StudioCategory) =
-        subtitleStudioNavigation.onStudioCategoryTapped(category)
     var autoSyncStatus by remember { mutableStateOf<AutoSyncStatus>(AutoSyncStatus.Idle) }
     var autoSyncSpeechTimeline by remember { mutableStateOf<FloatArray?>(null) }
     val autoSubtitleFetch = remember { AutoSubtitleFetchState() }
@@ -453,17 +448,7 @@ fun VideoPlayerScreen(
         }
     }
 
-    fun setPlaybackSpeed(speed: Float) =
-        playerSessionActionsCoordinator.setPlaybackSpeed(speed)
-
-    fun setSleepTimer(minutes: Int) =
-        playerSessionActionsCoordinator.setSleepTimer(minutes)
-
-    // FIX: these three functions used to be plain local functions defined
-    // right here — now orchestration glue calling into
-    // PlaybackNavigationCoordinator (see that file for the full
-    // reasoning). Every one of the 13+ call sites elsewhere in this file
-    // continues to work unchanged.
+    // Playback navigation behavior is owned by PlaybackNavigationCoordinator.
     val playbackNavigationCoordinator = remember(exoPlayer) {
         PlaybackNavigationCoordinator(
             context = context,
@@ -483,8 +468,6 @@ fun VideoPlayerScreen(
             onPlayNext = onPlayNext
         )
     }
-    fun playPrevious() = playbackNavigationCoordinator.playPrevious()
-    fun playNext() = playbackNavigationCoordinator.playNext()
     fun playCurrentVideoWithSubtitle(subtitleUri: Uri? = null, resumePosition: Long = 0L, isOriginalSubtitle: Boolean = true) =
         playbackNavigationCoordinator.playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
 
@@ -533,17 +516,8 @@ fun VideoPlayerScreen(
             }
         )
     }
-    fun deleteWithUndo(file: java.io.File) = subtitleDeletionCoordinator.deleteWithUndo(file)
-    fun requestDeleteSubtitle(file: java.io.File) = subtitleDeletionCoordinator.requestDeleteSubtitle(file)
-
-    // Validated handoff for both the website-fallback flow and the
-    // (now-validated) local file picker below — reuses the exact same
-    // cleaning + playback pipeline every other subtitle source already
-    // goes through, so this isn't a parallel/divergent code path.
-    // FIX: these three functions used to be plain local functions defined
-    // right here — now orchestration glue calling into
-    // SubtitleSearchCoordinator (see that file for the full reasoning).
-    // Every call site elsewhere in this file continues to work unchanged.
+    // Subtitle acquisition/search behavior is owned by SubtitleSearchCoordinator.
+    // UI call sites now invoke it directly; no player-local pass-through layer remains.
     val subtitleSearchCoordinator = remember(exoPlayer, trackSelector) {
         SubtitleSearchCoordinator(
             context = context,
@@ -562,8 +536,6 @@ fun VideoPlayerScreen(
             }
         )
     }
-    fun applyImportedWebsiteSubtitle(imported: ImportedSubtitle) = subtitleSearchCoordinator.applyImportedWebsiteSubtitle(imported)
-
     // Slice 26: the system picker stays composable-owned, but everything
     // after the user chooses a file now lives in SubtitleLocalImportCoordinator:
     // persistable permission, content validation/import, ZIP candidate handling
@@ -577,7 +549,7 @@ fun VideoPlayerScreen(
                 coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en"
             },
             applyImportedSubtitle = { imported ->
-                applyImportedWebsiteSubtitle(imported)
+                subtitleSearchCoordinator.applyImportedWebsiteSubtitle(imported)
             },
             setPendingImportCandidates = { result ->
                 searchUi.pendingImportCandidates = result
@@ -597,12 +569,6 @@ fun VideoPlayerScreen(
     // resolves with no changes at all — not even a wrapper function was
     // needed here, unlike the earlier slices, since these never touched
     // any state to begin with.
-
-    fun performSubtitleSearch(query: String, seasonText: String, episodeText: String, language: String = coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en") =
-        subtitleSearchCoordinator.performSubtitleSearch(query, seasonText, episodeText, language)
-    fun applySearchResult(result: SubtitleSearchResult, alsoPlay: Boolean) = subtitleSearchCoordinator.applySearchResult(result, alsoPlay)
-
-
 
     // Slice 47: the complete per-video startup/reset + subtitle restore/fallback
     // pipeline now lives outside VideoPlayerScreen.
@@ -675,8 +641,8 @@ fun VideoPlayerScreen(
         player = exoPlayer,
         videoPath = currentVideo.path,
         isStreamMedia = isStreamMedia,
-        onNextRequested = { playNext() },
-        onPreviousRequested = { playPrevious() },
+        onNextRequested = { playbackNavigationCoordinator.playNext() },
+        onPreviousRequested = { playbackNavigationCoordinator.playPrevious() },
         onInitialBrightnessChanged = { brightnessPercent = it },
     )
 
@@ -1512,8 +1478,8 @@ fun VideoPlayerScreen(
                         showVolumeCircle = true
                         externalPresentation?.showGestureHud("Volume", "$volumePercent%", volumePercent)
                     },
-                    onPrevious = { externalPresentation?.showGestureHud("Episode", "PREVIOUS"); playPrevious() },
-                    onNext = { externalPresentation?.showGestureHud("Episode", "NEXT"); playNext() },
+                    onPrevious = { externalPresentation?.showGestureHud("Episode", "PREVIOUS"); playbackNavigationCoordinator.playPrevious() },
+                    onNext = { externalPresentation?.showGestureHud("Episode", "NEXT"); playbackNavigationCoordinator.playNext() },
                     onPointerMove = { externalPresentation?.movePointer(it.x, it.y) },
                     onPointerClick = {
                         externalPresentation?.showTouchPulse()
@@ -1586,7 +1552,7 @@ fun VideoPlayerScreen(
                         isZoomMode = !isZoomMode; showControls = true; showTopBar = true
                     },
                     onDragSettled = { brightnessGestureKey++; volumeGestureKey++ },
-                    onEdgeSwipeNext = { playNext() },
+                    onEdgeSwipeNext = { playbackNavigationCoordinator.playNext() },
                     onBrightnessDrag = { deltaY ->
                         brightnessPercent = adjustPlayerBrightnessPercent(brightnessPercent, deltaY)
                         activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = playerWindowBrightness(brightnessPercent) }
@@ -1668,9 +1634,9 @@ fun VideoPlayerScreen(
             sidePadding = sidePadding,
             smallMenuWidth = smallMenuWidth,
             smallMenuMaxHeight = smallMenuMaxHeight,
-            onSpeedSelected = { setPlaybackSpeed(it) },
+            onSpeedSelected = { playerSessionActionsCoordinator.setPlaybackSpeed(it) },
             onDismissSpeedMenu = { showSpeedMenu = false },
-            onSleepSelected = { setSleepTimer(it) },
+            onSleepSelected = { playerSessionActionsCoordinator.setSleepTimer(it) },
             onDismissSleepMenu = { showSleepMenu = false },
         )
 
@@ -1695,7 +1661,7 @@ fun VideoPlayerScreen(
             srtBottomPadding = playerPopupBottomPadding(popupBottomPadding),
             srtOffsetX = calculatePlayerPopupOffsetX(subIconX, srtPopupWidth, screenWidthPx, density),
             onPickSrt = { file -> showSrtBrowser = false; pendingSrtUri = Uri.fromFile(file) },
-            onDeleteSrt = { file -> requestDeleteSubtitle(file) },
+            onDeleteSrt = { file -> subtitleDeletionCoordinator.requestDeleteSubtitle(file) },
             onSystemPicker = { showSrtBrowser = false; srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
             onCloseSrtBrowser = { showSrtBrowser = false; showControls = true },
             showAudioSelector = showAudioSelector,
@@ -1754,7 +1720,7 @@ fun VideoPlayerScreen(
                 searchUi.showSearch = true
                 showControls = true
                 if (searchUi.searchResults.isEmpty() && !searchUi.searchLoading) {
-                    performSubtitleSearch(playerSubtitleSearchQuery(currentVideo.path), "", "")
+                    subtitleSearchCoordinator.performSubtitleSearch(playerSubtitleSearchQuery(currentVideo.path), "", "", coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en")
                 }
             },
             onTracksClick = { coreUi.showSettings = false; trackUi.showSelector = true; showControls = true; studioUi.menuTouchKey++ },
@@ -1791,10 +1757,10 @@ fun VideoPlayerScreen(
             },
             selectedTrackKey = trackUi.selectedKey,
             onSelectTrack = { choice -> subtitleSearchCoordinator.selectSubtitleTrack(choice); trackUi.showSelector = false; showControls = true },
-            onDeleteLocalTrack = { file -> requestDeleteSubtitle(file) },
+            onDeleteLocalTrack = { file -> subtitleDeletionCoordinator.requestDeleteSubtitle(file) },
             onDeleteGeneratedTrack = { generated ->
                 val path = generated.uri.path
-                if (path != null) requestDeleteSubtitle(java.io.File(path))
+                if (path != null) subtitleDeletionCoordinator.requestDeleteSubtitle(java.io.File(path))
             },
             onOpenFilePickerFromTrackSelector = { trackUi.showSelector = false; srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
             onBackFromTrackSelector = {
@@ -1832,9 +1798,9 @@ fun VideoPlayerScreen(
             isSearching = searchUi.searchLoading,
             searchStatusText = searchUi.searchStatus,
             onSearchUserInteraction = { studioUi.menuTouchKey++ },
-            onSearch = { q, s, e -> studioUi.menuTouchKey++; performSubtitleSearch(q, s, e) },
-            onDownloadAndApply = { result -> studioUi.menuTouchKey++; applySearchResult(result, alsoPlay = true) },
-            onDownloadOnly = { result -> studioUi.menuTouchKey++; applySearchResult(result, alsoPlay = false) },
+            onSearch = { q, s, e -> studioUi.menuTouchKey++; subtitleSearchCoordinator.performSubtitleSearch(q, s, e, coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en") },
+            onDownloadAndApply = { result -> studioUi.menuTouchKey++; subtitleSearchCoordinator.applySearchResult(result, alsoPlay = true) },
+            onDownloadOnly = { result -> studioUi.menuTouchKey++; subtitleSearchCoordinator.applySearchResult(result, alsoPlay = false) },
             onWebsiteFallbackFromSearch = { searchUi.showSearch = false; searchUi.showFallback = true; showControls = false },
             onBackFromSearch = {
                 searchUi.showSearch = false
@@ -1884,7 +1850,7 @@ fun VideoPlayerScreen(
             embeddedBrowserPreferredLanguage = coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en",
             onImported = { result ->
                 if (result.alternatives.isEmpty()) {
-                    applyImportedWebsiteSubtitle(result.selected)
+                    subtitleSearchCoordinator.applyImportedWebsiteSubtitle(result.selected)
                 } else {
                     searchUi.pendingImportCandidates = result
                     searchUi.showEmbeddedBrowser = false
@@ -1893,7 +1859,7 @@ fun VideoPlayerScreen(
             onMessage = { Toast.makeText(context, it, Toast.LENGTH_LONG).show() },
             onDismissEmbeddedBrowser = { searchUi.showEmbeddedBrowser = false; showControls = true },
             pendingImportedCandidates = searchUi.pendingImportCandidates,
-            onCandidateSelected = { applyImportedWebsiteSubtitle(it) },
+            onCandidateSelected = { subtitleSearchCoordinator.applyImportedWebsiteSubtitle(it) },
             onDismissCandidateSheet = { searchUi.pendingImportCandidates = null },
         )
 
@@ -2114,7 +2080,7 @@ fun VideoPlayerScreen(
                     onNext = {
                         if (hasNextVideo) {
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            playNext()
+                            playbackNavigationCoordinator.playNext()
                         }
                     },
                     onToggleAutoplay = {
@@ -2241,7 +2207,7 @@ fun VideoPlayerScreen(
             onDismissDelete = { pendingDeleteConfirmFile = null },
             onConfirmDelete = { file ->
                 pendingDeleteConfirmFile = null
-                deleteWithUndo(file)
+                subtitleDeletionCoordinator.deleteWithUndo(file)
             }
         )
 
@@ -2348,7 +2314,7 @@ fun VideoPlayerScreen(
             when (studioCategory) {
                 null -> com.sole.cinevault.subtitles.SubtitleStudioPill(
                     activeCategory = null,
-                    onCategorySelected = { onStudioCategoryTapped(it) },
+                    onCategorySelected = { subtitleStudioNavigation.onStudioCategoryTapped(it) },
                     containerSize = studioContainerPx,
                     initialOffset = pillOffset
                 )
