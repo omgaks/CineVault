@@ -385,9 +385,6 @@ fun VideoPlayerScreen(
         )
     }
 
-    fun closeAllMenus() =
-        playerMenuCloseCoordinator.closeAll()
-
     var pendingSrtUri by remember { mutableStateOf<Uri?>(null) }
 
     // ── Delete confirmation + undo (Security & Privacy checklist item 3) ──
@@ -863,7 +860,7 @@ fun VideoPlayerScreen(
     // entered, so the window is guaranteed to show just clean video no
     // matter what was on screen right before minimizing.
     LaunchedEffect(CineVaultPlayerHolder.isInPipMode) {
-        if (CineVaultPlayerHolder.isInPipMode) closeAllMenus()
+        if (CineVaultPlayerHolder.isInPipMode) playerMenuCloseCoordinator.closeAll()
     }
 
     PlayerPipActionReceiverEffect(
@@ -1422,9 +1419,6 @@ fun VideoPlayerScreen(
             incrementMenuTouchKey = { studioUi.menuTouchKey++ },
         )
 
-        fun resetSubtitleSettings() =
-            subtitleResetCoordinator.reset()
-
         val popupDimensions = calculatePlayerPopupDimensions(
             maxWidth = maxWidth,
             maxHeight = maxHeight,
@@ -1889,7 +1883,7 @@ fun VideoPlayerScreen(
                 showControls = false
             },
             onStyleClick = { coreUi.showSettings = false; coreUi.showAppearanceStudio = true; showControls = false },
-            onResetSubtitleSettings = { resetSubtitleSettings() },
+            onResetSubtitleSettings = { subtitleResetCoordinator.reset() },
             onSettingsUserInteraction = { studioUi.menuTouchKey++; showControls = true },
             trackSelectorBottomPadding = playerPopupBottomPadding(popupBottomPadding),
             trackSelectorOffsetX = calculatePlayerPopupOffsetX(subIconX, trackStudioWidth, screenWidthPx, density),
@@ -2108,13 +2102,13 @@ fun VideoPlayerScreen(
                     showSleepMenu = showSleepMenu,
                     onSpeedClick = {
                         val wasOpen = showSpeedMenu
-                        closeAllMenus()
+                        playerMenuCloseCoordinator.closeAll()
                         showSpeedMenu = !wasOpen
                         showControls = true
                     },
                     onSleepClick = {
                         val wasOpen = showSleepMenu
-                        closeAllMenus()
+                        playerMenuCloseCoordinator.closeAll()
                         showSleepMenu = !wasOpen
                         showControls = true
                     },
@@ -2240,7 +2234,7 @@ fun VideoPlayerScreen(
                     },
                     onAudioClick = {
                         val wasOpen = showAudioSelector
-                        closeAllMenus()
+                        playerMenuCloseCoordinator.closeAll()
                         showAudioSelector = !wasOpen
                         showControls = true
                         menuTouchKey++
@@ -2248,7 +2242,7 @@ fun VideoPlayerScreen(
                     onAudioCenterMeasured = { audioIconX = it },
                     onSubtitleClick = {
                         val wasOpen = showSubtitleDock || showSubtitleBloom || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio
-                        closeAllMenus()
+                        playerMenuCloseCoordinator.closeAll()
                         showSubtitleDock = !wasOpen
                         if (showSubtitleDock) {
                             // "Only the HUD remains visible" — hide the
@@ -2265,7 +2259,7 @@ fun VideoPlayerScreen(
                         // 450ms hold threshold is enforced by combinedClickable's own
                         // long-press timing; this fires once that's satisfied.
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        closeAllMenus()
+                        playerMenuCloseCoordinator.closeAll()
                         showSubtitleBloom = true
                         showControls = false
                         showTopBar = false
@@ -2411,7 +2405,7 @@ fun VideoPlayerScreen(
                 onFontSizeChange = { appearanceUi.textSizeSp = it; studioUi.menuTouchKey++ },
                 bottomPadding = appearanceUi.bottomPadding,
                 onBottomPaddingChange = { appearanceUi.bottomPadding = it; studioUi.menuTouchKey++ },
-                onReset = { resetSubtitleSettings() },
+                onReset = { subtitleResetCoordinator.reset() },
                 containerSize = containerPx,
                 initialOffset = Offset(quickHudOffsetX, quickHudOffsetY),
                 windowWidth = quickHudWidth
