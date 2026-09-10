@@ -1138,13 +1138,19 @@ fun VideoPlayerScreen(
         mutableStateOf<List<GeneratedSubtitleFile>>(emptyList())
     }
 
+    // Slice 40: generated-subtitle library loading is now outside the player.
+    // Compose still owns the refresh effect key; the store/IO orchestration
+    // lives in GeneratedSubtitleLibraryCoordinator.
+    val generatedSubtitleLibraryCoordinator = remember {
+        GeneratedSubtitleLibraryCoordinator(
+            context = context,
+            getCurrentVideoPath = { currentVideo.path },
+        )
+    }
+
     LaunchedEffect(currentVideo.path, generatedSubtitleRefreshKey) {
-        generatedSubtitleFiles = withContext(Dispatchers.IO) {
-            GeneratedSubtitleStore.listForVideo(
-                context = context,
-                videoPath = currentVideo.path,
-            )
-        }
+        generatedSubtitleFiles =
+            generatedSubtitleLibraryCoordinator.loadForCurrentVideo()
     }
 
     // Slice 20: keep generated/translated subtitle source resolution and
