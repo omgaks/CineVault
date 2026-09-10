@@ -850,22 +850,16 @@ fun VideoPlayerScreen(
         isPlaying = isPlaying
     )
 
-    // FEATURE: minimal, correct PiP — CineVault's own overlay chrome
-    // (transport controls, lock button, Auto-Sync pill) is now hidden
-    // while in PiP (see the AnimatedVisibility/if conditions gated on
-    // CineVaultPlayerHolder.isInPipMode elsewhere in this file), relying
-    // entirely on Android's own system-drawn PiP controls instead — the
-    // same standard approach most video apps use. This closes out
-    // whatever menus/Studio happened to be open the moment PiP is
-    // entered, so the window is guaranteed to show just clean video no
-    // matter what was on screen right before minimizing.
-    LaunchedEffect(CineVaultPlayerHolder.isInPipMode) {
-        if (CineVaultPlayerHolder.isInPipMode) playerMenuCloseCoordinator.closeAll()
-    }
-
-    PlayerPipActionReceiverEffect(
+    // Slice 46: PiP lifecycle effects are grouped outside VideoPlayerScreen.
+    // Entering PiP still closes CineVault chrome and the action receiver
+    // continues to control the same ExoPlayer instance.
+    PlayerPipEffects(
         context = context,
-        player = exoPlayer
+        player = exoPlayer,
+        isInPipMode = CineVaultPlayerHolder.isInPipMode,
+        onEnteredPip = {
+            playerMenuCloseCoordinator.closeAll()
+        },
     )
 
 
