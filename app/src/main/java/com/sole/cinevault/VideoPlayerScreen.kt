@@ -1579,15 +1579,9 @@ fun VideoPlayerScreen(
         )
 
         val view = LocalView.current
-        // Clears any exclusion rect this screen set once it's gone, so it
-        // never lingers and affects some other screen's back gesture.
-        DisposableEffect(Unit) {
-            onDispose {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    view.systemGestureExclusionRects = emptyList()
-                }
-            }
-        }
+        // Slice 41: keep player-specific system gesture exclusion cleanup
+        // outside the giant player composable.
+        PlayerGestureExclusionCleanupEffect(view)
 
         val playbackGestureModifier = if (externalPlayerView != null) {
             Modifier.glassesTouchpadGestures(
