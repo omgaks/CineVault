@@ -907,8 +907,6 @@ fun VideoPlayerScreen(
     // which is exactly how the Downloaded case would have silently NOT
     // gotten cleaning applied in one of the two copies if edited by hand.
     // One function, both call sites use it.
-    fun selectSubtitleTrack(choice: SubtitleTrackChoice) = subtitleSearchCoordinator.selectSubtitleTrack(choice)
-
     // Slice 29: applying a pending local subtitle is now coordinated outside
     // VideoPlayerScreen. The LaunchedEffect remains here only as lifecycle-safe
     // Compose glue.
@@ -1089,13 +1087,8 @@ fun VideoPlayerScreen(
         videoPath = currentVideo.path,
     )
 
-    // FIX: runAutoSync()/applyAutoSyncResult() used to be plain local
-    // functions defined right here, inline in this composable's body —
-    // now just orchestration glue calling into AutoSyncCoordinator (see
-    // that file for the full reasoning on why AutoSync was the first
-    // piece extracted). Every lambda below reads/writes the exact same
-    // state the original inline functions did — nothing about the
-    // actual behavior changed, only where the code that does it lives.
+    // Auto-Sync behavior lives in AutoSyncCoordinator; UI call sites now
+    // invoke the coordinator directly with no local pass-through wrappers.
     // Reads trackUi.primaryUri fresh via the lambda each time, not the
     // primarySubtitleForAutoSync snapshot above (which is only for the
     // availability check right above it) — matching exactly what the
@@ -1117,9 +1110,6 @@ fun VideoPlayerScreen(
             setSpeechTimeline = { autoSyncSpeechTimeline = it }
         )
     }
-    fun runAutoSync() = autoSyncCoordinator.runAutoSync()
-    fun applyAutoSyncResult(result: SubtitleSyncResult) = autoSyncCoordinator.applyAutoSyncResult(result)
-
     // Stage 2C: speech recognition and subtitle translation are independent.
     // Translation never requires Whisper and resolves normal Subtitle Studio /
     // local subtitle sources through SubtitleSourceResolver.
@@ -1263,9 +1253,6 @@ fun VideoPlayerScreen(
     LaunchedEffect(pendingDualAiLanguage) {
         dualAiTranslationCoordinator.processPendingRequest()
     }
-
-    fun loadGeneratedSubtitle(file: GeneratedSubtitleFile) =
-        generatedSubtitleOrchestrator.apply(file, null, "Generated subtitle")
 
     // Slice 35: AI job label/progress presentation is now pure and tested.
     val speechJobPresentation = speechSubtitleJobPresentation(speechSubtitleStatus)
@@ -1913,7 +1900,7 @@ fun VideoPlayerScreen(
                 java.io.File(g.uri.path ?: "").absolutePath !in pendingDeletePaths
             },
             selectedTrackKey = trackUi.selectedKey,
-            onSelectTrack = { choice -> selectSubtitleTrack(choice); trackUi.showSelector = false; showControls = true },
+            onSelectTrack = { choice -> subtitleSearchCoordinator.selectSubtitleTrack(choice); trackUi.showSelector = false; showControls = true },
             onDeleteLocalTrack = { file -> requestDeleteSubtitle(file) },
             onDeleteGeneratedTrack = { generated ->
                 val path = generated.uri.path
@@ -2352,9 +2339,9 @@ fun VideoPlayerScreen(
             containerWidth = playerMaxWidth,
             containerHeight = playerMaxHeight,
             status = autoSyncStatus,
-            onApply = { result -> applyAutoSyncResult(result) },
+            onApply = { result -> autoSyncCoordinator.applyAutoSyncResult(result) },
             onCancel = { autoSyncStatus = AutoSyncStatus.Idle },
-            onRetry = { runAutoSync() }
+            onRetry = { autoSyncCoordinator.runAutoSync() }
         )
 
         PlayerSubtitleDeleteFeedback(
@@ -2531,7 +2518,7 @@ fun VideoPlayerScreen(
                         com.sole.cinevault.subtitles.StudioListItem(
                             icon = com.sole.cinevault.subtitles.StudioRowIcons.AutoSync,
                             label = "Auto sync",
-                            onClick = { runAutoSync(); showSubtitleBloom = false; studioCategory = null }
+                            onClick = { autoSyncCoordinator.runAutoSync(); showSubtitleBloom = false; studioCategory = null }
                         ),
                         com.sole.cinevault.subtitles.StudioListItem(
                             icon = com.sole.cinevault.subtitles.StudioRowIcons.DialogueSync,
@@ -2766,7 +2753,7 @@ fun VideoPlayerScreen(
                             generatedFiles = generatedSubtitleFiles,
                             activeSubtitleUri = trackUi.primaryUri ?: trackUi.originalUri,
                             onLoadGenerated = { file ->
-                                loadGeneratedSubtitle(file)
+                                generatedSubtitleOrchestrator.apply(file, null, "Generated subtitle")
                             },
                             onTranslate = { language ->
                                 showSubtitleTranslationPanel = false
