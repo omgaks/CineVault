@@ -655,7 +655,7 @@ fun VideoPlayerScreen(
             setNextEpisodeDismissed = { nextEpisodeDismissed = it },
             setSmartSegmentResult = { smartSegmentResult = it },
             setPreviewBitmap = { previewBitmap = it },
-            setPreviewFrames = { previewFrames = it },
+            clearPreviewFrames = { previewFrames = emptyList() },
             setIsVideoEnded = { isVideoEnded = it },
             setPlayerErrorMessage = { playerErrorMessage = it },
             setErrorRetryCount = { errorRetryCount = it },

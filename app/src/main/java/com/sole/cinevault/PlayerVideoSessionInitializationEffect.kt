@@ -7,7 +7,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import com.sole.cinevault.library.VideoFile
 import com.sole.cinevault.library.loadPlaybackPosition
-import com.sole.cinevault.library.recordWatchHistory
 import com.sole.cinevault.library.updateRestrictedFolderLastPlayed
 import com.sole.cinevault.segments.SmartSegmentResult
 import com.sole.cinevault.subtitles.*
@@ -41,7 +40,7 @@ data class PlayerVideoSessionSetters(
     val setNextEpisodeDismissed: (Boolean) -> Unit,
     val setSmartSegmentResult: (SmartSegmentResult) -> Unit,
     val setPreviewBitmap: (Bitmap?) -> Unit,
-    val setPreviewFrames: (List<VideoThumbnailHelper.PreviewFrame>) -> Unit,
+    val clearPreviewFrames: () -> Unit,
     val setIsVideoEnded: (Boolean) -> Unit,
     val setPlayerErrorMessage: (String?) -> Unit,
     val setErrorRetryCount: (Int) -> Unit,
@@ -114,7 +113,7 @@ fun PlayerVideoSessionInitializationEffect(
         setters.setNextEpisodeDismissed(false)
         setters.setSmartSegmentResult(SmartSegmentResult())
         setters.setPreviewBitmap(null)
-        setters.setPreviewFrames(emptyList())
+        setters.clearPreviewFrames()
         setters.setIsVideoEnded(false)
         setters.setPlayerErrorMessage(null)
         setters.setErrorRetryCount(0)
