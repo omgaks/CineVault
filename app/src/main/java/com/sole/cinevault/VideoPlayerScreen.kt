@@ -1215,58 +1215,26 @@ fun VideoPlayerScreen(
             appearanceUi = appearanceUi,
         )
 
-        val movieAppearanceProfileKey =
-            "${currentVideo.path}|${displayProfileType.name}|$isLandscape"
-
-        // Slice 30: per-movie subtitle appearance restore + complete subtitle
-        // memory persistence now live in MovieSubtitleMemoryCoordinator.
-        val movieSubtitleMemoryCoordinator = remember {
-            MovieSubtitleMemoryCoordinator(
-                context = context,
-                coreUi = coreUi,
-                trackUi = trackUi,
-                dualUi = dualUi,
-                appearanceUi = appearanceUi,
-                getDualSecondaryColorHex = { dualSecondaryColorHex },
-                setMovieAppearanceMemoryReady = { movieAppearanceMemoryReady = it },
-            )
-        }
-
-        LaunchedEffect(movieAppearanceProfileKey, movieSubtitleMemory, movieSubtitleMemoryReady) {
-            movieSubtitleMemoryCoordinator.restoreAppearance(
-                memoryReady = movieSubtitleMemoryReady,
-                memory = movieSubtitleMemory,
-            )
-        }
-
-        LaunchedEffect(
-            currentVideo.path,
-            movieSubtitleMemoryReady,
-            movieAppearanceMemoryReady,
-            coreUi.subtitlesEnabled,
-            trackUi.primaryUri,
-            trackUi.primaryLanguage,
-            trackUi.selectedKey,
-            trackUi.selectedLabel,
-            trackUi.selectedSource,
-            dualUi.enabled,
-            dualUi.secondaryLanguage,
-            dualUi.gapLines,
-            dualUi.secondarySourceLabel,
-            dualSecondaryColorHex,
-            coreUi.syncOffset,
-            appearanceUi.textSizeSp,
-            appearanceUi.bottomPadding,
-            appearanceUi.preset,
-            appearanceUi.appearance,
-            appearanceUi.preserveOriginalStyling,
-        ) {
-            movieSubtitleMemoryCoordinator.saveAfterDebounce(
-                videoPath = currentVideo.path,
-                subtitleMemoryReady = movieSubtitleMemoryReady,
-                appearanceMemoryReady = movieAppearanceMemoryReady,
-            )
-        }
+        // Slice 49: per-movie subtitle restore/save lifecycle wiring now lives
+        // outside VideoPlayerScreen. The existing coordinator still owns the
+        // actual memory mutation and persistence behavior.
+        PlayerMovieSubtitleMemoryEffects(
+            context = context,
+            videoPath = currentVideo.path,
+            displayProfileName = displayProfileType.name,
+            isLandscape = isLandscape,
+            movieSubtitleMemory = movieSubtitleMemory,
+            movieSubtitleMemoryReady = movieSubtitleMemoryReady,
+            movieAppearanceMemoryReady = movieAppearanceMemoryReady,
+            coreUi = coreUi,
+            trackUi = trackUi,
+            dualUi = dualUi,
+            appearanceUi = appearanceUi,
+            dualSecondaryColorHex = dualSecondaryColorHex,
+            onMovieAppearanceMemoryReadyChanged = {
+                movieAppearanceMemoryReady = it
+            },
+        )
 
         // Slice 23: the complete subtitle reset operation now lives outside
         // VideoPlayerScreen. This keeps the player composable from directly
