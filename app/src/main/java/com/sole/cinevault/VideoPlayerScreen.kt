@@ -966,19 +966,38 @@ fun VideoPlayerScreen(
         )
     }
 
-    LaunchedEffect(coreUi.syncOffset, driftUi.scale, trackUi.originalUri) {
-        val baseUri = trackUi.originalUri ?: return@LaunchedEffect
-        if (!coreUi.subtitlesEnabled) return@LaunchedEffect
-        val offsetMs = playerSubtitleSyncOffsetMs(coreUi.syncOffset)
-        if (offsetMs == trackUi.appliedOffsetMs && driftUi.scale == driftUi.appliedScale) return@LaunchedEffect
-        delay(playerSubtitleSyncDebounceMs())
-        val resumeAt = playerSafeResumePosition(exoPlayer.currentPosition)
-        val shiftedUri = withContext(Dispatchers.IO) { buildShiftedSubtitleFile(context, baseUri, offsetMs, driftUi.scale) }
-        if (shiftedUri != null) {
-            trackUi.appliedOffsetMs = offsetMs
-            driftUi.appliedScale = driftUi.scale
-            playCurrentVideoWithSubtitle(subtitleUri = shiftedUri, resumePosition = resumeAt, isOriginalSubtitle = false)
-        }
+    // Slice 37: subtitle offset/drift re-render orchestration is now outside
+    // VideoPlayerScreen. Compose still owns the effect keys/cancellation.
+    val subtitleSyncRenderCoordinator = remember(exoPlayer) {
+        SubtitleSyncRenderCoordinator(
+            context = context,
+            getBaseUri = { trackUi.originalUri },
+            areSubtitlesEnabled = { coreUi.subtitlesEnabled },
+            getSyncOffsetSeconds = { coreUi.syncOffset },
+            getRequestedScale = { driftUi.scale },
+            getAppliedOffsetMs = { trackUi.appliedOffsetMs },
+            getAppliedScale = { driftUi.appliedScale },
+            setAppliedOffsetMs = { trackUi.appliedOffsetMs = it },
+            setAppliedScale = { driftUi.appliedScale = it },
+            getResumePosition = {
+                playerSafeResumePosition(exoPlayer.currentPosition)
+            },
+            playShiftedSubtitle = { uri, resumeAt ->
+                playCurrentVideoWithSubtitle(
+                    subtitleUri = uri,
+                    resumePosition = resumeAt,
+                    isOriginalSubtitle = false,
+                )
+            },
+        )
+    }
+
+    LaunchedEffect(
+        coreUi.syncOffset,
+        driftUi.scale,
+        trackUi.originalUri,
+    ) {
+        subtitleSyncRenderCoordinator.applyIfNeeded()
     }
 
     // ── Dialogue Tap Sync ─────────────────────────────────────────────
