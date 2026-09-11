@@ -770,166 +770,41 @@ fun VideoPlayerScreen(
         onHideDualSubsWindow = { showDualSubsWindow = false },
     )
 
-    // Shared by both the standalone Track Selector sheet and the Subtitle
-    // Studio's Track tab — previously duplicated verbatim in both places,
-    // which is exactly how the Downloaded case would have silently NOT
-    // gotten cleaning applied in one of the two copies if edited by hand.
-    // One function, both call sites use it.
-    // Slice 29: applying a pending local subtitle is now coordinated outside
-    // VideoPlayerScreen. The LaunchedEffect remains here only as lifecycle-safe
-    // Compose glue.
-    val pendingSubtitleApplyCoordinator = remember(exoPlayer, trackSelector) {
-        PendingSubtitleApplyCoordinator(
-            context = context,
-            coreUi = coreUi,
-            trackUi = trackUi,
-            autoSubtitleFetch = autoSubtitleFetch,
-            getResumePosition = { playerSafeResumePosition(exoPlayer.currentPosition) },
-            enableTextTracks = {
-                trackSelector.parameters = trackSelector.buildUponParameters()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                    .build()
-            },
-            playSubtitle = { subtitleUri, resumePosition ->
-                playCurrentVideoWithSubtitle(
-                    subtitleUri = subtitleUri,
-                    resumePosition = resumePosition,
-                )
-            },
-            showControls = { showControls = true },
-            clearPendingUri = { pendingSrtUri = null },
-        )
-    }
-
-    LaunchedEffect(pendingSrtUri) {
-        pendingSrtUri?.let { pendingSubtitleApplyCoordinator.apply(it) }
-    }
-
-    val activeSubtitleFormat = remember(trackUi.originalUri) { trackUi.originalUri?.let { detectSubtitleFormat(it) } ?: SubtitleFormat.UNKNOWN }
-    val isAssOrSsaFormat = activeSubtitleFormat == SubtitleFormat.ASS || activeSubtitleFormat == SubtitleFormat.SSA
-
-    // Slice 31: applying CineVault's live subtitle appearance to Media3's
-    // SubtitleView now lives outside VideoPlayerScreen. Compose still owns
-    // the effect keys; the actual style mutation is centralised.
-    val subtitleAppearanceCoordinator = remember {
-        SubtitleAppearanceCoordinator()
-    }
-
-    LaunchedEffect(
-        studioUi.playerView,
-        appearanceUi.textSizeSp,
-        appearanceUi.bottomPadding,
-        appearanceUi.appearance,
-        dualUi.enabled,
-        appearanceUi.preserveOriginalStyling,
-        isAssOrSsaFormat,
-    ) {
-        subtitleAppearanceCoordinator.apply(
-            playerView = studioUi.playerView,
-            appearanceUi = appearanceUi,
-            dualSubtitlesEnabled = dualUi.enabled,
-            isAssOrSsaFormat = isAssOrSsaFormat,
-        )
-    }
-
-    // Slice 37: subtitle offset/drift re-render orchestration is now outside
-    // VideoPlayerScreen. Compose still owns the effect keys/cancellation.
-    val subtitleSyncRenderCoordinator = remember(exoPlayer) {
-        SubtitleSyncRenderCoordinator(
-            context = context,
-            getBaseUri = { trackUi.originalUri },
-            areSubtitlesEnabled = { coreUi.subtitlesEnabled },
-            getSyncOffsetSeconds = { coreUi.syncOffset },
-            getRequestedScale = { driftUi.scale },
-            getAppliedOffsetMs = { trackUi.appliedOffsetMs },
-            getAppliedScale = { driftUi.appliedScale },
-            setAppliedOffsetMs = { trackUi.appliedOffsetMs = it },
-            setAppliedScale = { driftUi.appliedScale = it },
-            getResumePosition = {
-                playerSafeResumePosition(exoPlayer.currentPosition)
-            },
-            playShiftedSubtitle = { uri, resumeAt ->
-                playCurrentVideoWithSubtitle(
-                    subtitleUri = uri,
-                    resumePosition = resumeAt,
-                    isOriginalSubtitle = false,
-                )
-            },
-        )
-    }
-
-    LaunchedEffect(
-        coreUi.syncOffset,
-        driftUi.scale,
-        trackUi.originalUri,
-    ) {
-        subtitleSyncRenderCoordinator.applyIfNeeded()
-    }
-
-    // ── Dialogue Tap Sync ─────────────────────────────────────────────
-    // Step 1: person pauses on a subtitle line they can read, taps "Start"
-    // (armDialogueSync below) — we record the position they paused at as
-    // the reference, then resume playback automatically.
-    // Step 2: they tap "Tap Now" on DialogueTapSyncBar the instant they
-    // HEAR that same line spoken. The additional correction needed is just
-    // (where they tapped) - (where the subtitle visually appeared),
-    // stacked on top of whatever sync offset was already active.
-    // FIX: these eight functions used to be plain local functions defined
-    // right here, inline — now orchestration glue calling into
-    // SubtitleSyncToolsCoordinator (see that file for the full reasoning).
-    // Every field read/written matches exactly what the original inline
-    // functions touched; only where the code lives changed.
-    val subtitleSyncTools = remember(exoPlayer, dualSecondaryColorHex) {
-        SubtitleSyncToolsCoordinator(
-            context = context,
-            scope = scope,
-            exoPlayer = exoPlayer,
-            coreUi = coreUi,
-            driftUi = driftUi,
-            dualUi = dualUi,
-            trackUi = trackUi,
-            getDualSecondaryColorHex = { dualSecondaryColorHex },
-            getCurrentVideoPath = { currentVideo.path },
-            playSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle ->
-                playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
-            },
-            findCachedAiSecondary = { language ->
-                val normalized = SubtitleLanguageRegistry.normalize(language)
-                    ?: language.take(2).lowercase()
-                GeneratedSubtitleStore.listForVideo(context, currentVideo.path)
-                    .firstOrNull { file ->
-                        file.fileName.contains("translated-$normalized-", ignoreCase = true)
-                    }?.uri
-            },
-            requestAiSecondary = { language ->
-                pendingDualAiLanguage = language
-            },
-            clearPendingAiSecondary = {
-                pendingDualAiLanguage = null
-            }
-        )
-    }
-    // Slice 34: restored Dual Subs re-apply is now a pure, unit-tested gate.
-    // The effect remains Compose-owned; only the decision is extracted.
-    LaunchedEffect(
-        currentVideo.path,
-        movieSubtitleMemoryReady,
-        restoredDualNeedsApply,
-        trackUi.primaryUri,
-    ) {
-        if (
-            shouldApplyRestoredDualSubtitles(
-                movieSubtitleMemoryReady = movieSubtitleMemoryReady,
-                restoredDualNeedsApply = restoredDualNeedsApply,
-                dualSubtitlesEnabled = dualUi.enabled,
-                hasPrimarySubtitle = trackUi.primaryUri != null,
+    // Slice 51: the subtitle runtime effect cluster now owns pending local
+    // subtitle application, live appearance updates, sync/drift re-rendering,
+    // restored Dual Subs re-apply, and the shared subtitle sync-tools
+    // coordinator. The player keeps only the returned UI-facing handles.
+    val subtitleRuntimeEffects = rememberPlayerSubtitleRuntimeEffects(
+        context = context,
+        scope = scope,
+        exoPlayer = exoPlayer,
+        trackSelector = trackSelector,
+        currentVideoPath = currentVideo.path,
+        pendingSrtUri = pendingSrtUri,
+        dualSecondaryColorHex = dualSecondaryColorHex,
+        movieSubtitleMemoryReady = movieSubtitleMemoryReady,
+        restoredDualNeedsApply = restoredDualNeedsApply,
+        coreUi = coreUi,
+        trackUi = trackUi,
+        autoSubtitleFetch = autoSubtitleFetch,
+        appearanceUi = appearanceUi,
+        studioUi = studioUi,
+        dualUi = dualUi,
+        driftUi = driftUi,
+        onShowControls = { showControls = true },
+        onClearPendingSrtUri = { pendingSrtUri = null },
+        onRestoredDualApplied = { restoredDualNeedsApply = false },
+        onPendingDualAiLanguageChanged = { pendingDualAiLanguage = it },
+        playCurrentVideoWithSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle ->
+            playCurrentVideoWithSubtitle(
+                subtitleUri = subtitleUri,
+                resumePosition = resumePosition,
+                isOriginalSubtitle = isOriginalSubtitle,
             )
-        ) {
-            restoredDualNeedsApply = false
-            subtitleSyncTools.fetchAndApplyDualSecondary()
-        }
-    }
-
+        },
+    )
+    val subtitleSyncTools = subtitleRuntimeEffects.syncTools
+    val isAssOrSsaFormat = subtitleRuntimeEffects.isAssOrSsaFormat
 
     // ── Auto-Sync (Phase 1: speech-timing only) ──────────────────────────
     // Runs entirely off-main-thread (audio decode + VAD are real CPU work,
