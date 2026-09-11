@@ -3,6 +3,7 @@ package com.sole.cinevault
 import android.content.Context
 import android.net.Uri
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
@@ -20,7 +21,7 @@ import com.sole.cinevault.subtitles.*
  * existing coordinators and generated-subtitle orchestrator.
  */
 @Composable
-fun PlayerSubtitleAiPanels(
+fun BoxScope.PlayerSubtitleAiPanels(
     context: Context,
     containerWidth: Dp,
     containerHeight: Dp,
