@@ -635,19 +635,12 @@ fun VideoPlayerScreen(
         ),
     )
 
-    PlayerSessionLifecycle(
+    // Slice 54: playback lifecycle/listener/timeline/PiP/auto-hide wiring now
+    // lives in one runtime-effects host. VideoPlayerScreen still owns the UI
+    // state; this helper owns the Compose side-effect cluster around the player.
+    PlayerRuntimeEffects(
         context = context,
         activity = activity,
-        player = exoPlayer,
-        videoPath = currentVideo.path,
-        isStreamMedia = isStreamMedia,
-        onNextRequested = { playbackNavigationCoordinator.playNext() },
-        onPreviousRequested = { playbackNavigationCoordinator.playPrevious() },
-        onInitialBrightnessChanged = { brightnessPercent = it },
-    )
-
-    PlayerEventListener(
-        context = context,
         scope = scope,
         player = exoPlayer,
         trackSelector = trackSelector,
@@ -659,7 +652,36 @@ fun VideoPlayerScreen(
         errorRetryCount = errorRetryCount,
         coreUi = coreUi,
         trackUi = trackUi,
+        searchUi = searchUi,
+        driftUi = driftUi,
+        studioUi = studioUi,
         audioLanguageCheckedForPath = audioLanguageCheckedForPath,
+        isDraggingSeekbar = isDraggingSeekbar,
+        isBuffering = isBuffering,
+        showSeekPreview = showSeekPreview,
+        previewPosition = previewPosition,
+        duration = duration,
+        previewReloadKey = previewReloadKey,
+        droppedFrameNudgeCount = droppedFrameNudgeCount,
+        lastNudgeAtMs = lastNudgeAtMs,
+        isPlaying = isPlaying,
+        showControls = showControls,
+        showTopBar = showTopBar,
+        controlsLocked = controlsLocked,
+        lockButtonVisibleWhileLocked = lockButtonVisibleWhileLocked,
+        showAudioSelector = showAudioSelector,
+        showSpeedMenu = showSpeedMenu,
+        showSleepMenu = showSleepMenu,
+        showSrtBrowser = showSrtBrowser,
+        menuTouchKey = menuTouchKey,
+        brightnessGestureKey = brightnessGestureKey,
+        volumeGestureKey = volumeGestureKey,
+        showSubtitleDock = showSubtitleDock,
+        showSubtitleBloom = showSubtitleBloom,
+        showDualSubsWindow = showDualSubsWindow,
+        onNextRequested = { playbackNavigationCoordinator.playNext() },
+        onPreviousRequested = { playbackNavigationCoordinator.playPrevious() },
+        onInitialBrightnessChanged = { brightnessPercent = it },
         onAudioLanguageCheckedForPathChanged = { audioLanguageCheckedForPath = it },
         onBufferingChanged = { isBuffering = it },
         onErrorRetryCountChanged = { errorRetryCount = it },
@@ -678,7 +700,7 @@ fun VideoPlayerScreen(
             currentVideo = next.video
             onPlayNext(next)
         },
-        onShowControls = {
+        onShowControlsAndTopBar = {
             showControls = true
             showTopBar = true
         },
@@ -689,24 +711,8 @@ fun VideoPlayerScreen(
                 isOriginalSubtitle = false,
             )
         },
-    )
-
-    PlayerTimelineEffects(
-        context = context,
-        player = exoPlayer,
-        videoPath = currentVideo.path,
-        isStreamMedia = isStreamMedia,
-        isDraggingSeekbar = isDraggingSeekbar,
-        isBuffering = isBuffering,
-        showSeekPreview = showSeekPreview,
-        previewPosition = previewPosition,
-        duration = duration,
-        previewReloadKey = previewReloadKey,
-        droppedFrameNudgeCount = droppedFrameNudgeCount,
-        lastNudgeAtMs = lastNudgeAtMs,
         onPositionChanged = { position = it },
         onDurationChanged = { duration = it },
-        onPlayingChanged = { isPlaying = it },
         onBufferingSpinnerChanged = { showBufferingSpinner = it },
         onStuckBufferingChanged = { stuckBufferingHint = it },
         onDroppedFrameNudgeCountChanged = { droppedFrameNudgeCount = it },
@@ -714,45 +720,7 @@ fun VideoPlayerScreen(
         onPreviewFramesChanged = { previewFrames = it },
         onPreviewBitmapChanged = { previewBitmap = it },
         onSeekPreviewLargeChanged = { isSeekPreviewLarge = it },
-    )
-
-    PlayerPipWindowEffect(
-        activity = activity,
-        context = context,
-        isPlaying = isPlaying
-    )
-
-    // Slice 46: PiP lifecycle effects are grouped outside VideoPlayerScreen.
-    // Entering PiP still closes CineVault chrome and the action receiver
-    // continues to control the same ExoPlayer instance.
-    PlayerPipEffects(
-        context = context,
-        player = exoPlayer,
-        isInPipMode = CineVaultPlayerHolder.isInPipMode,
-        onEnteredPip = {
-            playerMenuCloseCoordinator.closeAll()
-        },
-    )
-
-
-    PlayerAutoHideEffects(
-        showControls = showControls,
-        showTopBar = showTopBar,
-        controlsLocked = controlsLocked,
-        lockButtonVisibleWhileLocked = lockButtonVisibleWhileLocked,
-        isDraggingSeekbar = isDraggingSeekbar,
-        showAudioSelector = showAudioSelector,
-        showSpeedMenu = showSpeedMenu,
-        showSleepMenu = showSleepMenu,
-        showSrtBrowser = showSrtBrowser,
-        menuTouchKey = menuTouchKey,
-        brightnessGestureKey = brightnessGestureKey,
-        volumeGestureKey = volumeGestureKey,
-        coreUi = coreUi,
-        trackUi = trackUi,
-        searchUi = searchUi,
-        driftUi = driftUi,
-        studioUi = studioUi,
+        onEnteredPip = { playerMenuCloseCoordinator.closeAll() },
         onHideControls = { showControls = false },
         onHideTopBar = { showTopBar = false },
         onHideLockedButton = { lockButtonVisibleWhileLocked = false },
@@ -762,11 +730,11 @@ fun VideoPlayerScreen(
         onHideSrtBrowser = { showSrtBrowser = false },
         onHideBrightnessHud = { showBrightnessCircle = false },
         onHideVolumeHud = { showVolumeCircle = false },
-        showSubtitleDock = showSubtitleDock,
-        showSubtitleBloom = showSubtitleBloom,
-        showDualSubsWindow = showDualSubsWindow,
         onHideSubtitleDock = { showSubtitleDock = false },
-        onHideSubtitleBloom = { showSubtitleBloom = false; studioCategory = null },
+        onHideSubtitleBloom = {
+            showSubtitleBloom = false
+            studioCategory = null
+        },
         onHideDualSubsWindow = { showDualSubsWindow = false },
     )
 

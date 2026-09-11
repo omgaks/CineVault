@@ -1,0 +1,208 @@
+package com.sole.cinevault
+
+import android.app.Activity
+import android.content.Context
+import android.graphics.Bitmap
+import android.net.Uri
+import androidx.compose.runtime.Composable
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import com.sole.cinevault.library.VideoThumbnailHelper
+import kotlinx.coroutines.CoroutineScope
+
+/**
+ * Slice 54: one host for the player-side Compose effects that are independent
+ * from the main visual tree.
+ *
+ * Existing effect components still own their behavior. This function only
+ * groups their wiring so VideoPlayerScreen no longer owns the lifecycle,
+ * player listener, timeline polling, PiP effects, and auto-hide cluster.
+ */
+@Composable
+internal fun PlayerRuntimeEffects(
+    context: Context,
+    activity: Activity?,
+    scope: CoroutineScope,
+    player: ExoPlayer,
+    trackSelector: DefaultTrackSelector,
+    currentVideoPath: String,
+    currentMediaType: String,
+    isStreamMedia: Boolean,
+    episodeList: List<VideoWithMetadata>,
+    autoPlayEnabled: Boolean,
+    errorRetryCount: Int,
+    coreUi: SubtitleCoreUiState,
+    trackUi: SubtitleTrackSelectionState,
+    searchUi: SubtitleAcquisitionUiState,
+    driftUi: DriftCorrectionState,
+    studioUi: SubtitleStudioUiState,
+    audioLanguageCheckedForPath: String?,
+    isDraggingSeekbar: Boolean,
+    isBuffering: Boolean,
+    showSeekPreview: Boolean,
+    previewPosition: Long,
+    duration: Long,
+    previewReloadKey: Int,
+    droppedFrameNudgeCount: Int,
+    lastNudgeAtMs: Long,
+    isPlaying: Boolean,
+    showControls: Boolean,
+    showTopBar: Boolean,
+    controlsLocked: Boolean,
+    lockButtonVisibleWhileLocked: Boolean,
+    showAudioSelector: Boolean,
+    showSpeedMenu: Boolean,
+    showSleepMenu: Boolean,
+    showSrtBrowser: Boolean,
+    menuTouchKey: Int,
+    brightnessGestureKey: Int,
+    volumeGestureKey: Int,
+    showSubtitleDock: Boolean,
+    showSubtitleBloom: Boolean,
+    showDualSubsWindow: Boolean,
+    onNextRequested: () -> Unit,
+    onPreviousRequested: () -> Unit,
+    onInitialBrightnessChanged: (Int) -> Unit,
+    onAudioLanguageCheckedForPathChanged: (String?) -> Unit,
+    onBufferingChanged: (Boolean) -> Unit,
+    onErrorRetryCountChanged: (Int) -> Unit,
+    onPlayerErrorMessageChanged: (String?) -> Unit,
+    onVideoEndedChanged: (Boolean) -> Unit,
+    onPlayingChanged: (Boolean) -> Unit,
+    onQueueNextEpisode: (VideoWithMetadata) -> Unit,
+    onAdvanceImmediately: (VideoWithMetadata) -> Unit,
+    onShowControlsAndTopBar: () -> Unit,
+    onRetryPlayback: (subtitleUri: Uri?, resumePosition: Long) -> Unit,
+    onPositionChanged: (Long) -> Unit,
+    onDurationChanged: (Long) -> Unit,
+    onBufferingSpinnerChanged: (Boolean) -> Unit,
+    onStuckBufferingChanged: (Boolean) -> Unit,
+    onDroppedFrameNudgeCountChanged: (Int) -> Unit,
+    onLastNudgeAtMsChanged: (Long) -> Unit,
+    onPreviewFramesChanged: (List<VideoThumbnailHelper.PreviewFrame>) -> Unit,
+    onPreviewBitmapChanged: (Bitmap?) -> Unit,
+    onSeekPreviewLargeChanged: (Boolean) -> Unit,
+    onEnteredPip: () -> Unit,
+    onHideControls: () -> Unit,
+    onHideTopBar: () -> Unit,
+    onHideLockedButton: () -> Unit,
+    onHideAudioSelector: () -> Unit,
+    onHideSpeedMenu: () -> Unit,
+    onHideSleepMenu: () -> Unit,
+    onHideSrtBrowser: () -> Unit,
+    onHideBrightnessHud: () -> Unit,
+    onHideVolumeHud: () -> Unit,
+    onHideSubtitleDock: () -> Unit,
+    onHideSubtitleBloom: () -> Unit,
+    onHideDualSubsWindow: () -> Unit,
+) {
+    PlayerSessionLifecycle(
+        context = context,
+        activity = activity,
+        player = player,
+        videoPath = currentVideoPath,
+        isStreamMedia = isStreamMedia,
+        onNextRequested = onNextRequested,
+        onPreviousRequested = onPreviousRequested,
+        onInitialBrightnessChanged = onInitialBrightnessChanged,
+    )
+
+    PlayerEventListener(
+        context = context,
+        scope = scope,
+        player = player,
+        trackSelector = trackSelector,
+        currentVideoPath = currentVideoPath,
+        currentMediaType = currentMediaType,
+        isStreamMedia = isStreamMedia,
+        episodeList = episodeList,
+        autoPlayEnabled = autoPlayEnabled,
+        errorRetryCount = errorRetryCount,
+        coreUi = coreUi,
+        trackUi = trackUi,
+        audioLanguageCheckedForPath = audioLanguageCheckedForPath,
+        onAudioLanguageCheckedForPathChanged = onAudioLanguageCheckedForPathChanged,
+        onBufferingChanged = onBufferingChanged,
+        onErrorRetryCountChanged = onErrorRetryCountChanged,
+        onPlayerErrorMessageChanged = onPlayerErrorMessageChanged,
+        onVideoEndedChanged = onVideoEndedChanged,
+        onPlayingChanged = onPlayingChanged,
+        onQueueNextEpisode = onQueueNextEpisode,
+        onAdvanceImmediately = onAdvanceImmediately,
+        onShowControls = onShowControlsAndTopBar,
+        onRetryPlayback = onRetryPlayback,
+    )
+
+    PlayerTimelineEffects(
+        context = context,
+        player = player,
+        videoPath = currentVideoPath,
+        isStreamMedia = isStreamMedia,
+        isDraggingSeekbar = isDraggingSeekbar,
+        isBuffering = isBuffering,
+        showSeekPreview = showSeekPreview,
+        previewPosition = previewPosition,
+        duration = duration,
+        previewReloadKey = previewReloadKey,
+        droppedFrameNudgeCount = droppedFrameNudgeCount,
+        lastNudgeAtMs = lastNudgeAtMs,
+        onPositionChanged = onPositionChanged,
+        onDurationChanged = onDurationChanged,
+        onPlayingChanged = onPlayingChanged,
+        onBufferingSpinnerChanged = onBufferingSpinnerChanged,
+        onStuckBufferingChanged = onStuckBufferingChanged,
+        onDroppedFrameNudgeCountChanged = onDroppedFrameNudgeCountChanged,
+        onLastNudgeAtMsChanged = onLastNudgeAtMsChanged,
+        onPreviewFramesChanged = onPreviewFramesChanged,
+        onPreviewBitmapChanged = onPreviewBitmapChanged,
+        onSeekPreviewLargeChanged = onSeekPreviewLargeChanged,
+    )
+
+    PlayerPipWindowEffect(
+        activity = activity,
+        context = context,
+        isPlaying = isPlaying,
+    )
+
+    PlayerPipEffects(
+        context = context,
+        player = player,
+        isInPipMode = CineVaultPlayerHolder.isInPipMode,
+        onEnteredPip = onEnteredPip,
+    )
+
+    PlayerAutoHideEffects(
+        showControls = showControls,
+        showTopBar = showTopBar,
+        controlsLocked = controlsLocked,
+        lockButtonVisibleWhileLocked = lockButtonVisibleWhileLocked,
+        isDraggingSeekbar = isDraggingSeekbar,
+        showAudioSelector = showAudioSelector,
+        showSpeedMenu = showSpeedMenu,
+        showSleepMenu = showSleepMenu,
+        showSrtBrowser = showSrtBrowser,
+        menuTouchKey = menuTouchKey,
+        brightnessGestureKey = brightnessGestureKey,
+        volumeGestureKey = volumeGestureKey,
+        coreUi = coreUi,
+        trackUi = trackUi,
+        searchUi = searchUi,
+        driftUi = driftUi,
+        studioUi = studioUi,
+        onHideControls = onHideControls,
+        onHideTopBar = onHideTopBar,
+        onHideLockedButton = onHideLockedButton,
+        onHideAudioSelector = onHideAudioSelector,
+        onHideSpeedMenu = onHideSpeedMenu,
+        onHideSleepMenu = onHideSleepMenu,
+        onHideSrtBrowser = onHideSrtBrowser,
+        onHideBrightnessHud = onHideBrightnessHud,
+        onHideVolumeHud = onHideVolumeHud,
+        showSubtitleDock = showSubtitleDock,
+        showSubtitleBloom = showSubtitleBloom,
+        showDualSubsWindow = showDualSubsWindow,
+        onHideSubtitleDock = onHideSubtitleDock,
+        onHideSubtitleBloom = onHideSubtitleBloom,
+        onHideDualSubsWindow = onHideDualSubsWindow,
+    )
+}
