@@ -871,159 +871,48 @@ fun VideoPlayerScreen(
         mutableStateOf<List<GeneratedSubtitleFile>>(emptyList())
     }
 
-    // Slice 40: generated-subtitle library loading is now outside the player.
-    // Compose still owns the refresh effect key; the store/IO orchestration
-    // lives in GeneratedSubtitleLibraryCoordinator.
-    val generatedSubtitleLibraryCoordinator = remember {
-        GeneratedSubtitleLibraryCoordinator(
-            context = context,
-            getCurrentVideoPath = { currentVideo.path },
-        )
-    }
-
-    LaunchedEffect(currentVideo.path, generatedSubtitleRefreshKey) {
-        generatedSubtitleFiles =
-            generatedSubtitleLibraryCoordinator.loadForCurrentVideo()
-    }
-
-    // Slice 20: keep generated/translated subtitle source resolution and
-    // application out of VideoPlayerScreen. Speech-to-subs, AI Translation,
-    // Dual Subs and the generated-subtitle library now share one small
-    // orchestrator instead of duplicating track-selection mutations here.
-    val generatedSubtitleOrchestrator = remember(exoPlayer) {
-        GeneratedSubtitleOrchestrator(
-            getResumePosition = { playerSafeResumePosition(exoPlayer.currentPosition) },
-            getPrimaryUri = { trackUi.primaryUri },
-            getOriginalUri = { trackUi.originalUri },
-            getSelectedKey = { trackUi.selectedKey },
-            getSelectedLabel = { trackUi.selectedLabel },
-            getSelectedSource = { trackUi.selectedSource },
-            getPrimaryLanguage = { trackUi.primaryLanguage },
-            setSubtitlesEnabled = { coreUi.subtitlesEnabled = it },
-            setPrimaryUri = { trackUi.primaryUri = it },
-            setOriginalUri = { trackUi.originalUri = it },
-            setPrimaryLanguage = { trackUi.primaryLanguage = it },
-            setSelectedKey = { trackUi.selectedKey = it },
-            setSelectedLabel = { trackUi.selectedLabel = it },
-            setSelectedSource = { trackUi.selectedSource = it },
-            playWithSubtitle = { uri, resumeAt ->
-                playCurrentVideoWithSubtitle(
-                    uri,
-                    resumePosition = resumeAt,
-                    isOriginalSubtitle = true,
-                )
-            },
-        )
-    }
-
-    val speechSubtitleCoordinator = remember(exoPlayer) {
-        SpeechSubtitleCoordinator(
-            context = context,
-            scope = scope,
-            exoPlayer = exoPlayer,
-            getCurrentVideoPath = { currentVideo.path },
-            getStatus = { speechSubtitleStatus },
-            setStatus = { speechSubtitleStatus = it },
-            onSubtitleReady = { file, language ->
-                generatedSubtitleOrchestrator.apply(file, language, "Speech recognition")
-            },
-            onGeneratedLibraryChanged = { generatedSubtitleRefreshKey++ },
-        )
-    }
-
-    // Slice 39: completed AI translations are now routed outside the player.
-    // A finished subtitle either satisfies a pending Dual Subs request or
-    // becomes the active primary AI translation.
-    val subtitleTranslationResultCoordinator = remember {
-        SubtitleTranslationResultCoordinator(
-            scope = scope,
-            isDualEnabled = { dualUi.enabled },
-            getPendingDualLanguage = { pendingDualAiLanguage },
-            clearPendingDualLanguage = { pendingDualAiLanguage = null },
-            applyDualSecondary = { uri ->
-                subtitleSyncTools.applyDualSecondaryUri(uri, "AI")
-            },
-            applyPrimaryTranslation = { file, language ->
-                generatedSubtitleOrchestrator.apply(
-                    file,
-                    language,
-                    "AI Translation",
-                )
-            },
-            showTranslationSuccess = { language ->
-                translationSuccessLanguage =
-                    SubtitleLanguageRegistry.displayName(language)
-            },
-            clearTranslationSuccess = {
-                translationSuccessLanguage = null
-            },
-        )
-    }
-
-    val subtitleTranslationCoordinator = remember(exoPlayer) {
-        SubtitleTranslationCoordinator(
-            context = context,
-            scope = scope,
-            getCurrentVideoPath = { currentVideo.path },
-            resolveActiveSubtitle = { generatedSubtitleOrchestrator.resolveActiveSubtitle() },
-            getStatus = { subtitleTranslationStatus },
-            setStatus = { subtitleTranslationStatus = it },
-            onSubtitleReady = { file, language ->
-                subtitleTranslationResultCoordinator.onTranslationReady(
-                    file = file,
-                    language = language,
-                )
-            },
-            onGeneratedLibraryChanged = { generatedSubtitleRefreshKey++ },
-        )
-    }
-
-    // Slice 32: pending Dual Subs AI-translation request decisions now live
-    // in a plain Kotlin coordinator, which is unit-tested in app/src/test.
-    val dualAiTranslationCoordinator = remember {
-        DualAiTranslationCoordinator(
-            getPendingLanguage = { pendingDualAiLanguage },
-            clearPendingLanguage = { pendingDualAiLanguage = null },
-            isDualEnabled = { dualUi.enabled },
-            disableDual = { dualUi.enabled = false },
-            setStatusText = { dualUi.statusText = it },
-            translateActive = { target ->
-                subtitleTranslationCoordinator.translateActive(target)
-            },
-        )
-    }
-
-    LaunchedEffect(pendingDualAiLanguage) {
-        dualAiTranslationCoordinator.processPendingRequest()
-    }
-
-    // Slice 35: AI job label/progress presentation is now pure and tested.
-    val speechJobPresentation = speechSubtitleJobPresentation(speechSubtitleStatus)
-    val translationJobPresentation = subtitleTranslationJobPresentation(subtitleTranslationStatus)
-
-    val speechJobLabel = speechJobPresentation.label
-    val speechJobProgress = speechJobPresentation.progress
-    val translationJobLabel = translationJobPresentation.label
-    val translationJobProgress = translationJobPresentation.progress
-
-    // Slice 36: subtitle AI panel back handling is now driven by a pure,
-    // unit-tested decision so panel-close priority cannot silently regress.
-    BackHandler(enabled = showSpeechSubtitlePanel || showSubtitleTranslationPanel) {
-        when (
-            subtitlePanelBackAction(
-                showSpeechSubtitlePanel = showSpeechSubtitlePanel,
-                showSubtitleTranslationPanel = showSubtitleTranslationPanel,
+    // Slice 52: generated subtitle / Speech-to-Subs / AI Translation runtime
+    // orchestration now lives outside the giant player composable. The player
+    // still owns the visible state values; the helper owns loading, coordinators,
+    // pending Dual AI processing, job presentation, and AI-panel Back handling.
+    val subtitleAiRuntime = rememberPlayerSubtitleAiRuntime(
+        context = context,
+        scope = scope,
+        exoPlayer = exoPlayer,
+        currentVideoPath = currentVideo.path,
+        trackUi = trackUi,
+        coreUi = coreUi,
+        dualUi = dualUi,
+        subtitleSyncTools = subtitleSyncTools,
+        speechSubtitleStatus = speechSubtitleStatus,
+        onSpeechSubtitleStatusChanged = { speechSubtitleStatus = it },
+        subtitleTranslationStatus = subtitleTranslationStatus,
+        onSubtitleTranslationStatusChanged = { subtitleTranslationStatus = it },
+        pendingDualAiLanguage = pendingDualAiLanguage,
+        onPendingDualAiLanguageChanged = { pendingDualAiLanguage = it },
+        generatedSubtitleRefreshKey = generatedSubtitleRefreshKey,
+        onGeneratedSubtitleRefreshRequested = { generatedSubtitleRefreshKey++ },
+        onGeneratedSubtitleFilesLoaded = { generatedSubtitleFiles = it },
+        showSpeechSubtitlePanel = showSpeechSubtitlePanel,
+        showSubtitleTranslationPanel = showSubtitleTranslationPanel,
+        onShowSpeechSubtitlePanelChanged = { showSpeechSubtitlePanel = it },
+        onShowSubtitleTranslationPanelChanged = { showSubtitleTranslationPanel = it },
+        onTranslationSuccessLanguageChanged = { translationSuccessLanguage = it },
+        playCurrentVideoWithSubtitle = { uri, resumeAt ->
+            playCurrentVideoWithSubtitle(
+                uri,
+                resumePosition = resumeAt,
+                isOriginalSubtitle = true,
             )
-        ) {
-            SubtitlePanelBackAction.CLOSE_TRANSLATION ->
-                showSubtitleTranslationPanel = false
-
-            SubtitlePanelBackAction.CLOSE_SPEECH ->
-                showSpeechSubtitlePanel = false
-
-            SubtitlePanelBackAction.NONE -> Unit
-        }
-    }
+        },
+    )
+    val generatedSubtitleOrchestrator = subtitleAiRuntime.generatedSubtitleOrchestrator
+    val speechSubtitleCoordinator = subtitleAiRuntime.speechSubtitleCoordinator
+    val subtitleTranslationCoordinator = subtitleAiRuntime.subtitleTranslationCoordinator
+    val speechJobLabel = subtitleAiRuntime.speechJobLabel
+    val speechJobProgress = subtitleAiRuntime.speechJobProgress
+    val translationJobLabel = subtitleAiRuntime.translationJobLabel
+    val translationJobProgress = subtitleAiRuntime.translationJobProgress
 
     // Slice 27: next-episode countdown completion/navigation is now owned
     // by a small coordinator. Compose still owns the cancellable timer effect.
