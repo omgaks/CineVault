@@ -1262,275 +1262,62 @@ fun VideoPlayerScreen(
             onDismissSleepMenu = { showSleepMenu = false },
         )
 
-        val srtFiles = rememberAvailableLocalSubtitleFiles(
-            videoPath = currentVideo.path,
-            selectorVisible = showSrtBrowser,
-            pendingDeletePaths = pendingDeletePaths
-        )
-        val audioTracksForPopup = buildAudioTrackRows(
+        // Slice 57: local/audio track popups, quick subtitle controls, track
+        // selector, acquisition flow, drift sync and appearance studio now live
+        // in one subtitle selection/acquisition presentation host.
+        PlayerSubtitleSelectionAndAcquisitionSurfaces(
+            context = context,
             player = exoPlayer,
             trackSelector = trackSelector,
-            onTrackSelected = {
-                showAudioSelector = false
-                showControls = true
-            }
-        )
-        SrtAndAudioTrackPopups(
+            videoPath = currentVideo.path,
+            canDownloadExternalSubtitles = canDownloadExternalSubtitles,
+            pendingDeletePaths = pendingDeletePaths,
+            generatedSubtitleFiles = generatedSubtitleFiles,
             showSrtBrowser = showSrtBrowser,
-            srtFiles = srtFiles,
+            showAudioSelector = showAudioSelector,
+            audioSyncMs = audioSyncMs,
+            popupBottomPadding = popupBottomPadding,
             srtPopupWidth = srtPopupWidth,
             srtPopupMaxHeight = srtPopupMaxHeight,
-            srtBottomPadding = playerPopupBottomPadding(popupBottomPadding),
-            srtOffsetX = calculatePlayerPopupOffsetX(subIconX, srtPopupWidth, screenWidthPx, density),
-            onPickSrt = { file -> showSrtBrowser = false; pendingSrtUri = Uri.fromFile(file) },
-            onDeleteSrt = { file -> subtitleDeletionCoordinator.requestDeleteSubtitle(file) },
-            onSystemPicker = { showSrtBrowser = false; srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
-            onCloseSrtBrowser = { showSrtBrowser = false; showControls = true },
-            showAudioSelector = showAudioSelector,
-            audioTracks = audioTracksForPopup,
             audioPopupWidth = audioPopupWidth,
-            audioBottomPadding = popupBottomPadding,
-            audioOffsetX = calculatePlayerPopupOffsetX(audioIconX, audioPopupWidth, screenWidthPx, density),
-            audioSyncMs = audioSyncMs,
-            onAudioSyncChange = { audioSyncMs = it; menuTouchKey++ },
-            onAudioMenuInteraction = { menuTouchKey++ },
-            onCloseAudioSelector = { showAudioSelector = false; showControls = true },
-        )
-
-        val hasInternalSubtitles = hasInternalSubtitleTracks(exoPlayer.currentTracks)
-
-        // ── Track Selector data, built fresh from live player + disk state
-        // every time it's shown. Embedded tracks read straight off
-        // ExoPlayer's current track groups (source of truth for what's
-        // actually IN the file); downloaded/local read off disk the same
-        // way the existing SRT browser and OpenSubtitlesClient cache
-        // already do — no new scanning logic, just reused in one place.
-        val embeddedTrackChoices = remember(exoPlayer.currentTracks) {
-            buildEmbeddedSubtitleChoices(exoPlayer.currentTracks)
-        }
-        val downloadedTrackChoice = rememberDownloadedSubtitleChoice(
-            context = context,
-            videoPath = currentVideo.path,
-            preferredLanguages = coreUi.behaviorPrefs.preferredLanguages,
-            selectorVisible = trackUi.showSelector,
-            canDownloadExternalSubtitles = canDownloadExternalSubtitles
-        )
-        val localFileChoices = rememberAvailableLocalSubtitleFiles(
-            videoPath = currentVideo.path,
-            selectorVisible = trackUi.showSelector,
-            pendingDeletePaths = pendingDeletePaths
-        )
-
-        val subtitleQuickMenuStatusText = buildSubtitleQuickMenuStatusText(
-            subtitlesEnabled = coreUi.subtitlesEnabled,
-            selectedLabel = trackUi.selectedLabel,
-            selectedSource = trackUi.selectedSource,
-            hasInternalSubtitles = hasInternalSubtitles
-        )
-        SubtitleQuickMenuAndTrackSelector(
-            showSubtitleSettings = coreUi.showSettings,
-            showTrackSelector = trackUi.showSelector,
-            subtitlesEnabled = coreUi.subtitlesEnabled,
-            activeTrackStatusText = subtitleQuickMenuStatusText,
-            quickMenuBottomPadding = playerPopupBottomPadding(popupBottomPadding),
-            quickMenuOffsetX = calculatePlayerPopupOffsetX(subIconX, subtitlePopupWidth, screenWidthPx, density),
-            subtitleTextSizeSp = appearanceUi.textSizeSp,
-            subtitleBottomPadding = appearanceUi.bottomPadding,
-            onFindClick = {
-                studioUi.menuTouchKey++
-                coreUi.showSettings = false
-                searchUi.showSearch = true
-                showControls = true
-                if (searchUi.searchResults.isEmpty() && !searchUi.searchLoading) {
-                    subtitleSearchCoordinator.performSubtitleSearch(playerSubtitleSearchQuery(currentVideo.path), "", "", coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en")
-                }
-            },
-            onTracksClick = { coreUi.showSettings = false; trackUi.showSelector = true; showControls = true; studioUi.menuTouchKey++ },
-            onToggleSubtitles = {
-                coreUi.subtitlesEnabled = !coreUi.subtitlesEnabled
-                trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !coreUi.subtitlesEnabled).build()
-                if (!coreUi.subtitlesEnabled) { trackUi.selectedKey = "off"; trackUi.selectedLabel = ""; trackUi.selectedSource = "" }
-                showControls = true; studioUi.menuTouchKey++
-            },
-            onDismissSettings = { coreUi.showSettings = false; showControls = true },
-            onFontSizeChange = { appearanceUi.textSizeSp = it; showControls = true; studioUi.menuTouchKey++ },
-            onVerticalPositionChange = { appearanceUi.bottomPadding = it; showControls = true; studioUi.menuTouchKey++ },
-            onSyncClick = {
-                coreUi.showSettings = false
-                showSubtitleBloom = true
-                studioCategory = com.sole.cinevault.subtitles.StudioCategory.POWER_TOOLS
-                showControls = false
-            },
-            onStyleClick = { coreUi.showSettings = false; coreUi.showAppearanceStudio = true; showControls = false },
-            onResetSubtitleSettings = { subtitleResetCoordinator.reset() },
-            onSettingsUserInteraction = { studioUi.menuTouchKey++; showControls = true },
-            trackSelectorBottomPadding = playerPopupBottomPadding(popupBottomPadding),
-            trackSelectorOffsetX = calculatePlayerPopupOffsetX(subIconX, trackStudioWidth, screenWidthPx, density),
-            trackSelectorWidth = trackStudioWidth,
-            trackSelectorMaxHeight = trackStudioMaxHeight,
-            studioRightInset = studioFrameInset,
+            subtitlePopupWidth = subtitlePopupWidth,
+            trackStudioWidth = trackStudioWidth,
+            trackStudioMaxHeight = trackStudioMaxHeight,
+            styleStudioWidth = styleStudioWidth,
+            styleStudioMaxHeight = styleStudioMaxHeight,
+            studioFrameInset = studioFrameInset,
+            visibleMovieWidth = visibleMovieWidth,
             containerWidth = maxWidth,
             containerHeight = maxHeight,
-            embeddedTrackChoices = embeddedTrackChoices,
-            downloadedTrackChoice = downloadedTrackChoice,
-            localFileChoices = localFileChoices,
-            generatedSubtitleFiles = generatedSubtitleFiles.filter { g ->
-                java.io.File(g.uri.path ?: "").absolutePath !in pendingDeletePaths
-            },
-            selectedTrackKey = trackUi.selectedKey,
-            onSelectTrack = { choice -> subtitleSearchCoordinator.selectSubtitleTrack(choice); trackUi.showSelector = false; showControls = true },
-            onDeleteLocalTrack = { file -> subtitleDeletionCoordinator.requestDeleteSubtitle(file) },
-            onDeleteGeneratedTrack = { generated ->
-                val path = generated.uri.path
-                if (path != null) subtitleDeletionCoordinator.requestDeleteSubtitle(java.io.File(path))
-            },
-            onOpenFilePickerFromTrackSelector = { trackUi.showSelector = false; srtPickerLauncher.launch(arrayOf("application/x-subrip", "text/plain", "*/*")) },
-            onBackFromTrackSelector = {
-                trackUi.showSelector = false
-                showSubtitleBloom = true
-                studioCategory = null
-                showControls = false
-                showTopBar = false
-            },
-            onDismissTrackSelector = { trackUi.showSelector = false; showControls = true },
-            onTrackSelectorUserInteraction = { studioUi.menuTouchKey++ },
-            initialManageMode = trackSelectorManageMode,
-        )
-
-        val subtitleSearchLayout = calculateSubtitleSearchLayout(
-            maxWidth = maxWidth,
-            maxHeight = maxHeight,
             isLandscape = isLandscape,
-            isCompactLandscape = isCompactLandscape
-        )
-        val searchWidth = (subtitleSearchLayout.width * 1.12f)
-            .coerceAtMost((visibleMovieWidth - studioFrameInset * 2).coerceAtLeast(280.dp))
-        val searchMaxHeight = (subtitleSearchLayout.maxHeight * 1.10f)
-            .coerceAtMost((maxHeight - 24.dp).coerceAtLeast(280.dp))
-        val subtitleWebQuery = playerSubtitleSearchQuery(currentVideo.path)
-        SubtitleAcquisitionFlow(
-            showSubtitleSearch = searchUi.showSearch,
-            searchWidth = searchWidth,
-            searchMaxHeight = searchMaxHeight,
-            containerWidth = maxWidth,
-            containerHeight = maxHeight,
-            studioRightInset = studioFrameInset,
-            initialSearchQuery = remember(currentVideo.path) { playerSubtitleSearchQuery(currentVideo.path) },
-            searchResults = searchUi.searchResults,
-            isSearching = searchUi.searchLoading,
-            searchStatusText = searchUi.searchStatus,
-            onSearchUserInteraction = { studioUi.menuTouchKey++ },
-            onSearch = { q, s, e -> studioUi.menuTouchKey++; subtitleSearchCoordinator.performSubtitleSearch(q, s, e, coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en") },
-            onDownloadAndApply = { result -> studioUi.menuTouchKey++; subtitleSearchCoordinator.applySearchResult(result, alsoPlay = true) },
-            onDownloadOnly = { result -> studioUi.menuTouchKey++; subtitleSearchCoordinator.applySearchResult(result, alsoPlay = false) },
-            onWebsiteFallbackFromSearch = { searchUi.showSearch = false; searchUi.showFallback = true; showControls = false },
-            onBackFromSearch = {
-                searchUi.showSearch = false
-                showSubtitleBloom = true
-                studioCategory = null
-                showControls = false
-                showTopBar = false
-            },
-            onDismissSearch = { searchUi.showSearch = false; showControls = true },
-            showSubtitleFallback = searchUi.showFallback,
-            fallbackSearchQuery = subtitleWebQuery,
-            fallbackStatusText = searchUi.searchStatus,
-            onSecureBrowser = {
-                exoPlayer.pause()
-                launchSubtitleCustomTab(context, subtitleWebQuery)
-                searchUi.showFallback = false
-                Toast.makeText(context, "After downloading, return and choose Import downloaded subtitle", Toast.LENGTH_LONG).show()
-            },
-            onEmbeddedBrowser = {
-                exoPlayer.pause()
-                searchUi.showFallback = false
-                searchUi.showEmbeddedBrowser = true
-            },
-            onImportFile = {
-                exoPlayer.pause()
-                srtPickerLauncher.launch(
-                    arrayOf(
-                        "application/x-subrip",
-                        "text/vtt",
-                        "text/plain",
-                        "application/zip",
-                        "application/x-zip-compressed",
-                        "application/octet-stream"
-                    )
-                )
-            },
-            onBackFromFallback = {
-                searchUi.showFallback = false
-                showSubtitleBloom = true
-                studioCategory = null
-                showControls = false
-                showTopBar = false
-            },
-            onDismissFallback = { searchUi.showFallback = false },
-            showEmbeddedSubtitleBrowser = searchUi.showEmbeddedBrowser,
-            embeddedBrowserQuery = playerSubtitleSearchQuery(currentVideo.path),
-            embeddedBrowserPreferredLanguage = coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en",
-            onImported = { result ->
-                if (result.alternatives.isEmpty()) {
-                    subtitleSearchCoordinator.applyImportedWebsiteSubtitle(result.selected)
-                } else {
-                    searchUi.pendingImportCandidates = result
-                    searchUi.showEmbeddedBrowser = false
-                }
-            },
-            onMessage = { Toast.makeText(context, it, Toast.LENGTH_LONG).show() },
-            onDismissEmbeddedBrowser = { searchUi.showEmbeddedBrowser = false; showControls = true },
-            pendingImportedCandidates = searchUi.pendingImportCandidates,
-            onCandidateSelected = { subtitleSearchCoordinator.applyImportedWebsiteSubtitle(it) },
-            onDismissCandidateSheet = { searchUi.pendingImportCandidates = null },
-        )
-
-        SubtitleSyncAndAppearancePopups(
-            dialogueSyncArmed = coreUi.dialogueSyncArmed,
-            isLandscape = isLandscape,
-            onDialogueSyncTap = { subtitleSyncTools.confirmDialogueSyncTap() },
-            onDialogueSyncCancel = { subtitleSyncTools.cancelDialogueSync() },
-            showDriftDialog = driftUi.showDialog,
-            driftPopupWidth = playerDriftPopupWidth(trackSelectorWidth),
-            videoDurationMs = duration,
-            currentPositionMs = position,
-            driftPointA = driftUi.pointA,
-            driftPointB = driftUi.pointB,
-            onMarkPointA = { correction -> subtitleSyncTools.markDriftPointA(correction) },
-            onMarkPointB = { correction -> subtitleSyncTools.markDriftPointB(correction) },
-            onApplyDrift = { subtitleSyncTools.applyDriftFix() },
-            onDismissDrift = { driftUi.showDialog = false; showControls = false; showTopBar = false },
-            showAppearanceStudio = coreUi.showAppearanceStudio,
-            appearanceBottomPadding = playerPopupBottomPadding(popupBottomPadding),
-            appearanceOffsetX = calculatePlayerPopupOffsetX(subIconX, styleStudioWidth, screenWidthPx, density),
-            appearancePopupWidth = styleStudioWidth,
-            appearancePopupMaxHeight = styleStudioMaxHeight,
-            containerWidth = maxWidth,
-            containerHeight = maxHeight,
-            studioRightInset = studioFrameInset,
-            appearancePresetName = appearanceUi.preset,
-            appearance = appearanceUi.appearance,
-            appearanceFontSizeSp = appearanceUi.textSizeSp,
-            onAppearanceFontSizeChange = { appearanceUi.textSizeSp = it },
-            appearanceBottomPaddingFraction = appearanceUi.bottomPadding,
-            onAppearanceBottomPaddingChange = { appearanceUi.bottomPadding = it },
-            onApplyPreset = { name, preset -> appearanceUi.preset = name; appearanceUi.appearance = preset },
-            onForegroundChange = { c -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(foregroundColor = c) },
-            onEdgeTypeChange = { t -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(edgeType = t) },
-            onEdgeColorChange = { c -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(edgeColor = c) },
-            onBackgroundChange = { c -> appearanceUi.preset = "Custom"; appearanceUi.appearance = appearanceUi.appearance.copy(backgroundColor = c) },
+            isCompactLandscape = isCompactLandscape,
+            screenWidthPx = screenWidthPx,
+            density = density,
+            subtitleIconCenterX = subIconX,
+            audioIconCenterX = audioIconX,
+            duration = duration,
+            position = position,
             isAssOrSsaFormat = isAssOrSsaFormat,
-            preserveOriginalStyling = appearanceUi.preserveOriginalStyling,
-            onPreserveOriginalStylingChange = { appearanceUi.preserveOriginalStyling = it },
-            onBackFromAppearanceStudio = {
-                coreUi.showAppearanceStudio = false
-                showSubtitleBloom = true
-                studioCategory = null
-                showControls = false
-                showTopBar = false
-            },
-            onDismissAppearanceStudio = { coreUi.showAppearanceStudio = false; showControls = true },
-            onAppearanceUserInteraction = { studioUi.menuTouchKey++ },
+            coreUi = coreUi,
+            trackUi = trackUi,
+            searchUi = searchUi,
+            driftUi = driftUi,
+            studioUi = studioUi,
+            appearanceUi = appearanceUi,
+            trackSelectorManageMode = trackSelectorManageMode,
+            subtitleSearchCoordinator = subtitleSearchCoordinator,
+            subtitleDeletionCoordinator = subtitleDeletionCoordinator,
+            subtitleResetCoordinator = subtitleResetCoordinator,
+            subtitleSyncTools = subtitleSyncTools,
+            onPendingSrtUriChanged = { pendingSrtUri = it },
+            onShowSrtBrowserChanged = { showSrtBrowser = it },
+            onShowAudioSelectorChanged = { showAudioSelector = it },
+            onAudioSyncMsChanged = { audioSyncMs = it },
+            onShowControlsChanged = { showControls = it },
+            onShowTopBarChanged = { showTopBar = it },
+            onShowSubtitleBloomChanged = { showSubtitleBloom = it },
+            onStudioCategoryChanged = { studioCategory = it },
+            onLaunchSrtPicker = { mimeTypes -> srtPickerLauncher.launch(mimeTypes) },
         )
 
         // Subtitle Studio now uses only the dedicated overlay windows.
