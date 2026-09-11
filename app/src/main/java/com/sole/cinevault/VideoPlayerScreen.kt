@@ -952,18 +952,25 @@ fun VideoPlayerScreen(
         // only actually defined on this outer one.
         val playerMaxWidth = maxWidth
         val playerMaxHeight = maxHeight
-        val displayLayout = calculatePlayerDisplayLayout(maxWidth, maxHeight)
-        val isLandscape = displayLayout.isLandscape
-        val isSmallPhone = displayLayout.isSmallPhone
-        val isCompactLandscape = displayLayout.isCompactLandscape
-        val scale = displayLayout.scale
-        val playButton = displayLayout.playButton
-        val smallButton = displayLayout.smallButton
-        val hudSize = displayLayout.hudSize
-        val sidePadding = displayLayout.sidePadding
-        val bottomDockPadding = displayLayout.bottomDockPadding
-        val seekBottomPadding = displayLayout.seekBottomPadding
-        val topClusterPaddingTop = displayLayout.topClusterPaddingTop
+        val playerLayout = calculatePlayerSurfaceLayout(
+            maxWidth = maxWidth,
+            maxHeight = maxHeight,
+            videoWidth = exoPlayer.videoSize.width,
+            videoHeight = exoPlayer.videoSize.height,
+            pixelWidthHeightRatio = exoPlayer.videoSize.pixelWidthHeightRatio,
+            density = LocalDensity.current,
+        )
+        val isLandscape = playerLayout.isLandscape
+        val isSmallPhone = playerLayout.isSmallPhone
+        val isCompactLandscape = playerLayout.isCompactLandscape
+        val scale = playerLayout.scale
+        val playButton = playerLayout.playButton
+        val smallButton = playerLayout.smallButton
+        val hudSize = playerLayout.hudSize
+        val sidePadding = playerLayout.sidePadding
+        val bottomDockPadding = playerLayout.bottomDockPadding
+        val seekBottomPadding = playerLayout.seekBottomPadding
+        val topClusterPaddingTop = playerLayout.topClusterPaddingTop
 
         // ── Per-display subtitle profiles ──────────────────────────────
         // Which profile applies right now — external (any AR glasses via DP Alt Mode)
@@ -1017,64 +1024,30 @@ fun VideoPlayerScreen(
             incrementMenuTouchKey = { studioUi.menuTouchKey++ },
         )
 
-        val popupDimensions = calculatePlayerPopupDimensions(
-            maxWidth = maxWidth,
-            maxHeight = maxHeight,
-            isLandscape = isLandscape,
-            isCompactLandscape = isCompactLandscape,
-            bottomDockPadding = bottomDockPadding,
-            playButton = playButton
-        )
-        val uiScale = popupDimensions.uiScale
-
+        // Slice 53: all player/popup/Sub Studio geometry is derived in one
+        // pure layout helper. VideoPlayerScreen only keeps local aliases used by
+        // the existing presentation calls below.
         val density = LocalDensity.current
-        val screenWidthPx = with(density) { maxWidth.toPx() }
-        val screenHeightPx = with(density) { maxHeight.toPx() }
-        val popupBottomPadding = popupDimensions.bottomPadding
-        val subtitlePopupWidth = popupDimensions.subtitlePopupWidth
-        val subtitlePopupHeightEstimate = popupDimensions.subtitlePopupHeightEstimate
-        val trackSelectorWidth = popupDimensions.trackSelectorWidth
-        val trackSelectorMaxHeight = popupDimensions.trackSelectorMaxHeight
-
-        // Slice 15: position Sub Studio surfaces against the ACTUAL visible
-        // movie picture, not the physical screen edge. Letter/pillar-box
-        // bars are symmetric, so only the horizontal content inset is
-        // needed for our right-centred landscape resting zone.
-        val rawVideoWidth = exoPlayer.videoSize.width
-        val rawVideoHeight = exoPlayer.videoSize.height
-        val rawPixelRatio = exoPlayer.videoSize.pixelWidthHeightRatio.takeIf { it > 0f } ?: 1f
-        val videoAspect = if (rawVideoWidth > 0 && rawVideoHeight > 0)
-            (rawVideoWidth.toFloat() * rawPixelRatio) / rawVideoHeight.toFloat()
-        else 0f
-        val containerAspect = if (maxHeight.value > 0f) maxWidth.value / maxHeight.value else 0f
-        val visibleMovieWidth = when {
-            videoAspect <= 0f || containerAspect <= 0f -> maxWidth
-            videoAspect >= containerAspect -> maxWidth
-            else -> (maxHeight.value * videoAspect).dp.coerceAtMost(maxWidth)
-        }
-        val movieFrameHorizontalInset = ((maxWidth - visibleMovieWidth) / 2f).coerceAtLeast(0.dp)
-        val studioFrameInset = movieFrameHorizontalInset + if (maxWidth < 700.dp) 12.dp else 22.dp
-
-        // Pad reference: Tracks ~20% broader/taller, Style ~28% broader and
-        // ~22% taller. coerceAtMost keeps the same design usable on phones.
-        val trackStudioWidth = (trackSelectorWidth * if (maxWidth >= 900.dp) 1.38f else 1.24f)
-            .coerceAtLeast(if (maxWidth >= 900.dp) 330.dp else 270.dp)
-            .coerceAtMost((visibleMovieWidth - studioFrameInset * 2).coerceAtLeast(250.dp))
-        val trackStudioMaxHeight = (trackSelectorMaxHeight * if (maxHeight >= 600.dp) 1.30f else 1.20f)
-            .coerceAtMost((maxHeight - 24.dp).coerceAtLeast(250.dp))
-        val styleStudioWidth = (trackSelectorWidth * 1.28f)
-            .coerceAtMost((visibleMovieWidth - studioFrameInset * 2).coerceAtLeast(270.dp))
-        val styleStudioMaxHeight = (trackSelectorMaxHeight * 1.22f)
-            .coerceAtMost((maxHeight - 24.dp).coerceAtLeast(270.dp))
-        val srtPopupWidth = popupDimensions.srtPopupWidth
-        val srtPopupMaxHeight = popupDimensions.srtPopupMaxHeight
-        val audioPopupWidth = popupDimensions.audioPopupWidth
-        val smallMenuWidth = popupDimensions.smallMenuWidth
-        val smallMenuMaxHeight = popupDimensions.smallMenuMaxHeight
-        val topIconSize = calculatePlayerTopIconSize(
-            uiScale = uiScale,
-            playerScale = scale
-        )
+        val uiScale = playerLayout.uiScale
+        val screenWidthPx = playerLayout.screenWidthPx
+        val screenHeightPx = playerLayout.screenHeightPx
+        val popupBottomPadding = playerLayout.popupBottomPadding
+        val subtitlePopupWidth = playerLayout.subtitlePopupWidth
+        val subtitlePopupHeightEstimate = playerLayout.subtitlePopupHeightEstimate
+        val trackSelectorWidth = playerLayout.trackSelectorWidth
+        val trackSelectorMaxHeight = playerLayout.trackSelectorMaxHeight
+        val visibleMovieWidth = playerLayout.visibleMovieWidth
+        val studioFrameInset = playerLayout.studioFrameInset
+        val trackStudioWidth = playerLayout.trackStudioWidth
+        val trackStudioMaxHeight = playerLayout.trackStudioMaxHeight
+        val styleStudioWidth = playerLayout.styleStudioWidth
+        val styleStudioMaxHeight = playerLayout.styleStudioMaxHeight
+        val srtPopupWidth = playerLayout.srtPopupWidth
+        val srtPopupMaxHeight = playerLayout.srtPopupMaxHeight
+        val audioPopupWidth = playerLayout.audioPopupWidth
+        val smallMenuWidth = playerLayout.smallMenuWidth
+        val smallMenuMaxHeight = playerLayout.smallMenuMaxHeight
+        val topIconSize = playerLayout.topIconSize
 
         val playlistNavigation = remember(
             currentVideo.path,
