@@ -635,19 +635,12 @@ fun VideoPlayerScreen(
         ),
     )
 
-    PlayerSessionLifecycle(
+    // Slice 54: playback lifecycle/listener/timeline/PiP/auto-hide wiring now
+    // lives in one runtime-effects host. VideoPlayerScreen still owns the UI
+    // state; this helper owns the Compose side-effect cluster around the player.
+    PlayerRuntimeEffects(
         context = context,
         activity = activity,
-        player = exoPlayer,
-        videoPath = currentVideo.path,
-        isStreamMedia = isStreamMedia,
-        onNextRequested = { playbackNavigationCoordinator.playNext() },
-        onPreviousRequested = { playbackNavigationCoordinator.playPrevious() },
-        onInitialBrightnessChanged = { brightnessPercent = it },
-    )
-
-    PlayerEventListener(
-        context = context,
         scope = scope,
         player = exoPlayer,
         trackSelector = trackSelector,
@@ -659,7 +652,36 @@ fun VideoPlayerScreen(
         errorRetryCount = errorRetryCount,
         coreUi = coreUi,
         trackUi = trackUi,
+        searchUi = searchUi,
+        driftUi = driftUi,
+        studioUi = studioUi,
         audioLanguageCheckedForPath = audioLanguageCheckedForPath,
+        isDraggingSeekbar = isDraggingSeekbar,
+        isBuffering = isBuffering,
+        showSeekPreview = showSeekPreview,
+        previewPosition = previewPosition,
+        duration = duration,
+        previewReloadKey = previewReloadKey,
+        droppedFrameNudgeCount = droppedFrameNudgeCount,
+        lastNudgeAtMs = lastNudgeAtMs,
+        isPlaying = isPlaying,
+        showControls = showControls,
+        showTopBar = showTopBar,
+        controlsLocked = controlsLocked,
+        lockButtonVisibleWhileLocked = lockButtonVisibleWhileLocked,
+        showAudioSelector = showAudioSelector,
+        showSpeedMenu = showSpeedMenu,
+        showSleepMenu = showSleepMenu,
+        showSrtBrowser = showSrtBrowser,
+        menuTouchKey = menuTouchKey,
+        brightnessGestureKey = brightnessGestureKey,
+        volumeGestureKey = volumeGestureKey,
+        showSubtitleDock = showSubtitleDock,
+        showSubtitleBloom = showSubtitleBloom,
+        showDualSubsWindow = showDualSubsWindow,
+        onNextRequested = { playbackNavigationCoordinator.playNext() },
+        onPreviousRequested = { playbackNavigationCoordinator.playPrevious() },
+        onInitialBrightnessChanged = { brightnessPercent = it },
         onAudioLanguageCheckedForPathChanged = { audioLanguageCheckedForPath = it },
         onBufferingChanged = { isBuffering = it },
         onErrorRetryCountChanged = { errorRetryCount = it },
@@ -678,7 +700,7 @@ fun VideoPlayerScreen(
             currentVideo = next.video
             onPlayNext(next)
         },
-        onShowControls = {
+        onShowControlsAndTopBar = {
             showControls = true
             showTopBar = true
         },
@@ -689,24 +711,8 @@ fun VideoPlayerScreen(
                 isOriginalSubtitle = false,
             )
         },
-    )
-
-    PlayerTimelineEffects(
-        context = context,
-        player = exoPlayer,
-        videoPath = currentVideo.path,
-        isStreamMedia = isStreamMedia,
-        isDraggingSeekbar = isDraggingSeekbar,
-        isBuffering = isBuffering,
-        showSeekPreview = showSeekPreview,
-        previewPosition = previewPosition,
-        duration = duration,
-        previewReloadKey = previewReloadKey,
-        droppedFrameNudgeCount = droppedFrameNudgeCount,
-        lastNudgeAtMs = lastNudgeAtMs,
         onPositionChanged = { position = it },
         onDurationChanged = { duration = it },
-        onPlayingChanged = { isPlaying = it },
         onBufferingSpinnerChanged = { showBufferingSpinner = it },
         onStuckBufferingChanged = { stuckBufferingHint = it },
         onDroppedFrameNudgeCountChanged = { droppedFrameNudgeCount = it },
@@ -714,45 +720,7 @@ fun VideoPlayerScreen(
         onPreviewFramesChanged = { previewFrames = it },
         onPreviewBitmapChanged = { previewBitmap = it },
         onSeekPreviewLargeChanged = { isSeekPreviewLarge = it },
-    )
-
-    PlayerPipWindowEffect(
-        activity = activity,
-        context = context,
-        isPlaying = isPlaying
-    )
-
-    // Slice 46: PiP lifecycle effects are grouped outside VideoPlayerScreen.
-    // Entering PiP still closes CineVault chrome and the action receiver
-    // continues to control the same ExoPlayer instance.
-    PlayerPipEffects(
-        context = context,
-        player = exoPlayer,
-        isInPipMode = CineVaultPlayerHolder.isInPipMode,
-        onEnteredPip = {
-            playerMenuCloseCoordinator.closeAll()
-        },
-    )
-
-
-    PlayerAutoHideEffects(
-        showControls = showControls,
-        showTopBar = showTopBar,
-        controlsLocked = controlsLocked,
-        lockButtonVisibleWhileLocked = lockButtonVisibleWhileLocked,
-        isDraggingSeekbar = isDraggingSeekbar,
-        showAudioSelector = showAudioSelector,
-        showSpeedMenu = showSpeedMenu,
-        showSleepMenu = showSleepMenu,
-        showSrtBrowser = showSrtBrowser,
-        menuTouchKey = menuTouchKey,
-        brightnessGestureKey = brightnessGestureKey,
-        volumeGestureKey = volumeGestureKey,
-        coreUi = coreUi,
-        trackUi = trackUi,
-        searchUi = searchUi,
-        driftUi = driftUi,
-        studioUi = studioUi,
+        onEnteredPip = { playerMenuCloseCoordinator.closeAll() },
         onHideControls = { showControls = false },
         onHideTopBar = { showTopBar = false },
         onHideLockedButton = { lockButtonVisibleWhileLocked = false },
@@ -762,11 +730,11 @@ fun VideoPlayerScreen(
         onHideSrtBrowser = { showSrtBrowser = false },
         onHideBrightnessHud = { showBrightnessCircle = false },
         onHideVolumeHud = { showVolumeCircle = false },
-        showSubtitleDock = showSubtitleDock,
-        showSubtitleBloom = showSubtitleBloom,
-        showDualSubsWindow = showDualSubsWindow,
         onHideSubtitleDock = { showSubtitleDock = false },
-        onHideSubtitleBloom = { showSubtitleBloom = false; studioCategory = null },
+        onHideSubtitleBloom = {
+            showSubtitleBloom = false
+            studioCategory = null
+        },
         onHideDualSubsWindow = { showDualSubsWindow = false },
     )
 
@@ -1126,168 +1094,117 @@ fun VideoPlayerScreen(
             }
         )
 
-        val view = LocalView.current
-        // Slice 41: keep player-specific system gesture exclusion cleanup
-        // outside the giant player composable.
-        PlayerGestureExclusionCleanupEffect(view)
-
-        val playbackGestureModifier = if (externalPlayerView != null) {
-            Modifier.glassesTouchpadGestures(
-                    view = view,
-                    // Recreate the controller when the tablet rotates so
-                    // left/centre/right zones follow the current screen.
-                    gestureKey = currentVideo.path to isLandscape,
-                    controlsVisible = { externalPresentation?.controlsVisible?.value == true },
-                    canChangeEpisode = { showPrevNextButtons },
-                    onSingleTap = {
-                        externalPresentation?.showTouchPulse()
-                        if (externalPresentation?.controlsVisible?.value == true) {
-                            if (externalPresentation?.clickPointer() != true) externalPresentation?.showControls()
-                        } else {
-                            externalPresentation?.showControls()
-                        }
-                    },
-                    onDoubleTap = {
-                        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
-                        externalPresentation?.showGestureHud("Playback", if (exoPlayer.isPlaying) "PLAY" else "PAUSE")
-                    },
-                    onLongPress = { externalPresentation?.openQuickSubtitles() },
-                    onSeekStart = {
-                        isDraggingSeekbar = true
-                        previewPosition = exoPlayer.currentPosition
-                        previewBitmap = VideoThumbnailHelper.nearestPreviewFrame(previewFrames, previewPosition)
-                        externalPresentation?.updateSeekPreview(previewBitmap, previewPosition, true)
-                    },
-                    onSeekDelta = { fraction ->
-                        val safeDuration = playerSafeSeekDuration(exoPlayer.duration)
-                        previewPosition = calculatePlayerSeekPreviewPosition(previewPosition, fraction, safeDuration)
-                        previewBitmap = VideoThumbnailHelper.nearestPreviewFrame(previewFrames, previewPosition)
-                        externalPresentation?.updateSeekPreview(previewBitmap, previewPosition, true)
-                    },
-                    onSeekEnd = {
-                        exoPlayer.seekTo(previewPosition)
-                        position = previewPosition
-                        isDraggingSeekbar = false
-                        externalPresentation?.updateSeekPreview(previewBitmap, previewPosition, false)
-                    },
-                    onBrightnessDrag = { deltaY ->
-                        brightnessPercent = adjustPlayerBrightnessPercent(brightnessPercent, deltaY)
-                        activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = playerWindowBrightness(brightnessPercent) }
-                        showBrightnessCircle = true
-                        externalPresentation?.showGestureHud("Tablet brightness", "$brightnessPercent%", brightnessPercent)
-                    },
-                    onVolumeDrag = { deltaY ->
-                        volumePercent = adjustPlayerVolumePercent(volumePercent, deltaY, maxPercent = 100)
-                        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, playerSystemVolumeIndex(volumePercent, maxVol), 0)
-                        showVolumeCircle = true
-                        externalPresentation?.showGestureHud("Volume", "$volumePercent%", volumePercent)
-                    },
-                    onPrevious = { externalPresentation?.showGestureHud("Episode", "PREVIOUS"); playbackNavigationCoordinator.playPrevious() },
-                    onNext = { externalPresentation?.showGestureHud("Episode", "NEXT"); playbackNavigationCoordinator.playNext() },
-                    onPointerMove = { externalPresentation?.movePointer(it.x, it.y) },
-                    onPointerClick = {
-                        externalPresentation?.showTouchPulse()
-                        externalPresentation?.clickPointer() ?: false
-                    },
-                    onPinchZoomPan = { zoom, pan ->
-                        externalPresentation?.applyViewportTransform(zoom, pan.x, pan.y)
-                        val zoomHud = calculatePlayerExternalZoomHud(videoScale, zoom)
-                        videoScale = zoomHud.scale
-                        externalPresentation?.showGestureHud("Screen size", "${zoomHud.percent}%", zoomHud.progressPercent)
-                    },
-                    onEmergencyReturnToTablet = {
-                        externalPresentation?.showGestureHud("Emergency return", "TABLET")
-                        externalPresentation?.enterTabletStandby()
-                        glasses.disableSession()
-                        android.widget.Toast.makeText(
-                            context,
-                            "Glasses Mode ended — playback returned to tablet",
-                            android.widget.Toast.LENGTH_LONG
-                        ).show()
-                    },
-                    onGestureEnd = { brightnessGestureKey++; volumeGestureKey++ }
-                )
-        } else {
-            Modifier.videoPlaybackGestures(
-                    view = view,
-                    videoPathKey = currentVideo.path,
-                    episodeListKey = episodeList,
-                    edgeSwipeNextEnabled = { showPrevNextButtons },
-                    onTap = {
-                        when {
-                            showAudioSelector -> showAudioSelector = false
-                            coreUi.showSettings -> coreUi.showSettings = false
-                            trackUi.showSelector -> trackUi.showSelector = false
-                            searchUi.showSearch -> searchUi.showSearch = false
-                            driftUi.showDialog -> driftUi.showDialog = false
-                            coreUi.showAppearanceStudio -> coreUi.showAppearanceStudio = false
-                            coreUi.dialogueSyncArmed -> subtitleSyncTools.cancelDialogueSync()
-                            showSubtitleDock -> showSubtitleDock = false
-                            showSubtitleBloom -> { showSubtitleBloom = false; studioCategory = null }
-                            showDualSubsWindow -> showDualSubsWindow = false
-                            showSubtitleBehaviourWindow -> showSubtitleBehaviourWindow = false
-                            showSpeechSubtitlePanel -> showSpeechSubtitlePanel = false
-                            showSubtitleTranslationPanel -> showSubtitleTranslationPanel = false
-                            showSpeedMenu -> showSpeedMenu = false
-                            showSleepMenu -> showSleepMenu = false
-                            showSrtBrowser -> showSrtBrowser = false
-                            else -> {
-                                if (externalPlayerView != null) {
-                                    externalPresentation?.showControls()
-                                    showControls = false
-                                    showTopBar = false
-                                } else {
-                                    val v = !showControls; showControls = v; showTopBar = v
-                                }
-                            }
-                        }
-                    },
-                    onSeekBack = {
-                        exoPlayer.seekTo(playerSeekBackPosition(exoPlayer.currentPosition))
-                        position = exoPlayer.currentPosition
-                        showControls = true; showTopBar = true
-                    },
-                    onSeekForward = {
-                        exoPlayer.seekTo(playerSeekForwardPosition(exoPlayer.currentPosition, exoPlayer.duration))
-                        position = exoPlayer.currentPosition
-                        showControls = true; showTopBar = true
-                    },
-                    onToggleZoomMode = {
-                        isZoomMode = !isZoomMode; showControls = true; showTopBar = true
-                    },
-                    onDragSettled = { brightnessGestureKey++; volumeGestureKey++ },
-                    onEdgeSwipeNext = { playbackNavigationCoordinator.playNext() },
-                    onBrightnessDrag = { deltaY ->
-                        brightnessPercent = adjustPlayerBrightnessPercent(brightnessPercent, deltaY)
-                        activity?.window?.attributes = activity?.window?.attributes?.apply { screenBrightness = playerWindowBrightness(brightnessPercent) }
-                        showBrightnessCircle = true
-                    },
-                    onVolumeDrag = { deltaY ->
-                        volumePercent = adjustPlayerVolumePercent(volumePercent, deltaY, maxPercent = 150)
-                        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, playerSystemVolumeIndex(volumePercent, maxVol), 0)
-                        showVolumeCircle = true
-                    },
-                    onPinchZoomPan = { zoom, pan ->
-                        val transform = calculatePlayerZoomPanTransform(
-                            currentScale = videoScale,
-                            currentOffsetX = videoOffsetX,
-                            currentOffsetY = videoOffsetY,
-                            zoomFactor = zoom,
-                            panX = pan.x,
-                            panY = pan.y,
-                            screenWidthPx = screenWidthPx,
-                            screenHeightPx = screenHeightPx
-                        )
-                        videoScale = transform.scale
-                        videoOffsetX = transform.offsetX
-                        videoOffsetY = transform.offsetY
-                    },
-                )
-        }
-
-        Box(modifier = Modifier.fillMaxSize().then(playbackGestureModifier))
+        // Slice 55: tablet + glasses playback gesture orchestration now lives
+        // outside VideoPlayerScreen. This keeps the giant composable focused on
+        // presentation while preserving the exact gesture callbacks and state.
+        PlayerPlaybackGestureLayer(
+            context = context,
+            activity = activity,
+            player = exoPlayer,
+            audioManager = audioManager,
+            externalDisplayActive = externalPlayerView != null,
+            currentVideoPath = currentVideo.path,
+            episodeList = episodeList,
+            isLandscape = isLandscape,
+            canChangeEpisode = showPrevNextButtons,
+            previewFrames = previewFrames,
+            previewPosition = previewPosition,
+            previewBitmap = previewBitmap,
+            brightnessPercent = brightnessPercent,
+            volumePercent = volumePercent,
+            videoScale = videoScale,
+            videoOffsetX = videoOffsetX,
+            videoOffsetY = videoOffsetY,
+            screenWidthPx = screenWidthPx,
+            screenHeightPx = screenHeightPx,
+            showControls = showControls,
+            showAudioSelector = showAudioSelector,
+            showSubtitleDock = showSubtitleDock,
+            showSubtitleBloom = showSubtitleBloom,
+            showDualSubsWindow = showDualSubsWindow,
+            showSubtitleBehaviourWindow = showSubtitleBehaviourWindow,
+            showSpeechSubtitlePanel = showSpeechSubtitlePanel,
+            showSubtitleTranslationPanel = showSubtitleTranslationPanel,
+            showSpeedMenu = showSpeedMenu,
+            showSleepMenu = showSleepMenu,
+            showSrtBrowser = showSrtBrowser,
+            coreUi = coreUi,
+            trackUi = trackUi,
+            searchUi = searchUi,
+            driftUi = driftUi,
+            subtitleSyncTools = subtitleSyncTools,
+            playbackNavigationCoordinator = playbackNavigationCoordinator,
+            onDraggingSeekbarChanged = { isDraggingSeekbar = it },
+            onPreviewPositionChanged = { previewPosition = it },
+            onPreviewBitmapChanged = { previewBitmap = it },
+            onPositionChanged = { position = it },
+            onBrightnessPercentChanged = { brightnessPercent = it },
+            onVolumePercentChanged = { volumePercent = it },
+            onShowBrightnessCircleChanged = { showBrightnessCircle = it },
+            onShowVolumeCircleChanged = { showVolumeCircle = it },
+            onVideoTransformChanged = { scaleValue, offsetX, offsetY ->
+                videoScale = scaleValue
+                videoOffsetX = offsetX
+                videoOffsetY = offsetY
+            },
+            onZoomModeToggle = { isZoomMode = !isZoomMode },
+            onShowControlsChanged = { showControls = it },
+            onShowTopBarChanged = { showTopBar = it },
+            onShowAudioSelectorChanged = { showAudioSelector = it },
+            onShowSubtitleDockChanged = { showSubtitleDock = it },
+            onShowSubtitleBloomChanged = {
+                showSubtitleBloom = it
+                if (!it) studioCategory = null
+            },
+            onShowDualSubsWindowChanged = { showDualSubsWindow = it },
+            onShowSubtitleBehaviourWindowChanged = { showSubtitleBehaviourWindow = it },
+            onShowSpeechSubtitlePanelChanged = { showSpeechSubtitlePanel = it },
+            onShowSubtitleTranslationPanelChanged = { showSubtitleTranslationPanel = it },
+            onShowSpeedMenuChanged = { showSpeedMenu = it },
+            onShowSleepMenuChanged = { showSleepMenu = it },
+            onShowSrtBrowserChanged = { showSrtBrowser = it },
+            onGestureEnd = {
+                brightnessGestureKey++
+                volumeGestureKey++
+            },
+            externalControlsVisible = {
+                externalPresentation?.controlsVisible?.value == true
+            },
+            externalShowTouchPulse = {
+                externalPresentation?.showTouchPulse()
+            },
+            externalClickPointer = {
+                externalPresentation?.clickPointer() ?: false
+            },
+            externalShowControls = {
+                externalPresentation?.showControls()
+            },
+            externalShowGestureHud = { title, value, progress ->
+                if (progress == null) {
+                    externalPresentation?.showGestureHud(title, value)
+                } else {
+                    externalPresentation?.showGestureHud(title, value, progress)
+                }
+            },
+            externalOpenQuickSubtitles = {
+                externalPresentation?.openQuickSubtitles()
+            },
+            externalUpdateSeekPreview = { bitmap, positionMs, visible ->
+                externalPresentation?.updateSeekPreview(bitmap, positionMs, visible)
+            },
+            externalMovePointer = { x, y ->
+                externalPresentation?.movePointer(x, y)
+            },
+            externalApplyViewportTransform = { zoom, panX, panY ->
+                externalPresentation?.applyViewportTransform(zoom, panX, panY)
+            },
+            externalEnterTabletStandby = {
+                externalPresentation?.enterTabletStandby()
+            },
+            disableGlassesSession = {
+                glasses.disableSession()
+            },
+        )
 
         PlayerSubtitleGestureOverlay(
             player = exoPlayer,
