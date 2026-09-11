@@ -1854,266 +1854,47 @@ fun VideoPlayerScreen(
                         ?.let { SubtitleLanguageRegistry.displayName(it.language) }
             }
         }
-        if (showSubtitleDock && !CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
-            val density = LocalDensity.current
-            val containerPx = with(density) {
-                androidx.compose.ui.unit.IntSize(playerMaxWidth.roundToPx(), playerMaxHeight.roundToPx())
-            }
-            val quickHudWidth = (playerMaxWidth * 0.33f).coerceIn(211.dp, 264.dp)
-            val quickHudOffsetX = calculatePlayerPopupOffsetX(
-                iconCenterX = subIconX,
-                popupWidth = quickHudWidth,
-                screenWidthPx = with(density) { playerMaxWidth.toPx() },
-                density = density
-            ).toFloat()
-            // Rest directly above the transport area where CC lives. The
-            // window is also clamped by DraggableStudioWindow after its
-            // actual size is measured, so unusual aspect ratios stay safe.
-            val quickHudOffsetY = with(density) {
-                (playerMaxHeight - bottomDockPadding - playButton - 158.dp)
-                    .coerceAtLeast(8.dp)
-                    .toPx()
-            }
-
-            com.sole.cinevault.subtitles.QuickHud(
-                subtitleFileName = quickHudFileName,
-                delaySeconds = coreUi.syncOffset,
-                onDelayChange = { coreUi.syncOffset = it; studioUi.menuTouchKey++ },
-                speechTimeline = autoSyncSpeechTimeline,
-                fontSizeSp = appearanceUi.textSizeSp,
-                onFontSizeChange = { appearanceUi.textSizeSp = it; studioUi.menuTouchKey++ },
-                bottomPadding = appearanceUi.bottomPadding,
-                onBottomPaddingChange = { appearanceUi.bottomPadding = it; studioUi.menuTouchKey++ },
-                onReset = { subtitleResetCoordinator.reset() },
-                containerSize = containerPx,
-                initialOffset = Offset(quickHudOffsetX, quickHudOffsetY),
-                windowWidth = quickHudWidth
-            )
-        }
-
-        // Long-press CC -> Studio pill (Download / Style / Power tools / Settings)
-        if (showSubtitleBloom && !CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
-            val studioDensity = LocalDensity.current
-            val studioContainerPx = with(studioDensity) {
-                androidx.compose.ui.unit.IntSize(playerMaxWidth.roundToPx(), playerMaxHeight.roundToPx())
-            }
-            // Right side, not left. The pill is short (one row) so bottom-
-            // anchoring it is safe height-wise, but list windows are much
-            // taller — anchoring THOSE from the bottom with a large assumed
-            // height risked going negative in landscape's shorter frame,
-            // which is exactly why they showed up half off-screen at the
-            // top with an unreachable drag handle. Anchoring from the top
-            // with a small fixed margin instead avoids that class of bug
-            // entirely, regardless of landscape vs portrait height.
-            val studioSideMargin = if (playerMaxWidth < 700.dp) 10.dp else 18.dp
-            val studioTopMargin = if (playerMaxHeight < 420.dp) 10.dp else 16.dp
-            // Slice 14: Studio surfaces are ~10% larger and share one
-            // comfortable right-centre resting zone inside the measured
-            // player frame.
-            val pillWidth = 242.dp
-            val listWindowWidth = if (playerMaxWidth < 700.dp) 242.dp else 275.dp
-
-            // Compact Studio surfaces always rest on the right side.  The
-            // values are derived from the actual player frame instead of a
-            // hard-coded phone assumption, and DraggableStudioWindow still
-            // performs the final measured-size clamp after composition.
-            val pillOffset = with(studioDensity) {
-                val xDp = (playerMaxWidth - pillWidth - studioSideMargin)
-                    .coerceAtLeast(studioSideMargin)
-                val yDp = (playerMaxHeight * 0.5f - 28.dp)
-                    .coerceIn(studioTopMargin, (playerMaxHeight - 62.dp).coerceAtLeast(studioTopMargin))
-                Offset(xDp.toPx(), yDp.toPx())
-            }
-            val windowOffset = with(studioDensity) {
-                val xDp = (playerMaxWidth - listWindowWidth - studioSideMargin)
-                    .coerceAtLeast(studioSideMargin)
-                val estimatedWindowHeight = if (playerMaxHeight < 420.dp) 250.dp else 290.dp
-                val yDp = (playerMaxHeight * 0.5f - estimatedWindowHeight * 0.5f)
-                    .coerceAtLeast(studioTopMargin)
-                Offset(xDp.toPx(), yDp.toPx())
-            }
-
-            when (studioCategory) {
-                null -> com.sole.cinevault.subtitles.SubtitleStudioPill(
-                    activeCategory = null,
-                    onCategorySelected = { subtitleStudioNavigation.onStudioCategoryTapped(it) },
-                    containerSize = studioContainerPx,
-                    initialOffset = pillOffset
-                )
-                com.sole.cinevault.subtitles.StudioCategory.DOWNLOAD -> com.sole.cinevault.subtitles.StudioListWindow(
-                    title = "Download",
-                    onBack = { studioCategory = null },
-                    containerSize = studioContainerPx,
-                    initialOffset = windowOffset,
-                    items = listOf(
-                        com.sole.cinevault.subtitles.StudioListItem(
-                            icon = com.sole.cinevault.subtitles.StudioRowIcons.Manage,
-                            label = "Manage",
-                            onClick = { trackSelectorManageMode = true; trackUi.showSelector = true; showSubtitleBloom = false; studioCategory = null }
-                        ),
-                        com.sole.cinevault.subtitles.StudioListItem(
-                            icon = com.sole.cinevault.subtitles.StudioRowIcons.Tracks,
-                            label = "Tracks",
-                            onClick = { trackSelectorManageMode = false; trackUi.showSelector = true; showSubtitleBloom = false; studioCategory = null }
-                        ),
-                        com.sole.cinevault.subtitles.StudioListItem(
-                            icon = com.sole.cinevault.subtitles.StudioRowIcons.Web,
-                            label = "Web",
-                            onClick = { searchUi.showFallback = true; showSubtitleBloom = false; studioCategory = null }
-                        ),
-                        com.sole.cinevault.subtitles.StudioListItem(
-                            icon = com.sole.cinevault.subtitles.StudioRowIcons.SmartSearch,
-                            label = "Smart search",
-                            onClick = { searchUi.showSearch = true; showSubtitleBloom = false; studioCategory = null }
-                        ),
-                        com.sole.cinevault.subtitles.StudioListItem(
-                            icon = com.sole.cinevault.subtitles.StudioRowIcons.AutoDownload,
-                            label = "Auto download",
-                            toggledOn = coreUi.behaviorPrefs.autoDownloadWhenMissing,
-                            onClick = {
-                                coreUi.behaviorPrefs = coreUi.behaviorPrefs.copy(autoDownloadWhenMissing = !coreUi.behaviorPrefs.autoDownloadWhenMissing)
-                                saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
-                            }
-                        )
-                    )
-                )
-                com.sole.cinevault.subtitles.StudioCategory.POWER_TOOLS -> com.sole.cinevault.subtitles.StudioListWindow(
-                    title = "Power tools",
-                    onBack = { studioCategory = null },
-                    containerSize = studioContainerPx,
-                    initialOffset = windowOffset,
-                    items = listOf(
-                        com.sole.cinevault.subtitles.StudioListItem(
-                            icon = com.sole.cinevault.subtitles.StudioRowIcons.SpeechToSubs,
-                            label = "Speech to subs",
-                            onClick = { showSpeechSubtitlePanel = true; showSubtitleBloom = false; studioCategory = null }
-                        ),
-                        com.sole.cinevault.subtitles.StudioListItem(
-                            icon = com.sole.cinevault.subtitles.StudioRowIcons.AiTranslate,
-                            label = "AI translate",
-                            onClick = { showSubtitleTranslationPanel = true; showSubtitleBloom = false; studioCategory = null }
-                        ),
-                        com.sole.cinevault.subtitles.StudioListItem(
-                            icon = com.sole.cinevault.subtitles.StudioRowIcons.AutoSync,
-                            label = "Auto sync",
-                            onClick = { autoSyncCoordinator.runAutoSync(); showSubtitleBloom = false; studioCategory = null }
-                        ),
-                        com.sole.cinevault.subtitles.StudioListItem(
-                            icon = com.sole.cinevault.subtitles.StudioRowIcons.DialogueSync,
-                            label = "Dialogue sync",
-                            onClick = { subtitleSyncTools.armDialogueSync(); showSubtitleBloom = false; studioCategory = null }
-                        ),
-                        com.sole.cinevault.subtitles.StudioListItem(
-                            icon = com.sole.cinevault.subtitles.StudioRowIcons.DriftSync,
-                            label = "Drift sync",
-                            onClick = { driftUi.showDialog = true; showSubtitleBloom = false; studioCategory = null }
-                        ),
-                        com.sole.cinevault.subtitles.StudioListItem(
-                            icon = com.sole.cinevault.subtitles.StudioRowIcons.DualSubs,
-                            label = "Dual subs",
-                            onClick = { showDualSubsWindow = true; showSubtitleBloom = false; studioCategory = null }
-                        )
-                    )
-                )
-                else -> Unit
-            }
-        }
-
-        if (showSubtitleBehaviourWindow && !CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
-            val settingsDensity = LocalDensity.current
-            val settingsContainerPx = with(settingsDensity) {
-                androidx.compose.ui.unit.IntSize(playerMaxWidth.roundToPx(), playerMaxHeight.roundToPx())
-            }
-            com.sole.cinevault.subtitles.SubtitleBehaviourWindow(
-                prefs = coreUi.behaviorPrefs,
-                onChange = {
-                    coreUi.behaviorPrefs = it
-                    saveSubtitleBehaviorPrefs(context, it)
-                    studioUi.menuTouchKey++
-                },
-                cleaningOptions = coreUi.cleaningOptions,
-                onCleaningOptionsChange = {
-                    coreUi.cleaningOptions = it
-                    saveSubtitleCleaningOptions(context, it)
-                    studioUi.menuTouchKey++
-                },
-                onBack = {
-                    showSubtitleBehaviourWindow = false
-                    showSubtitleBloom = true
-                    studioCategory = null
-                },
-                containerSize = settingsContainerPx,
-                initialOffset = with(settingsDensity) {
-                    val margin = if (playerMaxWidth < 700.dp) 10.dp else 18.dp
-                    val width = if (playerMaxWidth < 700.dp) 290.dp else 330.dp
-                    val top = if (playerMaxHeight < 420.dp) 10.dp else 16.dp
-                    Offset(
-                        (playerMaxWidth - width - margin).coerceAtLeast(margin).toPx(),
-                        top.toPx()
-                    )
-                },
-                onUserInteraction = { studioUi.menuTouchKey++ }
-            )
-        }
-
-        if (showDualSubsWindow && !CineVaultPlayerHolder.isInPipMode && externalPlayerView == null) {
-            val density3 = LocalDensity.current
-            val containerPx3 = with(density3) {
-                androidx.compose.ui.unit.IntSize(playerMaxWidth.roundToPx(), playerMaxHeight.roundToPx())
-            }
-            val languages = SubtitleLanguageRegistry.allLanguages()
-            com.sole.cinevault.subtitles.DualSubsWindow(
-                enabled = dualUi.enabled,
-                onEnabledChange = { enabled ->
-                    dualUi.enabled = enabled
-                    if (enabled) subtitleSyncTools.fetchAndApplyDualSecondary() else subtitleSyncTools.disableDualSubtitles()
-                    studioUi.menuTouchKey++
-                },
-                canEnable = trackUi.primaryUri != null,
-                primaryLabel = quickHudFileName ?: "None",
-                secondaryLanguage = dualUi.secondaryLanguage,
-                secondaryLanguageLabel = languages.firstOrNull { it.first == dualUi.secondaryLanguage }?.second ?: dualUi.secondaryLanguage.uppercase(),
-                onSecondaryLanguageChange = { lang ->
-                    pendingDualAiLanguage = null
-                    dualUi.secondaryLanguage = lang
-                    coreUi.behaviorPrefs = coreUi.behaviorPrefs.copy(dualSecondaryLanguage = lang)
-                    saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
-                    if (dualUi.enabled) subtitleSyncTools.fetchAndApplyDualSecondary()
-                    studioUi.menuTouchKey++
-                },
-                availableLanguages = languages,
-                gapLines = dualUi.gapLines,
-                onGapLinesChange = { gap ->
-                    dualUi.gapLines = gap
-                    if (dualUi.enabled) subtitleSyncTools.fetchAndApplyDualSecondary()
-                    studioUi.menuTouchKey++
-                },
-                secondaryColorHex = dualSecondaryColorHex,
-                onSecondaryColorChange = { color ->
-                    dualSecondaryColorHex = color
-                    if (dualUi.enabled) subtitleSyncTools.fetchAndApplyDualSecondary()
-                    studioUi.menuTouchKey++
-                },
-                // Covers interactions that don't change a value (e.g. just
-                // opening the language picker) — those still count as
-                // "actively using this window" and should reset the idle
-                // timer the same as a value change would.
-                onUserInteraction = { studioUi.menuTouchKey++ },
-                statusText = dualUi.statusText,
-                secondarySourceLabel = dualUi.secondarySourceLabel,
-                onBack = { showDualSubsWindow = false; showSubtitleBloom = true },
-                containerSize = containerPx3,
-                initialOffset = with(density3) {
-                    val margin = if (playerMaxWidth < 700.dp) 10.dp else 18.dp
-                    val width = if (playerMaxWidth < 700.dp) 240.dp else 270.dp
-                    val top = if (playerMaxHeight < 420.dp) 10.dp else 16.dp
-                    Offset(
-                        (playerMaxWidth - width - margin).coerceAtLeast(margin).toPx(),
-                        top.toPx()
-                    )
-                }
-            )
-        }
+        // Slice 56: Quick HUD, Studio pill/list windows, Behaviour, and Dual
+        // Subs presentation now live in one subtitle-surface host. The player
+        // still owns state and coordinators; this helper owns only UI wiring.
+        PlayerSubtitleStudioSurfaces(
+            context = context,
+            containerWidth = playerMaxWidth,
+            containerHeight = playerMaxHeight,
+            externalDisplayActive = externalPlayerView != null,
+            bottomDockPadding = bottomDockPadding,
+            playButton = playButton,
+            subtitleIconCenterX = subIconX,
+            quickHudFileName = quickHudFileName,
+            showSubtitleDock = showSubtitleDock,
+            showSubtitleBloom = showSubtitleBloom,
+            studioCategory = studioCategory,
+            showSubtitleBehaviourWindow = showSubtitleBehaviourWindow,
+            showDualSubsWindow = showDualSubsWindow,
+            coreUi = coreUi,
+            trackUi = trackUi,
+            searchUi = searchUi,
+            studioUi = studioUi,
+            dualUi = dualUi,
+            appearanceUi = appearanceUi,
+            driftUi = driftUi,
+            autoSyncSpeechTimeline = autoSyncSpeechTimeline,
+            dualSecondaryColorHex = dualSecondaryColorHex,
+            pendingDualAiLanguage = pendingDualAiLanguage,
+            subtitleStudioNavigation = subtitleStudioNavigation,
+            subtitleResetCoordinator = subtitleResetCoordinator,
+            subtitleSyncTools = subtitleSyncTools,
+            autoSyncCoordinator = autoSyncCoordinator,
+            onStudioCategoryChanged = { studioCategory = it },
+            onTrackSelectorManageModeChanged = { trackSelectorManageMode = it },
+            onShowSubtitleBloomChanged = { showSubtitleBloom = it },
+            onShowSubtitleBehaviourWindowChanged = { showSubtitleBehaviourWindow = it },
+            onShowDualSubsWindowChanged = { showDualSubsWindow = it },
+            onShowSpeechSubtitlePanelChanged = { showSpeechSubtitlePanel = it },
+            onShowSubtitleTranslationPanelChanged = { showSubtitleTranslationPanel = it },
+            onPendingDualAiLanguageChanged = { pendingDualAiLanguage = it },
+            onDualSecondaryColorHexChanged = { dualSecondaryColorHex = it },
+        )
 
         // AI sheet removed — Speech to subs / AI translate are now direct
         // rows inside the Power Tools list window, so this intermediate
