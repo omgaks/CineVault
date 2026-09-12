@@ -45,8 +45,7 @@ fun classifyVideoDynamicRange(
         C.COLOR_TRANSFER_HLG -> VideoDynamicRange.HLG
         C.COLOR_TRANSFER_SDR,
         C.COLOR_TRANSFER_LINEAR -> VideoDynamicRange.SDR
-        null,
-        C.COLOR_TRANSFER_UNSPECIFIED -> VideoDynamicRange.UNKNOWN
+        null -> VideoDynamicRange.UNKNOWN
         else -> VideoDynamicRange.UNKNOWN
     }
 }
