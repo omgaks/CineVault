@@ -1443,97 +1443,31 @@ fun VideoPlayerScreen(
             onPreviewBitmapChanged = { previewBitmap = it },
         )
 
-        PlayerControlsLockLayer(
+        // Slice 60: all non-main-control overlay surfaces are now hosted
+        // together: lock/Auto-Sync/delete feedback, Subtitle Studio surfaces,
+        // and the AI subtitle panels. State remains owned by this screen.
+        PlayerOverlaySurfacesHost(
+            context = context,
+            player = exoPlayer,
+            haptics = haptics,
             controlsLocked = controlsLocked,
-            lockButtonVisible = externalPlayerView == null &&
-                (if (controlsLocked) lockButtonVisibleWhileLocked else showControls) &&
-                !CineVaultPlayerHolder.isInPipMode,
-            isLandscape = isLandscape,
-            onLockedSurfaceTap = { lockButtonVisibleWhileLocked = true },
-            onToggleLock = {
-                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                controlsLocked = !controlsLocked
-                lockButtonVisibleWhileLocked = true
-            }
-        )
-
-        PlayerAutoSyncFloatingOverlay(
-            visible = !CineVaultPlayerHolder.isInPipMode,
-            containerWidth = playerMaxWidth,
-            containerHeight = playerMaxHeight,
-            status = autoSyncStatus,
-            onApply = { result -> autoSyncCoordinator.applyAutoSyncResult(result) },
-            onCancel = { autoSyncStatus = AutoSyncStatus.Idle },
-            onRetry = { autoSyncCoordinator.runAutoSync() }
-        )
-
-        PlayerSubtitleDeleteFeedback(
-            pendingFile = pendingDeleteConfirmFile,
-            snackbarHostState = snackbarHostState,
-            snackbarBottomPadding = bottomDockPadding + playButton + 26.dp,
-            onDismissDelete = { pendingDeleteConfirmFile = null },
-            onConfirmDelete = { file ->
-                pendingDeleteConfirmFile = null
-                subtitleDeletionCoordinator.deleteWithUndo(file)
-            }
-        )
-
-        // Track identity is also needed by the Slice 56 Quick HUD filename
-        // resolver after the Slice 57 presentation extraction.
-        val embeddedTrackChoices = remember(exoPlayer.currentTracks) {
-            buildEmbeddedSubtitleChoices(exoPlayer.currentTracks)
-        }
-        val downloadedTrackChoice = rememberDownloadedSubtitleChoice(
-            context = context,
-            videoPath = currentVideo.path,
-            preferredLanguages = coreUi.behaviorPrefs.preferredLanguages,
-            selectorVisible = trackUi.showSelector,
-            canDownloadExternalSubtitles = canDownloadExternalSubtitles
-        )
-        val localFileChoices = rememberAvailableLocalSubtitleFiles(
-            videoPath = currentVideo.path,
-            selectorVisible = trackUi.showSelector,
-            pendingDeletePaths = pendingDeletePaths
-        )
-
-        // Tap CC -> Quick HUD (filename, Delay/Size/Position), draggable
-        // anywhere in the player frame. Filename resolution mirrors the
-        // same key-matching Track's selector already does — not invented
-        // fresh here, so it can't quietly drift out of sync with what
-        // Track actually shows as selected.
-        val quickHudFileName = remember(
-            trackUi.selectedKey, embeddedTrackChoices, downloadedTrackChoice,
-            localFileChoices, generatedSubtitleFiles
-        ) {
-            val key = trackUi.selectedKey
-            when {
-                key == null || key == SubtitleTrackChoice.Off.key -> null
-                downloadedTrackChoice?.key == key -> SubtitleLanguageRegistry.displayName(downloadedTrackChoice.language)
-                else -> localFileChoices.firstOrNull { SubtitleTrackChoice.Local(it).key == key }?.name
-                    ?: generatedSubtitleFiles.firstOrNull {
-                        SubtitleTrackChoice.Generated(it, it.fileName.contains("-translated-")).key == key
-                    }?.label
-                    ?: embeddedTrackChoices.firstOrNull { it.key == key }
-                        ?.let { SubtitleLanguageRegistry.displayName(it.language) }
-            }
-        }
-        // Slice 56: Quick HUD, Studio pill/list windows, Behaviour, and Dual
-        // Subs presentation now live in one subtitle-surface host. The player
-        // still owns state and coordinators; this helper owns only UI wiring.
-        PlayerSubtitleStudioSurfaces(
-            context = context,
-            containerWidth = playerMaxWidth,
-            containerHeight = playerMaxHeight,
+            lockButtonVisibleWhileLocked = lockButtonVisibleWhileLocked,
+            showControls = showControls,
             externalDisplayActive = externalPlayerView != null,
+            isLandscape = isLandscape,
+            containerWidth = playerMaxWidth,
+            containerHeight = playerMaxHeight,
             bottomDockPadding = bottomDockPadding,
             playButton = playButton,
             subtitleIconCenterX = subIconX,
-            quickHudFileName = quickHudFileName,
-            showSubtitleDock = showSubtitleDock,
-            showSubtitleBloom = showSubtitleBloom,
-            studioCategory = studioCategory,
-            showSubtitleBehaviourWindow = showSubtitleBehaviourWindow,
-            showDualSubsWindow = showDualSubsWindow,
+            autoSyncStatus = autoSyncStatus,
+            autoSyncCoordinator = autoSyncCoordinator,
+            pendingDeleteFile = pendingDeleteConfirmFile,
+            snackbarHostState = snackbarHostState,
+            pendingDeletePaths = pendingDeletePaths,
+            currentVideoPath = currentVideo.path,
+            canDownloadExternalSubtitles = canDownloadExternalSubtitles,
+            generatedSubtitleFiles = generatedSubtitleFiles,
             coreUi = coreUi,
             trackUi = trackUi,
             searchUi = searchUi,
@@ -1541,13 +1475,36 @@ fun VideoPlayerScreen(
             dualUi = dualUi,
             appearanceUi = appearanceUi,
             driftUi = driftUi,
+            showSubtitleDock = showSubtitleDock,
+            showSubtitleBloom = showSubtitleBloom,
+            studioCategory = studioCategory,
+            showSubtitleBehaviourWindow = showSubtitleBehaviourWindow,
+            showDualSubsWindow = showDualSubsWindow,
             autoSyncSpeechTimeline = autoSyncSpeechTimeline,
             dualSecondaryColorHex = dualSecondaryColorHex,
             pendingDualAiLanguage = pendingDualAiLanguage,
             subtitleStudioNavigation = subtitleStudioNavigation,
             subtitleResetCoordinator = subtitleResetCoordinator,
             subtitleSyncTools = subtitleSyncTools,
-            autoSyncCoordinator = autoSyncCoordinator,
+            speechJobLabel = speechJobLabel,
+            speechJobProgress = speechJobProgress,
+            translationJobLabel = translationJobLabel,
+            translationJobProgress = translationJobProgress,
+            showSpeechSubtitlePanel = showSpeechSubtitlePanel,
+            showSubtitleTranslationPanel = showSubtitleTranslationPanel,
+            speechSubtitleStatus = speechSubtitleStatus,
+            subtitleTranslationStatus = subtitleTranslationStatus,
+            speechSubtitleCoordinator = speechSubtitleCoordinator,
+            subtitleTranslationCoordinator = subtitleTranslationCoordinator,
+            generatedSubtitleOrchestrator = generatedSubtitleOrchestrator,
+            onControlsLockedChanged = { controlsLocked = it },
+            onLockButtonVisibleWhileLockedChanged = { lockButtonVisibleWhileLocked = it },
+            onAutoSyncStatusChanged = { autoSyncStatus = it },
+            onDismissDelete = { pendingDeleteConfirmFile = null },
+            onConfirmDelete = { file ->
+                pendingDeleteConfirmFile = null
+                subtitleDeletionCoordinator.deleteWithUndo(file)
+            },
             onStudioCategoryChanged = { studioCategory = it },
             onTrackSelectorManageModeChanged = { trackSelectorManageMode = it },
             onShowSubtitleBloomChanged = { showSubtitleBloom = it },
