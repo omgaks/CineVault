@@ -26,19 +26,32 @@ private val DecoderAmber = Color(0xFFFFB300)
 @Composable
 internal fun PlaybackDecoderStatusPill(
     status: ActiveVideoDecoderStatus,
+    fallbackReason: PlaybackFallbackReason?,
     visible: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val label = when (status.kind) {
+    val decoderLabel = when (status.kind) {
         ActiveVideoDecoderKind.HARDWARE -> "HW"
         ActiveVideoDecoderKind.SOFTWARE -> "SW"
         ActiveVideoDecoderKind.UNKNOWN -> null
     }
 
-    val pillLabel = label ?: ""
+    val reasonLabel = if (status.kind == ActiveVideoDecoderKind.SOFTWARE) {
+        playbackFallbackReasonLabel(fallbackReason)
+    } else {
+        null
+    }
+
+    val pillLabel = buildString {
+        append(decoderLabel.orEmpty())
+        if (!reasonLabel.isNullOrBlank()) {
+            append(" · ")
+            append(reasonLabel)
+        }
+    }
 
     AnimatedVisibility(
-        visible = visible && label != null,
+        visible = visible && decoderLabel != null,
         enter = fadeIn(),
         exit = fadeOut(),
         modifier = modifier,

@@ -371,6 +371,9 @@ fun VideoPlayerScreen(
         onShowControlsChanged = { chromeUi.showControls = it },
         onCurrentVideoChanged = {
             playerRuntime.decoderSelector.engineMode = PlaybackEngineMode.HARDWARE
+            playbackRecovery.fallbackOccurred = false
+            playbackRecovery.fallbackReason = null
+            playbackRecovery.activeVideoDecoderStatus = ActiveVideoDecoderStatus()
             currentVideo = it
         },
         onCurrentMediaTypeChanged = { currentMediaType = it },
@@ -583,6 +586,9 @@ fun VideoPlayerScreen(
         },
         onAdvanceImmediately = { next ->
             playerRuntime.decoderSelector.engineMode = PlaybackEngineMode.HARDWARE
+            playbackRecovery.fallbackOccurred = false
+            playbackRecovery.fallbackReason = null
+            playbackRecovery.activeVideoDecoderStatus = ActiveVideoDecoderStatus()
             currentMediaType = next.type
             currentVideo = next.video
             onPlayNext(next)
@@ -841,6 +847,9 @@ fun VideoPlayerScreen(
             onCurrentMediaTypeChanged = { currentMediaType = it },
             onCurrentVideoChanged = {
             playerRuntime.decoderSelector.engineMode = PlaybackEngineMode.HARDWARE
+            playbackRecovery.fallbackOccurred = false
+            playbackRecovery.fallbackReason = null
+            playbackRecovery.activeVideoDecoderStatus = ActiveVideoDecoderStatus()
             currentVideo = it
         },
             onPlayNext = onPlayNext,
@@ -1291,6 +1300,7 @@ fun VideoPlayerScreen(
 
         PlaybackDecoderStatusPill(
             status = playbackRecovery.activeVideoDecoderStatus,
+            fallbackReason = playbackRecovery.fallbackReason,
             visible = isPlaying || playbackHealth.isBuffering,
             modifier = Modifier
                 .align(Alignment.TopEnd)

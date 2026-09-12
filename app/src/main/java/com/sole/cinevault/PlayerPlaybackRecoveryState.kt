@@ -27,6 +27,8 @@ internal class PlayerPlaybackRecoveryState {
     var fallbackErrorCode by mutableIntStateOf(0)
     var fallbackSubtitleUri by mutableStateOf<Uri?>(null)
     var activeVideoDecoderStatus by mutableStateOf(ActiveVideoDecoderStatus())
+    var fallbackReason by mutableStateOf<PlaybackFallbackReason?>(null)
+    var fallbackOccurred by mutableStateOf(false)
 
     // Slice 76: capability report for the currently selected VIDEO track.
     // Because this entire holder is remembered per currentVideo.path, the
@@ -50,6 +52,7 @@ internal class PlayerPlaybackRecoveryState {
         subtitleUri: Uri?,
     ) {
         fallbackErrorCode = errorCode
+        fallbackReason = playbackFallbackReasonForErrorCode(errorCode)
         fallbackResumePositionMs = resumePositionMs.coerceAtLeast(0L)
         fallbackSubtitleUri = subtitleUri
         softwareFallbackRequested = true
@@ -57,6 +60,7 @@ internal class PlayerPlaybackRecoveryState {
 
     fun activateSoftwareFallback() {
         engineMode = PlaybackEngineMode.SOFTWARE
+        fallbackOccurred = true
         softwareFallbackRequested = false
     }
 }

@@ -16,6 +16,8 @@ internal fun PlayerDecoderAnalytics(
     onDecoderStatusChanged: (ActiveVideoDecoderStatus) -> Unit,
 ) {
     DisposableEffect(player, capabilityReport, engineMode) {
+        onDecoderStatusChanged(ActiveVideoDecoderStatus())
+
         val listener = object : AnalyticsListener {
             override fun onVideoDecoderInitialized(
                 eventTime: AnalyticsListener.EventTime,
