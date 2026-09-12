@@ -45,6 +45,36 @@ class PlaybackFallbackReasonTest {
     }
 
     @Test
+    fun droppedFrameFallbackHasClearUiLabel() {
+        assertEquals(
+            "Hardware playback unstable",
+            playbackFallbackReasonLabel(
+                PlaybackFallbackReason.EXCESSIVE_DROPPED_FRAMES
+            ),
+        )
+    }
+
+    @Test
+    fun startupStallFallbackHasClearUiLabel() {
+        assertEquals(
+            "Hardware startup stalled",
+            playbackFallbackReasonLabel(
+                PlaybackFallbackReason.STARTUP_STALLED
+            ),
+        )
+    }
+
+    @Test
+    fun missingFirstFrameFallbackHasClearUiLabel() {
+        assertEquals(
+            "Video frame not rendered",
+            playbackFallbackReasonLabel(
+                PlaybackFallbackReason.FIRST_VIDEO_FRAME_MISSING
+            ),
+        )
+    }
+
+    @Test
     fun labelsAreStableForUi() {
         assertEquals(
             "Decode failed",
