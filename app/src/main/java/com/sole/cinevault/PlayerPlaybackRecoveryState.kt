@@ -41,6 +41,23 @@ internal class PlayerPlaybackRecoveryState {
         NativeVideoPlaybackReadiness.UNKNOWN
     )
 
+    fun resetForNewVideo() {
+        engineMode = PlaybackEngineMode.HARDWARE
+        softwareFallbackAvailable = false
+        softwareFallbackRequested = false
+        fallbackResumePositionMs = 0L
+        fallbackErrorCode = 0
+        fallbackSubtitleUri = null
+        activeVideoDecoderStatus = ActiveVideoDecoderStatus()
+        fallbackReason = null
+        fallbackOccurred = false
+        droppedFrameUnhealthyStreak = 0
+        startupPlaybackConfirmed = false
+        firstVideoFrameRendered = false
+        videoDecoderCapabilityReport = null
+        nativeVideoPlaybackReadiness = NativeVideoPlaybackReadiness.UNKNOWN
+    }
+
     fun updateVideoDecoderCapability(
         report: VideoDecoderCapabilityReport?,
     ) {

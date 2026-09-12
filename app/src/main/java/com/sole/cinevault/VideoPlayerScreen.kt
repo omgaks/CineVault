@@ -371,12 +371,7 @@ fun VideoPlayerScreen(
         onShowControlsChanged = { chromeUi.showControls = it },
         onCurrentVideoChanged = {
             playerRuntime.decoderSelector.engineMode = PlaybackEngineMode.HARDWARE
-            playbackRecovery.fallbackOccurred = false
-            playbackRecovery.fallbackReason = null
-            playbackRecovery.droppedFrameUnhealthyStreak = 0
-            playbackRecovery.startupPlaybackConfirmed = false
-            playbackRecovery.firstVideoFrameRendered = false
-            playbackRecovery.activeVideoDecoderStatus = ActiveVideoDecoderStatus()
+            playbackRecovery.resetForNewVideo()
             currentVideo = it
         },
         onCurrentMediaTypeChanged = { currentMediaType = it },
@@ -400,155 +395,24 @@ fun VideoPlayerScreen(
         isOriginalSubtitle,
     )
 
-    // Playback Resilience Slice 79:
-    // A decoder failure can now move the SAME ExoPlayer instance from the
-    // normal MediaCodec selection path to a software-only VIDEO decoder.
-    //
-    // The request is consumed from Compose state rather than re-preparing the
-    // player directly inside Player.Listener.onPlayerError(), which avoids
-    // doing player mutation from inside the error callback itself.
-    LaunchedEffect(
-        playbackRecovery.nativeVideoPlaybackReadiness,
-        playbackRecovery.softwareFallbackAvailable,
-        playbackRecovery.engineMode,
-        currentVideo.path,
-    ) {
-        if (
-            playbackRecovery.nativeVideoPlaybackReadiness ==
-                NativeVideoPlaybackReadiness.SOFTWARE_FALLBACK_NEEDED &&
-            playbackRecovery.softwareFallbackAvailable &&
-            playbackRecovery.engineMode == PlaybackEngineMode.HARDWARE &&
-            !playbackRecovery.fallbackOccurred &&
-            !playbackRecovery.softwareFallbackRequested
-        ) {
-            playbackRecovery.requestProactiveSoftwareFallback(
-                resumePositionMs = exoPlayer.currentPosition,
-                subtitleUri = trackUi.originalUri,
+    // Slice 86: all decoder analytics and recovery effects now live in one
+    // responsibility-owned host instead of accumulating in this screen.
+    PlayerPlaybackRecoveryEffects(
+        player = exoPlayer,
+        decoderSelector = playerRuntime.decoderSelector,
+        recoveryState = playbackRecovery,
+        playbackHealth = playbackHealth,
+        currentVideoPath = currentVideo.path,
+        isPlaying = isPlaying,
+        subtitleUri = trackUi.originalUri,
+        onPlayCurrentVideoWithSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle ->
+            playCurrentVideoWithSubtitle(
+                subtitleUri = subtitleUri,
+                resumePosition = resumePosition,
+                isOriginalSubtitle = isOriginalSubtitle,
             )
-        }
-    }
-
-    // Playback Resilience Slice 85:
-    // Playback can advance (often with audible audio) even when the video
-    // renderer never produces its first frame. Treat that separately from a
-    // buffering/startup stall.
-    LaunchedEffect(
-        isPlaying,
-        playbackRecovery.firstVideoFrameRendered,
-        playbackRecovery.engineMode,
-        playbackRecovery.softwareFallbackAvailable,
-        playbackRecovery.videoDecoderCapabilityReport,
-        currentVideo.path,
-    ) {
-        if (
-            !isPlaying ||
-            playbackRecovery.firstVideoFrameRendered ||
-            playbackRecovery.videoDecoderCapabilityReport == null ||
-            playbackRecovery.engineMode != PlaybackEngineMode.HARDWARE ||
-            !playbackRecovery.softwareFallbackAvailable ||
-            playbackRecovery.fallbackOccurred ||
-            playbackRecovery.softwareFallbackRequested
-        ) {
-            return@LaunchedEffect
-        }
-
-        val firstFrameWindowStartPosition = exoPlayer.currentPosition
-
-        delay(8_000L)
-
-        val playbackProgressMs =
-            kotlin.math.abs(exoPlayer.currentPosition - firstFrameWindowStartPosition)
-
-        if (
-            shouldFallbackForMissingFirstVideoFrame(
-                isPlaying = isPlaying,
-                hasSelectedVideoTrack =
-                    playbackRecovery.videoDecoderCapabilityReport != null,
-                firstVideoFrameRendered =
-                    playbackRecovery.firstVideoFrameRendered,
-                elapsedMs = 8_000L,
-                playbackProgressMs = playbackProgressMs,
-                engineMode = playbackRecovery.engineMode,
-                softwareFallbackAvailable =
-                    playbackRecovery.softwareFallbackAvailable,
-                fallbackOccurred = playbackRecovery.fallbackOccurred,
-            ) &&
-            !playbackRecovery.softwareFallbackRequested
-        ) {
-            playbackRecovery.requestMissingFirstFrameFallback(
-                resumePositionMs = exoPlayer.currentPosition,
-                subtitleUri = trackUi.originalUri,
-            )
-        }
-    }
-
-    LaunchedEffect(
-        playbackHealth.isBuffering,
-        playbackRecovery.startupPlaybackConfirmed,
-        playbackRecovery.engineMode,
-        playbackRecovery.softwareFallbackAvailable,
-        currentVideo.path,
-    ) {
-        if (
-            !playbackHealth.isBuffering ||
-            playbackRecovery.startupPlaybackConfirmed ||
-            playbackRecovery.engineMode != PlaybackEngineMode.HARDWARE ||
-            !playbackRecovery.softwareFallbackAvailable ||
-            playbackRecovery.fallbackOccurred ||
-            playbackRecovery.softwareFallbackRequested
-        ) {
-            return@LaunchedEffect
-        }
-
-        val stallWindowStartPosition = exoPlayer.currentPosition
-
-        delay(12_000L)
-
-        val playbackProgressMs =
-            kotlin.math.abs(exoPlayer.currentPosition - stallWindowStartPosition)
-
-        if (
-            shouldFallbackForStartupStall(
-                isBuffering = playbackHealth.isBuffering,
-                startupPlaybackConfirmed = playbackRecovery.startupPlaybackConfirmed,
-                elapsedMs = 12_000L,
-                playbackProgressMs = playbackProgressMs,
-                engineMode = playbackRecovery.engineMode,
-                softwareFallbackAvailable = playbackRecovery.softwareFallbackAvailable,
-                fallbackOccurred = playbackRecovery.fallbackOccurred,
-            ) &&
-            !playbackRecovery.softwareFallbackRequested
-        ) {
-            playbackRecovery.requestStartupStallFallback(
-                resumePositionMs = exoPlayer.currentPosition,
-                subtitleUri = trackUi.originalUri,
-            )
-        }
-    }
-
-    LaunchedEffect(
-        playbackRecovery.softwareFallbackRequested,
-        currentVideo.path,
-    ) {
-        if (!playbackRecovery.softwareFallbackRequested) return@LaunchedEffect
-
-        val resumePosition = playbackRecovery.fallbackResumePositionMs
-        val subtitleUri = playbackRecovery.fallbackSubtitleUri
-
-        playerRuntime.decoderSelector.engineMode = PlaybackEngineMode.SOFTWARE
-        playbackRecovery.activateSoftwareFallback()
-
-        // A software rescue is a new engine attempt, not another retry of the
-        // failed native decoder. Reset the transient retry budget accordingly.
-        playbackHealth.errorRetryCount = 0
-        playbackHealth.playerErrorMessage = null
-
-        playCurrentVideoWithSubtitle(
-            subtitleUri = subtitleUri,
-            resumePosition = resumePosition,
-            isOriginalSubtitle = false,
-        )
-    }
+        },
+    )
 
     // Slice 63: subtitle file deletion/undo/OS consent and local subtitle
     // import/picker handling now live in one responsibility-owned runtime.
@@ -713,12 +577,7 @@ fun VideoPlayerScreen(
         },
         onAdvanceImmediately = { next ->
             playerRuntime.decoderSelector.engineMode = PlaybackEngineMode.HARDWARE
-            playbackRecovery.fallbackOccurred = false
-            playbackRecovery.fallbackReason = null
-            playbackRecovery.droppedFrameUnhealthyStreak = 0
-            playbackRecovery.startupPlaybackConfirmed = false
-            playbackRecovery.firstVideoFrameRendered = false
-            playbackRecovery.activeVideoDecoderStatus = ActiveVideoDecoderStatus()
+            playbackRecovery.resetForNewVideo()
             currentMediaType = next.type
             currentVideo = next.video
             onPlayNext(next)
@@ -898,26 +757,6 @@ fun VideoPlayerScreen(
     val translationJobLabel = subtitleAiRuntime.translationJobLabel
     val translationJobProgress = subtitleAiRuntime.translationJobProgress
 
-    PlayerDecoderAnalytics(
-        player = exoPlayer,
-        capabilityReport = playbackRecovery.videoDecoderCapabilityReport,
-        engineMode = playbackRecovery.engineMode,
-        onDecoderStatusChanged = {
-            playbackRecovery.activeVideoDecoderStatus = it
-        },
-        onDroppedVideoFrames = { droppedFrames, elapsedMs ->
-            playbackRecovery.onDroppedVideoFrames(
-                droppedFrames = droppedFrames,
-                elapsedMs = elapsedMs,
-                resumePositionMs = exoPlayer.currentPosition,
-                subtitleUri = trackUi.originalUri,
-            )
-        },
-        onFirstVideoFrameRendered = {
-            playbackRecovery.confirmFirstVideoFrameRendered()
-        },
-    )
-
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         // Captured as plain local vals (not referenced as the implicit
         // BoxWithConstraintsScope receiver) specifically so they can be
@@ -988,12 +827,7 @@ fun VideoPlayerScreen(
             onCurrentMediaTypeChanged = { currentMediaType = it },
             onCurrentVideoChanged = {
             playerRuntime.decoderSelector.engineMode = PlaybackEngineMode.HARDWARE
-            playbackRecovery.fallbackOccurred = false
-            playbackRecovery.fallbackReason = null
-            playbackRecovery.droppedFrameUnhealthyStreak = 0
-            playbackRecovery.startupPlaybackConfirmed = false
-            playbackRecovery.firstVideoFrameRendered = false
-            playbackRecovery.activeVideoDecoderStatus = ActiveVideoDecoderStatus()
+            playbackRecovery.resetForNewVideo()
             currentVideo = it
         },
             onPlayNext = onPlayNext,
