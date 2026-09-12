@@ -749,25 +749,13 @@ fun VideoPlayerScreen(
             pixelWidthHeightRatio = exoPlayer.videoSize.pixelWidthHeightRatio,
             density = LocalDensity.current,
         )
-        val isLandscape = playerLayout.isLandscape
-        val isSmallPhone = playerLayout.isSmallPhone
-        val isCompactLandscape = playerLayout.isCompactLandscape
-        val scale = playerLayout.scale
-        val playButton = playerLayout.playButton
-        val smallButton = playerLayout.smallButton
-        val hudSize = playerLayout.hudSize
-        val sidePadding = playerLayout.sidePadding
-        val bottomDockPadding = playerLayout.bottomDockPadding
-        val seekBottomPadding = playerLayout.seekBottomPadding
-        val topClusterPaddingTop = playerLayout.topClusterPaddingTop
-
         // Slice 65: display-profile selection, per-movie subtitle memory
         // effects and subtitle-reset wiring now live in one display runtime.
         val subtitleResetCoordinator = rememberPlayerSubtitleDisplayRuntime(
             context = context,
             externalDisplayConnected = externalDisplay.isConnected,
-            isSmallPhone = isSmallPhone,
-            isLandscape = isLandscape,
+            isSmallPhone = playerLayout.isSmallPhone,
+            isLandscape = playerLayout.isLandscape,
             videoPath = currentVideo.path,
             movieSubtitleMemory = movieSubtitleMemory,
             movieSubtitleMemoryReady = movieSubtitleMemoryReady,
@@ -786,30 +774,8 @@ fun VideoPlayerScreen(
             incrementMenuTouchKey = { studioUi.menuTouchKey++ },
         )
 
-        // Slice 53: all player/popup/Sub Studio geometry is derived in one
-        // pure layout helper. VideoPlayerScreen only keeps local aliases used by
-        // the existing presentation calls below.
-        val density = LocalDensity.current
-        val uiScale = playerLayout.uiScale
-        val screenWidthPx = playerLayout.screenWidthPx
-        val screenHeightPx = playerLayout.screenHeightPx
-        val popupBottomPadding = playerLayout.popupBottomPadding
-        val subtitlePopupWidth = playerLayout.subtitlePopupWidth
-        val subtitlePopupHeightEstimate = playerLayout.subtitlePopupHeightEstimate
-        val trackSelectorWidth = playerLayout.trackSelectorWidth
-        val trackSelectorMaxHeight = playerLayout.trackSelectorMaxHeight
-        val visibleMovieWidth = playerLayout.visibleMovieWidth
-        val studioFrameInset = playerLayout.studioFrameInset
-        val trackStudioWidth = playerLayout.trackStudioWidth
-        val trackStudioMaxHeight = playerLayout.trackStudioMaxHeight
-        val styleStudioWidth = playerLayout.styleStudioWidth
-        val styleStudioMaxHeight = playerLayout.styleStudioMaxHeight
-        val srtPopupWidth = playerLayout.srtPopupWidth
-        val srtPopupMaxHeight = playerLayout.srtPopupMaxHeight
-        val audioPopupWidth = playerLayout.audioPopupWidth
-        val smallMenuWidth = playerLayout.smallMenuWidth
-        val smallMenuMaxHeight = playerLayout.smallMenuMaxHeight
-        val topIconSize = playerLayout.topIconSize
+        // Slice 69: downstream surfaces now consume the immutable
+        // PlayerSurfaceLayout snapshot directly instead of unpacking 20+ aliases.
 
         // Slice 61: playlist navigation, Smart Segment runtime, credits-driven
         // next-episode triggering, and countdown completion now live together.
@@ -869,7 +835,7 @@ fun VideoPlayerScreen(
             externalDisplayActive = externalPlayerView != null,
             currentVideoPath = currentVideo.path,
             episodeList = episodeList,
-            isLandscape = isLandscape,
+            isLandscape = playerLayout.isLandscape,
             canChangeEpisode = showPrevNextButtons,
             previewFrames = gestureUi.previewFrames,
             previewPosition = gestureUi.previewPosition,
@@ -879,8 +845,8 @@ fun VideoPlayerScreen(
             videoScale = gestureUi.videoScale,
             videoOffsetX = gestureUi.videoOffsetX,
             videoOffsetY = gestureUi.videoOffsetY,
-            screenWidthPx = screenWidthPx,
-            screenHeightPx = screenHeightPx,
+            screenWidthPx = playerLayout.screenWidthPx,
+            screenHeightPx = playerLayout.screenHeightPx,
             showControls = showControls,
             showAudioSelector = showAudioSelector,
             showSubtitleDock = showSubtitleDock,
@@ -976,13 +942,13 @@ fun VideoPlayerScreen(
             player = exoPlayer,
             haptics = haptics,
             isStreamMedia = isStreamMedia,
-            bottomDockPadding = bottomDockPadding,
-            playButtonSize = playButton,
+            bottomDockPadding = playerLayout.bottomDockPadding,
+            playButtonSize = playerLayout.playButton,
             coreUi = coreUi,
             appearanceUi = appearanceUi,
             studioUi = studioUi,
-            isLandscape = isLandscape,
-            hudSize = hudSize,
+            isLandscape = playerLayout.isLandscape,
+            hudSize = playerLayout.hudSize,
             showBrightnessCircle = showBrightnessCircle,
             brightnessPercent = brightnessPercent,
             showVolumeCircle = showVolumeCircle,
@@ -995,16 +961,16 @@ fun VideoPlayerScreen(
             sleepTimerActive = sleepTimerActive,
             sleepTimerRemainingMs = sleepTimerRemainingMs,
             translationSuccessLanguage = subtitleAiUi.translationSuccessLanguage,
-            translationSuccessBottomPadding = bottomDockPadding + playButton + 26.dp,
+            translationSuccessBottomPadding = playerLayout.bottomDockPadding + playerLayout.playButton + 26.dp,
             showSpeedMenu = showSpeedMenu,
             showSleepMenu = showSleepMenu,
             playbackSpeed = playbackSpeed,
             sleepTimerMinutes = sleepTimerMinutes,
-            topClusterPaddingTop = topClusterPaddingTop,
+            topClusterPaddingTop = playerLayout.topClusterPaddingTop,
             clusterHeightPx = clusterHeightPx,
-            sidePadding = sidePadding,
-            smallMenuWidth = smallMenuWidth,
-            smallMenuMaxHeight = smallMenuMaxHeight,
+            sidePadding = playerLayout.sidePadding,
+            smallMenuWidth = playerLayout.smallMenuWidth,
+            smallMenuMaxHeight = playerLayout.smallMenuMaxHeight,
             onShowControls = { showControls = true },
             onBack = onBack,
             onRetry = {
@@ -1035,24 +1001,24 @@ fun VideoPlayerScreen(
             showSrtBrowser = showSrtBrowser,
             showAudioSelector = showAudioSelector,
             audioSyncMs = audioSyncMs,
-            popupBottomPadding = popupBottomPadding,
-            srtPopupWidth = srtPopupWidth,
-            srtPopupMaxHeight = srtPopupMaxHeight,
-            audioPopupWidth = audioPopupWidth,
-            subtitlePopupWidth = subtitlePopupWidth,
-            trackStudioWidth = trackStudioWidth,
-            trackSelectorWidth = trackSelectorWidth,
-            trackStudioMaxHeight = trackStudioMaxHeight,
-            styleStudioWidth = styleStudioWidth,
-            styleStudioMaxHeight = styleStudioMaxHeight,
-            studioFrameInset = studioFrameInset,
-            visibleMovieWidth = visibleMovieWidth,
+            popupBottomPadding = playerLayout.popupBottomPadding,
+            srtPopupWidth = playerLayout.srtPopupWidth,
+            srtPopupMaxHeight = playerLayout.srtPopupMaxHeight,
+            audioPopupWidth = playerLayout.audioPopupWidth,
+            subtitlePopupWidth = playerLayout.subtitlePopupWidth,
+            trackStudioWidth = playerLayout.trackStudioWidth,
+            trackSelectorWidth = playerLayout.trackSelectorWidth,
+            trackStudioMaxHeight = playerLayout.trackStudioMaxHeight,
+            styleStudioWidth = playerLayout.styleStudioWidth,
+            styleStudioMaxHeight = playerLayout.styleStudioMaxHeight,
+            studioFrameInset = playerLayout.studioFrameInset,
+            visibleMovieWidth = playerLayout.visibleMovieWidth,
             containerWidth = maxWidth,
             containerHeight = maxHeight,
-            isLandscape = isLandscape,
-            isCompactLandscape = isCompactLandscape,
-            screenWidthPx = screenWidthPx,
-            density = density,
+            isLandscape = playerLayout.isLandscape,
+            isCompactLandscape = playerLayout.isCompactLandscape,
+            screenWidthPx = playerLayout.screenWidthPx,
+            density = LocalDensity.current,
             subtitleIconCenterX = subIconX,
             audioIconCenterX = audioIconX,
             duration = duration,
@@ -1094,7 +1060,7 @@ fun VideoPlayerScreen(
             currentVideoPath = currentVideo.path,
             isStreamMedia = isStreamMedia,
             isCurrentTvShow = isCurrentTvShow,
-            isLandscape = isLandscape,
+            isLandscape = playerLayout.isLandscape,
             isZoomMode = gestureUi.isZoomMode,
             showControls = showControls,
             isDraggingSeekbar = isDraggingSeekbar,
@@ -1120,9 +1086,9 @@ fun VideoPlayerScreen(
             autoSubtitleStatus = autoSubtitleFetch.status,
             playbackSpeed = playbackSpeed,
             sleepTimerActive = sleepTimerActive,
-            topClusterPaddingTop = topClusterPaddingTop,
-            sidePadding = sidePadding,
-            topIconSize = topIconSize,
+            topClusterPaddingTop = playerLayout.topClusterPaddingTop,
+            sidePadding = playerLayout.sidePadding,
+            topIconSize = playerLayout.topIconSize,
             showNextEpisodeOverlay = showNextEpisodeOverlay,
             pendingNextEpisode = pendingNextEpisode,
             nextEpisodeCountdown = nextEpisodeCountdown,
@@ -1137,11 +1103,11 @@ fun VideoPlayerScreen(
             getPreviewPosition = { gestureUi.previewPosition },
             isSeekPreviewLarge = gestureUi.isSeekPreviewLarge,
             previewFrames = gestureUi.previewFrames,
-            bottomDockPadding = bottomDockPadding,
-            seekBottomPadding = seekBottomPadding,
-            scale = scale,
-            smallButton = smallButton,
-            playButton = playButton,
+            bottomDockPadding = playerLayout.bottomDockPadding,
+            seekBottomPadding = playerLayout.seekBottomPadding,
+            scale = playerLayout.scale,
+            smallButton = playerLayout.smallButton,
+            playButton = playerLayout.playButton,
             isPlaying = isPlaying,
             isVideoEnded = isVideoEnded,
             showPrevNextButtons = showPrevNextButtons,
@@ -1217,11 +1183,11 @@ fun VideoPlayerScreen(
             lockButtonVisibleWhileLocked = lockButtonVisibleWhileLocked,
             showControls = showControls,
             externalDisplayActive = externalPlayerView != null,
-            isLandscape = isLandscape,
+            isLandscape = playerLayout.isLandscape,
             containerWidth = playerMaxWidth,
             containerHeight = playerMaxHeight,
-            bottomDockPadding = bottomDockPadding,
-            playButton = playButton,
+            bottomDockPadding = playerLayout.bottomDockPadding,
+            playButton = playerLayout.playButton,
             subtitleIconCenterX = subIconX,
             autoSyncStatus = autoSyncStatus,
             autoSyncCoordinator = autoSyncCoordinator,
