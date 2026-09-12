@@ -374,6 +374,7 @@ fun VideoPlayerScreen(
             playbackRecovery.fallbackOccurred = false
             playbackRecovery.fallbackReason = null
             playbackRecovery.droppedFrameUnhealthyStreak = 0
+            playbackRecovery.startupPlaybackConfirmed = false
             playbackRecovery.activeVideoDecoderStatus = ActiveVideoDecoderStatus()
             currentVideo = it
         },
@@ -420,6 +421,50 @@ fun VideoPlayerScreen(
             !playbackRecovery.softwareFallbackRequested
         ) {
             playbackRecovery.requestProactiveSoftwareFallback(
+                resumePositionMs = exoPlayer.currentPosition,
+                subtitleUri = trackUi.originalUri,
+            )
+        }
+    }
+
+    LaunchedEffect(
+        playbackHealth.isBuffering,
+        playbackRecovery.startupPlaybackConfirmed,
+        playbackRecovery.engineMode,
+        playbackRecovery.softwareFallbackAvailable,
+        currentVideo.path,
+    ) {
+        if (
+            !playbackHealth.isBuffering ||
+            playbackRecovery.startupPlaybackConfirmed ||
+            playbackRecovery.engineMode != PlaybackEngineMode.HARDWARE ||
+            !playbackRecovery.softwareFallbackAvailable ||
+            playbackRecovery.fallbackOccurred ||
+            playbackRecovery.softwareFallbackRequested
+        ) {
+            return@LaunchedEffect
+        }
+
+        val stallWindowStartPosition = exoPlayer.currentPosition
+
+        delay(12_000L)
+
+        val playbackProgressMs =
+            kotlin.math.abs(exoPlayer.currentPosition - stallWindowStartPosition)
+
+        if (
+            shouldFallbackForStartupStall(
+                isBuffering = playbackHealth.isBuffering,
+                startupPlaybackConfirmed = playbackRecovery.startupPlaybackConfirmed,
+                elapsedMs = 12_000L,
+                playbackProgressMs = playbackProgressMs,
+                engineMode = playbackRecovery.engineMode,
+                softwareFallbackAvailable = playbackRecovery.softwareFallbackAvailable,
+                fallbackOccurred = playbackRecovery.fallbackOccurred,
+            ) &&
+            !playbackRecovery.softwareFallbackRequested
+        ) {
+            playbackRecovery.requestStartupStallFallback(
                 resumePositionMs = exoPlayer.currentPosition,
                 subtitleUri = trackUi.originalUri,
             )
@@ -598,7 +643,12 @@ fun VideoPlayerScreen(
         onErrorRetryCountChanged = { playbackHealth.errorRetryCount = it },
         onPlayerErrorMessageChanged = { playbackHealth.playerErrorMessage = it },
         onVideoEndedChanged = { isVideoEnded = it },
-        onPlayingChanged = { isPlaying = it },
+        onPlayingChanged = {
+            isPlaying = it
+            if (it) {
+                playbackRecovery.confirmPlaybackStarted()
+            }
+        },
         onQueueNextEpisode = { next ->
             pendingNextEpisode = next
             nextEpisodeCountdown = 15
@@ -611,6 +661,7 @@ fun VideoPlayerScreen(
             playbackRecovery.fallbackOccurred = false
             playbackRecovery.fallbackReason = null
             playbackRecovery.droppedFrameUnhealthyStreak = 0
+            playbackRecovery.startupPlaybackConfirmed = false
             playbackRecovery.activeVideoDecoderStatus = ActiveVideoDecoderStatus()
             currentMediaType = next.type
             currentVideo = next.video
@@ -881,6 +932,7 @@ fun VideoPlayerScreen(
             playbackRecovery.fallbackOccurred = false
             playbackRecovery.fallbackReason = null
             playbackRecovery.droppedFrameUnhealthyStreak = 0
+            playbackRecovery.startupPlaybackConfirmed = false
             playbackRecovery.activeVideoDecoderStatus = ActiveVideoDecoderStatus()
             currentVideo = it
         },

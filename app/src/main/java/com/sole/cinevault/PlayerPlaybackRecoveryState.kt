@@ -30,6 +30,7 @@ internal class PlayerPlaybackRecoveryState {
     var fallbackReason by mutableStateOf<PlaybackFallbackReason?>(null)
     var fallbackOccurred by mutableStateOf(false)
     var droppedFrameUnhealthyStreak by mutableIntStateOf(0)
+    var startupPlaybackConfirmed by mutableStateOf(false)
 
     // Slice 76: capability report for the currently selected VIDEO track.
     // Because this entire holder is remembered per currentVideo.path, the
@@ -79,6 +80,31 @@ internal class PlayerPlaybackRecoveryState {
         softwareFallbackRequested = true
     }
 
+    fun confirmPlaybackStarted() {
+        startupPlaybackConfirmed = true
+    }
+
+    fun requestStartupStallFallback(
+        resumePositionMs: Long,
+        subtitleUri: Uri?,
+    ) {
+        if (
+            engineMode != PlaybackEngineMode.HARDWARE ||
+            !softwareFallbackAvailable ||
+            fallbackOccurred ||
+            softwareFallbackRequested ||
+            startupPlaybackConfirmed
+        ) {
+            return
+        }
+
+        fallbackErrorCode = 0
+        fallbackReason = PlaybackFallbackReason.STARTUP_STALLED
+        fallbackResumePositionMs = resumePositionMs.coerceAtLeast(0L)
+        fallbackSubtitleUri = subtitleUri
+        softwareFallbackRequested = true
+    }
+
     fun onDroppedVideoFrames(
         droppedFrames: Int,
         elapsedMs: Long,
@@ -116,6 +142,7 @@ internal class PlayerPlaybackRecoveryState {
         engineMode = PlaybackEngineMode.SOFTWARE
         fallbackOccurred = true
         droppedFrameUnhealthyStreak = 0
+        startupPlaybackConfirmed = false
         softwareFallbackRequested = false
     }
 }

@@ -7,6 +7,7 @@ enum class PlaybackFallbackReason {
     FORMAT_UNSUPPORTED,
     NATIVE_DECODER_UNAVAILABLE,
     EXCESSIVE_DROPPED_FRAMES,
+    STARTUP_STALLED,
     UNKNOWN_DECODER_FAILURE,
 }
 
@@ -41,6 +42,7 @@ fun playbackFallbackReasonLabel(
         PlaybackFallbackReason.FORMAT_UNSUPPORTED -> "Format unsupported"
         PlaybackFallbackReason.NATIVE_DECODER_UNAVAILABLE -> "Native decoder unavailable"
         PlaybackFallbackReason.EXCESSIVE_DROPPED_FRAMES -> "Hardware playback unstable"
+        PlaybackFallbackReason.STARTUP_STALLED -> "Hardware startup stalled"
         PlaybackFallbackReason.UNKNOWN_DECODER_FAILURE -> "Decoder failure"
         null -> null
     }
