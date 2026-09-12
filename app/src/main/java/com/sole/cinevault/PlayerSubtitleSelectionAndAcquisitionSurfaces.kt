@@ -5,6 +5,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -21,7 +22,7 @@ import com.sole.cinevault.subtitles.*
  * studio. State and behavior remain owned by the existing coordinators.
  */
 @Composable
-internal fun PlayerSubtitleSelectionAndAcquisitionSurfaces(
+internal fun BoxScope.PlayerSubtitleSelectionAndAcquisitionSurfaces(
     context: Context,
     player: ExoPlayer,
     trackSelector: DefaultTrackSelector,

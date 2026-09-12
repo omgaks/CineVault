@@ -1620,6 +1620,24 @@ fun VideoPlayerScreen(
             }
         )
 
+        // Track identity is also needed by the Slice 56 Quick HUD filename
+        // resolver after the Slice 57 presentation extraction.
+        val embeddedTrackChoices = remember(exoPlayer.currentTracks) {
+            buildEmbeddedSubtitleChoices(exoPlayer.currentTracks)
+        }
+        val downloadedTrackChoice = rememberDownloadedSubtitleChoice(
+            context = context,
+            videoPath = currentVideo.path,
+            preferredLanguages = coreUi.behaviorPrefs.preferredLanguages,
+            selectorVisible = trackUi.showSelector,
+            canDownloadExternalSubtitles = canDownloadExternalSubtitles
+        )
+        val localFileChoices = rememberAvailableLocalSubtitleFiles(
+            videoPath = currentVideo.path,
+            selectorVisible = trackUi.showSelector,
+            pendingDeletePaths = pendingDeletePaths
+        )
+
         // Tap CC -> Quick HUD (filename, Delay/Size/Position), draggable
         // anywhere in the player frame. Filename resolution mirrors the
         // same key-matching Track's selector already does — not invented
