@@ -375,6 +375,7 @@ fun VideoPlayerScreen(
             playbackRecovery.fallbackReason = null
             playbackRecovery.droppedFrameUnhealthyStreak = 0
             playbackRecovery.startupPlaybackConfirmed = false
+            playbackRecovery.firstVideoFrameRendered = false
             playbackRecovery.activeVideoDecoderStatus = ActiveVideoDecoderStatus()
             currentVideo = it
         },
@@ -421,6 +422,60 @@ fun VideoPlayerScreen(
             !playbackRecovery.softwareFallbackRequested
         ) {
             playbackRecovery.requestProactiveSoftwareFallback(
+                resumePositionMs = exoPlayer.currentPosition,
+                subtitleUri = trackUi.originalUri,
+            )
+        }
+    }
+
+    // Playback Resilience Slice 85:
+    // Playback can advance (often with audible audio) even when the video
+    // renderer never produces its first frame. Treat that separately from a
+    // buffering/startup stall.
+    LaunchedEffect(
+        isPlaying,
+        playbackRecovery.firstVideoFrameRendered,
+        playbackRecovery.engineMode,
+        playbackRecovery.softwareFallbackAvailable,
+        playbackRecovery.videoDecoderCapabilityReport,
+        currentVideo.path,
+    ) {
+        if (
+            !isPlaying ||
+            playbackRecovery.firstVideoFrameRendered ||
+            playbackRecovery.videoDecoderCapabilityReport == null ||
+            playbackRecovery.engineMode != PlaybackEngineMode.HARDWARE ||
+            !playbackRecovery.softwareFallbackAvailable ||
+            playbackRecovery.fallbackOccurred ||
+            playbackRecovery.softwareFallbackRequested
+        ) {
+            return@LaunchedEffect
+        }
+
+        val firstFrameWindowStartPosition = exoPlayer.currentPosition
+
+        delay(8_000L)
+
+        val playbackProgressMs =
+            kotlin.math.abs(exoPlayer.currentPosition - firstFrameWindowStartPosition)
+
+        if (
+            shouldFallbackForMissingFirstVideoFrame(
+                isPlaying = isPlaying,
+                hasSelectedVideoTrack =
+                    playbackRecovery.videoDecoderCapabilityReport != null,
+                firstVideoFrameRendered =
+                    playbackRecovery.firstVideoFrameRendered,
+                elapsedMs = 8_000L,
+                playbackProgressMs = playbackProgressMs,
+                engineMode = playbackRecovery.engineMode,
+                softwareFallbackAvailable =
+                    playbackRecovery.softwareFallbackAvailable,
+                fallbackOccurred = playbackRecovery.fallbackOccurred,
+            ) &&
+            !playbackRecovery.softwareFallbackRequested
+        ) {
+            playbackRecovery.requestMissingFirstFrameFallback(
                 resumePositionMs = exoPlayer.currentPosition,
                 subtitleUri = trackUi.originalUri,
             )
@@ -662,6 +717,7 @@ fun VideoPlayerScreen(
             playbackRecovery.fallbackReason = null
             playbackRecovery.droppedFrameUnhealthyStreak = 0
             playbackRecovery.startupPlaybackConfirmed = false
+            playbackRecovery.firstVideoFrameRendered = false
             playbackRecovery.activeVideoDecoderStatus = ActiveVideoDecoderStatus()
             currentMediaType = next.type
             currentVideo = next.video
@@ -857,6 +913,9 @@ fun VideoPlayerScreen(
                 subtitleUri = trackUi.originalUri,
             )
         },
+        onFirstVideoFrameRendered = {
+            playbackRecovery.confirmFirstVideoFrameRendered()
+        },
     )
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color.Black)) {
@@ -933,6 +992,7 @@ fun VideoPlayerScreen(
             playbackRecovery.fallbackReason = null
             playbackRecovery.droppedFrameUnhealthyStreak = 0
             playbackRecovery.startupPlaybackConfirmed = false
+            playbackRecovery.firstVideoFrameRendered = false
             playbackRecovery.activeVideoDecoderStatus = ActiveVideoDecoderStatus()
             currentVideo = it
         },
