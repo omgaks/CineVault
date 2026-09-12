@@ -382,42 +382,6 @@ fun VideoPlayerScreen(
 
     var pendingSrtUri by remember { mutableStateOf<Uri?>(null) }
 
-    // ── Delete confirmation + undo (Security & Privacy checklist item 3) ──
-    // pendingDeletePaths holds files that have been "deleted" from the
-    // person's point of view (removed from every list immediately) but
-    // whose actual disk/MediaStore deletion is still delayed behind the
-    // undo window below. pendingDeleteConfirmFile drives the CineVault-
-    // styled warning dialog that always appears BEFORE that window starts
-    // — this is a full replacement for the plain white system AlertDialog
-    // that used to front this flow. Note the OS-level consent prompt on
-    // API 30+ for files the app doesn't own is a system dialog Android
-    // itself renders — that one can't be reskinned, only pre-empted with
-    // our own warning first, which is what this does.
-    val pendingDeletePaths = remember { mutableStateListOf<String>() }
-    var pendingDeleteConfirmFile by remember { mutableStateOf<java.io.File?>(null) }
-    var pendingConsentFile by remember { mutableStateOf<java.io.File?>(null) }
-    val snackbarHostState = remember { SnackbarHostState() }
-
-    val deleteConsentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
-        val consentedFile = pendingConsentFile
-        if (result.resultCode != Activity.RESULT_OK) {
-            // Person backed out of the OS consent prompt — the file was
-            // never actually deleted, so bring it back into every list
-            // instead of leaving it permanently hidden.
-            if (consentedFile != null) pendingDeletePaths.remove(consentedFile.absolutePath)
-            Toast.makeText(context, "Delete cancelled", Toast.LENGTH_SHORT).show()
-        }
-        pendingConsentFile = null
-    }
-
-    // Keep deletion wired to the coordinator API that exists in the
-    // repository this replacement file targets. Active/dual-track detach
-    // handling requires coordinated changes in the subtitle layer and is
-    // intentionally left pending for that separate update.
-    // subtitleDeletionCoordinator is declared further below, after
-    // playCurrentVideoWithSubtitle exists — its detach/restore callbacks
-    // need to call it directly.
-
     // Slice 62: playback session actions, sleep ticking, navigation, and
     // subtitle search coordination now share one session-coordinator host.
     val sessionCoordinators = rememberPlayerSessionCoordinators(
@@ -465,76 +429,23 @@ fun VideoPlayerScreen(
         isOriginalSubtitle,
     )
 
-    // FIX: deleting the currently-active subtitle used to leave it
-    // playing from memory even after the file was gone — Media3 keeps
-    // rendering whatever cues it already parsed until something
-    // explicitly tells the player to drop them. onDeleteRequested fires
-    // the moment deletion is requested (before the file is actually
-    // gone, so Undo can cleanly restore it), detaching the subtitle
-    // immediately and clearing every piece of "this is the active
-    // track" state. onDeleteUndone reverses all of it if Undo is tapped
-    // in time, or if the underlying file deletion itself fails.
-    var detachedSubtitleForUndo by remember { mutableStateOf<java.io.File?>(null) }
-    val subtitleDeletionCoordinator = remember(exoPlayer, playbackNavigationCoordinator) {
-        SubtitleDeletionCoordinator(
-            context = context,
-            scope = scope,
-            pendingDeletePaths = pendingDeletePaths,
-            snackbarHostState = snackbarHostState,
-            deleteConsentLauncher = deleteConsentLauncher,
-            setPendingConsentFile = { pendingConsentFile = it },
-            setPendingDeleteConfirmFile = { pendingDeleteConfirmFile = it },
-            onDeleteRequested = { file ->
-                val isActive = trackUi.selectedKey == "local:${file.absolutePath}" ||
-                    trackUi.selectedKey == "downloaded" || trackUi.originalUri?.path == file.absolutePath ||
-                    trackUi.primaryUri?.path == file.absolutePath
-                if (isActive) {
-                    detachedSubtitleForUndo = file
-                    val resumeAt = playerSafeResumePosition(exoPlayer.currentPosition)
-                    playCurrentVideoWithSubtitle(null, resumeAt, false)
-                    trackUi.primaryUri = null; trackUi.originalUri = null
-                    trackUi.selectedKey = "off"; trackUi.selectedLabel = ""; trackUi.selectedSource = ""
-                    coreUi.subtitlesEnabled = false
-                }
-            },
-            onDeleteUndone = { file ->
-                if (detachedSubtitleForUndo?.absolutePath == file.absolutePath && file.exists()) {
-                    val resumeAt = playerSafeResumePosition(exoPlayer.currentPosition)
-                    coreUi.subtitlesEnabled = true
-                    trackUi.primaryUri = Uri.fromFile(file); trackUi.originalUri = Uri.fromFile(file)
-                    trackUi.selectedKey = "local:${file.absolutePath}"
-                    trackUi.selectedLabel = file.nameWithoutExtension; trackUi.selectedSource = "Local"
-                    playCurrentVideoWithSubtitle(Uri.fromFile(file), resumeAt, true)
-                }
-                detachedSubtitleForUndo = null
-            }
-        )
-    }
-    // Slice 26: the system picker stays composable-owned, but everything
-    // after the user chooses a file now lives in SubtitleLocalImportCoordinator:
-    // persistable permission, content validation/import, ZIP candidate handling
-    // and failure feedback.
-    val subtitleLocalImportCoordinator = remember {
-        SubtitleLocalImportCoordinator(
-            context = context,
-            scope = scope,
-            getCurrentVideoPath = { currentVideo.path },
-            getPreferredLanguage = {
-                coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en"
-            },
-            applyImportedSubtitle = { imported ->
-                subtitleSearchCoordinator.applyImportedWebsiteSubtitle(imported)
-            },
-            setPendingImportCandidates = { result ->
-                searchUi.pendingImportCandidates = result
-            },
-        )
-    }
-
-    val srtPickerLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            subtitleLocalImportCoordinator.importPickedUri(uri)
-        }
+    // Slice 63: subtitle file deletion/undo/OS consent and local subtitle
+    // import/picker handling now live in one responsibility-owned runtime.
+    val subtitleFileRuntime = rememberPlayerSubtitleFileRuntime(
+        context = context,
+        scope = scope,
+        player = exoPlayer,
+        playbackNavigationCoordinator = playbackNavigationCoordinator,
+        subtitleSearchCoordinator = subtitleSearchCoordinator,
+        trackUi = trackUi,
+        coreUi = coreUi,
+        searchUi = searchUi,
+        currentVideoPath = currentVideo.path,
+    )
+    val pendingDeletePaths = subtitleFileRuntime.pendingDeletePaths
+    val pendingDeleteConfirmFile = subtitleFileRuntime.pendingDeleteFileState.value
+    val snackbarHostState = subtitleFileRuntime.snackbarHostState
+    val subtitleDeletionCoordinator = subtitleFileRuntime.deletionCoordinator
 
     // FIX: findHttpStatusDetail/friendlyPlaybackError/isTransientPlaybackError
     // used to be defined right here — now plain top-level functions in
@@ -1236,7 +1147,7 @@ fun VideoPlayerScreen(
             onShowTopBarChanged = { showTopBar = it },
             onShowSubtitleBloomChanged = { showSubtitleBloom = it },
             onStudioCategoryChanged = { studioCategory = it },
-            onLaunchSrtPicker = { mimeTypes -> srtPickerLauncher.launch(mimeTypes) },
+            onLaunchSrtPicker = subtitleFileRuntime.launchSrtPicker,
         )
 
         // Slice 59: visibility policy, top chrome, transient status pills,
@@ -1421,9 +1332,9 @@ fun VideoPlayerScreen(
             onControlsLockedChanged = { controlsLocked = it },
             onLockButtonVisibleWhileLockedChanged = { lockButtonVisibleWhileLocked = it },
             onAutoSyncStatusChanged = { autoSyncStatus = it },
-            onDismissDelete = { pendingDeleteConfirmFile = null },
+            onDismissDelete = { subtitleFileRuntime.pendingDeleteFileState.value = null },
             onConfirmDelete = { file ->
-                pendingDeleteConfirmFile = null
+                subtitleFileRuntime.pendingDeleteFileState.value = null
                 subtitleDeletionCoordinator.deleteWithUndo(file)
             },
             onStudioCategoryChanged = { studioCategory = it },
