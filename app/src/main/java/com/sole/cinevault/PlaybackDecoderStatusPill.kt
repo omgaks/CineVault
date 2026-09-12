@@ -35,6 +35,8 @@ internal fun PlaybackDecoderStatusPill(
         ActiveVideoDecoderKind.UNKNOWN -> null
     }
 
+    val pillLabel = label ?: ""
+
     AnimatedVisibility(
         visible = visible && label != null,
         enter = fadeIn(),
@@ -61,7 +63,7 @@ internal fun PlaybackDecoderStatusPill(
             )
 
             Text(
-                text = label,
+                text = pillLabel,
                 color = Color.White,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
