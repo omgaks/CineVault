@@ -1399,59 +1399,40 @@ fun VideoPlayerScreen(
                     isZoomMode = isZoomMode
                 )
 
-                val anyMenuOpenForSmartSkip = showAudioSelector || subtitleOverlayActive || showSpeedMenu || showSleepMenu || showSrtBrowser
-                val suppressCreditsPillForScene = activeSmartSegment?.type == SegmentType.CREDITS &&
-                    (smartSegmentResult.hasMidCreditsScene || smartSegmentResult.hasPostCreditsScene)
-                val creditNoticeVisible = !isCurrentTvShow && creditsSegment != null && position >= creditsSegment.startMs &&
-                    (smartSegmentResult.hasMidCreditsScene || smartSegmentResult.hasPostCreditsScene) &&
-                    (exactSceneSegment == null || position < exactSceneSegment.startMs)
-
-                PlayerSmartPlaybackOverlays(
-                    sidePadding = sidePadding,
+                // Slice 58: Smart playback overlays, bottom transport dock,
+                // and seek dock now live in one cohesive playback-controls host.
+                PlayerTransportAndSmartControls(
+                    context = context,
+                    scope = scope,
+                    player = exoPlayer,
+                    haptics = haptics,
+                    currentVideoPath = currentVideo.path,
+                    isStreamMedia = isStreamMedia,
+                    isCurrentTvShow = isCurrentTvShow,
+                    isLandscape = isLandscape,
+                    subtitleOverlayActive = subtitleOverlayActive,
+                    showAudioSelector = showAudioSelector,
+                    showSpeedMenu = showSpeedMenu,
+                    showSleepMenu = showSleepMenu,
+                    showSrtBrowser = showSrtBrowser,
                     showSeekPreview = showSeekPreview,
                     isDraggingSeekbar = isDraggingSeekbar,
                     showNextEpisodeOverlay = showNextEpisodeOverlay,
                     pendingNextEpisode = pendingNextEpisode,
                     nextEpisodeCountdown = nextEpisodeCountdown,
                     activeSmartSegment = activeSmartSegment,
-                    suppressCreditsPillForScene = suppressCreditsPillForScene,
-                    anyMenuOpenForSmartSkip = anyMenuOpenForSmartSkip,
-                    creditNoticeVisible = creditNoticeVisible,
                     exactSceneSegment = exactSceneSegment,
-                    hasMidCreditsScene = smartSegmentResult.hasMidCreditsScene,
-                    hasPostCreditsScene = smartSegmentResult.hasPostCreditsScene,
+                    creditsSegment = creditsSegment,
+                    smartSegmentResult = smartSegmentResult,
                     position = position,
-                    isLandscape = isLandscape,
-                    onPlayNextEpisode = { n ->
-                        showNextEpisodeOverlay = false
-                        pendingNextEpisode = null
-                        currentMediaType = n.type
-                        currentVideo = n.video
-                        onPlayNext(n)
-                    },
-                    onCancelNextEpisode = {
-                        showNextEpisodeOverlay = false
-                        pendingNextEpisode = null
-                        nextEpisodeCountdown = 0
-                        nextEpisodeDismissed = true
-                        showControls = true
-                    },
-                    onSkipSegment = { segment ->
-                        exoPlayer.seekTo(segment.endMs)
-                        position = segment.endMs
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        showControls = true
-                    },
-                    onJumpToCreditScene = { scene ->
-                        exoPlayer.seekTo(scene.startMs)
-                        position = scene.startMs
-                    }
-                )
-
-                PlayerBottomTransportDock(
-                    visible = !showSeekPreview && !isDraggingSeekbar,
-                    bottomDockPadding = bottomDockPadding,
+                    duration = duration,
+                    previewBitmap = previewBitmap,
+                    previewPosition = previewPosition,
+                    isSeekPreviewLarge = isSeekPreviewLarge,
+                    previewFrames = previewFrames,
                     sidePadding = sidePadding,
+                    bottomDockPadding = bottomDockPadding,
+                    seekBottomPadding = seekBottomPadding,
                     scale = scale,
                     smallButton = smallButton,
                     playButton = playButton,
@@ -1460,60 +1441,46 @@ fun VideoPlayerScreen(
                     showPrevNextButtons = showPrevNextButtons,
                     hasNextVideo = hasNextVideo,
                     autoPlayEnabled = autoPlayEnabled,
-                    showAudioSelector = showAudioSelector,
-                    showSubtitleActive = coreUi.showSettings || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio,
-                    isStreamMedia = isStreamMedia,
+                    showSubtitleActive = coreUi.showSettings ||
+                        trackUi.showSelector ||
+                        searchUi.showSearch ||
+                        driftUi.showDialog ||
+                        coreUi.showAppearanceStudio,
                     onBack = onBack,
-                    onReplay10 = {
-                        exoPlayer.seekTo(playerSeekBackPosition(exoPlayer.currentPosition))
-                        position = exoPlayer.currentPosition
+                    playbackNavigationCoordinator = playbackNavigationCoordinator,
+                    playerMenuCloseCoordinator = playerMenuCloseCoordinator,
+                    onPlayNextEpisode = { next ->
+                        showNextEpisodeOverlay = false
+                        pendingNextEpisode = null
+                        currentMediaType = next.type
+                        currentVideo = next.video
+                        onPlayNext(next)
+                    },
+                    onCancelNextEpisode = {
+                        showNextEpisodeOverlay = false
+                        pendingNextEpisode = null
+                        nextEpisodeCountdown = 0
+                        nextEpisodeDismissed = true
                         showControls = true
                     },
-                    onPlayPause = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        if (isVideoEnded) {
-                            exoPlayer.seekTo(0)
-                            exoPlayer.play()
-                            isVideoEnded = false
-                            showControls = true
-                        } else {
-                            if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
-                            showControls = true
-                        }
-                    },
-                    onForward10 = {
-                        exoPlayer.seekTo(playerSeekForwardPosition(exoPlayer.currentPosition, exoPlayer.duration))
-                        position = exoPlayer.currentPosition
-                        showControls = true
-                    },
-                    onNext = {
-                        if (hasNextVideo) {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            playbackNavigationCoordinator.playNext()
-                        }
-                    },
-                    onToggleAutoplay = {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        autoPlayEnabled = !autoPlayEnabled
-                        showControls = true
-                        Toast.makeText(context, if (autoPlayEnabled) "Autoplay on" else "Autoplay off", Toast.LENGTH_SHORT).show()
-                    },
-                    onAudioClick = {
-                        val wasOpen = showAudioSelector
-                        playerMenuCloseCoordinator.closeAll()
-                        showAudioSelector = !wasOpen
-                        showControls = true
-                        menuTouchKey++
-                    },
+                    onPositionChanged = { position = it },
+                    onShowControlsChanged = { showControls = it },
+                    onShowTopBarChanged = { showTopBar = it },
+                    onVideoEndedChanged = { isVideoEnded = it },
+                    onAutoPlayEnabledChanged = { autoPlayEnabled = it },
+                    onShowAudioSelectorChanged = { showAudioSelector = it },
+                    onMenuTouch = { menuTouchKey++ },
                     onAudioCenterMeasured = { audioIconX = it },
                     onSubtitleClick = {
-                        val wasOpen = showSubtitleDock || showSubtitleBloom || trackUi.showSelector || searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio
+                        val wasOpen = showSubtitleDock ||
+                            showSubtitleBloom ||
+                            trackUi.showSelector ||
+                            searchUi.showSearch ||
+                            driftUi.showDialog ||
+                            coreUi.showAppearanceStudio
                         playerMenuCloseCoordinator.closeAll()
                         showSubtitleDock = !wasOpen
                         if (showSubtitleDock) {
-                            // "Only the HUD remains visible" — hide the
-                            // transport dock/top bar immediately rather
-                            // than leaving them up alongside it.
                             showControls = false
                             showTopBar = false
                         } else {
@@ -1522,65 +1489,17 @@ fun VideoPlayerScreen(
                         menuTouchKey++
                     },
                     onSubtitleLongClick = {
-                        // 450ms hold threshold is enforced by combinedClickable's own
-                        // long-press timing; this fires once that's satisfied.
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         playerMenuCloseCoordinator.closeAll()
                         showSubtitleBloom = true
                         showControls = false
                         showTopBar = false
                     },
-                    onSubtitleCenterMeasured = { subIconX = it }
-                )
-
-                PlayerSeekDock(
-                    showSeekPreview = showSeekPreview,
-                    previewBitmap = previewBitmap,
-                    previewPosition = previewPosition,
-                    duration = duration,
-                    isLandscape = isLandscape,
-                    isSeekPreviewLarge = isSeekPreviewLarge,
-                    seekBottomPadding = seekBottomPadding,
-                    sidePadding = sidePadding,
-                    scale = scale,
-                    position = position,
-                    isDraggingSeekbar = isDraggingSeekbar,
-                    seed = currentVideo.path.hashCode(),
-                    onPreviewPositionChanged = { pos ->
-                        isDraggingSeekbar = true
-                        showSeekPreview = true
-                        showControls = true
-                        showTopBar = true
-                        position = playerBoundedSeekPosition(pos, duration)
-                        previewPosition = position
-                        VideoThumbnailHelper.nearestPreviewFrame(previewFrames, previewPosition)?.let {
-                            previewBitmap = it
-                        }
-                    },
-                    onSeekFinished = { finalPos ->
-                        val safe = playerBoundedSeekPosition(finalPos, duration)
-                        position = safe
-                        previewPosition = safe
-                        exoPlayer.seekTo(safe)
-                        isDraggingSeekbar = false
-                        previewBitmap = VideoThumbnailHelper.nearestPreviewFrame(previewFrames, safe) ?: previewBitmap
-                        showSeekPreview = true
-                        if (isStreamMedia) {
-                            scope.launch {
-                                delay(playerStreamSeekPreviewHideDelayMs())
-                                if (!isDraggingSeekbar) showSeekPreview = false
-                            }
-                        } else {
-                            scope.launch {
-                                val bmp = VideoThumbnailHelper.generateFrameAtTime(context, currentVideo.path, safe)
-                                if (bmp != null && previewPosition == safe) previewBitmap = bmp
-                                delay(playerLocalSeekPreviewHideDelayMs())
-                                if (previewPosition == safe && !isDraggingSeekbar) showSeekPreview = false
-                            }
-                        }
-                        showControls = true
-                        showTopBar = true
-                    }
+                    onSubtitleCenterMeasured = { subIconX = it },
+                    onDraggingSeekbarChanged = { isDraggingSeekbar = it },
+                    onShowSeekPreviewChanged = { showSeekPreview = it },
+                    onPreviewPositionChanged = { previewPosition = it },
+                    onPreviewBitmapChanged = { previewBitmap = it },
                 )
 
         }
