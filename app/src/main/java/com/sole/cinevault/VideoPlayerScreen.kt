@@ -418,58 +418,52 @@ fun VideoPlayerScreen(
     // playCurrentVideoWithSubtitle exists — its detach/restore callbacks
     // need to call it directly.
 
-    // Slice 21: playback-speed and sleep-timer session actions now live
-    // outside VideoPlayerScreen. This keeps the composable responsible for
-    // displaying state while the coordinator owns the mutations, haptics,
-    // player calls and user feedback for these two small session features.
-    val playerSessionActionsCoordinator = remember(exoPlayer) {
-        PlayerSessionActionsCoordinator(
-            context = context,
-            exoPlayer = exoPlayer,
-            performSelectionHaptic = {
-                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            },
-            setPlaybackSpeedState = { playbackSpeed = it },
-            setSleepTimerMinutes = { sleepTimerMinutes = it },
-            getSleepTimerActive = { sleepTimerActive },
-            setSleepTimerActive = { sleepTimerActive = it },
-            getSleepTimerRemainingMs = { sleepTimerRemainingMs },
-            setSleepTimerRemainingMs = { sleepTimerRemainingMs = it },
-            closeSpeedMenu = { showSpeedMenu = false },
-            closeSleepMenu = { showSleepMenu = false },
-            showControls = { showControls = true },
-        )
-    }
+    // Slice 62: playback session actions, sleep ticking, navigation, and
+    // subtitle search coordination now share one session-coordinator host.
+    val sessionCoordinators = rememberPlayerSessionCoordinators(
+        context = context,
+        scope = scope,
+        player = exoPlayer,
+        trackSelector = trackSelector,
+        haptics = haptics,
+        episodeList = episodeList,
+        currentVideo = currentVideo,
+        isStreamMedia = isStreamMedia,
+        playbackSpeed = playbackSpeed,
+        sleepTimerActive = sleepTimerActive,
+        sleepTimerRemainingMs = sleepTimerRemainingMs,
+        trackUi = trackUi,
+        coreUi = coreUi,
+        searchUi = searchUi,
+        studioUi = studioUi,
+        onPlaybackSpeedChanged = { playbackSpeed = it },
+        onSleepTimerMinutesChanged = { sleepTimerMinutes = it },
+        onSleepTimerActiveChanged = { sleepTimerActive = it },
+        onSleepTimerRemainingMsChanged = { sleepTimerRemainingMs = it },
+        onShowSpeedMenuChanged = { showSpeedMenu = it },
+        onShowSleepMenuChanged = { showSleepMenu = it },
+        onShowControlsChanged = { showControls = it },
+        onCurrentVideoChanged = { currentVideo = it },
+        onCurrentMediaTypeChanged = { currentMediaType = it },
+        onEdgeSwipeHintChanged = { edgeSwipeHint = it },
+        onPlayerErrorMessageChanged = { playerErrorMessage = it },
+        onVideoEndedChanged = { isVideoEnded = it },
+        onPendingSrtUriChanged = { pendingSrtUri = it },
+        onPlayNext = onPlayNext,
+    )
+    val playerSessionActionsCoordinator = sessionCoordinators.sessionActions
+    val playbackNavigationCoordinator = sessionCoordinators.navigation
+    val subtitleSearchCoordinator = sessionCoordinators.subtitleSearch
 
-    LaunchedEffect(sleepTimerActive, sleepTimerRemainingMs) {
-        if (playerSessionActionsCoordinator.shouldTickSleepTimer()) {
-            delay(playerSleepTimerTickIntervalMs())
-            playerSessionActionsCoordinator.tickSleepTimer()
-        }
-    }
-
-    // Playback navigation behavior is owned by PlaybackNavigationCoordinator.
-    val playbackNavigationCoordinator = remember(exoPlayer) {
-        PlaybackNavigationCoordinator(
-            context = context,
-            scope = scope,
-            exoPlayer = exoPlayer,
-            trackUi = trackUi,
-            coreUi = coreUi,
-            getEpisodeList = { episodeList },
-            getCurrentVideo = { currentVideo },
-            getIsStreamMedia = { isStreamMedia },
-            getPlaybackSpeed = { playbackSpeed },
-            setCurrentVideo = { currentVideo = it },
-            setCurrentMediaType = { currentMediaType = it },
-            setEdgeSwipeHint = { edgeSwipeHint = it },
-            setPlayerErrorMessage = { playerErrorMessage = it },
-            setIsVideoEnded = { isVideoEnded = it },
-            onPlayNext = onPlayNext
-        )
-    }
-    fun playCurrentVideoWithSubtitle(subtitleUri: Uri? = null, resumePosition: Long = 0L, isOriginalSubtitle: Boolean = true) =
-        playbackNavigationCoordinator.playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
+    fun playCurrentVideoWithSubtitle(
+        subtitleUri: Uri? = null,
+        resumePosition: Long = 0L,
+        isOriginalSubtitle: Boolean = true,
+    ) = playbackNavigationCoordinator.playCurrentVideoWithSubtitle(
+        subtitleUri,
+        resumePosition,
+        isOriginalSubtitle,
+    )
 
     // FIX: deleting the currently-active subtitle used to leave it
     // playing from memory even after the file was gone — Media3 keeps
@@ -513,26 +507,6 @@ fun VideoPlayerScreen(
                     playCurrentVideoWithSubtitle(Uri.fromFile(file), resumeAt, true)
                 }
                 detachedSubtitleForUndo = null
-            }
-        )
-    }
-    // Subtitle acquisition/search behavior is owned by SubtitleSearchCoordinator.
-    // UI call sites now invoke it directly; no player-local pass-through layer remains.
-    val subtitleSearchCoordinator = remember(exoPlayer, trackSelector) {
-        SubtitleSearchCoordinator(
-            context = context,
-            scope = scope,
-            exoPlayer = exoPlayer,
-            trackSelector = trackSelector,
-            coreUi = coreUi,
-            trackUi = trackUi,
-            searchUi = searchUi,
-            studioUi = studioUi,
-            getCurrentVideoPath = { currentVideo.path },
-            setShowControls = { showControls = it },
-            setPendingSrtUri = { pendingSrtUri = it },
-            playSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle ->
-                playCurrentVideoWithSubtitle(subtitleUri, resumePosition, isOriginalSubtitle)
             }
         )
     }
