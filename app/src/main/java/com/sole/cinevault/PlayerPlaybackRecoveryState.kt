@@ -38,6 +38,7 @@ internal class PlayerPlaybackRecoveryState {
     ) {
         videoDecoderCapabilityReport = report
         nativeVideoPlaybackReadiness = decideNativeVideoPlaybackReadiness(report)
+        softwareFallbackAvailable = isPlatformSoftwareVideoFallbackAvailable(report)
     }
 
     fun requestSoftwareFallback(

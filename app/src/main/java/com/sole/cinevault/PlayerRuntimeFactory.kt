@@ -15,7 +15,8 @@ import com.sole.cinevault.smb.cineVaultMediaSourceFactory
 
 internal data class PlayerRuntime(
     val player: ExoPlayer,
-    val trackSelector: DefaultTrackSelector
+    val trackSelector: DefaultTrackSelector,
+    val decoderSelector: RecoveryAwareMediaCodecSelector,
 )
 
 /**
@@ -59,10 +60,13 @@ internal fun rememberPlayerRuntime(
     // This is still the native/hardware tier — it is deliberately separate
     // from the future CPU software-video engine. The existing FFmpeg audio
     // extension remains registered after the platform renderer.
+    val decoderSelector = RecoveryAwareMediaCodecSelector()
+
     val renderersFactory = CineRenderersFactory(context)
         .setExtensionRendererMode(
             DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
         )
+        .setMediaCodecSelector(decoderSelector)
         .setEnableDecoderFallback(true)
 
     val player = ExoPlayer.Builder(context)
@@ -81,6 +85,7 @@ internal fun rememberPlayerRuntime(
 
     PlayerRuntime(
         player = player,
-        trackSelector = trackSelector
+        trackSelector = trackSelector,
+        decoderSelector = decoderSelector,
     )
 }
