@@ -109,16 +109,44 @@ internal fun PlayerEventListener(
 
             override fun onPlayerError(error: PlaybackException) {
                 val positionAtError = player.currentPosition.coerceAtLeast(0L)
-                if (isTransientPlaybackError(error) && errorRetryCount < 2) {
-                    val nextRetryCount = errorRetryCount + 1
-                    onErrorRetryCountChanged(nextRetryCount)
-                    scope.launch {
-                        delay(1000L * nextRetryCount)
-                        onRetryPlayback(trackUi.originalUri, positionAtError)
+
+                // Playback Resilience Slice 72:
+                // Route every playback failure through the tested recovery policy.
+                //
+                // A real software VIDEO engine is not wired yet, so fallback
+                // availability intentionally remains false in this slice. This
+                // preserves today's behavior while replacing the old ad-hoc
+                // retry branch with the same decision engine that the software
+                // fallback path will use in the next slices.
+                val recovery = decidePlaybackRecovery(
+                    errorCode = error.errorCode,
+                    currentRetryCount = errorRetryCount,
+                    engineMode = PlaybackEngineMode.HARDWARE,
+                    softwareFallbackAvailable = false,
+                )
+
+                when (recovery.action) {
+                    PlaybackRecoveryAction.RETRY_CURRENT -> {
+                        onErrorRetryCountChanged(recovery.nextRetryCount)
+                        scope.launch {
+                            delay(1000L * recovery.nextRetryCount)
+                            onRetryPlayback(trackUi.originalUri, positionAtError)
+                        }
                     }
-                } else {
-                    onPlayerErrorMessageChanged(friendlyPlaybackError(error))
-                    onPlayingChanged(false)
+
+                    PlaybackRecoveryAction.SWITCH_TO_SOFTWARE -> {
+                        // Unreachable until the software-video engine is wired.
+                        // Keeping the branch explicit prevents a future fallback
+                        // implementation from being hidden inside generic retry
+                        // behavior.
+                        onPlayerErrorMessageChanged(friendlyPlaybackError(error))
+                        onPlayingChanged(false)
+                    }
+
+                    PlaybackRecoveryAction.FAIL -> {
+                        onPlayerErrorMessageChanged(friendlyPlaybackError(error))
+                        onPlayingChanged(false)
+                    }
                 }
             }
         }
