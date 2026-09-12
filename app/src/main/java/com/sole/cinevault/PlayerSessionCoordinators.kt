@@ -10,6 +10,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.sole.cinevault.library.VideoFile
+import com.sole.cinevault.subtitles.SubtitleSearchCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 
