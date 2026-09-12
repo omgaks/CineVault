@@ -158,41 +158,20 @@ fun VideoPlayerScreen(
 
     var currentVideo by remember { mutableStateOf(video) }
     var currentMediaType by remember { mutableStateOf(mediaType) }
-    var showControls by remember { mutableStateOf(true) }
-    var controlsLocked by remember { mutableStateOf(false) }
-    // Separate from showControls specifically for the locked case — see
-    // the AnimatedVisibility/absorber wiring near the lock button below
-    // for the full reasoning.
-    var lockButtonVisibleWhileLocked by remember { mutableStateOf(true) }
-    var showTopBar by remember { mutableStateOf(true) }
-    var isDraggingSeekbar by remember { mutableStateOf(false) }
 
-    // FIX: was hardcoded to 70 regardless of the device's actual current
-    // volume, meaning CineVault silently overrode whatever level the
-    // person had already set the moment the player opened. Reads the
-    // real starting level instead. A separate, local system-service
-    // lookup is used here rather than the audioManager val declared
-    // later in this function — this runs before that point in
-    // composition, and Kotlin doesn't allow referencing a local variable
-    // before its declaration.
+    // FIX: preserve the device's real starting music volume instead of
+    // forcing an arbitrary value when CineVault opens.
     val initialMusicVolumePercent = remember {
         val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         playerInitialMusicVolumePercent(am)
     }
-    var volumePercent by remember { mutableIntStateOf(initialMusicVolumePercent) }
-    var brightnessPercent by remember { mutableIntStateOf(90) }
-    var showVolumeCircle by remember { mutableStateOf(false) }
-    var showBrightnessCircle by remember { mutableStateOf(false) }
-    var brightnessGestureKey by remember { mutableIntStateOf(0) }
-    var volumeGestureKey by remember { mutableIntStateOf(0) }
 
-    var showAudioSelector by remember { mutableStateOf(false) }
+    // Slice 70: core player chrome, HUD and transient menu visibility now
+    // share one stable UI-state holder.
+    val chromeUi = remember { PlayerChromeUiState(initialMusicVolumePercent) }
     val trackUi = remember { SubtitleTrackSelectionState() }
     val searchUi = remember { SubtitleAcquisitionUiState() }
 
-    var showSpeedMenu by remember { mutableStateOf(false) }
-    var showSleepMenu by remember { mutableStateOf(false) }
-    var showSrtBrowser by remember { mutableStateOf(false) }
     var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
 
     var sleepTimerMinutes by remember { mutableIntStateOf(0) }
@@ -340,12 +319,12 @@ fun VideoPlayerScreen(
     // VideoPlayerScreen. The player owns state; the coordinator owns the close sequence.
     val playerMenuCloseCoordinator = remember {
         PlayerMenuCloseCoordinator(
-            closeAudioSelector = { showAudioSelector = false },
+            closeAudioSelector = { chromeUi.showAudioSelector = false },
             closeSettings = { coreUi.showSettings = false },
             closeDriftDialog = { driftUi.showDialog = false },
-            closeSpeedMenu = { showSpeedMenu = false },
-            closeSleepMenu = { showSleepMenu = false },
-            closeSrtBrowser = { showSrtBrowser = false },
+            closeSpeedMenu = { chromeUi.showSpeedMenu = false },
+            closeSleepMenu = { chromeUi.showSleepMenu = false },
+            closeSrtBrowser = { chromeUi.showSrtBrowser = false },
             closeSubtitleSurfaces = {
                 subtitleStudioNavigation.closeSubtitleSurfaces(
                     clearPendingImportCandidates = { searchUi.pendingImportCandidates = null },
@@ -381,9 +360,9 @@ fun VideoPlayerScreen(
         onSleepTimerMinutesChanged = { sleepTimerMinutes = it },
         onSleepTimerActiveChanged = { sleepTimerActive = it },
         onSleepTimerRemainingMsChanged = { sleepTimerRemainingMs = it },
-        onShowSpeedMenuChanged = { showSpeedMenu = it },
-        onShowSleepMenuChanged = { showSleepMenu = it },
-        onShowControlsChanged = { showControls = it },
+        onShowSpeedMenuChanged = { chromeUi.showSpeedMenu = it },
+        onShowSleepMenuChanged = { chromeUi.showSleepMenu = it },
+        onShowControlsChanged = { chromeUi.showControls = it },
         onCurrentVideoChanged = { currentVideo = it },
         onCurrentMediaTypeChanged = { currentMediaType = it },
         onEdgeSwipeHintChanged = { gestureUi.edgeSwipeHint = it },
@@ -471,12 +450,12 @@ fun VideoPlayerScreen(
             setMovieSubtitleMemory = { movieSubtitleMemory = it },
             setPosition = { position = it },
             setDuration = { duration = it },
-            setShowControls = { showControls = it },
-            setShowTopBar = { showTopBar = it },
-            setShowAudioSelector = { showAudioSelector = it },
-            setShowSpeedMenu = { showSpeedMenu = it },
-            setShowSleepMenu = { showSleepMenu = it },
-            setShowSrtBrowser = { showSrtBrowser = it },
+            setShowControls = { chromeUi.showControls = it },
+            setShowTopBar = { chromeUi.showTopBar = it },
+            setShowAudioSelector = { chromeUi.showAudioSelector = it },
+            setShowSpeedMenu = { chromeUi.showSpeedMenu = it },
+            setShowSleepMenu = { chromeUi.showSleepMenu = it },
+            setShowSrtBrowser = { chromeUi.showSrtBrowser = it },
             setPendingNextEpisode = { pendingNextEpisode = it },
             setNextEpisodeCountdown = { nextEpisodeCountdown = it },
             setShowNextEpisodeOverlay = { showNextEpisodeOverlay = it },
@@ -518,7 +497,7 @@ fun VideoPlayerScreen(
         driftUi = driftUi,
         studioUi = studioUi,
         audioLanguageCheckedForPath = audioLanguageCheckedForPath,
-        isDraggingSeekbar = isDraggingSeekbar,
+        isDraggingSeekbar = chromeUi.isDraggingSeekbar,
         isBuffering = playbackHealth.isBuffering,
         showSeekPreview = gestureUi.showSeekPreview,
         previewPosition = gestureUi.previewPosition,
@@ -527,23 +506,23 @@ fun VideoPlayerScreen(
         droppedFrameNudgeCount = playbackHealth.droppedFrameNudgeCount,
         lastNudgeAtMs = playbackHealth.lastNudgeAtMs,
         isPlaying = isPlaying,
-        showControls = showControls,
-        showTopBar = showTopBar,
-        controlsLocked = controlsLocked,
-        lockButtonVisibleWhileLocked = lockButtonVisibleWhileLocked,
-        showAudioSelector = showAudioSelector,
-        showSpeedMenu = showSpeedMenu,
-        showSleepMenu = showSleepMenu,
-        showSrtBrowser = showSrtBrowser,
+        showControls = chromeUi.showControls,
+        showTopBar = chromeUi.showTopBar,
+        controlsLocked = chromeUi.controlsLocked,
+        lockButtonVisibleWhileLocked = chromeUi.lockButtonVisibleWhileLocked,
+        showAudioSelector = chromeUi.showAudioSelector,
+        showSpeedMenu = chromeUi.showSpeedMenu,
+        showSleepMenu = chromeUi.showSleepMenu,
+        showSrtBrowser = chromeUi.showSrtBrowser,
         menuTouchKey = menuTouchKey,
-        brightnessGestureKey = brightnessGestureKey,
-        volumeGestureKey = volumeGestureKey,
+        brightnessGestureKey = chromeUi.brightnessGestureKey,
+        volumeGestureKey = chromeUi.volumeGestureKey,
         showSubtitleDock = showSubtitleDock,
         showSubtitleBloom = showSubtitleBloom,
         showDualSubsWindow = showDualSubsWindow,
         onNextRequested = { playbackNavigationCoordinator.playNext() },
         onPreviousRequested = { playbackNavigationCoordinator.playPrevious() },
-        onInitialBrightnessChanged = { brightnessPercent = it },
+        onInitialBrightnessChanged = { chromeUi.brightnessPercent = it },
         onAudioLanguageCheckedForPathChanged = { audioLanguageCheckedForPath = it },
         onBufferingChanged = { playbackHealth.isBuffering = it },
         onErrorRetryCountChanged = { playbackHealth.errorRetryCount = it },
@@ -554,8 +533,8 @@ fun VideoPlayerScreen(
             pendingNextEpisode = next
             nextEpisodeCountdown = 15
             showNextEpisodeOverlay = true
-            showControls = true
-            showTopBar = true
+            chromeUi.showControls = true
+            chromeUi.showTopBar = true
         },
         onAdvanceImmediately = { next ->
             currentMediaType = next.type
@@ -563,8 +542,8 @@ fun VideoPlayerScreen(
             onPlayNext(next)
         },
         onShowControlsAndTopBar = {
-            showControls = true
-            showTopBar = true
+            chromeUi.showControls = true
+            chromeUi.showTopBar = true
         },
         onRetryPlayback = { subtitleUri, resumePosition ->
             playCurrentVideoWithSubtitle(
@@ -583,15 +562,15 @@ fun VideoPlayerScreen(
         onPreviewBitmapChanged = { gestureUi.previewBitmap = it },
         onSeekPreviewLargeChanged = { gestureUi.isSeekPreviewLarge = it },
         onEnteredPip = { playerMenuCloseCoordinator.closeAll() },
-        onHideControls = { showControls = false },
-        onHideTopBar = { showTopBar = false },
-        onHideLockedButton = { lockButtonVisibleWhileLocked = false },
-        onHideAudioSelector = { showAudioSelector = false },
-        onHideSpeedMenu = { showSpeedMenu = false },
-        onHideSleepMenu = { showSleepMenu = false },
-        onHideSrtBrowser = { showSrtBrowser = false },
-        onHideBrightnessHud = { showBrightnessCircle = false },
-        onHideVolumeHud = { showVolumeCircle = false },
+        onHideControls = { chromeUi.chromeUi.showControls = false },
+        onHideTopBar = { chromeUi.chromeUi.showTopBar = false },
+        onHideLockedButton = { chromeUi.lockButtonVisibleWhileLocked = false },
+        onHideAudioSelector = { chromeUi.showAudioSelector = false },
+        onHideSpeedMenu = { chromeUi.showSpeedMenu = false },
+        onHideSleepMenu = { chromeUi.showSleepMenu = false },
+        onHideSrtBrowser = { chromeUi.showSrtBrowser = false },
+        onHideBrightnessHud = { chromeUi.showBrightnessCircle = false },
+        onHideVolumeHud = { chromeUi.showVolumeCircle = false },
         onHideSubtitleDock = { showSubtitleDock = false },
         onHideSubtitleBloom = {
             showSubtitleBloom = false
@@ -621,7 +600,7 @@ fun VideoPlayerScreen(
         studioUi = studioUi,
         dualUi = dualUi,
         driftUi = driftUi,
-        onShowControls = { showControls = true },
+        onShowControls = { chromeUi.showControls = true },
         onClearPendingSrtUri = { pendingSrtUri = null },
         onRestoredDualApplied = { restoredDualNeedsApply = false },
         onPendingDualAiLanguageChanged = { pendingDualAiLanguage = it },
@@ -770,7 +749,7 @@ fun VideoPlayerScreen(
                 movieAppearanceMemoryReady = it
             },
             setAudioSyncMs = { audioSyncMs = it },
-            setShowControls = { showControls = it },
+            setShowControls = { chromeUi.showControls = it },
             incrementMenuTouchKey = { studioUi.menuTouchKey++ },
         )
 
@@ -840,47 +819,47 @@ fun VideoPlayerScreen(
             previewFrames = gestureUi.previewFrames,
             previewPosition = gestureUi.previewPosition,
             previewBitmap = gestureUi.previewBitmap,
-            brightnessPercent = brightnessPercent,
-            volumePercent = volumePercent,
+            brightnessPercent = chromeUi.brightnessPercent,
+            volumePercent = chromeUi.volumePercent,
             videoScale = gestureUi.videoScale,
             videoOffsetX = gestureUi.videoOffsetX,
             videoOffsetY = gestureUi.videoOffsetY,
             screenWidthPx = playerLayout.screenWidthPx,
             screenHeightPx = playerLayout.screenHeightPx,
-            showControls = showControls,
-            showAudioSelector = showAudioSelector,
+            showControls = chromeUi.showControls,
+            showAudioSelector = chromeUi.showAudioSelector,
             showSubtitleDock = showSubtitleDock,
             showSubtitleBloom = showSubtitleBloom,
             showDualSubsWindow = showDualSubsWindow,
             showSubtitleBehaviourWindow = showSubtitleBehaviourWindow,
             showSpeechSubtitlePanel = subtitleAiUi.showSpeechSubtitlePanel,
             showSubtitleTranslationPanel = subtitleAiUi.showSubtitleTranslationPanel,
-            showSpeedMenu = showSpeedMenu,
-            showSleepMenu = showSleepMenu,
-            showSrtBrowser = showSrtBrowser,
+            showSpeedMenu = chromeUi.showSpeedMenu,
+            showSleepMenu = chromeUi.showSleepMenu,
+            showSrtBrowser = chromeUi.showSrtBrowser,
             coreUi = coreUi,
             trackUi = trackUi,
             searchUi = searchUi,
             driftUi = driftUi,
             subtitleSyncTools = subtitleSyncTools,
             playbackNavigationCoordinator = playbackNavigationCoordinator,
-            onDraggingSeekbarChanged = { isDraggingSeekbar = it },
+            onDraggingSeekbarChanged = { chromeUi.isDraggingSeekbar = it },
             onPreviewPositionChanged = { gestureUi.previewPosition = it },
             onPreviewBitmapChanged = { gestureUi.previewBitmap = it },
             onPositionChanged = { position = it },
-            onBrightnessPercentChanged = { brightnessPercent = it },
-            onVolumePercentChanged = { volumePercent = it },
-            onShowBrightnessCircleChanged = { showBrightnessCircle = it },
-            onShowVolumeCircleChanged = { showVolumeCircle = it },
+            onBrightnessPercentChanged = { chromeUi.brightnessPercent = it },
+            onVolumePercentChanged = { chromeUi.volumePercent = it },
+            onShowBrightnessCircleChanged = { chromeUi.showBrightnessCircle = it },
+            onShowVolumeCircleChanged = { chromeUi.showVolumeCircle = it },
             onVideoTransformChanged = { scaleValue, offsetX, offsetY ->
                 gestureUi.videoScale = scaleValue
                 gestureUi.videoOffsetX = offsetX
                 gestureUi.videoOffsetY = offsetY
             },
             onZoomModeToggle = { gestureUi.isZoomMode = !gestureUi.isZoomMode },
-            onShowControlsChanged = { showControls = it },
-            onShowTopBarChanged = { showTopBar = it },
-            onShowAudioSelectorChanged = { showAudioSelector = it },
+            onShowControlsChanged = { chromeUi.showControls = it },
+            onShowTopBarChanged = { chromeUi.showTopBar = it },
+            onShowAudioSelectorChanged = { chromeUi.showAudioSelector = it },
             onShowSubtitleDockChanged = { showSubtitleDock = it },
             onShowSubtitleBloomChanged = {
                 showSubtitleBloom = it
@@ -890,12 +869,12 @@ fun VideoPlayerScreen(
             onShowSubtitleBehaviourWindowChanged = { showSubtitleBehaviourWindow = it },
             onShowSpeechSubtitlePanelChanged = { subtitleAiUi.showSpeechSubtitlePanel = it },
             onShowSubtitleTranslationPanelChanged = { subtitleAiUi.showSubtitleTranslationPanel = it },
-            onShowSpeedMenuChanged = { showSpeedMenu = it },
-            onShowSleepMenuChanged = { showSleepMenu = it },
-            onShowSrtBrowserChanged = { showSrtBrowser = it },
+            onShowSpeedMenuChanged = { chromeUi.showSpeedMenu = it },
+            onShowSleepMenuChanged = { chromeUi.showSleepMenu = it },
+            onShowSrtBrowserChanged = { chromeUi.showSrtBrowser = it },
             onGestureEnd = {
-                brightnessGestureKey++
-                volumeGestureKey++
+                chromeUi.brightnessGestureKey++
+                chromeUi.volumeGestureKey++
             },
             externalControlsVisible = {
                 externalPresentation?.controlsVisible?.value == true
@@ -949,10 +928,10 @@ fun VideoPlayerScreen(
             studioUi = studioUi,
             isLandscape = playerLayout.isLandscape,
             hudSize = playerLayout.hudSize,
-            showBrightnessCircle = showBrightnessCircle,
-            brightnessPercent = brightnessPercent,
-            showVolumeCircle = showVolumeCircle,
-            volumePercent = volumePercent,
+            showBrightnessCircle = chromeUi.showBrightnessCircle,
+            brightnessPercent = chromeUi.brightnessPercent,
+            showVolumeCircle = chromeUi.showVolumeCircle,
+            volumePercent = chromeUi.volumePercent,
             edgeSwipeHint = gestureUi.edgeSwipeHint,
             showGlassesConnectedHint = showGlassesConnectedHint,
             showBufferingSpinner = playbackHealth.showBufferingSpinner,
@@ -962,8 +941,8 @@ fun VideoPlayerScreen(
             sleepTimerRemainingMs = sleepTimerRemainingMs,
             translationSuccessLanguage = subtitleAiUi.translationSuccessLanguage,
             translationSuccessBottomPadding = playerLayout.bottomDockPadding + playerLayout.playButton + 26.dp,
-            showSpeedMenu = showSpeedMenu,
-            showSleepMenu = showSleepMenu,
+            showSpeedMenu = chromeUi.showSpeedMenu,
+            showSleepMenu = chromeUi.showSleepMenu,
             playbackSpeed = playbackSpeed,
             sleepTimerMinutes = sleepTimerMinutes,
             topClusterPaddingTop = playerLayout.topClusterPaddingTop,
@@ -971,7 +950,7 @@ fun VideoPlayerScreen(
             sidePadding = playerLayout.sidePadding,
             smallMenuWidth = playerLayout.smallMenuWidth,
             smallMenuMaxHeight = playerLayout.smallMenuMaxHeight,
-            onShowControls = { showControls = true },
+            onShowControls = { chromeUi.showControls = true },
             onBack = onBack,
             onRetry = {
                 playbackHealth.errorRetryCount = 0
@@ -982,9 +961,9 @@ fun VideoPlayerScreen(
                 )
             },
             onSpeedSelected = { playerSessionActionsCoordinator.setPlaybackSpeed(it) },
-            onDismissSpeedMenu = { showSpeedMenu = false },
+            onDismissSpeedMenu = { chromeUi.showSpeedMenu = false },
             onSleepSelected = { playerSessionActionsCoordinator.setSleepTimer(it) },
-            onDismissSleepMenu = { showSleepMenu = false },
+            onDismissSleepMenu = { chromeUi.showSleepMenu = false },
         )
 
         // Slice 57: local/audio track popups, quick subtitle controls, track
@@ -998,8 +977,8 @@ fun VideoPlayerScreen(
             canDownloadExternalSubtitles = canDownloadExternalSubtitles,
             pendingDeletePaths = pendingDeletePaths,
             generatedSubtitleFiles = subtitleAiUi.generatedSubtitleFiles,
-            showSrtBrowser = showSrtBrowser,
-            showAudioSelector = showAudioSelector,
+            showSrtBrowser = chromeUi.showSrtBrowser,
+            showAudioSelector = chromeUi.showAudioSelector,
             audioSyncMs = audioSyncMs,
             popupBottomPadding = playerLayout.popupBottomPadding,
             srtPopupWidth = playerLayout.srtPopupWidth,
@@ -1036,12 +1015,12 @@ fun VideoPlayerScreen(
             subtitleResetCoordinator = subtitleResetCoordinator,
             subtitleSyncTools = subtitleSyncTools,
             onPendingSrtUriChanged = { pendingSrtUri = it },
-            onShowSrtBrowserChanged = { showSrtBrowser = it },
-            onShowAudioSelectorChanged = { showAudioSelector = it },
+            onShowSrtBrowserChanged = { chromeUi.showSrtBrowser = it },
+            onShowAudioSelectorChanged = { chromeUi.showAudioSelector = it },
             onAudioSyncMsChanged = { audioSyncMs = it },
             onAudioMenuInteraction = { menuTouchKey++ },
-            onShowControlsChanged = { showControls = it },
-            onShowTopBarChanged = { showTopBar = it },
+            onShowControlsChanged = { chromeUi.showControls = it },
+            onShowTopBarChanged = { chromeUi.showTopBar = it },
             onShowSubtitleBloomChanged = { showSubtitleBloom = it },
             onStudioCategoryChanged = { studioCategory = it },
             onLaunchSrtPicker = subtitleFileRuntime.launchSrtPicker,
@@ -1062,13 +1041,13 @@ fun VideoPlayerScreen(
             isCurrentTvShow = isCurrentTvShow,
             isLandscape = playerLayout.isLandscape,
             isZoomMode = gestureUi.isZoomMode,
-            showControls = showControls,
-            isDraggingSeekbar = isDraggingSeekbar,
-            isDraggingSeekbarNow = { isDraggingSeekbar },
-            showAudioSelector = showAudioSelector,
-            showSpeedMenu = showSpeedMenu,
-            showSleepMenu = showSleepMenu,
-            showSrtBrowser = showSrtBrowser,
+            showControls = chromeUi.showControls,
+            isDraggingSeekbar = chromeUi.isDraggingSeekbar,
+            isDraggingSeekbarNow = { chromeUi.isDraggingSeekbar },
+            showAudioSelector = chromeUi.showAudioSelector,
+            showSpeedMenu = chromeUi.showSpeedMenu,
+            showSleepMenu = chromeUi.showSleepMenu,
+            showSrtBrowser = chromeUi.showSrtBrowser,
             showSeekPreview = gestureUi.showSeekPreview,
             subtitleSettingsVisible = coreUi.showSettings,
             trackSelectorVisible = trackUi.showSelector,
@@ -1116,9 +1095,9 @@ fun VideoPlayerScreen(
             onBack = onBack,
             playbackNavigationCoordinator = playbackNavigationCoordinator,
             playerMenuCloseCoordinator = playerMenuCloseCoordinator,
-            onShowSpeedMenuChanged = { showSpeedMenu = it },
-            onShowSleepMenuChanged = { showSleepMenu = it },
-            onShowControlsChanged = { showControls = it },
+            onShowSpeedMenuChanged = { chromeUi.showSpeedMenu = it },
+            onShowSleepMenuChanged = { chromeUi.showSleepMenu = it },
+            onShowControlsChanged = { chromeUi.showControls = it },
             onClusterHeightMeasured = { clusterHeightPx = it },
             onPlayNextEpisode = { next ->
                 showNextEpisodeOverlay = false
@@ -1132,13 +1111,13 @@ fun VideoPlayerScreen(
                 pendingNextEpisode = null
                 nextEpisodeCountdown = 0
                 nextEpisodeDismissed = true
-                showControls = true
+                chromeUi.showControls = true
             },
             onPositionChanged = { position = it },
-            onShowTopBarChanged = { showTopBar = it },
+            onShowTopBarChanged = { chromeUi.showTopBar = it },
             onVideoEndedChanged = { isVideoEnded = it },
             onAutoPlayEnabledChanged = { autoPlayEnabled = it },
-            onShowAudioSelectorChanged = { showAudioSelector = it },
+            onShowAudioSelectorChanged = { chromeUi.showAudioSelector = it },
             onMenuTouch = { menuTouchKey++ },
             onAudioCenterMeasured = { audioIconX = it },
             onSubtitleClick = {
@@ -1151,10 +1130,10 @@ fun VideoPlayerScreen(
                 playerMenuCloseCoordinator.closeAll()
                 showSubtitleDock = !wasOpen
                 if (showSubtitleDock) {
-                    showControls = false
-                    showTopBar = false
+                    chromeUi.showControls = false
+                    chromeUi.showTopBar = false
                 } else {
-                    showControls = true
+                    chromeUi.showControls = true
                 }
                 menuTouchKey++
             },
@@ -1162,11 +1141,11 @@ fun VideoPlayerScreen(
                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                 playerMenuCloseCoordinator.closeAll()
                 showSubtitleBloom = true
-                showControls = false
-                showTopBar = false
+                chromeUi.showControls = false
+                chromeUi.showTopBar = false
             },
             onSubtitleCenterMeasured = { subIconX = it },
-            onDraggingSeekbarChanged = { isDraggingSeekbar = it },
+            onDraggingSeekbarChanged = { chromeUi.isDraggingSeekbar = it },
             onShowSeekPreviewChanged = { gestureUi.showSeekPreview = it },
             onPreviewPositionChanged = { gestureUi.previewPosition = it },
             onPreviewBitmapChanged = { gestureUi.previewBitmap = it },
@@ -1179,9 +1158,9 @@ fun VideoPlayerScreen(
             context = context,
             player = exoPlayer,
             haptics = haptics,
-            controlsLocked = controlsLocked,
-            lockButtonVisibleWhileLocked = lockButtonVisibleWhileLocked,
-            showControls = showControls,
+            controlsLocked = chromeUi.controlsLocked,
+            lockButtonVisibleWhileLocked = chromeUi.lockButtonVisibleWhileLocked,
+            showControls = chromeUi.showControls,
             externalDisplayActive = externalPlayerView != null,
             isLandscape = playerLayout.isLandscape,
             containerWidth = playerMaxWidth,
@@ -1226,8 +1205,8 @@ fun VideoPlayerScreen(
             speechSubtitleCoordinator = speechSubtitleCoordinator,
             subtitleTranslationCoordinator = subtitleTranslationCoordinator,
             generatedSubtitleOrchestrator = generatedSubtitleOrchestrator,
-            onControlsLockedChanged = { controlsLocked = it },
-            onLockButtonVisibleWhileLockedChanged = { lockButtonVisibleWhileLocked = it },
+            onControlsLockedChanged = { chromeUi.controlsLocked = it },
+            onLockButtonVisibleWhileLockedChanged = { chromeUi.lockButtonVisibleWhileLocked = it },
             onAutoSyncStatusChanged = { autoSyncStatus = it },
             onDismissDelete = { subtitleFileRuntime.pendingDeleteFileState.value = null },
             onConfirmDelete = { file ->
