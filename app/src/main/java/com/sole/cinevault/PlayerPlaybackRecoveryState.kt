@@ -1,5 +1,6 @@
 package com.sole.cinevault
 
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +25,7 @@ internal class PlayerPlaybackRecoveryState {
     var softwareFallbackRequested by mutableStateOf(false)
     var fallbackResumePositionMs by mutableStateOf(0L)
     var fallbackErrorCode by mutableIntStateOf(0)
+    var fallbackSubtitleUri by mutableStateOf<Uri?>(null)
 
     // Slice 76: capability report for the currently selected VIDEO track.
     // Because this entire holder is remembered per currentVideo.path, the
@@ -44,9 +46,16 @@ internal class PlayerPlaybackRecoveryState {
     fun requestSoftwareFallback(
         errorCode: Int,
         resumePositionMs: Long,
+        subtitleUri: Uri?,
     ) {
-        softwareFallbackRequested = true
         fallbackErrorCode = errorCode
         fallbackResumePositionMs = resumePositionMs.coerceAtLeast(0L)
+        fallbackSubtitleUri = subtitleUri
+        softwareFallbackRequested = true
+    }
+
+    fun activateSoftwareFallback() {
+        engineMode = PlaybackEngineMode.SOFTWARE
+        softwareFallbackRequested = false
     }
 }

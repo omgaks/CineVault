@@ -369,7 +369,10 @@ fun VideoPlayerScreen(
         onShowSpeedMenuChanged = { chromeUi.showSpeedMenu = it },
         onShowSleepMenuChanged = { chromeUi.showSleepMenu = it },
         onShowControlsChanged = { chromeUi.showControls = it },
-        onCurrentVideoChanged = { currentVideo = it },
+        onCurrentVideoChanged = {
+            playerRuntime.decoderSelector.engineMode = PlaybackEngineMode.HARDWARE
+            currentVideo = it
+        },
         onCurrentMediaTypeChanged = { currentMediaType = it },
         onEdgeSwipeHintChanged = { gestureUi.edgeSwipeHint = it },
         onPlayerErrorMessageChanged = { playbackHealth.playerErrorMessage = it },
@@ -390,6 +393,37 @@ fun VideoPlayerScreen(
         resumePosition,
         isOriginalSubtitle,
     )
+
+    // Playback Resilience Slice 79:
+    // A decoder failure can now move the SAME ExoPlayer instance from the
+    // normal MediaCodec selection path to a software-only VIDEO decoder.
+    //
+    // The request is consumed from Compose state rather than re-preparing the
+    // player directly inside Player.Listener.onPlayerError(), which avoids
+    // doing player mutation from inside the error callback itself.
+    LaunchedEffect(
+        playbackRecovery.softwareFallbackRequested,
+        currentVideo.path,
+    ) {
+        if (!playbackRecovery.softwareFallbackRequested) return@LaunchedEffect
+
+        val resumePosition = playbackRecovery.fallbackResumePositionMs
+        val subtitleUri = playbackRecovery.fallbackSubtitleUri
+
+        playerRuntime.decoderSelector.engineMode = PlaybackEngineMode.SOFTWARE
+        playbackRecovery.activateSoftwareFallback()
+
+        // A software rescue is a new engine attempt, not another retry of the
+        // failed native decoder. Reset the transient retry budget accordingly.
+        playbackHealth.errorRetryCount = 0
+        playbackHealth.playerErrorMessage = null
+
+        playCurrentVideoWithSubtitle(
+            subtitleUri = subtitleUri,
+            resumePosition = resumePosition,
+            isOriginalSubtitle = false,
+        )
+    }
 
     // Slice 63: subtitle file deletion/undo/OS consent and local subtitle
     // import/picker handling now live in one responsibility-owned runtime.
@@ -548,6 +582,7 @@ fun VideoPlayerScreen(
             chromeUi.showTopBar = true
         },
         onAdvanceImmediately = { next ->
+            playerRuntime.decoderSelector.engineMode = PlaybackEngineMode.HARDWARE
             currentMediaType = next.type
             currentVideo = next.video
             onPlayNext(next)
@@ -563,10 +598,11 @@ fun VideoPlayerScreen(
                 isOriginalSubtitle = false,
             )
         },
-        onSoftwareFallbackRequested = { errorCode, resumePosition, _ ->
+        onSoftwareFallbackRequested = { errorCode, resumePosition, subtitleUri ->
             playbackRecovery.requestSoftwareFallback(
                 errorCode = errorCode,
                 resumePositionMs = resumePosition,
+                subtitleUri = subtitleUri,
             )
         },
         onPositionChanged = { position = it },
@@ -794,7 +830,10 @@ fun VideoPlayerScreen(
             onNextEpisodeCountdownChanged = { nextEpisodeCountdown = it },
             onShowNextEpisodeOverlayChanged = { showNextEpisodeOverlay = it },
             onCurrentMediaTypeChanged = { currentMediaType = it },
-            onCurrentVideoChanged = { currentVideo = it },
+            onCurrentVideoChanged = {
+            playerRuntime.decoderSelector.engineMode = PlaybackEngineMode.HARDWARE
+            currentVideo = it
+        },
             onPlayNext = onPlayNext,
         )
         val currentMeta = episodeRuntime.currentMeta
