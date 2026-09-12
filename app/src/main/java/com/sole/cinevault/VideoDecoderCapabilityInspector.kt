@@ -26,6 +26,7 @@ data class VideoDecoderCapabilityReport(
     val status: VideoDecoderCapabilityStatus,
     val decoders: List<VideoDecoderCandidate>,
     val queryError: String? = null,
+    val streamProfile: VideoStreamProfile? = null,
 ) {
     val hasHardwareDecoder: Boolean
         get() = decoders.any { it.hardwareAccelerated && it.formatSupported }
@@ -72,11 +73,13 @@ fun summarizeVideoDecoderCapability(
 fun inspectVideoDecoderCapability(
     format: Format,
 ): VideoDecoderCapabilityReport {
+    val streamProfile = buildVideoStreamProfile(format)
     val mimeType = format.sampleMimeType
         ?: return VideoDecoderCapabilityReport(
             mimeType = null,
             status = VideoDecoderCapabilityStatus.UNKNOWN,
             decoders = emptyList(),
+            streamProfile = streamProfile,
         )
 
     return try {
@@ -100,6 +103,7 @@ fun inspectVideoDecoderCapability(
             mimeType = mimeType,
             status = summarizeVideoDecoderCapability(candidates),
             decoders = candidates,
+            streamProfile = streamProfile,
         )
     } catch (error: MediaCodecUtil.DecoderQueryException) {
         VideoDecoderCapabilityReport(
@@ -107,6 +111,7 @@ fun inspectVideoDecoderCapability(
             status = VideoDecoderCapabilityStatus.UNKNOWN,
             decoders = emptyList(),
             queryError = error.message ?: error.javaClass.simpleName,
+            streamProfile = streamProfile,
         )
     }
 }

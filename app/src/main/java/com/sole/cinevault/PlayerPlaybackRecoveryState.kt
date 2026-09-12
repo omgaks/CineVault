@@ -41,6 +41,9 @@ internal class PlayerPlaybackRecoveryState {
         NativeVideoPlaybackReadiness.UNKNOWN
     )
 
+    val videoStreamProfile: VideoStreamProfile?
+        get() = videoDecoderCapabilityReport?.streamProfile
+
     fun resetForNewVideo() {
         engineMode = PlaybackEngineMode.HARDWARE
         softwareFallbackAvailable = false
