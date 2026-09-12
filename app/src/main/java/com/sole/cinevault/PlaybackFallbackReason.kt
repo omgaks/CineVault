@@ -5,6 +5,7 @@ enum class PlaybackFallbackReason {
     DECODER_QUERY_FAILED,
     DECODING_FAILED,
     FORMAT_UNSUPPORTED,
+    NATIVE_DECODER_UNAVAILABLE,
     UNKNOWN_DECODER_FAILURE,
 }
 
@@ -37,6 +38,7 @@ fun playbackFallbackReasonLabel(
         PlaybackFallbackReason.DECODER_QUERY_FAILED -> "Decoder query failed"
         PlaybackFallbackReason.DECODING_FAILED -> "Decode failed"
         PlaybackFallbackReason.FORMAT_UNSUPPORTED -> "Format unsupported"
+        PlaybackFallbackReason.NATIVE_DECODER_UNAVAILABLE -> "Native decoder unavailable"
         PlaybackFallbackReason.UNKNOWN_DECODER_FAILURE -> "Decoder failure"
         null -> null
     }

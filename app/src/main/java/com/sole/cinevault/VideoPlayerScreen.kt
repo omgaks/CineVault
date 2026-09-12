@@ -405,6 +405,27 @@ fun VideoPlayerScreen(
     // player directly inside Player.Listener.onPlayerError(), which avoids
     // doing player mutation from inside the error callback itself.
     LaunchedEffect(
+        playbackRecovery.nativeVideoPlaybackReadiness,
+        playbackRecovery.softwareFallbackAvailable,
+        playbackRecovery.engineMode,
+        currentVideo.path,
+    ) {
+        if (
+            playbackRecovery.nativeVideoPlaybackReadiness ==
+                NativeVideoPlaybackReadiness.SOFTWARE_FALLBACK_NEEDED &&
+            playbackRecovery.softwareFallbackAvailable &&
+            playbackRecovery.engineMode == PlaybackEngineMode.HARDWARE &&
+            !playbackRecovery.fallbackOccurred &&
+            !playbackRecovery.softwareFallbackRequested
+        ) {
+            playbackRecovery.requestProactiveSoftwareFallback(
+                resumePositionMs = exoPlayer.currentPosition,
+                subtitleUri = trackUi.originalUri,
+            )
+        }
+    }
+
+    LaunchedEffect(
         playbackRecovery.softwareFallbackRequested,
         currentVideo.path,
     ) {

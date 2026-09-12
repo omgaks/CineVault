@@ -58,6 +58,26 @@ internal class PlayerPlaybackRecoveryState {
         softwareFallbackRequested = true
     }
 
+    fun requestProactiveSoftwareFallback(
+        resumePositionMs: Long,
+        subtitleUri: Uri?,
+    ) {
+        if (
+            engineMode != PlaybackEngineMode.HARDWARE ||
+            fallbackOccurred ||
+            softwareFallbackRequested ||
+            !softwareFallbackAvailable
+        ) {
+            return
+        }
+
+        fallbackErrorCode = 0
+        fallbackReason = PlaybackFallbackReason.NATIVE_DECODER_UNAVAILABLE
+        fallbackResumePositionMs = resumePositionMs.coerceAtLeast(0L)
+        fallbackSubtitleUri = subtitleUri
+        softwareFallbackRequested = true
+    }
+
     fun activateSoftwareFallback() {
         engineMode = PlaybackEngineMode.SOFTWARE
         fallbackOccurred = true
