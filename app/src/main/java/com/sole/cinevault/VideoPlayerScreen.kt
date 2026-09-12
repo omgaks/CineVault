@@ -533,7 +533,7 @@ fun VideoPlayerScreen(
         onInitialBrightnessChanged = { chromeUi.brightnessPercent = it },
         onAudioLanguageCheckedForPathChanged = { audioLanguageCheckedForPath = it },
         onVideoDecoderCapabilityReportChanged = {
-            playbackRecovery.videoDecoderCapabilityReport = it
+            playbackRecovery.updateVideoDecoderCapability(it)
         },
         onBufferingChanged = { playbackHealth.isBuffering = it },
         onErrorRetryCountChanged = { playbackHealth.errorRetryCount = it },

@@ -29,6 +29,16 @@ internal class PlayerPlaybackRecoveryState {
     // Because this entire holder is remembered per currentVideo.path, the
     // report cannot leak from one title/episode into another.
     var videoDecoderCapabilityReport by mutableStateOf<VideoDecoderCapabilityReport?>(null)
+    var nativeVideoPlaybackReadiness by mutableStateOf(
+        NativeVideoPlaybackReadiness.UNKNOWN
+    )
+
+    fun updateVideoDecoderCapability(
+        report: VideoDecoderCapabilityReport?,
+    ) {
+        videoDecoderCapabilityReport = report
+        nativeVideoPlaybackReadiness = decideNativeVideoPlaybackReadiness(report)
+    }
 
     fun requestSoftwareFallback(
         errorCode: Int,
