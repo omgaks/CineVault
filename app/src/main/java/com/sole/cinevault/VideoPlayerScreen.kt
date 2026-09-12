@@ -683,23 +683,9 @@ fun VideoPlayerScreen(
             setSpeechTimeline = { autoSyncSpeechTimeline = it }
         )
     }
-    // Stage 2C: speech recognition and subtitle translation are independent.
-    // Translation never requires Whisper and resolves normal Subtitle Studio /
-    // local subtitle sources through SubtitleSourceResolver.
-    var speechSubtitleStatus by remember {
-        mutableStateOf<SpeechSubtitleStatus>(SpeechSubtitleStatus.Idle)
-    }
-    var subtitleTranslationStatus by remember {
-        mutableStateOf<SubtitleTranslationStatus>(SubtitleTranslationStatus.Idle)
-    }
-    var translationSuccessLanguage by remember { mutableStateOf<String?>(null) }
-    var showSpeechSubtitlePanel by remember { mutableStateOf(false) }
-    var showSubtitleTranslationPanel by remember { mutableStateOf(false) }
-
-    var generatedSubtitleRefreshKey by remember(currentVideo.path) { mutableIntStateOf(0) }
-    var generatedSubtitleFiles by remember(currentVideo.path) {
-        mutableStateOf<List<GeneratedSubtitleFile>>(emptyList())
-    }
+    // Slice 68: Speech-to-Subs / translation presentation state and generated
+    // subtitle refresh state now live together in one per-video AI state holder.
+    val subtitleAiUi = remember(currentVideo.path) { PlayerSubtitleAiUiState() }
 
     // Slice 52: generated subtitle / Speech-to-Subs / AI Translation runtime
     // orchestration now lives outside the giant player composable. The player
@@ -714,20 +700,20 @@ fun VideoPlayerScreen(
         coreUi = coreUi,
         dualUi = dualUi,
         subtitleSyncTools = subtitleSyncTools,
-        speechSubtitleStatus = speechSubtitleStatus,
-        onSpeechSubtitleStatusChanged = { speechSubtitleStatus = it },
-        subtitleTranslationStatus = subtitleTranslationStatus,
-        onSubtitleTranslationStatusChanged = { subtitleTranslationStatus = it },
+        speechSubtitleStatus = subtitleAiUi.speechSubtitleStatus,
+        onSpeechSubtitleStatusChanged = { subtitleAiUi.speechSubtitleStatus = it },
+        subtitleTranslationStatus = subtitleAiUi.subtitleTranslationStatus,
+        onSubtitleTranslationStatusChanged = { subtitleAiUi.subtitleTranslationStatus = it },
         pendingDualAiLanguage = pendingDualAiLanguage,
         onPendingDualAiLanguageChanged = { pendingDualAiLanguage = it },
-        generatedSubtitleRefreshKey = generatedSubtitleRefreshKey,
-        onGeneratedSubtitleRefreshRequested = { generatedSubtitleRefreshKey++ },
-        onGeneratedSubtitleFilesLoaded = { generatedSubtitleFiles = it },
-        showSpeechSubtitlePanel = showSpeechSubtitlePanel,
-        showSubtitleTranslationPanel = showSubtitleTranslationPanel,
-        onShowSpeechSubtitlePanelChanged = { showSpeechSubtitlePanel = it },
-        onShowSubtitleTranslationPanelChanged = { showSubtitleTranslationPanel = it },
-        onTranslationSuccessLanguageChanged = { translationSuccessLanguage = it },
+        generatedSubtitleRefreshKey = subtitleAiUi.generatedSubtitleRefreshKey,
+        onGeneratedSubtitleRefreshRequested = { subtitleAiUi.generatedSubtitleRefreshKey++ },
+        onGeneratedSubtitleFilesLoaded = { subtitleAiUi.generatedSubtitleFiles = it },
+        showSpeechSubtitlePanel = subtitleAiUi.showSpeechSubtitlePanel,
+        showSubtitleTranslationPanel = subtitleAiUi.showSubtitleTranslationPanel,
+        onShowSpeechSubtitlePanelChanged = { subtitleAiUi.showSpeechSubtitlePanel = it },
+        onShowSubtitleTranslationPanelChanged = { subtitleAiUi.showSubtitleTranslationPanel = it },
+        onTranslationSuccessLanguageChanged = { subtitleAiUi.translationSuccessLanguage = it },
         playCurrentVideoWithSubtitle = { uri, resumeAt ->
             playCurrentVideoWithSubtitle(
                 uri,
@@ -901,8 +887,8 @@ fun VideoPlayerScreen(
             showSubtitleBloom = showSubtitleBloom,
             showDualSubsWindow = showDualSubsWindow,
             showSubtitleBehaviourWindow = showSubtitleBehaviourWindow,
-            showSpeechSubtitlePanel = showSpeechSubtitlePanel,
-            showSubtitleTranslationPanel = showSubtitleTranslationPanel,
+            showSpeechSubtitlePanel = subtitleAiUi.showSpeechSubtitlePanel,
+            showSubtitleTranslationPanel = subtitleAiUi.showSubtitleTranslationPanel,
             showSpeedMenu = showSpeedMenu,
             showSleepMenu = showSleepMenu,
             showSrtBrowser = showSrtBrowser,
@@ -936,8 +922,8 @@ fun VideoPlayerScreen(
             },
             onShowDualSubsWindowChanged = { showDualSubsWindow = it },
             onShowSubtitleBehaviourWindowChanged = { showSubtitleBehaviourWindow = it },
-            onShowSpeechSubtitlePanelChanged = { showSpeechSubtitlePanel = it },
-            onShowSubtitleTranslationPanelChanged = { showSubtitleTranslationPanel = it },
+            onShowSpeechSubtitlePanelChanged = { subtitleAiUi.showSpeechSubtitlePanel = it },
+            onShowSubtitleTranslationPanelChanged = { subtitleAiUi.showSubtitleTranslationPanel = it },
             onShowSpeedMenuChanged = { showSpeedMenu = it },
             onShowSleepMenuChanged = { showSleepMenu = it },
             onShowSrtBrowserChanged = { showSrtBrowser = it },
@@ -1008,7 +994,7 @@ fun VideoPlayerScreen(
             playerErrorMessage = playbackHealth.playerErrorMessage,
             sleepTimerActive = sleepTimerActive,
             sleepTimerRemainingMs = sleepTimerRemainingMs,
-            translationSuccessLanguage = translationSuccessLanguage,
+            translationSuccessLanguage = subtitleAiUi.translationSuccessLanguage,
             translationSuccessBottomPadding = bottomDockPadding + playButton + 26.dp,
             showSpeedMenu = showSpeedMenu,
             showSleepMenu = showSleepMenu,
@@ -1045,7 +1031,7 @@ fun VideoPlayerScreen(
             videoPath = currentVideo.path,
             canDownloadExternalSubtitles = canDownloadExternalSubtitles,
             pendingDeletePaths = pendingDeletePaths,
-            generatedSubtitleFiles = generatedSubtitleFiles,
+            generatedSubtitleFiles = subtitleAiUi.generatedSubtitleFiles,
             showSrtBrowser = showSrtBrowser,
             showAudioSelector = showAudioSelector,
             audioSyncMs = audioSyncMs,
@@ -1128,8 +1114,8 @@ fun VideoPlayerScreen(
             showSubtitleBloom = showSubtitleBloom,
             showDualSubsWindow = showDualSubsWindow,
             showSubtitleBehaviourWindow = showSubtitleBehaviourWindow,
-            showSpeechSubtitlePanel = showSpeechSubtitlePanel,
-            showSubtitleTranslationPanel = showSubtitleTranslationPanel,
+            showSpeechSubtitlePanel = subtitleAiUi.showSpeechSubtitlePanel,
+            showSubtitleTranslationPanel = subtitleAiUi.showSubtitleTranslationPanel,
             externalDisplayActive = externalPlayerView != null,
             autoSubtitleStatus = autoSubtitleFetch.status,
             playbackSpeed = playbackSpeed,
@@ -1244,7 +1230,7 @@ fun VideoPlayerScreen(
             pendingDeletePaths = pendingDeletePaths,
             currentVideoPath = currentVideo.path,
             canDownloadExternalSubtitles = canDownloadExternalSubtitles,
-            generatedSubtitleFiles = generatedSubtitleFiles,
+            generatedSubtitleFiles = subtitleAiUi.generatedSubtitleFiles,
             coreUi = coreUi,
             trackUi = trackUi,
             searchUi = searchUi,
@@ -1267,10 +1253,10 @@ fun VideoPlayerScreen(
             speechJobProgress = speechJobProgress,
             translationJobLabel = translationJobLabel,
             translationJobProgress = translationJobProgress,
-            showSpeechSubtitlePanel = showSpeechSubtitlePanel,
-            showSubtitleTranslationPanel = showSubtitleTranslationPanel,
-            speechSubtitleStatus = speechSubtitleStatus,
-            subtitleTranslationStatus = subtitleTranslationStatus,
+            showSpeechSubtitlePanel = subtitleAiUi.showSpeechSubtitlePanel,
+            showSubtitleTranslationPanel = subtitleAiUi.showSubtitleTranslationPanel,
+            speechSubtitleStatus = subtitleAiUi.speechSubtitleStatus,
+            subtitleTranslationStatus = subtitleAiUi.subtitleTranslationStatus,
             speechSubtitleCoordinator = speechSubtitleCoordinator,
             subtitleTranslationCoordinator = subtitleTranslationCoordinator,
             generatedSubtitleOrchestrator = generatedSubtitleOrchestrator,
@@ -1287,8 +1273,8 @@ fun VideoPlayerScreen(
             onShowSubtitleBloomChanged = { showSubtitleBloom = it },
             onShowSubtitleBehaviourWindowChanged = { showSubtitleBehaviourWindow = it },
             onShowDualSubsWindowChanged = { showDualSubsWindow = it },
-            onShowSpeechSubtitlePanelChanged = { showSpeechSubtitlePanel = it },
-            onShowSubtitleTranslationPanelChanged = { showSubtitleTranslationPanel = it },
+            onShowSpeechSubtitlePanelChanged = { subtitleAiUi.showSpeechSubtitlePanel = it },
+            onShowSubtitleTranslationPanelChanged = { subtitleAiUi.showSubtitleTranslationPanel = it },
             onPendingDualAiLanguageChanged = { pendingDualAiLanguage = it },
             onDualSecondaryColorHexChanged = { dualSecondaryColorHex = it },
         )
