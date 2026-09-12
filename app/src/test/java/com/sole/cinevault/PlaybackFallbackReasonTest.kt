@@ -35,6 +35,16 @@ class PlaybackFallbackReasonTest {
     }
 
     @Test
+    fun proactiveFallbackHasClearUiLabel() {
+        assertEquals(
+            "Native decoder unavailable",
+            playbackFallbackReasonLabel(
+                PlaybackFallbackReason.NATIVE_DECODER_UNAVAILABLE
+            ),
+        )
+    }
+
+    @Test
     fun labelsAreStableForUi() {
         assertEquals(
             "Decode failed",
