@@ -762,6 +762,15 @@ fun VideoPlayerScreen(
     val translationJobLabel = subtitleAiRuntime.translationJobLabel
     val translationJobProgress = subtitleAiRuntime.translationJobProgress
 
+    PlayerDecoderAnalytics(
+        player = exoPlayer,
+        capabilityReport = playbackRecovery.videoDecoderCapabilityReport,
+        engineMode = playbackRecovery.engineMode,
+        onDecoderStatusChanged = {
+            playbackRecovery.activeVideoDecoderStatus = it
+        },
+    )
+
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         // Captured as plain local vals (not referenced as the implicit
         // BoxWithConstraintsScope receiver) specifically so they can be
@@ -1280,9 +1289,16 @@ fun VideoPlayerScreen(
             onDualSecondaryColorHexChanged = { dualSecondaryColorHex = it },
         )
 
-
-
-
+        PlaybackDecoderStatusPill(
+            status = playbackRecovery.activeVideoDecoderStatus,
+            visible = isPlaying || playbackHealth.isBuffering,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(
+                    top = playerLayout.topClusterPaddingTop + 6.dp,
+                    end = playerLayout.sidePadding,
+                ),
+        )
 
     }
 }
