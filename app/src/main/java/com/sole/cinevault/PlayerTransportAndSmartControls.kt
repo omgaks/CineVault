@@ -39,6 +39,7 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
     showSrtBrowser: Boolean,
     showSeekPreview: Boolean,
     isDraggingSeekbar: Boolean,
+    isDraggingSeekbarNow: () -> Boolean,
     showNextEpisodeOverlay: Boolean,
     pendingNextEpisode: VideoWithMetadata?,
     nextEpisodeCountdown: Int,
@@ -50,6 +51,7 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
     duration: Long,
     previewBitmap: Bitmap?,
     previewPosition: Long,
+    getPreviewPosition: () -> Long,
     isSeekPreviewLarge: Boolean,
     previewFrames: List<VideoThumbnailHelper.PreviewFrame>,
     sidePadding: Dp,
@@ -267,7 +269,7 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
             if (isStreamMedia) {
                 scope.launch {
                     delay(playerStreamSeekPreviewHideDelayMs())
-                    if (!isDraggingSeekbar) {
+                    if (!isDraggingSeekbarNow()) {
                         onShowSeekPreviewChanged(false)
                     }
                 }
@@ -279,11 +281,11 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
                             currentVideoPath,
                             safe,
                         )
-                    if (bmp != null) {
+                    if (bmp != null && getPreviewPosition() == safe) {
                         onPreviewBitmapChanged(bmp)
                     }
                     delay(playerLocalSeekPreviewHideDelayMs())
-                    if (!isDraggingSeekbar) {
+                    if (!isDraggingSeekbarNow()) {
                         onShowSeekPreviewChanged(false)
                     }
                 }

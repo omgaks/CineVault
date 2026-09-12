@@ -39,6 +39,7 @@ internal fun BoxScope.PlayerSubtitleSelectionAndAcquisitionSurfaces(
     audioPopupWidth: Dp,
     subtitlePopupWidth: Dp,
     trackStudioWidth: Dp,
+    trackSelectorWidth: Dp,
     trackStudioMaxHeight: Dp,
     styleStudioWidth: Dp,
     styleStudioMaxHeight: Dp,
@@ -70,6 +71,7 @@ internal fun BoxScope.PlayerSubtitleSelectionAndAcquisitionSurfaces(
     onShowSrtBrowserChanged: (Boolean) -> Unit,
     onShowAudioSelectorChanged: (Boolean) -> Unit,
     onAudioSyncMsChanged: (Int) -> Unit,
+    onAudioMenuInteraction: () -> Unit,
     onShowControlsChanged: (Boolean) -> Unit,
     onShowTopBarChanged: (Boolean) -> Unit,
     onShowSubtitleBloomChanged: (Boolean) -> Unit,
@@ -136,9 +138,9 @@ internal fun BoxScope.PlayerSubtitleSelectionAndAcquisitionSurfaces(
         audioSyncMs = audioSyncMs,
         onAudioSyncChange = {
             onAudioSyncMsChanged(it)
-            studioUi.menuTouchKey++
+            onAudioMenuInteraction()
         },
-        onAudioMenuInteraction = { studioUi.menuTouchKey++ },
+        onAudioMenuInteraction = onAudioMenuInteraction,
         onCloseAudioSelector = {
             onShowAudioSelectorChanged(false)
             onShowControlsChanged(true)
@@ -489,7 +491,7 @@ internal fun BoxScope.PlayerSubtitleSelectionAndAcquisitionSurfaces(
         },
         showDriftDialog = driftUi.showDialog,
         driftPopupWidth =
-            playerDriftPopupWidth(trackStudioWidth),
+            playerDriftPopupWidth(trackSelectorWidth),
         videoDurationMs = duration,
         currentPositionMs = position,
         driftPointA = driftUi.pointA,
