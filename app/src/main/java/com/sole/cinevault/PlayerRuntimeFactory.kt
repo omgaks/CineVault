@@ -52,12 +52,21 @@ internal fun rememberPlayerRuntime(
         .setBackBuffer(30_000, true)
         .build()
 
-    val player = ExoPlayer.Builder(context)
-        .setRenderersFactory(
-            CineRenderersFactory(context).setExtensionRendererMode(
-                DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
-            )
+    // Playback Resilience Slice 74:
+    // Let Media3 try another MediaCodec decoder when the device's preferred
+    // decoder fails to initialise or cannot handle the exact stream profile.
+    //
+    // This is still the native/hardware tier — it is deliberately separate
+    // from the future CPU software-video engine. The existing FFmpeg audio
+    // extension remains registered after the platform renderer.
+    val renderersFactory = CineRenderersFactory(context)
+        .setExtensionRendererMode(
+            DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
         )
+        .setEnableDecoderFallback(true)
+
+    val player = ExoPlayer.Builder(context)
+        .setRenderersFactory(renderersFactory)
         .setTrackSelector(trackSelector)
         .setLoadControl(loadControl)
         .setMediaSourceFactory(cineVaultMediaSourceFactory(context))
