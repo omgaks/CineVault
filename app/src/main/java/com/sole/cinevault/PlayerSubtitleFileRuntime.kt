@@ -41,7 +41,7 @@ internal fun rememberPlayerSubtitleFileRuntime(
     subtitleSearchCoordinator: SubtitleSearchCoordinator,
     trackUi: SubtitleTrackSelectionState,
     coreUi: SubtitleCoreUiState,
-    searchUi: SubtitleSearchUiState,
+    searchUi: SubtitleAcquisitionUiState,
     currentVideoPath: String,
 ): PlayerSubtitleFileRuntime {
     val latestVideoPath = rememberUpdatedState(currentVideoPath)
