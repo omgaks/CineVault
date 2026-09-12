@@ -3,6 +3,7 @@ package com.sole.cinevault
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import com.sole.cinevault.library.VideoFile
 import com.sole.cinevault.segments.SmartSegment
 import com.sole.cinevault.segments.SmartSegmentRepository
@@ -47,6 +48,10 @@ internal fun rememberPlayerEpisodeRuntime(
     onCurrentVideoChanged: (VideoFile) -> Unit,
     onPlayNext: (VideoWithMetadata) -> Unit,
 ): PlayerEpisodeRuntime {
+    val pendingNextEpisodeState = rememberUpdatedState(pendingNextEpisode)
+    val showNextEpisodeOverlayState = rememberUpdatedState(showNextEpisodeOverlay)
+    val isPlayingState = rememberUpdatedState(isPlaying)
+    val isVideoEndedState = rememberUpdatedState(isVideoEnded)
     val playlistNavigation = remember(
         currentVideo.path,
         currentVideo.name,
@@ -97,8 +102,8 @@ internal fun rememberPlayerEpisodeRuntime(
 
     val nextEpisodeCoordinator = remember {
         NextEpisodeCoordinator(
-            getPendingNextEpisode = { pendingNextEpisode },
-            getShowNextEpisodeOverlay = { showNextEpisodeOverlay },
+            getPendingNextEpisode = { pendingNextEpisodeState.value },
+            getShowNextEpisodeOverlay = { showNextEpisodeOverlayState.value },
             setShowNextEpisodeOverlay = onShowNextEpisodeOverlayChanged,
             setPendingNextEpisode = onPendingNextEpisodeChanged,
             setCurrentMediaType = onCurrentMediaTypeChanged,
@@ -116,7 +121,7 @@ internal fun rememberPlayerEpisodeRuntime(
                 if (!nextEpisodeCoordinator.shouldRunCountdown()) {
                     return@LaunchedEffect
                 }
-                if (isPlaying || isVideoEnded) {
+                if (isPlayingState.value || isVideoEndedState.value) {
                     count--
                 }
             }
