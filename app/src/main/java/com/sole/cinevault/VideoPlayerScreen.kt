@@ -283,27 +283,9 @@ fun VideoPlayerScreen(
     val smartSegmentRepository = remember { SmartSegmentRepository(context.applicationContext) }
     var smartSegmentResult by remember { mutableStateOf(SmartSegmentResult()) }
 
-    var isZoomMode by remember { mutableStateOf(false) }
-    // FIX (E2): pinch-to-zoom, separate from isZoomMode above — that's a
-    // binary FIT/CROP toggle (double-tap), this is continuous gesture-
-    // driven scale layered on top of whichever base mode is active, same
-    // as how a photo viewer lets you pinch-zoom regardless of its own
-    // fit setting.
-    var videoScale by remember { mutableStateOf(1f) }
-    var videoOffsetX by remember { mutableStateOf(0f) }
-    var videoOffsetY by remember { mutableStateOf(0f) }
-    var showSeekPreview by remember { mutableStateOf(false) }
-    var previewPosition by remember { mutableLongStateOf(0L) }
-    var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var isSeekPreviewLarge by remember { mutableStateOf(false) }
-    var previewFrames by remember { mutableStateOf<List<VideoThumbnailHelper.PreviewFrame>>(emptyList()) }
-    // Bumping this forces the preview-generation LaunchedEffect below to
-    // rerun even when currentVideo.path/duration haven't changed — needed
-    // because Auto-Sync deliberately clears previewFrames/previewBitmap
-    // mid-playback (see runAutoSync) to free memory before analysis, and
-    // that effect's own keys wouldn't otherwise notice anything changed.
-    var previewReloadKey by remember { mutableIntStateOf(0) }
-    var edgeSwipeHint by remember { mutableStateOf("") }
+    // Slice 66: zoom/pan, seek-preview and edge-swipe gesture state now
+    // live in one stable holder shared by the gesture and controls layers.
+    val gestureUi = remember { PlayerGestureUiState() }
 
     var isBuffering by remember { mutableStateOf(false) }
     var showBufferingSpinner by remember { mutableStateOf(false) }
@@ -409,7 +391,7 @@ fun VideoPlayerScreen(
         onShowControlsChanged = { showControls = it },
         onCurrentVideoChanged = { currentVideo = it },
         onCurrentMediaTypeChanged = { currentMediaType = it },
-        onEdgeSwipeHintChanged = { edgeSwipeHint = it },
+        onEdgeSwipeHintChanged = { gestureUi.edgeSwipeHint = it },
         onPlayerErrorMessageChanged = { playerErrorMessage = it },
         onVideoEndedChanged = { isVideoEnded = it },
         onPendingSrtUriChanged = { pendingSrtUri = it },
@@ -505,8 +487,8 @@ fun VideoPlayerScreen(
             setShowNextEpisodeOverlay = { showNextEpisodeOverlay = it },
             setNextEpisodeDismissed = { nextEpisodeDismissed = it },
             setSmartSegmentResult = { smartSegmentResult = it },
-            setPreviewBitmap = { previewBitmap = it },
-            clearPreviewFrames = { previewFrames = emptyList() },
+            setPreviewBitmap = { gestureUi.previewBitmap = it },
+            clearPreviewFrames = { gestureUi.previewFrames = emptyList() },
             setIsVideoEnded = { isVideoEnded = it },
             setPlayerErrorMessage = { playerErrorMessage = it },
             setErrorRetryCount = { errorRetryCount = it },
@@ -543,10 +525,10 @@ fun VideoPlayerScreen(
         audioLanguageCheckedForPath = audioLanguageCheckedForPath,
         isDraggingSeekbar = isDraggingSeekbar,
         isBuffering = isBuffering,
-        showSeekPreview = showSeekPreview,
-        previewPosition = previewPosition,
+        showSeekPreview = gestureUi.showSeekPreview,
+        previewPosition = gestureUi.previewPosition,
         duration = duration,
-        previewReloadKey = previewReloadKey,
+        previewReloadKey = gestureUi.previewReloadKey,
         droppedFrameNudgeCount = droppedFrameNudgeCount,
         lastNudgeAtMs = lastNudgeAtMs,
         isPlaying = isPlaying,
@@ -602,9 +584,9 @@ fun VideoPlayerScreen(
         onStuckBufferingChanged = { stuckBufferingHint = it },
         onDroppedFrameNudgeCountChanged = { droppedFrameNudgeCount = it },
         onLastNudgeAtMsChanged = { lastNudgeAtMs = it },
-        onPreviewFramesChanged = { previewFrames = it },
-        onPreviewBitmapChanged = { previewBitmap = it },
-        onSeekPreviewLargeChanged = { isSeekPreviewLarge = it },
+        onPreviewFramesChanged = { gestureUi.previewFrames = it },
+        onPreviewBitmapChanged = { gestureUi.previewBitmap = it },
+        onSeekPreviewLargeChanged = { gestureUi.isSeekPreviewLarge = it },
         onEnteredPip = { playerMenuCloseCoordinator.closeAll() },
         onHideControls = { showControls = false },
         onHideTopBar = { showTopBar = false },
@@ -698,8 +680,8 @@ fun VideoPlayerScreen(
             getCurrentVideoPath = { currentVideo.path },
             getAutoSyncStatus = { autoSyncStatus },
             setAutoSyncStatus = { autoSyncStatus = it },
-            resetPreviewFrames = { previewFrames = emptyList(); previewBitmap = null },
-            incrementPreviewReloadKey = { previewReloadKey++ },
+            resetPreviewFrames = { gestureUi.previewFrames = emptyList(); gestureUi.previewBitmap = null },
+            incrementPreviewReloadKey = { gestureUi.previewReloadKey++ },
             setSyncOffsetSeconds = { coreUi.syncOffset = it },
             setDriftScale = { driftUi.scale = it },
             incrementStudioMenuTouchKey = { studioUi.menuTouchKey++ },
@@ -882,10 +864,10 @@ fun VideoPlayerScreen(
         PlayerVideoSurface(
             player = exoPlayer,
             externalDisplayActive = externalPlayerView != null,
-            isZoomMode = isZoomMode,
-            videoScale = videoScale,
-            videoOffsetX = videoOffsetX,
-            videoOffsetY = videoOffsetY,
+            isZoomMode = gestureUi.isZoomMode,
+            videoScale = gestureUi.videoScale,
+            videoOffsetX = gestureUi.videoOffsetX,
+            videoOffsetY = gestureUi.videoOffsetY,
             onPlayerViewChanged = { pv ->
                 localPlayerView = pv
                 studioUi.playerView = externalPlayerView ?: pv
@@ -908,14 +890,14 @@ fun VideoPlayerScreen(
             episodeList = episodeList,
             isLandscape = isLandscape,
             canChangeEpisode = showPrevNextButtons,
-            previewFrames = previewFrames,
-            previewPosition = previewPosition,
-            previewBitmap = previewBitmap,
+            previewFrames = gestureUi.previewFrames,
+            previewPosition = gestureUi.previewPosition,
+            previewBitmap = gestureUi.previewBitmap,
             brightnessPercent = brightnessPercent,
             volumePercent = volumePercent,
-            videoScale = videoScale,
-            videoOffsetX = videoOffsetX,
-            videoOffsetY = videoOffsetY,
+            videoScale = gestureUi.videoScale,
+            videoOffsetX = gestureUi.videoOffsetX,
+            videoOffsetY = gestureUi.videoOffsetY,
             screenWidthPx = screenWidthPx,
             screenHeightPx = screenHeightPx,
             showControls = showControls,
@@ -936,19 +918,19 @@ fun VideoPlayerScreen(
             subtitleSyncTools = subtitleSyncTools,
             playbackNavigationCoordinator = playbackNavigationCoordinator,
             onDraggingSeekbarChanged = { isDraggingSeekbar = it },
-            onPreviewPositionChanged = { previewPosition = it },
-            onPreviewBitmapChanged = { previewBitmap = it },
+            onPreviewPositionChanged = { gestureUi.previewPosition = it },
+            onPreviewBitmapChanged = { gestureUi.previewBitmap = it },
             onPositionChanged = { position = it },
             onBrightnessPercentChanged = { brightnessPercent = it },
             onVolumePercentChanged = { volumePercent = it },
             onShowBrightnessCircleChanged = { showBrightnessCircle = it },
             onShowVolumeCircleChanged = { showVolumeCircle = it },
             onVideoTransformChanged = { scaleValue, offsetX, offsetY ->
-                videoScale = scaleValue
-                videoOffsetX = offsetX
-                videoOffsetY = offsetY
+                gestureUi.videoScale = scaleValue
+                gestureUi.videoOffsetX = offsetX
+                gestureUi.videoOffsetY = offsetY
             },
-            onZoomModeToggle = { isZoomMode = !isZoomMode },
+            onZoomModeToggle = { gestureUi.isZoomMode = !gestureUi.isZoomMode },
             onShowControlsChanged = { showControls = it },
             onShowTopBarChanged = { showTopBar = it },
             onShowAudioSelectorChanged = { showAudioSelector = it },
@@ -1024,7 +1006,7 @@ fun VideoPlayerScreen(
             brightnessPercent = brightnessPercent,
             showVolumeCircle = showVolumeCircle,
             volumePercent = volumePercent,
-            edgeSwipeHint = edgeSwipeHint,
+            edgeSwipeHint = gestureUi.edgeSwipeHint,
             showGlassesConnectedHint = showGlassesConnectedHint,
             showBufferingSpinner = showBufferingSpinner,
             stuckBufferingHint = stuckBufferingHint,
@@ -1132,7 +1114,7 @@ fun VideoPlayerScreen(
             isStreamMedia = isStreamMedia,
             isCurrentTvShow = isCurrentTvShow,
             isLandscape = isLandscape,
-            isZoomMode = isZoomMode,
+            isZoomMode = gestureUi.isZoomMode,
             showControls = showControls,
             isDraggingSeekbar = isDraggingSeekbar,
             isDraggingSeekbarNow = { isDraggingSeekbar },
@@ -1140,7 +1122,7 @@ fun VideoPlayerScreen(
             showSpeedMenu = showSpeedMenu,
             showSleepMenu = showSleepMenu,
             showSrtBrowser = showSrtBrowser,
-            showSeekPreview = showSeekPreview,
+            showSeekPreview = gestureUi.showSeekPreview,
             subtitleSettingsVisible = coreUi.showSettings,
             trackSelectorVisible = trackUi.showSelector,
             subtitleSearchVisible = searchUi.showSearch,
@@ -1169,11 +1151,11 @@ fun VideoPlayerScreen(
             smartSegmentResult = smartSegmentResult,
             position = position,
             duration = duration,
-            previewBitmap = previewBitmap,
-            previewPosition = previewPosition,
-            getPreviewPosition = { previewPosition },
-            isSeekPreviewLarge = isSeekPreviewLarge,
-            previewFrames = previewFrames,
+            previewBitmap = gestureUi.previewBitmap,
+            previewPosition = gestureUi.previewPosition,
+            getPreviewPosition = { gestureUi.previewPosition },
+            isSeekPreviewLarge = gestureUi.isSeekPreviewLarge,
+            previewFrames = gestureUi.previewFrames,
             bottomDockPadding = bottomDockPadding,
             seekBottomPadding = seekBottomPadding,
             scale = scale,
@@ -1238,9 +1220,9 @@ fun VideoPlayerScreen(
             },
             onSubtitleCenterMeasured = { subIconX = it },
             onDraggingSeekbarChanged = { isDraggingSeekbar = it },
-            onShowSeekPreviewChanged = { showSeekPreview = it },
-            onPreviewPositionChanged = { previewPosition = it },
-            onPreviewBitmapChanged = { previewBitmap = it },
+            onShowSeekPreviewChanged = { gestureUi.showSeekPreview = it },
+            onPreviewPositionChanged = { gestureUi.previewPosition = it },
+            onPreviewBitmapChanged = { gestureUi.previewBitmap = it },
         )
 
         // Slice 60: all non-main-control overlay surfaces are now hosted
