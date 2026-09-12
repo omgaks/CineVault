@@ -270,6 +270,12 @@ fun VideoPlayerScreen(
     // now live in one stable playback-health state holder.
     val playbackHealth = remember { PlayerPlaybackHealthState() }
 
+    // Playback Resilience Slice 73: recovery-engine state is per-video.
+    // A software fallback decision for one file must never carry into another.
+    val playbackRecovery = remember(currentVideo.path) {
+        PlayerPlaybackRecoveryState()
+    }
+
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
     val playerRuntime = rememberPlayerRuntime(
@@ -491,6 +497,8 @@ fun VideoPlayerScreen(
         episodeList = episodeList,
         autoPlayEnabled = autoPlayEnabled,
         errorRetryCount = playbackHealth.errorRetryCount,
+        playbackEngineMode = playbackRecovery.engineMode,
+        softwareFallbackAvailable = playbackRecovery.softwareFallbackAvailable,
         coreUi = coreUi,
         trackUi = trackUi,
         searchUi = searchUi,
@@ -550,6 +558,12 @@ fun VideoPlayerScreen(
                 subtitleUri = subtitleUri,
                 resumePosition = resumePosition,
                 isOriginalSubtitle = false,
+            )
+        },
+        onSoftwareFallbackRequested = { errorCode, resumePosition, _ ->
+            playbackRecovery.requestSoftwareFallback(
+                errorCode = errorCode,
+                resumePositionMs = resumePosition,
             )
         },
         onPositionChanged = { position = it },

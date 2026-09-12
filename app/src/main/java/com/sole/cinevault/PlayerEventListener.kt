@@ -24,6 +24,8 @@ internal fun PlayerEventListener(
     episodeList: List<VideoWithMetadata>,
     autoPlayEnabled: Boolean,
     errorRetryCount: Int,
+    playbackEngineMode: PlaybackEngineMode,
+    softwareFallbackAvailable: Boolean,
     coreUi: SubtitleCoreUiState,
     trackUi: SubtitleTrackSelectionState,
     audioLanguageCheckedForPath: String?,
@@ -37,6 +39,11 @@ internal fun PlayerEventListener(
     onAdvanceImmediately: (VideoWithMetadata) -> Unit,
     onShowControls: () -> Unit,
     onRetryPlayback: (subtitleUri: android.net.Uri?, resumePosition: Long) -> Unit,
+    onSoftwareFallbackRequested: (
+        errorCode: Int,
+        resumePosition: Long,
+        subtitleUri: android.net.Uri?,
+    ) -> Unit,
 ) {
     DisposableEffect(
         player,
@@ -46,6 +53,8 @@ internal fun PlayerEventListener(
         episodeList,
         autoPlayEnabled,
         errorRetryCount,
+        playbackEngineMode,
+        softwareFallbackAvailable,
         audioLanguageCheckedForPath,
     ) {
         val listener = object : Player.Listener {
@@ -121,8 +130,8 @@ internal fun PlayerEventListener(
                 val recovery = decidePlaybackRecovery(
                     errorCode = error.errorCode,
                     currentRetryCount = errorRetryCount,
-                    engineMode = PlaybackEngineMode.HARDWARE,
-                    softwareFallbackAvailable = false,
+                    engineMode = playbackEngineMode,
+                    softwareFallbackAvailable = softwareFallbackAvailable,
                 )
 
                 when (recovery.action) {
@@ -135,12 +144,11 @@ internal fun PlayerEventListener(
                     }
 
                     PlaybackRecoveryAction.SWITCH_TO_SOFTWARE -> {
-                        // Unreachable until the software-video engine is wired.
-                        // Keeping the branch explicit prevents a future fallback
-                        // implementation from being hidden inside generic retry
-                        // behavior.
-                        onPlayerErrorMessageChanged(friendlyPlaybackError(error))
-                        onPlayingChanged(false)
+                        onSoftwareFallbackRequested(
+                            error.errorCode,
+                            positionAtError,
+                            trackUi.originalUri,
+                        )
                     }
 
                     PlaybackRecoveryAction.FAIL -> {

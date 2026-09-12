@@ -31,6 +31,8 @@ internal fun PlayerRuntimeEffects(
     episodeList: List<VideoWithMetadata>,
     autoPlayEnabled: Boolean,
     errorRetryCount: Int,
+    playbackEngineMode: PlaybackEngineMode,
+    softwareFallbackAvailable: Boolean,
     coreUi: SubtitleCoreUiState,
     trackUi: SubtitleTrackSelectionState,
     searchUi: SubtitleAcquisitionUiState,
@@ -73,6 +75,11 @@ internal fun PlayerRuntimeEffects(
     onAdvanceImmediately: (VideoWithMetadata) -> Unit,
     onShowControlsAndTopBar: () -> Unit,
     onRetryPlayback: (subtitleUri: Uri?, resumePosition: Long) -> Unit,
+    onSoftwareFallbackRequested: (
+        errorCode: Int,
+        resumePosition: Long,
+        subtitleUri: Uri?,
+    ) -> Unit,
     onPositionChanged: (Long) -> Unit,
     onDurationChanged: (Long) -> Unit,
     onBufferingSpinnerChanged: (Boolean) -> Unit,
@@ -118,6 +125,8 @@ internal fun PlayerRuntimeEffects(
         episodeList = episodeList,
         autoPlayEnabled = autoPlayEnabled,
         errorRetryCount = errorRetryCount,
+        playbackEngineMode = playbackEngineMode,
+        softwareFallbackAvailable = softwareFallbackAvailable,
         coreUi = coreUi,
         trackUi = trackUi,
         audioLanguageCheckedForPath = audioLanguageCheckedForPath,
@@ -131,6 +140,7 @@ internal fun PlayerRuntimeEffects(
         onAdvanceImmediately = onAdvanceImmediately,
         onShowControls = onShowControlsAndTopBar,
         onRetryPlayback = onRetryPlayback,
+        onSoftwareFallbackRequested = onSoftwareFallbackRequested,
     )
 
     PlayerTimelineEffects(
