@@ -1320,189 +1320,128 @@ fun VideoPlayerScreen(
             onLaunchSrtPicker = { mimeTypes -> srtPickerLauncher.launch(mimeTypes) },
         )
 
-        // Subtitle Studio now uses only the dedicated overlay windows.
-        val subtitleOverlayActive =
-            coreUi.showSettings ||
-            trackUi.showSelector ||
-            searchUi.showSearch ||
-            driftUi.showDialog ||
-            coreUi.showAppearanceStudio ||
-            coreUi.dialogueSyncArmed ||
-            showSubtitleDock ||
-            showSubtitleBloom ||
-            showDualSubsWindow ||
-            showSubtitleBehaviourWindow ||
-            showSpeechSubtitlePanel ||
-            showSubtitleTranslationPanel
-
-        val mainControlsVisible = !subtitleOverlayActive && shouldShowMainPlayerControls(
-            externalDisplayActive = externalPlayerView != null,
+        // Slice 59: visibility policy, top chrome, transient status pills,
+        // and the transport/seek host are now one cohesive player-chrome surface.
+        PlayerMainControlsChrome(
+            context = context,
+            activity = activity,
+            scope = scope,
+            player = exoPlayer,
+            haptics = haptics,
+            currentMeta = currentMeta,
+            currentTitle = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path),
+            currentVideoPath = currentVideo.path,
+            isStreamMedia = isStreamMedia,
+            isCurrentTvShow = isCurrentTvShow,
+            isLandscape = isLandscape,
+            isZoomMode = isZoomMode,
             showControls = showControls,
             isDraggingSeekbar = isDraggingSeekbar,
             showAudioSelector = showAudioSelector,
-            showSubtitleSettings = coreUi.showSettings,
-            showTrackSelector = trackUi.showSelector,
-            showDriftDialog = driftUi.showDialog,
-            showAppearanceStudio = coreUi.showAppearanceStudio,
-            dialogueSyncArmed = coreUi.dialogueSyncArmed,
             showSpeedMenu = showSpeedMenu,
             showSleepMenu = showSleepMenu,
-            showSubtitleSearch = searchUi.showSearch,
-            isInPipMode = CineVaultPlayerHolder.isInPipMode
+            showSrtBrowser = showSrtBrowser,
+            showSeekPreview = showSeekPreview,
+            subtitleSettingsVisible = coreUi.showSettings,
+            trackSelectorVisible = trackUi.showSelector,
+            subtitleSearchVisible = searchUi.showSearch,
+            driftDialogVisible = driftUi.showDialog,
+            appearanceStudioVisible = coreUi.showAppearanceStudio,
+            dialogueSyncArmed = coreUi.dialogueSyncArmed,
+            showSubtitleDock = showSubtitleDock,
+            showSubtitleBloom = showSubtitleBloom,
+            showDualSubsWindow = showDualSubsWindow,
+            showSubtitleBehaviourWindow = showSubtitleBehaviourWindow,
+            showSpeechSubtitlePanel = showSpeechSubtitlePanel,
+            showSubtitleTranslationPanel = showSubtitleTranslationPanel,
+            externalDisplayActive = externalPlayerView != null,
+            autoSubtitleStatus = autoSubtitleFetch.status,
+            playbackSpeed = playbackSpeed,
+            sleepTimerActive = sleepTimerActive,
+            topClusterPaddingTop = topClusterPaddingTop,
+            sidePadding = sidePadding,
+            topIconSize = topIconSize,
+            showNextEpisodeOverlay = showNextEpisodeOverlay,
+            pendingNextEpisode = pendingNextEpisode,
+            nextEpisodeCountdown = nextEpisodeCountdown,
+            activeSmartSegment = activeSmartSegment,
+            exactSceneSegment = exactSceneSegment,
+            creditsSegment = creditsSegment,
+            smartSegmentResult = smartSegmentResult,
+            position = position,
+            duration = duration,
+            previewBitmap = previewBitmap,
+            previewPosition = previewPosition,
+            isSeekPreviewLarge = isSeekPreviewLarge,
+            previewFrames = previewFrames,
+            bottomDockPadding = bottomDockPadding,
+            seekBottomPadding = seekBottomPadding,
+            scale = scale,
+            smallButton = smallButton,
+            playButton = playButton,
+            isPlaying = isPlaying,
+            isVideoEnded = isVideoEnded,
+            showPrevNextButtons = showPrevNextButtons,
+            hasNextVideo = hasNextVideo,
+            autoPlayEnabled = autoPlayEnabled,
+            onBack = onBack,
+            playbackNavigationCoordinator = playbackNavigationCoordinator,
+            playerMenuCloseCoordinator = playerMenuCloseCoordinator,
+            onShowSpeedMenuChanged = { showSpeedMenu = it },
+            onShowSleepMenuChanged = { showSleepMenu = it },
+            onShowControlsChanged = { showControls = it },
+            onClusterHeightMeasured = { clusterHeightPx = it },
+            onPlayNextEpisode = { next ->
+                showNextEpisodeOverlay = false
+                pendingNextEpisode = null
+                currentMediaType = next.type
+                currentVideo = next.video
+                onPlayNext(next)
+            },
+            onCancelNextEpisode = {
+                showNextEpisodeOverlay = false
+                pendingNextEpisode = null
+                nextEpisodeCountdown = 0
+                nextEpisodeDismissed = true
+                showControls = true
+            },
+            onPositionChanged = { position = it },
+            onShowTopBarChanged = { showTopBar = it },
+            onVideoEndedChanged = { isVideoEnded = it },
+            onAutoPlayEnabledChanged = { autoPlayEnabled = it },
+            onShowAudioSelectorChanged = { showAudioSelector = it },
+            onMenuTouch = { menuTouchKey++ },
+            onAudioCenterMeasured = { audioIconX = it },
+            onSubtitleClick = {
+                val wasOpen = showSubtitleDock ||
+                    showSubtitleBloom ||
+                    trackUi.showSelector ||
+                    searchUi.showSearch ||
+                    driftUi.showDialog ||
+                    coreUi.showAppearanceStudio
+                playerMenuCloseCoordinator.closeAll()
+                showSubtitleDock = !wasOpen
+                if (showSubtitleDock) {
+                    showControls = false
+                    showTopBar = false
+                } else {
+                    showControls = true
+                }
+                menuTouchKey++
+            },
+            onSubtitleLongClick = {
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                playerMenuCloseCoordinator.closeAll()
+                showSubtitleBloom = true
+                showControls = false
+                showTopBar = false
+            },
+            onSubtitleCenterMeasured = { subIconX = it },
+            onDraggingSeekbarChanged = { isDraggingSeekbar = it },
+            onShowSeekPreviewChanged = { showSeekPreview = it },
+            onPreviewPositionChanged = { previewPosition = it },
+            onPreviewBitmapChanged = { previewBitmap = it },
         )
-        PlayerControlsVisibilityShell(
-            visible = mainControlsVisible
-        ) {
-
-                PlayerTopControlCluster(
-                    isLandscape = isLandscape,
-                    topRowVisible = !showSeekPreview,
-                    topClusterPaddingTop = topClusterPaddingTop,
-                    sidePadding = sidePadding,
-                    topIconSize = topIconSize,
-                    currentMeta = currentMeta,
-                    title = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path),
-                    playbackSpeed = playbackSpeed,
-                    sleepTimerActive = sleepTimerActive,
-                    showSpeedMenu = showSpeedMenu,
-                    showSleepMenu = showSleepMenu,
-                    onSpeedClick = {
-                        val wasOpen = showSpeedMenu
-                        playerMenuCloseCoordinator.closeAll()
-                        showSpeedMenu = !wasOpen
-                        showControls = true
-                    },
-                    onSleepClick = {
-                        val wasOpen = showSleepMenu
-                        playerMenuCloseCoordinator.closeAll()
-                        showSleepMenu = !wasOpen
-                        showControls = true
-                    },
-                    onPipClick = {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            val actions = buildPipActions(context, exoPlayer.isPlaying)
-                            activity?.enterPictureInPictureMode(
-                                PictureInPictureParams.Builder()
-                                    .setAspectRatio(Rational(16, 9))
-                                    .setActions(actions)
-                                    .build()
-                            )
-                        }
-                    },
-                    onClusterHeightMeasured = { clusterHeightPx = it }
-                )
-
-                PlayerTransientStatusPills(
-                    autoSubtitleStatus = autoSubtitleFetch.status,
-                    showSeekPreview = showSeekPreview,
-                    isLandscape = isLandscape,
-                    isZoomMode = isZoomMode
-                )
-
-                // Slice 58: Smart playback overlays, bottom transport dock,
-                // and seek dock now live in one cohesive playback-controls host.
-                PlayerTransportAndSmartControls(
-                    context = context,
-                    scope = scope,
-                    player = exoPlayer,
-                    haptics = haptics,
-                    currentVideoPath = currentVideo.path,
-                    isStreamMedia = isStreamMedia,
-                    isCurrentTvShow = isCurrentTvShow,
-                    isLandscape = isLandscape,
-                    subtitleOverlayActive = subtitleOverlayActive,
-                    showAudioSelector = showAudioSelector,
-                    showSpeedMenu = showSpeedMenu,
-                    showSleepMenu = showSleepMenu,
-                    showSrtBrowser = showSrtBrowser,
-                    showSeekPreview = showSeekPreview,
-                    isDraggingSeekbar = isDraggingSeekbar,
-                    showNextEpisodeOverlay = showNextEpisodeOverlay,
-                    pendingNextEpisode = pendingNextEpisode,
-                    nextEpisodeCountdown = nextEpisodeCountdown,
-                    activeSmartSegment = activeSmartSegment,
-                    exactSceneSegment = exactSceneSegment,
-                    creditsSegment = creditsSegment,
-                    smartSegmentResult = smartSegmentResult,
-                    position = position,
-                    duration = duration,
-                    previewBitmap = previewBitmap,
-                    previewPosition = previewPosition,
-                    isSeekPreviewLarge = isSeekPreviewLarge,
-                    previewFrames = previewFrames,
-                    sidePadding = sidePadding,
-                    bottomDockPadding = bottomDockPadding,
-                    seekBottomPadding = seekBottomPadding,
-                    scale = scale,
-                    smallButton = smallButton,
-                    playButton = playButton,
-                    isPlaying = isPlaying,
-                    isVideoEnded = isVideoEnded,
-                    showPrevNextButtons = showPrevNextButtons,
-                    hasNextVideo = hasNextVideo,
-                    autoPlayEnabled = autoPlayEnabled,
-                    showSubtitleActive = coreUi.showSettings ||
-                        trackUi.showSelector ||
-                        searchUi.showSearch ||
-                        driftUi.showDialog ||
-                        coreUi.showAppearanceStudio,
-                    onBack = onBack,
-                    playbackNavigationCoordinator = playbackNavigationCoordinator,
-                    playerMenuCloseCoordinator = playerMenuCloseCoordinator,
-                    onPlayNextEpisode = { next ->
-                        showNextEpisodeOverlay = false
-                        pendingNextEpisode = null
-                        currentMediaType = next.type
-                        currentVideo = next.video
-                        onPlayNext(next)
-                    },
-                    onCancelNextEpisode = {
-                        showNextEpisodeOverlay = false
-                        pendingNextEpisode = null
-                        nextEpisodeCountdown = 0
-                        nextEpisodeDismissed = true
-                        showControls = true
-                    },
-                    onPositionChanged = { position = it },
-                    onShowControlsChanged = { showControls = it },
-                    onShowTopBarChanged = { showTopBar = it },
-                    onVideoEndedChanged = { isVideoEnded = it },
-                    onAutoPlayEnabledChanged = { autoPlayEnabled = it },
-                    onShowAudioSelectorChanged = { showAudioSelector = it },
-                    onMenuTouch = { menuTouchKey++ },
-                    onAudioCenterMeasured = { audioIconX = it },
-                    onSubtitleClick = {
-                        val wasOpen = showSubtitleDock ||
-                            showSubtitleBloom ||
-                            trackUi.showSelector ||
-                            searchUi.showSearch ||
-                            driftUi.showDialog ||
-                            coreUi.showAppearanceStudio
-                        playerMenuCloseCoordinator.closeAll()
-                        showSubtitleDock = !wasOpen
-                        if (showSubtitleDock) {
-                            showControls = false
-                            showTopBar = false
-                        } else {
-                            showControls = true
-                        }
-                        menuTouchKey++
-                    },
-                    onSubtitleLongClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        playerMenuCloseCoordinator.closeAll()
-                        showSubtitleBloom = true
-                        showControls = false
-                        showTopBar = false
-                    },
-                    onSubtitleCenterMeasured = { subIconX = it },
-                    onDraggingSeekbarChanged = { isDraggingSeekbar = it },
-                    onShowSeekPreviewChanged = { showSeekPreview = it },
-                    onPreviewPositionChanged = { previewPosition = it },
-                    onPreviewBitmapChanged = { previewBitmap = it },
-                )
-
-        }
 
         PlayerControlsLockLayer(
             controlsLocked = controlsLocked,
