@@ -373,6 +373,7 @@ fun VideoPlayerScreen(
             playerRuntime.decoderSelector.engineMode = PlaybackEngineMode.HARDWARE
             playbackRecovery.fallbackOccurred = false
             playbackRecovery.fallbackReason = null
+            playbackRecovery.droppedFrameUnhealthyStreak = 0
             playbackRecovery.activeVideoDecoderStatus = ActiveVideoDecoderStatus()
             currentVideo = it
         },
@@ -609,6 +610,7 @@ fun VideoPlayerScreen(
             playerRuntime.decoderSelector.engineMode = PlaybackEngineMode.HARDWARE
             playbackRecovery.fallbackOccurred = false
             playbackRecovery.fallbackReason = null
+            playbackRecovery.droppedFrameUnhealthyStreak = 0
             playbackRecovery.activeVideoDecoderStatus = ActiveVideoDecoderStatus()
             currentMediaType = next.type
             currentVideo = next.video
@@ -796,6 +798,14 @@ fun VideoPlayerScreen(
         onDecoderStatusChanged = {
             playbackRecovery.activeVideoDecoderStatus = it
         },
+        onDroppedVideoFrames = { droppedFrames, elapsedMs ->
+            playbackRecovery.onDroppedVideoFrames(
+                droppedFrames = droppedFrames,
+                elapsedMs = elapsedMs,
+                resumePositionMs = exoPlayer.currentPosition,
+                subtitleUri = trackUi.originalUri,
+            )
+        },
     )
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color.Black)) {
@@ -870,6 +880,7 @@ fun VideoPlayerScreen(
             playerRuntime.decoderSelector.engineMode = PlaybackEngineMode.HARDWARE
             playbackRecovery.fallbackOccurred = false
             playbackRecovery.fallbackReason = null
+            playbackRecovery.droppedFrameUnhealthyStreak = 0
             playbackRecovery.activeVideoDecoderStatus = ActiveVideoDecoderStatus()
             currentVideo = it
         },

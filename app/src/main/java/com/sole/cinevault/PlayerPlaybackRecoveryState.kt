@@ -29,6 +29,7 @@ internal class PlayerPlaybackRecoveryState {
     var activeVideoDecoderStatus by mutableStateOf(ActiveVideoDecoderStatus())
     var fallbackReason by mutableStateOf<PlaybackFallbackReason?>(null)
     var fallbackOccurred by mutableStateOf(false)
+    var droppedFrameUnhealthyStreak by mutableIntStateOf(0)
 
     // Slice 76: capability report for the currently selected VIDEO track.
     // Because this entire holder is remembered per currentVideo.path, the
@@ -78,9 +79,43 @@ internal class PlayerPlaybackRecoveryState {
         softwareFallbackRequested = true
     }
 
+    fun onDroppedVideoFrames(
+        droppedFrames: Int,
+        elapsedMs: Long,
+        resumePositionMs: Long,
+        subtitleUri: Uri?,
+    ) {
+        val health = assessDroppedFrameHealth(
+            droppedFrames = droppedFrames,
+            elapsedMs = elapsedMs,
+        )
+
+        droppedFrameUnhealthyStreak = nextDroppedFrameUnhealthyStreak(
+            currentStreak = droppedFrameUnhealthyStreak,
+            health = health,
+        )
+
+        if (
+            shouldFallbackForDroppedFrames(
+                unhealthyStreak = droppedFrameUnhealthyStreak,
+                engineMode = engineMode,
+                softwareFallbackAvailable = softwareFallbackAvailable,
+            ) &&
+            !fallbackOccurred &&
+            !softwareFallbackRequested
+        ) {
+            fallbackErrorCode = 0
+            fallbackReason = PlaybackFallbackReason.EXCESSIVE_DROPPED_FRAMES
+            fallbackResumePositionMs = resumePositionMs.coerceAtLeast(0L)
+            fallbackSubtitleUri = subtitleUri
+            softwareFallbackRequested = true
+        }
+    }
+
     fun activateSoftwareFallback() {
         engineMode = PlaybackEngineMode.SOFTWARE
         fallbackOccurred = true
+        droppedFrameUnhealthyStreak = 0
         softwareFallbackRequested = false
     }
 }

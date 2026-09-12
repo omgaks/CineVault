@@ -14,11 +14,20 @@ internal fun PlayerDecoderAnalytics(
     capabilityReport: VideoDecoderCapabilityReport?,
     engineMode: PlaybackEngineMode,
     onDecoderStatusChanged: (ActiveVideoDecoderStatus) -> Unit,
+    onDroppedVideoFrames: (droppedFrames: Int, elapsedMs: Long) -> Unit,
 ) {
     DisposableEffect(player, capabilityReport, engineMode) {
         onDecoderStatusChanged(ActiveVideoDecoderStatus())
 
         val listener = object : AnalyticsListener {
+            override fun onDroppedVideoFrames(
+                eventTime: AnalyticsListener.EventTime,
+                droppedFrames: Int,
+                elapsedMs: Long,
+            ) {
+                onDroppedVideoFrames(droppedFrames, elapsedMs)
+            }
+
             override fun onVideoDecoderInitialized(
                 eventTime: AnalyticsListener.EventTime,
                 decoderName: String,
