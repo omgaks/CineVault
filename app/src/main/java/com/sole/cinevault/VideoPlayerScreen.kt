@@ -287,14 +287,9 @@ fun VideoPlayerScreen(
     // live in one stable holder shared by the gesture and controls layers.
     val gestureUi = remember { PlayerGestureUiState() }
 
-    var isBuffering by remember { mutableStateOf(false) }
-    var showBufferingSpinner by remember { mutableStateOf(false) }
-    var stuckBufferingHint by remember { mutableStateOf(false) }
-    var playerErrorMessage by remember { mutableStateOf<String?>(null) }
-    var errorRetryCount by remember { mutableIntStateOf(0) }
-
-    var droppedFrameNudgeCount by remember { mutableIntStateOf(0) }
-    var lastNudgeAtMs by remember { mutableLongStateOf(0L) }
+    // Slice 67: buffering/error recovery and dropped-frame recovery counters
+    // now live in one stable playback-health state holder.
+    val playbackHealth = remember { PlayerPlaybackHealthState() }
 
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
@@ -392,7 +387,7 @@ fun VideoPlayerScreen(
         onCurrentVideoChanged = { currentVideo = it },
         onCurrentMediaTypeChanged = { currentMediaType = it },
         onEdgeSwipeHintChanged = { gestureUi.edgeSwipeHint = it },
-        onPlayerErrorMessageChanged = { playerErrorMessage = it },
+        onPlayerErrorMessageChanged = { playbackHealth.playerErrorMessage = it },
         onVideoEndedChanged = { isVideoEnded = it },
         onPendingSrtUriChanged = { pendingSrtUri = it },
         onPlayNext = onPlayNext,
@@ -490,15 +485,15 @@ fun VideoPlayerScreen(
             setPreviewBitmap = { gestureUi.previewBitmap = it },
             clearPreviewFrames = { gestureUi.previewFrames = emptyList() },
             setIsVideoEnded = { isVideoEnded = it },
-            setPlayerErrorMessage = { playerErrorMessage = it },
-            setErrorRetryCount = { errorRetryCount = it },
-            setStuckBufferingHint = { stuckBufferingHint = it },
+            setPlayerErrorMessage = { playbackHealth.playerErrorMessage = it },
+            setErrorRetryCount = { playbackHealth.errorRetryCount = it },
+            setStuckBufferingHint = { playbackHealth.stuckBufferingHint = it },
             setAudioLanguageCheckedForPath = { audioLanguageCheckedForPath = it },
             setDualSecondaryColorHex = { dualSecondaryColorHex = it },
             setAutoSyncStatus = { autoSyncStatus = it },
             setAutoSyncSpeechTimeline = { autoSyncSpeechTimeline = it },
-            setDroppedFrameNudgeCount = { droppedFrameNudgeCount = it },
-            setLastNudgeAtMs = { lastNudgeAtMs = it },
+            setDroppedFrameNudgeCount = { playbackHealth.droppedFrameNudgeCount = it },
+            setLastNudgeAtMs = { playbackHealth.lastNudgeAtMs = it },
         ),
     )
 
@@ -516,7 +511,7 @@ fun VideoPlayerScreen(
         isStreamMedia = isStreamMedia,
         episodeList = episodeList,
         autoPlayEnabled = autoPlayEnabled,
-        errorRetryCount = errorRetryCount,
+        errorRetryCount = playbackHealth.errorRetryCount,
         coreUi = coreUi,
         trackUi = trackUi,
         searchUi = searchUi,
@@ -524,13 +519,13 @@ fun VideoPlayerScreen(
         studioUi = studioUi,
         audioLanguageCheckedForPath = audioLanguageCheckedForPath,
         isDraggingSeekbar = isDraggingSeekbar,
-        isBuffering = isBuffering,
+        isBuffering = playbackHealth.isBuffering,
         showSeekPreview = gestureUi.showSeekPreview,
         previewPosition = gestureUi.previewPosition,
         duration = duration,
         previewReloadKey = gestureUi.previewReloadKey,
-        droppedFrameNudgeCount = droppedFrameNudgeCount,
-        lastNudgeAtMs = lastNudgeAtMs,
+        droppedFrameNudgeCount = playbackHealth.droppedFrameNudgeCount,
+        lastNudgeAtMs = playbackHealth.lastNudgeAtMs,
         isPlaying = isPlaying,
         showControls = showControls,
         showTopBar = showTopBar,
@@ -550,9 +545,9 @@ fun VideoPlayerScreen(
         onPreviousRequested = { playbackNavigationCoordinator.playPrevious() },
         onInitialBrightnessChanged = { brightnessPercent = it },
         onAudioLanguageCheckedForPathChanged = { audioLanguageCheckedForPath = it },
-        onBufferingChanged = { isBuffering = it },
-        onErrorRetryCountChanged = { errorRetryCount = it },
-        onPlayerErrorMessageChanged = { playerErrorMessage = it },
+        onBufferingChanged = { playbackHealth.isBuffering = it },
+        onErrorRetryCountChanged = { playbackHealth.errorRetryCount = it },
+        onPlayerErrorMessageChanged = { playbackHealth.playerErrorMessage = it },
         onVideoEndedChanged = { isVideoEnded = it },
         onPlayingChanged = { isPlaying = it },
         onQueueNextEpisode = { next ->
@@ -580,10 +575,10 @@ fun VideoPlayerScreen(
         },
         onPositionChanged = { position = it },
         onDurationChanged = { duration = it },
-        onBufferingSpinnerChanged = { showBufferingSpinner = it },
-        onStuckBufferingChanged = { stuckBufferingHint = it },
-        onDroppedFrameNudgeCountChanged = { droppedFrameNudgeCount = it },
-        onLastNudgeAtMsChanged = { lastNudgeAtMs = it },
+        onBufferingSpinnerChanged = { playbackHealth.showBufferingSpinner = it },
+        onStuckBufferingChanged = { playbackHealth.stuckBufferingHint = it },
+        onDroppedFrameNudgeCountChanged = { playbackHealth.droppedFrameNudgeCount = it },
+        onLastNudgeAtMsChanged = { playbackHealth.lastNudgeAtMs = it },
         onPreviewFramesChanged = { gestureUi.previewFrames = it },
         onPreviewBitmapChanged = { gestureUi.previewBitmap = it },
         onSeekPreviewLargeChanged = { gestureUi.isSeekPreviewLarge = it },
@@ -1008,9 +1003,9 @@ fun VideoPlayerScreen(
             volumePercent = volumePercent,
             edgeSwipeHint = gestureUi.edgeSwipeHint,
             showGlassesConnectedHint = showGlassesConnectedHint,
-            showBufferingSpinner = showBufferingSpinner,
-            stuckBufferingHint = stuckBufferingHint,
-            playerErrorMessage = playerErrorMessage,
+            showBufferingSpinner = playbackHealth.showBufferingSpinner,
+            stuckBufferingHint = playbackHealth.stuckBufferingHint,
+            playerErrorMessage = playbackHealth.playerErrorMessage,
             sleepTimerActive = sleepTimerActive,
             sleepTimerRemainingMs = sleepTimerRemainingMs,
             translationSuccessLanguage = translationSuccessLanguage,
@@ -1027,7 +1022,7 @@ fun VideoPlayerScreen(
             onShowControls = { showControls = true },
             onBack = onBack,
             onRetry = {
-                errorRetryCount = 0
+                playbackHealth.errorRetryCount = 0
                 playCurrentVideoWithSubtitle(
                     subtitleUri = trackUi.originalUri,
                     resumePosition = position,
