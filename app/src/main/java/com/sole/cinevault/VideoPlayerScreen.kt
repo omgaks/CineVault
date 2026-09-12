@@ -1034,7 +1034,9 @@ fun VideoPlayerScreen(
             },
         )
 
-        PlayerSubtitleGestureOverlay(
+        // Slice 64: auxiliary playback surfaces are now hosted together:
+        // subtitle gestures, transient playback/status overlays and speed/sleep menus.
+        PlayerAuxiliarySurfaces(
             player = exoPlayer,
             haptics = haptics,
             isStreamMedia = isStreamMedia,
@@ -1043,10 +1045,6 @@ fun VideoPlayerScreen(
             coreUi = coreUi,
             appearanceUi = appearanceUi,
             studioUi = studioUi,
-            onShowControls = { showControls = true },
-        )
-
-        PlayerPlaybackStatusOverlays(
             isLandscape = isLandscape,
             hudSize = hudSize,
             showBrightnessCircle = showBrightnessCircle,
@@ -1062,6 +1060,16 @@ fun VideoPlayerScreen(
             sleepTimerRemainingMs = sleepTimerRemainingMs,
             translationSuccessLanguage = translationSuccessLanguage,
             translationSuccessBottomPadding = bottomDockPadding + playButton + 26.dp,
+            showSpeedMenu = showSpeedMenu,
+            showSleepMenu = showSleepMenu,
+            playbackSpeed = playbackSpeed,
+            sleepTimerMinutes = sleepTimerMinutes,
+            topClusterPaddingTop = topClusterPaddingTop,
+            clusterHeightPx = clusterHeightPx,
+            sidePadding = sidePadding,
+            smallMenuWidth = smallMenuWidth,
+            smallMenuMaxHeight = smallMenuMaxHeight,
+            onShowControls = { showControls = true },
             onBack = onBack,
             onRetry = {
                 errorRetryCount = 0
@@ -1071,19 +1079,6 @@ fun VideoPlayerScreen(
                     isOriginalSubtitle = false,
                 )
             },
-        )
-
-        PlayerSpeedAndSleepMenus(
-            showSpeedMenu = showSpeedMenu,
-            showSleepMenu = showSleepMenu,
-            playbackSpeed = playbackSpeed,
-            sleepTimerMinutes = sleepTimerMinutes,
-            topClusterPaddingTop = topClusterPaddingTop,
-            clusterHeightPx = clusterHeightPx,
-            isLandscape = isLandscape,
-            sidePadding = sidePadding,
-            smallMenuWidth = smallMenuWidth,
-            smallMenuMaxHeight = smallMenuMaxHeight,
             onSpeedSelected = { playerSessionActionsCoordinator.setPlaybackSpeed(it) },
             onDismissSpeedMenu = { showSpeedMenu = false },
             onSleepSelected = { playerSessionActionsCoordinator.setSleepTimer(it) },
