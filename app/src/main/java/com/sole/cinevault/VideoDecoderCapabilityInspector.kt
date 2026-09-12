@@ -1,6 +1,5 @@
 package com.sole.cinevault
 
-import android.content.Context
 import androidx.annotation.OptIn
 import androidx.media3.common.Format
 import androidx.media3.common.util.UnstableApi
@@ -71,7 +70,6 @@ fun summarizeVideoDecoderCapability(
  */
 @OptIn(UnstableApi::class)
 fun inspectVideoDecoderCapability(
-    context: Context,
     format: Format,
 ): VideoDecoderCapabilityReport {
     val mimeType = format.sampleMimeType
@@ -93,8 +91,8 @@ fun inspectVideoDecoderCapability(
                 name = info.name,
                 hardwareAccelerated = info.hardwareAccelerated,
                 softwareOnly = info.softwareOnly,
-                formatSupported = info.isFormatSupported(context, format),
-                functionallySupported = info.isFormatFunctionallySupported(context, format),
+                formatSupported = info.isFormatSupported(format),
+                functionallySupported = info.isFormatFunctionallySupported(format),
             )
         }
 
