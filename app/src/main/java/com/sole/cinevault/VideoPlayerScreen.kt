@@ -882,33 +882,6 @@ fun VideoPlayerScreen(
     val translationJobLabel = subtitleAiRuntime.translationJobLabel
     val translationJobProgress = subtitleAiRuntime.translationJobProgress
 
-    // Slice 27: next-episode countdown completion/navigation is now owned
-    // by a small coordinator. Compose still owns the cancellable timer effect.
-    val nextEpisodeCoordinator = remember {
-        NextEpisodeCoordinator(
-            getPendingNextEpisode = { pendingNextEpisode },
-            getShowNextEpisodeOverlay = { showNextEpisodeOverlay },
-            setShowNextEpisodeOverlay = { showNextEpisodeOverlay = it },
-            setPendingNextEpisode = { pendingNextEpisode = it },
-            setCurrentMediaType = { currentMediaType = it },
-            setCurrentVideo = { currentVideo = it },
-            onPlayNext = onPlayNext,
-        )
-    }
-
-    LaunchedEffect(showNextEpisodeOverlay, pendingNextEpisode) {
-        if (nextEpisodeCoordinator.shouldRunCountdown()) {
-            var count = 15
-            while (count > 0) {
-                nextEpisodeCountdown = count
-                delay(playerNextEpisodeCountdownIntervalMs())
-                if (!nextEpisodeCoordinator.shouldRunCountdown()) return@LaunchedEffect
-                if (isPlaying || isVideoEnded) count--
-            }
-            nextEpisodeCoordinator.playPendingNextEpisode()
-        }
-    }
-
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         // Captured as plain local vals (not referenced as the implicit
         // BoxWithConstraintsScope receiver) specifically so they can be
@@ -1017,66 +990,36 @@ fun VideoPlayerScreen(
         val smallMenuMaxHeight = playerLayout.smallMenuMaxHeight
         val topIconSize = playerLayout.topIconSize
 
-        val playlistNavigation = remember(
-            currentVideo.path,
-            currentVideo.name,
-            episodeList,
-            isCurrentTvShow,
-            isRestrictedFolderMedia
-        ) {
-            derivePlayerPlaylistNavigation(
-                currentVideo = currentVideo,
-                episodeList = episodeList,
-                isCurrentTvShow = isCurrentTvShow,
-                isRestrictedFolderMedia = isRestrictedFolderMedia
-            )
-        }
-        val currentMeta = playlistNavigation.currentMeta
-
-        // Slice 28: Smart Segment loading plus credits-driven next-episode
-        // decisions now live in PlayerSmartSegmentCoordinator. Compose still
-        // owns these effects so cancellation remains tied to their keys.
-        val playerSmartSegmentCoordinator = remember(smartSegmentRepository) {
-            PlayerSmartSegmentCoordinator(smartSegmentRepository)
-        }
-
-        val smartPlaybackSegments = deriveSmartPlaybackSegments(
-            result = smartSegmentResult,
-            position = position
-        )
-        val activeSmartSegment = smartPlaybackSegments.activeSegment
-        val exactSceneSegment = smartPlaybackSegments.exactSceneSegment
-        val creditsSegment = smartPlaybackSegments.creditsSegment
-
-        // Slice 45: Smart Segment / credits side effects now live outside the
-        // giant player composable. The player only supplies state and callbacks.
-        PlayerSmartSegmentEffects(
-            coordinator = playerSmartSegmentCoordinator,
-            currentMeta = currentMeta,
-            duration = duration,
-            currentVideoPath = currentVideo.path,
+        // Slice 61: playlist navigation, Smart Segment runtime, credits-driven
+        // next-episode triggering, and countdown completion now live together.
+        val episodeRuntime = rememberPlayerEpisodeRuntime(
+            smartSegmentRepository = smartSegmentRepository,
+            currentVideo = currentVideo,
             episodeList = episodeList,
             isCurrentTvShow = isCurrentTvShow,
+            isRestrictedFolderMedia = isRestrictedFolderMedia,
+            smartSegmentResult = smartSegmentResult,
+            duration = duration,
+            position = position,
             showNextEpisodeOverlay = showNextEpisodeOverlay,
             nextEpisodeDismissed = nextEpisodeDismissed,
-            creditsStartMs = creditsSegment?.startMs,
-            position = position,
-            onSmartSegmentLoaded = { smartSegmentResult = it },
-            onNextEpisodeTriggered = { next ->
-                pendingNextEpisode = next
-                nextEpisodeCountdown = 15
-                showNextEpisodeOverlay = true
-            },
-            onResetNextEpisodeOverlay = {
-                showNextEpisodeOverlay = false
-                pendingNextEpisode = null
-                nextEpisodeCountdown = 0
-            },
+            pendingNextEpisode = pendingNextEpisode,
+            isPlaying = isPlaying,
+            isVideoEnded = isVideoEnded,
+            onSmartSegmentResultChanged = { smartSegmentResult = it },
+            onPendingNextEpisodeChanged = { pendingNextEpisode = it },
+            onNextEpisodeCountdownChanged = { nextEpisodeCountdown = it },
+            onShowNextEpisodeOverlayChanged = { showNextEpisodeOverlay = it },
+            onCurrentMediaTypeChanged = { currentMediaType = it },
+            onCurrentVideoChanged = { currentVideo = it },
+            onPlayNext = onPlayNext,
         )
-
-        val showPrevNextButtons = playlistNavigation.showPrevNextButtons
-        val currentEpisodeIndex = playlistNavigation.currentIndex
-        val hasNextVideo = playlistNavigation.hasNextVideo
+        val currentMeta = episodeRuntime.currentMeta
+        val activeSmartSegment = episodeRuntime.activeSmartSegment
+        val exactSceneSegment = episodeRuntime.exactSceneSegment
+        val creditsSegment = episodeRuntime.creditsSegment
+        val showPrevNextButtons = episodeRuntime.showPrevNextButtons
+        val hasNextVideo = episodeRuntime.hasNextVideo
 
         PlayerVideoSurface(
             player = exoPlayer,
@@ -1516,52 +1459,7 @@ fun VideoPlayerScreen(
             onDualSecondaryColorHexChanged = { dualSecondaryColorHex = it },
         )
 
-        // AI sheet removed — Speech to subs / AI translate are now direct
-        // rows inside the Power Tools list window, so this intermediate
-        // sheet was a third path to the same two actions.
 
-        // Speech to subs / AI Translate are reachable through the Bloom's
-        // AI sheet now (same showSpeechSubtitlePanel/showSubtitleTranslationPanel
-        // flags below) — this standalone button row was the original, unstyled
-        // entry point and is removed rather than left as a second door to the
-        // same two actions.
-
-        // Slice 50: floating subtitle AI job pills and both draggable AI
-        // panels are now one cohesive presentation component.
-        PlayerSubtitleAiPanels(
-            context = context,
-            containerWidth = playerMaxWidth,
-            containerHeight = playerMaxHeight,
-            isInPipMode = CineVaultPlayerHolder.isInPipMode,
-            externalDisplayActive = externalPlayerView != null,
-            speechJobLabel = speechJobLabel,
-            speechJobProgress = speechJobProgress,
-            translationJobLabel = translationJobLabel,
-            translationJobProgress = translationJobProgress,
-            showSpeechPanel = showSpeechSubtitlePanel,
-            showTranslationPanel = showSubtitleTranslationPanel,
-            speechStatus = speechSubtitleStatus,
-            translationStatus = subtitleTranslationStatus,
-            generatedFiles = generatedSubtitleFiles,
-            activeSubtitleUri = trackUi.primaryUri ?: trackUi.originalUri,
-            speechCoordinator = speechSubtitleCoordinator,
-            translationCoordinator = subtitleTranslationCoordinator,
-            generatedSubtitleOrchestrator = generatedSubtitleOrchestrator,
-            onShowSpeechPanel = {
-                showSubtitleTranslationPanel = false
-                showSpeechSubtitlePanel = true
-            },
-            onHideSpeechPanel = {
-                showSpeechSubtitlePanel = false
-            },
-            onShowTranslationPanel = {
-                showSpeechSubtitlePanel = false
-                showSubtitleTranslationPanel = true
-            },
-            onHideTranslationPanel = {
-                showSubtitleTranslationPanel = false
-            },
-        )
 
 
 
