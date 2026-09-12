@@ -798,28 +798,14 @@ fun VideoPlayerScreen(
         val seekBottomPadding = playerLayout.seekBottomPadding
         val topClusterPaddingTop = playerLayout.topClusterPaddingTop
 
-        // ── Per-display subtitle profiles ──────────────────────────────
-        // Which profile applies right now — external (any AR glasses via DP Alt Mode)
-        // always wins over phone/tablet since it's a distinct viewing
-        // surface, regardless of what the tablet's own screen size says.
-        // TV isn't reachable yet (see DisplayProfiles.kt) so it never
-        // appears here.
-        val displayProfileType = RememberPlayerSubtitleDisplayProfile(
+        // Slice 65: display-profile selection, per-movie subtitle memory
+        // effects and subtitle-reset wiring now live in one display runtime.
+        val subtitleResetCoordinator = rememberPlayerSubtitleDisplayRuntime(
             context = context,
             externalDisplayConnected = externalDisplay.isConnected,
             isSmallPhone = isSmallPhone,
             isLandscape = isLandscape,
-            appearanceUi = appearanceUi,
-        )
-
-        // Slice 49: per-movie subtitle restore/save lifecycle wiring now lives
-        // outside VideoPlayerScreen. The existing coordinator still owns the
-        // actual memory mutation and persistence behavior.
-        PlayerMovieSubtitleMemoryEffects(
-            context = context,
             videoPath = currentVideo.path,
-            displayProfileName = displayProfileType.name,
-            isLandscape = isLandscape,
             movieSubtitleMemory = movieSubtitleMemory,
             movieSubtitleMemoryReady = movieSubtitleMemoryReady,
             movieAppearanceMemoryReady = movieAppearanceMemoryReady,
@@ -827,24 +813,11 @@ fun VideoPlayerScreen(
             trackUi = trackUi,
             dualUi = dualUi,
             appearanceUi = appearanceUi,
+            driftUi = driftUi,
             dualSecondaryColorHex = dualSecondaryColorHex,
             onMovieAppearanceMemoryReadyChanged = {
                 movieAppearanceMemoryReady = it
             },
-        )
-
-        // Slice 23: the complete subtitle reset operation now lives outside
-        // VideoPlayerScreen. This keeps the player composable from directly
-        // coordinating appearance, subtitle sync, drift and audio-sync reset
-        // state in one local function.
-        val subtitleResetCoordinator = SubtitleResetCoordinator(
-            context = context,
-            displayProfileType = displayProfileType,
-            isLandscape = isLandscape,
-            appearanceUi = appearanceUi,
-            coreUi = coreUi,
-            trackUi = trackUi,
-            driftUi = driftUi,
             setAudioSyncMs = { audioSyncMs = it },
             setShowControls = { showControls = it },
             incrementMenuTouchKey = { studioUi.menuTouchKey++ },
