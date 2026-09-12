@@ -6,6 +6,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import kotlinx.coroutines.CoroutineScope
@@ -30,6 +31,7 @@ internal fun PlayerEventListener(
     trackUi: SubtitleTrackSelectionState,
     audioLanguageCheckedForPath: String?,
     onAudioLanguageCheckedForPathChanged: (String?) -> Unit,
+    onVideoDecoderCapabilityReportChanged: (VideoDecoderCapabilityReport?) -> Unit,
     onBufferingChanged: (Boolean) -> Unit,
     onErrorRetryCountChanged: (Int) -> Unit,
     onPlayerErrorMessageChanged: (String?) -> Unit,
@@ -110,6 +112,24 @@ internal fun PlayerEventListener(
                     }
                     onShowControls()
                 }
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                val selectedVideoFormat = tracks.groups
+                    .firstOrNull { group ->
+                        group.type == C.TRACK_TYPE_VIDEO && group.isSelected
+                    }
+                    ?.let { group ->
+                        (0 until group.length)
+                            .firstOrNull { index -> group.isTrackSelected(index) }
+                            ?.let { index -> group.getTrackFormat(index) }
+                    }
+
+                val capabilityReport = selectedVideoFormat?.let {
+                    inspectVideoDecoderCapability(it)
+                }
+
+                onVideoDecoderCapabilityReportChanged(capabilityReport)
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {

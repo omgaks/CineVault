@@ -25,6 +25,11 @@ internal class PlayerPlaybackRecoveryState {
     var fallbackResumePositionMs by mutableStateOf(0L)
     var fallbackErrorCode by mutableIntStateOf(0)
 
+    // Slice 76: capability report for the currently selected VIDEO track.
+    // Because this entire holder is remembered per currentVideo.path, the
+    // report cannot leak from one title/episode into another.
+    var videoDecoderCapabilityReport by mutableStateOf<VideoDecoderCapabilityReport?>(null)
+
     fun requestSoftwareFallback(
         errorCode: Int,
         resumePositionMs: Long,

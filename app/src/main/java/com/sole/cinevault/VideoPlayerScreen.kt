@@ -532,6 +532,9 @@ fun VideoPlayerScreen(
         onPreviousRequested = { playbackNavigationCoordinator.playPrevious() },
         onInitialBrightnessChanged = { chromeUi.brightnessPercent = it },
         onAudioLanguageCheckedForPathChanged = { audioLanguageCheckedForPath = it },
+        onVideoDecoderCapabilityReportChanged = {
+            playbackRecovery.videoDecoderCapabilityReport = it
+        },
         onBufferingChanged = { playbackHealth.isBuffering = it },
         onErrorRetryCountChanged = { playbackHealth.errorRetryCount = it },
         onPlayerErrorMessageChanged = { playbackHealth.playerErrorMessage = it },
