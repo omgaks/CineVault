@@ -33,6 +33,7 @@ enum class PlaybackStreamRoute {
     NATIVE_VIDEO,
     PLATFORM_SOFTWARE_VIDEO,
     AUDIO_PLATFORM_OR_FFMPEG_EXTENSION,
+    AUDIO_FFMPEG_RESCUE_CANDIDATE,
     TEXT_MEDIA3_OR_CINEVAULT,
     UNRESOLVED,
 }
@@ -42,19 +43,19 @@ data class PlaybackStreamRoutingPlan(
     val audioRoute: PlaybackStreamRoute?,
     val textRoute: PlaybackStreamRoute?,
     val isMixedPipeline: Boolean,
+    val audioAssessment: AudioStreamCapabilityAssessment? = null,
 )
 
 /**
- * Builds the first stream-by-stream routing plan.
+ * Builds CineVault's stream-by-stream routing plan.
  *
- * This intentionally does not pretend CineVault already owns a generic FFmpeg
- * video renderer. VIDEO software rescue here means the platform software-only
- * MediaCodec path already implemented by Playback Resilience.
+ * VIDEO software rescue is still Android's software-only MediaCodec path.
+ * CineVault does not yet claim a generic FFmpeg video renderer.
  *
- * AUDIO is marked platform-or-FFmpeg-extension because CineRenderersFactory
- * already registers the Jellyfin FFmpeg audio renderer after the platform
- * renderer. We do not claim which renderer actually won until later analytics
- * expose that information.
+ * AUDIO is evaluated independently. CineRenderersFactory already registers
+ * MediaCodec first and FfmpegAudioRenderer second, so DTS/DTS-HD/TrueHD can be
+ * identified as extension-rescue candidates without forcing the video stream
+ * away from its current hardware/software route.
  */
 fun buildPlaybackStreamRoutingPlan(
     inventory: PlaybackStreamInventory,
@@ -75,8 +76,19 @@ fun buildPlaybackStreamRoutingPlan(
             PlaybackStreamRoute.UNRESOLVED
     }
 
-    val audioRoute = inventory.selectedAudio?.let {
-        PlaybackStreamRoute.AUDIO_PLATFORM_OR_FFMPEG_EXTENSION
+    val audioAssessment = assessAudioStreamCapability(
+        inventory.selectedAudio
+    )
+
+    val audioRoute = audioAssessment?.let { assessment ->
+        when (assessment.decoderPreference) {
+            AudioDecoderPreference.FFMPEG_RESCUE_CANDIDATE ->
+                PlaybackStreamRoute.AUDIO_FFMPEG_RESCUE_CANDIDATE
+
+            AudioDecoderPreference.PLATFORM_PREFERRED,
+            AudioDecoderPreference.UNKNOWN ->
+                PlaybackStreamRoute.AUDIO_PLATFORM_OR_FFMPEG_EXTENSION
+        }
     }
 
     val textRoute = inventory.selectedText?.let {
@@ -84,7 +96,9 @@ fun buildPlaybackStreamRoutingPlan(
     }
 
     val activeRoutes = listOfNotNull(
-        videoRoute.takeUnless { it == PlaybackStreamRoute.UNRESOLVED },
+        videoRoute.takeUnless {
+            it == PlaybackStreamRoute.UNRESOLVED
+        },
         audioRoute,
         textRoute,
     )
@@ -94,5 +108,6 @@ fun buildPlaybackStreamRoutingPlan(
         audioRoute = audioRoute,
         textRoute = textRoute,
         isMixedPipeline = activeRoutes.distinct().size > 1,
+        audioAssessment = audioAssessment,
     )
 }
