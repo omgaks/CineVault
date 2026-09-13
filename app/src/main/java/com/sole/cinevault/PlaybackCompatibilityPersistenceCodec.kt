@@ -114,9 +114,9 @@ private fun decodeCompatibilityEntry(
             nativeReadiness =
                 enumValueOf<NativeVideoPlaybackReadiness>(fields[18]),
             softwareFallbackAvailable =
-                fields[19].toStrictBoolean(),
+                parseStrictBoolean(fields[19]),
             fallbackOccurred =
-                fields[20].toStrictBoolean(),
+                parseStrictBoolean(fields[20]),
             fallbackReason = fields[21]
                 .takeIf { it.isNotEmpty() }
                 ?.let { enumValueOf<PlaybackFallbackReason>(it) },
@@ -132,6 +132,15 @@ private fun decodeCompatibilityEntry(
                 enumValueOf<PlaybackCompatibilityVerdict>(fields[24]),
         )
     }.getOrNull()
+}
+
+
+private fun parseStrictBoolean(
+    value: String,
+): Boolean = when (value) {
+    "true" -> true
+    "false" -> false
+    else -> error("Invalid boolean: $value")
 }
 
 private fun escapeCompatibilityField(
