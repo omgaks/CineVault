@@ -2,6 +2,7 @@ package com.sole.cinevault
 
 data class PlaybackDiagnosticsPresentation(
     val videoSummary: String,
+    val codecDetailsSummary: String?,
     val decoderSummary: String,
     val compatibilitySummary: String,
     val fallbackSummary: String?,
@@ -10,6 +11,11 @@ data class PlaybackDiagnosticsPresentation(
 fun presentPlaybackDiagnostics(
     snapshot: PlaybackDiagnosticsSnapshot,
 ): PlaybackDiagnosticsPresentation {
+    val codecDetails = parseVideoCodecDetails(
+        mimeType = snapshot.mimeType,
+        codecString = snapshot.codecString,
+    )
+
     val videoParts = buildList {
         friendlyVideoCodecLabel(snapshot.mimeType, snapshot.codecString)
             ?.let(::add)
@@ -59,6 +65,7 @@ fun presentPlaybackDiagnostics(
             .takeIf { it.isNotEmpty() }
             ?.joinToString(" · ")
             ?: "Video stream unknown",
+        codecDetailsSummary = formatVideoCodecDetails(codecDetails),
         decoderSummary = decoderSummary,
         compatibilitySummary = compatibilitySummary,
         fallbackSummary = fallbackSummary,

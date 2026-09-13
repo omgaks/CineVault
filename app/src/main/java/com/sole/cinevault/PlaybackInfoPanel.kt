@@ -102,6 +102,13 @@ fun PlaybackInfoPanel(
             value = presentation.videoSummary,
         )
 
+        presentation.codecDetailsSummary?.let { codecDetails ->
+            DiagnosticSection(
+                label = "CODEC DETAILS",
+                value = codecDetails,
+            )
+        }
+
         DiagnosticSection(
             label = "DECODER",
             value = presentation.decoderSummary,
