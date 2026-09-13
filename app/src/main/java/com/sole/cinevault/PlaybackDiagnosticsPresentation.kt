@@ -50,7 +50,7 @@ fun presentPlaybackDiagnostics(
     val fallbackSummary = when {
         !snapshot.fallbackOccurred -> null
         snapshot.fallbackReason != null ->
-            "Fallback: ${snapshot.fallbackReason.label}"
+            "Fallback: ${playbackFallbackReasonLabel(snapshot.fallbackReason)}"
         else -> "Fallback: Software decoding"
     }
 
