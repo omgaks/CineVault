@@ -1306,6 +1306,7 @@ fun VideoPlayerScreen(
 
         PlaybackInfoOverlayHost(
             snapshot = playbackRecovery.playbackDiagnosticsSnapshot,
+            compatibilityRecorder = playbackCompatibilityRecorder,
             controlsVisible = chromeUi.showControls,
             topPadding = playerLayout.topClusterPaddingTop,
             sidePadding = playerLayout.sidePadding,

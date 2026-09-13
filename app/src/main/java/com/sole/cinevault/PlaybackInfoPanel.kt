@@ -32,6 +32,7 @@ private val DiagnosticsSecondary = Color(0xA6FFFFFF)
 fun PlaybackInfoPanel(
     snapshot: PlaybackDiagnosticsSnapshot,
     onDismiss: () -> Unit,
+    onShowCompatibilityReport: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val presentation = presentPlaybackDiagnostics(snapshot)
@@ -143,6 +144,27 @@ fun PlaybackInfoPanel(
                 emphasize = true,
             )
         }
+
+        Text(
+            text = "COMPATIBILITY REPORT  ›",
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    DiagnosticsAmber.copy(alpha = 0.10f),
+                    RoundedCornerShape(10.dp),
+                )
+                .border(
+                    1.dp,
+                    DiagnosticsAmber.copy(alpha = 0.30f),
+                    RoundedCornerShape(10.dp),
+                )
+                .clickable { onShowCompatibilityReport() }
+                .padding(horizontal = 11.dp, vertical = 9.dp),
+            color = DiagnosticsAmber,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp,
+        )
     }
 }
 

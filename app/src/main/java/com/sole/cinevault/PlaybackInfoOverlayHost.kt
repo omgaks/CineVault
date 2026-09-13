@@ -28,22 +28,34 @@ import androidx.compose.ui.unit.sp
 
 private val PlaybackInfoAmber = Color(0xFFFFB547)
 
+private enum class PlaybackInfoSurface {
+    NONE,
+    INFO,
+    REPORT,
+}
+
 @Composable
 internal fun BoxScope.PlaybackInfoOverlayHost(
     snapshot: PlaybackDiagnosticsSnapshot,
+    compatibilityRecorder: PlaybackCompatibilitySessionRecorder,
     controlsVisible: Boolean,
     topPadding: Dp,
     sidePadding: Dp,
 ) {
-    var panelRequested by remember { mutableStateOf(false) }
+    var surface by remember { mutableStateOf(PlaybackInfoSurface.NONE) }
 
+    val panelRequested = surface != PlaybackInfoSurface.NONE
     val visibility = playbackInfoVisibility(
         panelRequested = panelRequested,
         fallbackOccurred = snapshot.fallbackOccurred,
     )
 
     BackHandler(enabled = visibility.showPanel) {
-        panelRequested = false
+        surface = when (surface) {
+            PlaybackInfoSurface.REPORT -> PlaybackInfoSurface.INFO
+            PlaybackInfoSurface.INFO,
+            PlaybackInfoSurface.NONE -> PlaybackInfoSurface.NONE
+        }
     }
 
     AnimatedVisibility(
@@ -58,12 +70,12 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
             ),
     ) {
         PlaybackInfoTrigger(
-            onClick = { panelRequested = true },
+            onClick = { surface = PlaybackInfoSurface.INFO },
         )
     }
 
     AnimatedVisibility(
-        visible = visibility.showPanel,
+        visible = surface == PlaybackInfoSurface.INFO,
         enter = fadeIn(),
         exit = fadeOut(),
         modifier = Modifier
@@ -75,7 +87,31 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
     ) {
         PlaybackInfoPanel(
             snapshot = snapshot,
-            onDismiss = { panelRequested = false },
+            onDismiss = { surface = PlaybackInfoSurface.NONE },
+            onShowCompatibilityReport = {
+                surface = PlaybackInfoSurface.REPORT
+            },
+        )
+    }
+
+    AnimatedVisibility(
+        visible = surface == PlaybackInfoSurface.REPORT,
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = Modifier
+            .align(Alignment.TopEnd)
+            .padding(
+                top = topPadding + 42.dp,
+                end = sidePadding,
+            ),
+    ) {
+        val entries = compatibilityRecorder.entries()
+
+        PlaybackCompatibilityReportPanel(
+            entries = entries,
+            report = compatibilityRecorder.report(),
+            onBack = { surface = PlaybackInfoSurface.INFO },
+            onDismiss = { surface = PlaybackInfoSurface.NONE },
         )
     }
 }
