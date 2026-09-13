@@ -2,7 +2,6 @@ package com.sole.cinevault
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AudioStreamCapabilityTest {
@@ -99,7 +98,10 @@ class AudioStreamCapabilityTest {
             AudioCodecFamily.DTS,
             plan.audioAssessment?.codecFamily,
         )
-        assertTrue(plan.isMixedPipeline)
+        // Video capability is deliberately unresolved in this pure audio
+        // test, so only the audio rescue lane is active. Mixed-pipeline state
+        // becomes true once a concrete video route is available.
+        assertEquals(false, plan.isMixedPipeline)
     }
 
     @Test
