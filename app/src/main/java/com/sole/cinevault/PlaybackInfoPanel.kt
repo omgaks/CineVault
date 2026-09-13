@@ -2,6 +2,7 @@ package com.sole.cinevault
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +31,7 @@ private val DiagnosticsSecondary = Color(0xA6FFFFFF)
 @Composable
 fun PlaybackInfoPanel(
     snapshot: PlaybackDiagnosticsSnapshot,
+    onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val presentation = presentPlaybackDiagnostics(snapshot)
@@ -79,6 +81,18 @@ fun PlaybackInfoPanel(
             DecoderModeBadge(
                 mode = snapshot.decoderMode,
                 kind = snapshot.activeDecoderKind,
+            )
+
+            Spacer(Modifier.width(7.dp))
+
+            Text(
+                text = "×",
+                modifier = Modifier
+                    .clickable { onDismiss() }
+                    .padding(horizontal = 5.dp, vertical = 2.dp),
+                color = DiagnosticsSecondary,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.Medium,
             )
         }
 

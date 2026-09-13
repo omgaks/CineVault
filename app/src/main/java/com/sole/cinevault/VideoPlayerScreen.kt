@@ -1288,5 +1288,12 @@ fun VideoPlayerScreen(
                 ),
         )
 
+        PlaybackInfoOverlayHost(
+            snapshot = playbackRecovery.playbackDiagnosticsSnapshot,
+            controlsVisible = chromeUi.showControls,
+            topPadding = playerLayout.topClusterPaddingTop,
+            sidePadding = playerLayout.sidePadding,
+        )
+
     }
 }
