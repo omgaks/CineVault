@@ -37,7 +37,7 @@ class PlaybackCompatibilityMatrixTest {
                 decoderKind = ActiveVideoDecoderKind.SOFTWARE,
                 fallbackOccurred = true,
                 fallbackReason =
-                    PlaybackFallbackReason.DECODER_INITIALIZATION_FAILED,
+                    PlaybackFallbackReason.DECODER_INIT_FAILED,
             ),
         )
 
