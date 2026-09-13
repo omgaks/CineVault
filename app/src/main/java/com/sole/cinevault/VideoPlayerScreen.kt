@@ -276,6 +276,22 @@ fun VideoPlayerScreen(
         PlayerPlaybackRecoveryState()
     }
 
+    // Playback Resilience Slice 99: keep one compatibility recorder for this
+    // player session and feed it live decoder/health/fallback snapshots for
+    // every video that plays. The recorder itself prevents lower-information
+    // callbacks from downgrading a stronger result already captured.
+    val playbackCompatibilityRecorder = remember {
+        PlaybackCompatibilitySessionRecorder(
+            device = currentPlaybackCompatibilityDevice()
+        )
+    }
+
+    PlaybackCompatibilityRecordingEffect(
+        currentVideo = currentVideo,
+        recoveryState = playbackRecovery,
+        recorder = playbackCompatibilityRecorder,
+    )
+
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
     val playerRuntime = rememberPlayerRuntime(
