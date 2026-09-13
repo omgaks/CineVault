@@ -14,11 +14,13 @@ internal fun PlayerDecoderAnalytics(
     capabilityReport: VideoDecoderCapabilityReport?,
     engineMode: PlaybackEngineMode,
     onDecoderStatusChanged: (ActiveVideoDecoderStatus) -> Unit,
+    onAudioDecoderStatusChanged: (ActiveAudioDecoderStatus) -> Unit,
     onDroppedVideoFrames: (droppedFrames: Int, elapsedMs: Long) -> Unit,
     onFirstVideoFrameRendered: () -> Unit,
 ) {
     DisposableEffect(player, capabilityReport, engineMode) {
         onDecoderStatusChanged(ActiveVideoDecoderStatus())
+        onAudioDecoderStatusChanged(ActiveAudioDecoderStatus())
 
         val listener = object : AnalyticsListener {
             override fun onRenderedFirstFrame(
@@ -50,6 +52,20 @@ internal fun PlayerDecoderAnalytics(
                             capabilityReport = capabilityReport,
                             engineMode = engineMode,
                         ),
+                        decoderName = decoderName,
+                    )
+                )
+            }
+
+            override fun onAudioDecoderInitialized(
+                eventTime: AnalyticsListener.EventTime,
+                decoderName: String,
+                initializedTimestampMs: Long,
+                initializationDurationMs: Long,
+            ) {
+                onAudioDecoderStatusChanged(
+                    ActiveAudioDecoderStatus(
+                        kind = classifyActiveAudioDecoder(decoderName),
                         decoderName = decoderName,
                     )
                 )

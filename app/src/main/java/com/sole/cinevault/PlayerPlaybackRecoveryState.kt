@@ -27,6 +27,7 @@ class PlayerPlaybackRecoveryState {
     var fallbackErrorCode by mutableIntStateOf(0)
     var fallbackSubtitleUri by mutableStateOf<Uri?>(null)
     var activeVideoDecoderStatus by mutableStateOf(ActiveVideoDecoderStatus())
+    var activeAudioDecoderStatus by mutableStateOf(ActiveAudioDecoderStatus())
     var fallbackReason by mutableStateOf<PlaybackFallbackReason?>(null)
     var fallbackOccurred by mutableStateOf(false)
     var droppedFrameUnhealthyStreak by mutableIntStateOf(0)
@@ -67,6 +68,7 @@ class PlayerPlaybackRecoveryState {
         fallbackErrorCode = 0
         fallbackSubtitleUri = null
         activeVideoDecoderStatus = ActiveVideoDecoderStatus()
+        activeAudioDecoderStatus = ActiveAudioDecoderStatus()
         fallbackReason = null
         fallbackOccurred = false
         droppedFrameUnhealthyStreak = 0

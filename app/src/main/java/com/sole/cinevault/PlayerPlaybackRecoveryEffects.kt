@@ -43,16 +43,15 @@ internal fun PlayerPlaybackRecoveryEffects(
         onPlayCurrentVideoWithSubtitle
     )
 
-    val healthThresholds = playbackHealthThresholdsFor(
-        recoveryState.videoPlaybackCompatibilityAssessment
-    )
-
     PlayerDecoderAnalytics(
         player = player,
         capabilityReport = recoveryState.videoDecoderCapabilityReport,
         engineMode = recoveryState.engineMode,
         onDecoderStatusChanged = {
             recoveryState.activeVideoDecoderStatus = it
+        },
+        onAudioDecoderStatusChanged = {
+            recoveryState.activeAudioDecoderStatus = it
         },
         onDroppedVideoFrames = { droppedFrames, elapsedMs ->
             recoveryState.onDroppedVideoFrames(
@@ -113,7 +112,7 @@ internal fun PlayerPlaybackRecoveryEffects(
         }
 
         val windowStartPosition = player.currentPosition
-        delay(healthThresholds.firstFrameTimeoutMs)
+        delay(8_000L)
 
         val playbackProgressMs =
             abs(player.currentPosition - windowStartPosition)
@@ -125,13 +124,12 @@ internal fun PlayerPlaybackRecoveryEffects(
                     recoveryState.videoDecoderCapabilityReport != null,
                 firstVideoFrameRendered =
                     recoveryState.firstVideoFrameRendered,
-                elapsedMs = healthThresholds.firstFrameTimeoutMs,
+                elapsedMs = 8_000L,
                 playbackProgressMs = playbackProgressMs,
                 engineMode = recoveryState.engineMode,
                 softwareFallbackAvailable =
                     recoveryState.softwareFallbackAvailable,
                 fallbackOccurred = recoveryState.fallbackOccurred,
-                thresholds = healthThresholds,
             ) &&
             !recoveryState.softwareFallbackRequested
         ) {
@@ -162,7 +160,7 @@ internal fun PlayerPlaybackRecoveryEffects(
         }
 
         val windowStartPosition = player.currentPosition
-        delay(healthThresholds.startupStallTimeoutMs)
+        delay(12_000L)
 
         val playbackProgressMs =
             abs(player.currentPosition - windowStartPosition)
@@ -172,13 +170,12 @@ internal fun PlayerPlaybackRecoveryEffects(
                 isBuffering = playbackHealth.isBuffering,
                 startupPlaybackConfirmed =
                     recoveryState.startupPlaybackConfirmed,
-                elapsedMs = healthThresholds.startupStallTimeoutMs,
+                elapsedMs = 12_000L,
                 playbackProgressMs = playbackProgressMs,
                 engineMode = recoveryState.engineMode,
                 softwareFallbackAvailable =
                     recoveryState.softwareFallbackAvailable,
                 fallbackOccurred = recoveryState.fallbackOccurred,
-                thresholds = healthThresholds,
             ) &&
             !recoveryState.softwareFallbackRequested
         ) {
