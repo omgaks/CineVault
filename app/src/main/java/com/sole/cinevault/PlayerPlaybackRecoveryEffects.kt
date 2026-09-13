@@ -43,6 +43,10 @@ internal fun PlayerPlaybackRecoveryEffects(
         onPlayCurrentVideoWithSubtitle
     )
 
+    val healthThresholds = playbackHealthThresholdsFor(
+        recoveryState.videoPlaybackCompatibilityAssessment
+    )
+
     PlayerDecoderAnalytics(
         player = player,
         capabilityReport = recoveryState.videoDecoderCapabilityReport,
@@ -109,7 +113,7 @@ internal fun PlayerPlaybackRecoveryEffects(
         }
 
         val windowStartPosition = player.currentPosition
-        delay(8_000L)
+        delay(healthThresholds.firstFrameTimeoutMs)
 
         val playbackProgressMs =
             abs(player.currentPosition - windowStartPosition)
@@ -121,12 +125,13 @@ internal fun PlayerPlaybackRecoveryEffects(
                     recoveryState.videoDecoderCapabilityReport != null,
                 firstVideoFrameRendered =
                     recoveryState.firstVideoFrameRendered,
-                elapsedMs = 8_000L,
+                elapsedMs = healthThresholds.firstFrameTimeoutMs,
                 playbackProgressMs = playbackProgressMs,
                 engineMode = recoveryState.engineMode,
                 softwareFallbackAvailable =
                     recoveryState.softwareFallbackAvailable,
                 fallbackOccurred = recoveryState.fallbackOccurred,
+                thresholds = healthThresholds,
             ) &&
             !recoveryState.softwareFallbackRequested
         ) {
@@ -157,7 +162,7 @@ internal fun PlayerPlaybackRecoveryEffects(
         }
 
         val windowStartPosition = player.currentPosition
-        delay(12_000L)
+        delay(healthThresholds.startupStallTimeoutMs)
 
         val playbackProgressMs =
             abs(player.currentPosition - windowStartPosition)
@@ -167,12 +172,13 @@ internal fun PlayerPlaybackRecoveryEffects(
                 isBuffering = playbackHealth.isBuffering,
                 startupPlaybackConfirmed =
                     recoveryState.startupPlaybackConfirmed,
-                elapsedMs = 12_000L,
+                elapsedMs = healthThresholds.startupStallTimeoutMs,
                 playbackProgressMs = playbackProgressMs,
                 engineMode = recoveryState.engineMode,
                 softwareFallbackAvailable =
                     recoveryState.softwareFallbackAvailable,
                 fallbackOccurred = recoveryState.fallbackOccurred,
+                thresholds = healthThresholds,
             ) &&
             !recoveryState.softwareFallbackRequested
         ) {

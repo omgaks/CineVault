@@ -162,9 +162,14 @@ internal class PlayerPlaybackRecoveryState {
         resumePositionMs: Long,
         subtitleUri: Uri?,
     ) {
+        val thresholds = playbackHealthThresholdsFor(
+            videoPlaybackCompatibilityAssessment
+        )
+
         val health = assessDroppedFrameHealth(
             droppedFrames = droppedFrames,
             elapsedMs = elapsedMs,
+            thresholds = thresholds,
         )
 
         droppedFrameUnhealthyStreak = nextDroppedFrameUnhealthyStreak(
@@ -177,6 +182,8 @@ internal class PlayerPlaybackRecoveryState {
                 unhealthyStreak = droppedFrameUnhealthyStreak,
                 engineMode = engineMode,
                 softwareFallbackAvailable = softwareFallbackAvailable,
+                requiredUnhealthyWindows =
+                    thresholds.requiredUnhealthyDroppedFrameWindows,
             ) &&
             !fallbackOccurred &&
             !softwareFallbackRequested

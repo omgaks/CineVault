@@ -16,6 +16,8 @@ enum class DroppedFrameHealth {
 fun assessDroppedFrameHealth(
     droppedFrames: Int,
     elapsedMs: Long,
+    thresholds: PlaybackHealthThresholds =
+        ConservativePlaybackHealthThresholds,
 ): DroppedFrameHealth {
     if (droppedFrames <= 0 || elapsedMs < 1_500L) {
         return DroppedFrameHealth.HEALTHY
@@ -25,13 +27,15 @@ fun assessDroppedFrameHealth(
 
     val severeShortWindow =
         elapsedMs <= 2_500L &&
-            droppedFrames >= 24 &&
-            dropsPerSecond >= 10.0
+            droppedFrames >= thresholds.droppedFrameShortWindowMinimum &&
+            dropsPerSecond >=
+                thresholds.droppedFrameShortWindowRatePerSecond
 
     val severeLongWindow =
         elapsedMs > 2_500L &&
-            droppedFrames >= 40 &&
-            dropsPerSecond >= 8.0
+            droppedFrames >= thresholds.droppedFrameLongWindowMinimum &&
+            dropsPerSecond >=
+                thresholds.droppedFrameLongWindowRatePerSecond
 
     return if (severeShortWindow || severeLongWindow) {
         DroppedFrameHealth.UNHEALTHY
@@ -58,8 +62,9 @@ fun shouldFallbackForDroppedFrames(
     unhealthyStreak: Int,
     engineMode: PlaybackEngineMode,
     softwareFallbackAvailable: Boolean,
+    requiredUnhealthyWindows: Int = 2,
 ): Boolean {
-    return unhealthyStreak >= 2 &&
+    return unhealthyStreak >= requiredUnhealthyWindows &&
         engineMode == PlaybackEngineMode.HARDWARE &&
         softwareFallbackAvailable
 }
