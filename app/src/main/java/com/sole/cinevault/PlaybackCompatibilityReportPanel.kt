@@ -42,6 +42,7 @@ fun PlaybackCompatibilityReportPanel(
     report: String,
     onBack: () -> Unit,
     onDismiss: () -> Unit,
+    onShowMatrix: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -88,6 +89,28 @@ fun PlaybackCompatibilityReportPanel(
             }
 
             Spacer(Modifier.weight(1f))
+
+            Text(
+                text = "MATRIX ›",
+                modifier = Modifier
+                    .background(
+                        ReportAmber.copy(alpha = 0.12f),
+                        RoundedCornerShape(999.dp),
+                    )
+                    .border(
+                        1.dp,
+                        ReportAmber.copy(alpha = 0.38f),
+                        RoundedCornerShape(999.dp),
+                    )
+                    .clickable { onShowMatrix() }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                color = ReportAmber,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.6.sp,
+            )
+
+            Spacer(Modifier.width(7.dp))
 
             Text(
                 text = "COPY TSV",

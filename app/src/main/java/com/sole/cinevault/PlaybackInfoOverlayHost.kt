@@ -32,6 +32,7 @@ private enum class PlaybackInfoSurface {
     NONE,
     INFO,
     REPORT,
+    MATRIX,
 }
 
 @Composable
@@ -52,6 +53,7 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
 
     BackHandler(enabled = visibility.showPanel) {
         surface = when (surface) {
+            PlaybackInfoSurface.MATRIX -> PlaybackInfoSurface.REPORT
             PlaybackInfoSurface.REPORT -> PlaybackInfoSurface.INFO
             PlaybackInfoSurface.INFO,
             PlaybackInfoSurface.NONE -> PlaybackInfoSurface.NONE
@@ -111,6 +113,27 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
             entries = entries,
             report = compatibilityRecorder.report(),
             onBack = { surface = PlaybackInfoSurface.INFO },
+            onDismiss = { surface = PlaybackInfoSurface.NONE },
+            onShowMatrix = {
+                surface = PlaybackInfoSurface.MATRIX
+            },
+        )
+    }
+
+    AnimatedVisibility(
+        visible = surface == PlaybackInfoSurface.MATRIX,
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = Modifier
+            .align(Alignment.TopEnd)
+            .padding(
+                top = topPadding + 42.dp,
+                end = sidePadding,
+            ),
+    ) {
+        PlaybackCompatibilityMatrixPanel(
+            entries = compatibilityRecorder.entries(),
+            onBack = { surface = PlaybackInfoSurface.REPORT },
             onDismiss = { surface = PlaybackInfoSurface.NONE },
         )
     }
