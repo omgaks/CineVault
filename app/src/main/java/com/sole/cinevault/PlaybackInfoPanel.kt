@@ -35,6 +35,7 @@ fun PlaybackInfoPanel(
     modifier: Modifier = Modifier,
 ) {
     val presentation = presentPlaybackDiagnostics(snapshot)
+    val liveStatus = buildPlaybackDiagnosticsLiveStatus(snapshot)
     val shape = RoundedCornerShape(18.dp)
 
     Column(
@@ -110,6 +111,22 @@ fun PlaybackInfoPanel(
             label = "COMPATIBILITY",
             value = presentation.compatibilitySummary
                 .removePrefix("Compatibility: "),
+        )
+
+        DiagnosticSection(
+            label = "READINESS",
+            value = liveStatus.readiness,
+        )
+
+        DiagnosticSection(
+            label = "HEALTH",
+            value = liveStatus.health,
+        )
+
+        DiagnosticSection(
+            label = "SOFTWARE RESCUE",
+            value = liveStatus.recovery,
+            emphasize = snapshot.fallbackOccurred,
         )
 
         presentation.fallbackSummary?.let { fallback ->

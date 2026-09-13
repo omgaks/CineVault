@@ -30,6 +30,7 @@ class PlayerPlaybackRecoveryState {
     var fallbackReason by mutableStateOf<PlaybackFallbackReason?>(null)
     var fallbackOccurred by mutableStateOf(false)
     var droppedFrameUnhealthyStreak by mutableIntStateOf(0)
+    var totalDroppedVideoFrames by mutableIntStateOf(0)
     var startupPlaybackConfirmed by mutableStateOf(false)
     var firstVideoFrameRendered by mutableStateOf(false)
 
@@ -63,6 +64,7 @@ class PlayerPlaybackRecoveryState {
         fallbackReason = null
         fallbackOccurred = false
         droppedFrameUnhealthyStreak = 0
+        totalDroppedVideoFrames = 0
         startupPlaybackConfirmed = false
         firstVideoFrameRendered = false
         videoDecoderCapabilityReport = null
@@ -165,6 +167,11 @@ class PlayerPlaybackRecoveryState {
         resumePositionMs: Long,
         subtitleUri: Uri?,
     ) {
+        totalDroppedVideoFrames = (
+            totalDroppedVideoFrames.toLong() +
+                droppedFrames.coerceAtLeast(0).toLong()
+        ).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+
         val thresholds = playbackHealthThresholdsFor(
             videoPlaybackCompatibilityAssessment
         )

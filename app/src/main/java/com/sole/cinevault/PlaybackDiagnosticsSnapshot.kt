@@ -13,6 +13,13 @@ data class PlaybackDiagnosticsSnapshot(
     val decoderRecommendation: VideoDecoderRecommendation,
     val fallbackOccurred: Boolean,
     val fallbackReason: PlaybackFallbackReason?,
+    val nativeReadiness: NativeVideoPlaybackReadiness =
+        NativeVideoPlaybackReadiness.UNKNOWN,
+    val softwareFallbackAvailable: Boolean = false,
+    val totalDroppedVideoFrames: Int = 0,
+    val unhealthyDroppedFrameWindows: Int = 0,
+    val startupPlaybackConfirmed: Boolean = false,
+    val firstVideoFrameRendered: Boolean = false,
 )
 
 fun buildPlaybackDiagnosticsSnapshot(
@@ -35,5 +42,16 @@ fun buildPlaybackDiagnosticsSnapshot(
         decoderRecommendation = assessment.recommendation,
         fallbackOccurred = recoveryState.fallbackOccurred,
         fallbackReason = recoveryState.fallbackReason,
+        nativeReadiness = recoveryState.nativeVideoPlaybackReadiness,
+        softwareFallbackAvailable =
+            recoveryState.softwareFallbackAvailable,
+        totalDroppedVideoFrames =
+            recoveryState.totalDroppedVideoFrames,
+        unhealthyDroppedFrameWindows =
+            recoveryState.droppedFrameUnhealthyStreak,
+        startupPlaybackConfirmed =
+            recoveryState.startupPlaybackConfirmed,
+        firstVideoFrameRendered =
+            recoveryState.firstVideoFrameRendered,
     )
 }
