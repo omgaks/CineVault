@@ -1,19 +1,20 @@
 package com.sole.cinevault
 
 /**
- * In-memory recorder for one CineVault compatibility-testing session.
+ * Recorder for CineVault compatibility testing.
  *
- * A single test case is updated in-place as playback progresses:
+ * Results can be seeded from local persistence and every accepted change can
+ * be persisted through onEntriesChanged. A single test case still progresses
+ * monotonically:
  *
  * STARTING -> NATIVE_HEALTHY -> NATIVE_UNSTABLE -> SOFTWARE_RESCUED
- *
- * Lower-information snapshots never overwrite a more advanced result. This
- * prevents a late lifecycle/startup callback from accidentally downgrading a
- * useful compatibility result.
  */
 class PlaybackCompatibilitySessionRecorder(
     val device: PlaybackCompatibilityDevice,
     private val maxEntries: Int = DEFAULT_MAX_ENTRIES,
+    initialEntries: List<PlaybackCompatibilityMatrixEntry> = emptyList(),
+    private val onEntriesChanged:
+        ((List<PlaybackCompatibilityMatrixEntry>) -> Unit)? = null,
 ) {
     private val entriesByTestId =
         LinkedHashMap<String, PlaybackCompatibilityMatrixEntry>()
@@ -22,6 +23,14 @@ class PlaybackCompatibilitySessionRecorder(
         require(maxEntries > 0) {
             "maxEntries must be greater than zero"
         }
+
+        initialEntries
+            .asSequence()
+            .filter { it.device == device }
+            .takeLastCompat(maxEntries)
+            .forEach { entry ->
+                entriesByTestId[entry.testCase.testId] = entry
+            }
     }
 
     fun record(
@@ -51,10 +60,10 @@ class PlaybackCompatibilitySessionRecorder(
         )
 
         if (selected === candidate) {
-            // Reinsert so the map also reflects most recently updated order.
             entriesByTestId.remove(testCase.testId)
             entriesByTestId[testCase.testId] = candidate
             trimToLimit()
+            notifyChanged()
         }
 
         return selected
@@ -72,7 +81,12 @@ class PlaybackCompatibilitySessionRecorder(
         formatPlaybackCompatibilityMatrixReport(entries())
 
     fun clear() {
+        if (entriesByTestId.isEmpty()) {
+            return
+        }
+
         entriesByTestId.clear()
+        notifyChanged()
     }
 
     private fun trimToLimit() {
@@ -83,17 +97,15 @@ class PlaybackCompatibilitySessionRecorder(
         }
     }
 
+    private fun notifyChanged() {
+        onEntriesChanged?.invoke(entries())
+    }
+
     companion object {
         const val DEFAULT_MAX_ENTRIES = 200
     }
 }
 
-/**
- * Chooses which observation should represent one test case in the session.
- *
- * Equal-stage observations replace older ones so updated decoder/health
- * details are retained. A lower-stage observation cannot downgrade a result.
- */
 fun selectCompatibilityEntry(
     existing: PlaybackCompatibilityMatrixEntry?,
     candidate: PlaybackCompatibilityMatrixEntry,
@@ -119,4 +131,15 @@ private fun compatibilityOutcomeRank(
     PlaybackCompatibilityOutcome.NATIVE_HEALTHY -> 1
     PlaybackCompatibilityOutcome.NATIVE_UNSTABLE -> 2
     PlaybackCompatibilityOutcome.SOFTWARE_RESCUED -> 3
+}
+
+private fun <T> Sequence<T>.takeLastCompat(
+    count: Int,
+): List<T> {
+    val items = toList()
+    return if (items.size <= count) {
+        items
+    } else {
+        items.takeLast(count)
+    }
 }

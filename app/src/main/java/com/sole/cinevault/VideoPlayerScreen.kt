@@ -281,8 +281,13 @@ fun VideoPlayerScreen(
     // every video that plays. The recorder itself prevents lower-information
     // callbacks from downgrading a stronger result already captured.
     val playbackCompatibilityRecorder = remember {
+        val compatibilityDevice = currentPlaybackCompatibilityDevice()
+        val compatibilityStore = PlaybackCompatibilityStore(context)
+
         PlaybackCompatibilitySessionRecorder(
-            device = currentPlaybackCompatibilityDevice()
+            device = compatibilityDevice,
+            initialEntries = compatibilityStore.load(compatibilityDevice),
+            onEntriesChanged = compatibilityStore::save,
         )
     }
 
