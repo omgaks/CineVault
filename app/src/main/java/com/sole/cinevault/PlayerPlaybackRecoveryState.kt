@@ -12,7 +12,7 @@ import androidx.compose.runtime.setValue
  * The state is intentionally remembered with currentVideo.path by the screen,
  * so a fallback decision made for one title cannot leak into the next title.
  */
-internal class PlayerPlaybackRecoveryState {
+class PlayerPlaybackRecoveryState {
     var engineMode by mutableStateOf(PlaybackEngineMode.HARDWARE)
 
     /**
