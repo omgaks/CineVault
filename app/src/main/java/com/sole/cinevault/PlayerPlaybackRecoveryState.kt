@@ -49,6 +49,9 @@ internal class PlayerPlaybackRecoveryState {
             videoDecoderCapabilityReport
         )
 
+    val playbackDiagnosticsSnapshot: PlaybackDiagnosticsSnapshot
+        get() = buildPlaybackDiagnosticsSnapshot(this)
+
     fun resetForNewVideo() {
         engineMode = PlaybackEngineMode.HARDWARE
         softwareFallbackAvailable = false
