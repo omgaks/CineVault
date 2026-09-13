@@ -32,6 +32,7 @@ internal fun PlayerEventListener(
     audioLanguageCheckedForPath: String?,
     onAudioLanguageCheckedForPathChanged: (String?) -> Unit,
     onVideoDecoderCapabilityReportChanged: (VideoDecoderCapabilityReport?) -> Unit,
+    onStreamInventoryChanged: (PlaybackStreamInventory) -> Unit,
     onBufferingChanged: (Boolean) -> Unit,
     onErrorRetryCountChanged: (Int) -> Unit,
     onPlayerErrorMessageChanged: (String?) -> Unit,
@@ -115,6 +116,9 @@ internal fun PlayerEventListener(
             }
 
             override fun onTracksChanged(tracks: Tracks) {
+                val inventory = inspectPlaybackStreamInventory(tracks)
+                onStreamInventoryChanged(inventory)
+
                 val selectedVideoFormat = tracks.groups
                     .firstOrNull { group ->
                         group.type == C.TRACK_TYPE_VIDEO && group.isSelected

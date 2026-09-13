@@ -42,6 +42,12 @@ class PlayerPlaybackRecoveryState {
         NativeVideoPlaybackReadiness.UNKNOWN
     )
 
+    // Slice 104: selected media streams are now observed independently from
+    // the video decoder capability report. This is the foundation for partial
+    // stream fallback (for example HW video + FFmpeg audio) without forcing
+    // the whole item onto one decoder path.
+    var streamInventory by mutableStateOf(PlaybackStreamInventory())
+
     val videoStreamProfile: VideoStreamProfile?
         get() = videoDecoderCapabilityReport?.streamProfile
 
@@ -69,6 +75,7 @@ class PlayerPlaybackRecoveryState {
         firstVideoFrameRendered = false
         videoDecoderCapabilityReport = null
         nativeVideoPlaybackReadiness = NativeVideoPlaybackReadiness.UNKNOWN
+        streamInventory = PlaybackStreamInventory()
     }
 
     fun updateVideoDecoderCapability(
@@ -78,6 +85,19 @@ class PlayerPlaybackRecoveryState {
         nativeVideoPlaybackReadiness = decideNativeVideoPlaybackReadiness(report)
         softwareFallbackAvailable = isPlatformSoftwareVideoFallbackAvailable(report)
     }
+
+    fun updateStreamInventory(
+        inventory: PlaybackStreamInventory,
+    ) {
+        streamInventory = inventory
+    }
+
+    val streamRoutingPlan: PlaybackStreamRoutingPlan
+        get() = buildPlaybackStreamRoutingPlan(
+            inventory = streamInventory,
+            engineMode = engineMode,
+            videoCapabilityReport = videoDecoderCapabilityReport,
+        )
 
     fun requestSoftwareFallback(
         errorCode: Int,
