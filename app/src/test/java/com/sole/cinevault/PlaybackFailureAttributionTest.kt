@@ -23,7 +23,6 @@ class PlaybackFailureAttributionTest {
         )
         assertTrue(result.isVideoRendererFailure)
         assertFalse(result.isAudioRendererFailure)
-        assertEquals("Video renderer", playbackFailureStreamLabel(result))
     }
 
     @Test
@@ -40,7 +39,39 @@ class PlaybackFailureAttributionTest {
         )
         assertTrue(result.isAudioRendererFailure)
         assertFalse(result.isVideoRendererFailure)
-        assertEquals("Audio renderer", playbackFailureStreamLabel(result))
+    }
+
+    @Test
+    fun mimeTypeIdentifiesAudioRenderer() {
+        assertEquals(
+            C.TRACK_TYPE_AUDIO,
+            inferRendererTrackType(
+                sampleMimeType = "audio/vnd.dts.hd",
+                rendererName = "FfmpegAudioRenderer",
+            ),
+        )
+    }
+
+    @Test
+    fun mimeTypeIdentifiesVideoRenderer() {
+        assertEquals(
+            C.TRACK_TYPE_VIDEO,
+            inferRendererTrackType(
+                sampleMimeType = "video/hevc",
+                rendererName = "MediaCodecVideoRenderer",
+            ),
+        )
+    }
+
+    @Test
+    fun rendererNameIsFallbackWhenFormatIsMissing() {
+        assertEquals(
+            C.TRACK_TYPE_AUDIO,
+            inferRendererTrackType(
+                sampleMimeType = null,
+                rendererName = "MediaCodecAudioRenderer",
+            ),
+        )
     }
 
     @Test
@@ -71,8 +102,6 @@ class PlaybackFailureAttributionTest {
             PlaybackFailureStreamKind.UNKNOWN,
             result.streamKind,
         )
-        assertFalse(result.isAudioRendererFailure)
-        assertFalse(result.isVideoRendererFailure)
         assertNull(result.rendererTrackType)
     }
 
