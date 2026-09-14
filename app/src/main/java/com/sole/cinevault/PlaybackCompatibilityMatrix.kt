@@ -84,6 +84,12 @@ private val matrixColumns = listOf(
     "dropped_frames",
     "unhealthy_windows",
     "fallback_reason",
+    "audio_codec",
+    "audio_language",
+    "audio_decoder",
+    "audio_decoder_kind",
+    "audio_route",
+    "mixed_pipeline",
     "verdict",
 )
 
@@ -122,6 +128,24 @@ fun formatPlaybackCompatibilityMatrixRow(
         observation.totalDroppedVideoFrames.toString(),
         observation.unhealthyDroppedFrameWindows.toString(),
         observation.fallbackReason?.name.orEmpty(),
+        sanitizeMatrixCell(
+            assessAudioStreamCapability(
+                observation.audioMimeType?.let {
+                    PlaybackStreamDescriptor(
+                        kind = PlaybackStreamKind.AUDIO,
+                        mimeType = observation.audioMimeType,
+                        codecString = observation.audioCodecString,
+                        language = observation.audioLanguage,
+                        selected = true,
+                    )
+                }
+            )?.codecLabel
+        ),
+        sanitizeMatrixCell(observation.audioLanguage),
+        sanitizeMatrixCell(observation.audioDecoderName),
+        observation.audioDecoderKind.name,
+        observation.audioRoute?.name.orEmpty(),
+        observation.mixedPipeline.toString(),
         entry.verdict.name,
     ).joinToString("\t")
 }

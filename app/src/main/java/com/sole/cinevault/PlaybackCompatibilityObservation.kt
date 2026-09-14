@@ -38,6 +38,14 @@ data class PlaybackCompatibilityObservation(
     val fallbackReason: PlaybackFallbackReason?,
     val totalDroppedVideoFrames: Int,
     val unhealthyDroppedFrameWindows: Int,
+    val audioMimeType: String? = null,
+    val audioCodecString: String? = null,
+    val audioLanguage: String? = null,
+    val audioDecoderName: String? = null,
+    val audioDecoderKind: ActiveAudioDecoderKind =
+        ActiveAudioDecoderKind.UNKNOWN,
+    val audioRoute: PlaybackStreamRoute? = null,
+    val mixedPipeline: Boolean = false,
 )
 
 /**
@@ -98,5 +106,12 @@ fun buildPlaybackCompatibilityObservation(
         totalDroppedVideoFrames = snapshot.totalDroppedVideoFrames,
         unhealthyDroppedFrameWindows =
             snapshot.unhealthyDroppedFrameWindows,
+        audioMimeType = snapshot.audioMimeType,
+        audioCodecString = snapshot.audioCodecString,
+        audioLanguage = snapshot.audioLanguage,
+        audioDecoderName = snapshot.audioDecoderName,
+        audioDecoderKind = snapshot.activeAudioDecoderKind,
+        audioRoute = snapshot.audioRoute,
+        mixedPipeline = snapshot.mixedPipeline,
     )
 }

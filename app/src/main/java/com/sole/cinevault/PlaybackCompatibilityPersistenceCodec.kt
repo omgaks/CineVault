@@ -7,7 +7,8 @@ package com.sole.cinevault
  * round-trip tested on the JVM. Every text cell is escaped, and malformed
  * rows are ignored instead of breaking player startup.
  */
-private const val COMPATIBILITY_STORE_VERSION = "CVCOMPAT1"
+private const val COMPATIBILITY_STORE_VERSION = "CVCOMPAT2"
+private const val LEGACY_COMPATIBILITY_STORE_VERSION = "CVCOMPAT1"
 private const val COMPATIBILITY_FIELD_SEPARATOR = '\u001F'
 
 fun encodePlaybackCompatibilityEntries(
@@ -43,6 +44,13 @@ fun encodePlaybackCompatibilityEntries(
                 entry.observation.fallbackReason?.name.orEmpty(),
                 entry.observation.totalDroppedVideoFrames.toString(),
                 entry.observation.unhealthyDroppedFrameWindows.toString(),
+                entry.observation.audioMimeType.orEmpty(),
+                entry.observation.audioCodecString.orEmpty(),
+                entry.observation.audioLanguage.orEmpty(),
+                entry.observation.audioDecoderName.orEmpty(),
+                entry.observation.audioDecoderKind.name,
+                entry.observation.audioRoute?.name.orEmpty(),
+                entry.observation.mixedPipeline.toString(),
                 entry.verdict.name,
             ).joinToString(
                 separator = COMPATIBILITY_FIELD_SEPARATOR.toString(),
@@ -60,20 +68,37 @@ fun decodePlaybackCompatibilityEntries(
     }
 
     val lines = encoded.lineSequence().toList()
-    if (lines.firstOrNull() != COMPATIBILITY_STORE_VERSION) {
+    val version = lines.firstOrNull()
+    if (
+        version != COMPATIBILITY_STORE_VERSION &&
+        version != LEGACY_COMPATIBILITY_STORE_VERSION
+    ) {
         return emptyList()
     }
 
     return lines
         .drop(1)
-        .mapNotNull(::decodeCompatibilityEntry)
+        .mapNotNull { line ->
+            decodeCompatibilityEntry(
+                line = line,
+                version = version,
+            )
+        }
 }
 
 private fun decodeCompatibilityEntry(
     line: String,
+    version: String?,
 ): PlaybackCompatibilityMatrixEntry? {
     val fields = splitCompatibilityFields(line)
-    if (fields.size != 25) {
+    val expectedFields = if (
+        version == LEGACY_COMPATIBILITY_STORE_VERSION
+    ) {
+        25
+    } else {
+        32
+    }
+    if (fields.size != expectedFields) {
         return null
     }
 
@@ -122,6 +147,30 @@ private fun decodeCompatibilityEntry(
                 ?.let { enumValueOf<PlaybackFallbackReason>(it) },
             totalDroppedVideoFrames = fields[22].toInt(),
             unhealthyDroppedFrameWindows = fields[23].toInt(),
+            audioMimeType =
+                if (fields.size > 25) fields[24].ifEmpty { null } else null,
+            audioCodecString =
+                if (fields.size > 25) fields[25].ifEmpty { null } else null,
+            audioLanguage =
+                if (fields.size > 25) fields[26].ifEmpty { null } else null,
+            audioDecoderName =
+                if (fields.size > 25) fields[27].ifEmpty { null } else null,
+            audioDecoderKind =
+                if (fields.size > 25) {
+                    enumValueOf<ActiveAudioDecoderKind>(fields[28])
+                } else {
+                    ActiveAudioDecoderKind.UNKNOWN
+                },
+            audioRoute =
+                if (fields.size > 25) {
+                    fields[29]
+                        .takeIf { it.isNotEmpty() }
+                        ?.let { enumValueOf<PlaybackStreamRoute>(it) }
+                } else {
+                    null
+                },
+            mixedPipeline =
+                if (fields.size > 25) parseStrictBoolean(fields[30]) else false,
         )
 
         PlaybackCompatibilityMatrixEntry(
@@ -129,7 +178,9 @@ private fun decodeCompatibilityEntry(
             device = device,
             observation = observation,
             verdict =
-                enumValueOf<PlaybackCompatibilityVerdict>(fields[24]),
+                enumValueOf<PlaybackCompatibilityVerdict>(
+                    if (fields.size > 25) fields[31] else fields[24]
+                ),
         )
     }.getOrNull()
 }
