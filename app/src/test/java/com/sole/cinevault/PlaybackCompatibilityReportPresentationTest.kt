@@ -36,7 +36,7 @@ class PlaybackCompatibilityReportPresentationTest {
         )
 
         assertEquals(
-            "3/3 completed · 2 native · 1 rescued",
+            "3/3 completed · 2 native · 1 video rescued",
             playbackCompatibilitySummaryLine(summary),
         )
     }
