@@ -8,6 +8,7 @@ data class PlaybackDiagnosticsPresentation(
     val fallbackSummary: String?,
     val audioSummary: String? = null,
     val audioDecoderSummary: String? = null,
+    val audioResilienceSummary: String? = null,
     val pipelineSummary: String? = null,
 )
 
@@ -63,17 +64,17 @@ fun presentPlaybackDiagnostics(
         else -> "Fallback: Software decoding"
     }
 
-    val audioAssessment = assessAudioStreamCapability(
-        snapshot.audioMimeType?.let {
-            PlaybackStreamDescriptor(
-                kind = PlaybackStreamKind.AUDIO,
-                mimeType = snapshot.audioMimeType,
-                codecString = snapshot.audioCodecString,
-                language = snapshot.audioLanguage,
-                selected = true,
-            )
-        }
-    )
+    val selectedAudio = snapshot.audioMimeType?.let {
+        PlaybackStreamDescriptor(
+            kind = PlaybackStreamKind.AUDIO,
+            mimeType = snapshot.audioMimeType,
+            codecString = snapshot.audioCodecString,
+            language = snapshot.audioLanguage,
+            selected = true,
+        )
+    }
+
+    val audioAssessment = assessAudioStreamCapability(selectedAudio)
 
     val audioSummary = audioAssessment?.let { assessment ->
         listOfNotNull(
@@ -102,6 +103,21 @@ fun presentPlaybackDiagnostics(
             ).joinToString(" · ")
         }
     }
+
+    val audioResilience = assessAudioPlaybackResilience(
+        selectedAudio = selectedAudio,
+        activeDecoder = ActiveAudioDecoderStatus(
+            kind = snapshot.activeAudioDecoderKind,
+            decoderName = snapshot.audioDecoderName,
+        ),
+    )
+
+    val audioResilienceSummary =
+        if (audioResilience.readiness == AudioPlaybackReadiness.NONE) {
+            null
+        } else {
+            audioPlaybackReadinessLabel(audioResilience.readiness)
+        }
 
     val pipelineSummary = when {
         snapshot.mixedPipeline ->
@@ -139,6 +155,7 @@ fun presentPlaybackDiagnostics(
         fallbackSummary = fallbackSummary,
         audioSummary = audioSummary,
         audioDecoderSummary = audioDecoderSummary,
+        audioResilienceSummary = audioResilienceSummary,
         pipelineSummary = pipelineSummary,
     )
 }

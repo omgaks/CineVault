@@ -37,6 +37,21 @@ fun PlaybackInfoPanel(
 ) {
     val presentation = presentPlaybackDiagnostics(snapshot)
     val liveStatus = buildPlaybackDiagnosticsLiveStatus(snapshot)
+    val audioResilience = assessAudioPlaybackResilience(
+        selectedAudio = snapshot.audioMimeType?.let {
+            PlaybackStreamDescriptor(
+                kind = PlaybackStreamKind.AUDIO,
+                mimeType = snapshot.audioMimeType,
+                codecString = snapshot.audioCodecString,
+                language = snapshot.audioLanguage,
+                selected = true,
+            )
+        },
+        activeDecoder = ActiveAudioDecoderStatus(
+            kind = snapshot.activeAudioDecoderKind,
+            decoderName = snapshot.audioDecoderName,
+        ),
+    )
     val shape = RoundedCornerShape(18.dp)
 
     Column(
@@ -129,6 +144,18 @@ fun PlaybackInfoPanel(
                 emphasize =
                     snapshot.activeAudioDecoderKind ==
                         ActiveAudioDecoderKind.FFMPEG,
+            )
+        }
+
+        presentation.audioResilienceSummary?.let { audioResilienceText ->
+            DiagnosticSection(
+                label = "AUDIO RESILIENCE",
+                value = audioResilienceText,
+                emphasize =
+                    audioResilience.readiness ==
+                        AudioPlaybackReadiness.FFMPEG_RESCUED ||
+                        audioResilience.readiness ==
+                        AudioPlaybackReadiness.FFMPEG_RESCUE_EXPECTED,
             )
         }
 

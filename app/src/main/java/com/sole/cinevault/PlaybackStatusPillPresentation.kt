@@ -10,6 +10,21 @@ fun buildPlaybackStatusPillPresentation(
     snapshot: PlaybackDiagnosticsSnapshot,
 ): PlaybackStatusPillPresentation {
     val pipelineKind = classifyPlaybackSnapshotPipeline(snapshot)
+    val audioResilience = assessAudioPlaybackResilience(
+        selectedAudio = snapshot.audioMimeType?.let {
+            PlaybackStreamDescriptor(
+                kind = PlaybackStreamKind.AUDIO,
+                mimeType = snapshot.audioMimeType,
+                codecString = snapshot.audioCodecString,
+                language = snapshot.audioLanguage,
+                selected = true,
+            )
+        },
+        activeDecoder = ActiveAudioDecoderStatus(
+            kind = snapshot.activeAudioDecoderKind,
+            decoderName = snapshot.audioDecoderName,
+        ),
+    )
 
     val primary = when (pipelineKind) {
         PlaybackPipelineKind.MIXED_VIDEO_AUDIO_RESCUE ->
@@ -31,6 +46,10 @@ fun buildPlaybackStatusPillPresentation(
     val rotating = buildList {
         add(primary)
 
+        buildAudioResilienceLabel(audioResilience)
+            ?.takeIf { it != primary }
+            ?.let(::add)
+
         buildVideoCodecLabel(snapshot)
             ?.takeIf { it != primary }
             ?.let(::add)
@@ -44,12 +63,20 @@ fun buildPlaybackStatusPillPresentation(
             ?.let(::add)
     }.distinct()
 
+    val audioNeedsAttention =
+        audioResilience.readiness ==
+            AudioPlaybackReadiness.FFMPEG_RESCUE_EXPECTED ||
+            audioResilience.readiness ==
+            AudioPlaybackReadiness.FFMPEG_RESCUED
+
     return PlaybackStatusPillPresentation(
         primaryLabel = primary,
         rotatingLabels = rotating.ifEmpty { listOf(primary) },
-        emphasized = pipelineKind == PlaybackPipelineKind.VIDEO_SOFTWARE_RESCUE ||
-            pipelineKind == PlaybackPipelineKind.AUDIO_FFMPEG_RESCUE ||
-            pipelineKind == PlaybackPipelineKind.MIXED_VIDEO_AUDIO_RESCUE,
+        emphasized =
+            pipelineKind == PlaybackPipelineKind.VIDEO_SOFTWARE_RESCUE ||
+                pipelineKind == PlaybackPipelineKind.AUDIO_FFMPEG_RESCUE ||
+                pipelineKind == PlaybackPipelineKind.MIXED_VIDEO_AUDIO_RESCUE ||
+                audioNeedsAttention,
     )
 }
 
@@ -80,6 +107,24 @@ fun classifyPlaybackSnapshotPipeline(
         else ->
             PlaybackPipelineKind.UNKNOWN
     }
+}
+
+private fun buildAudioResilienceLabel(
+    assessment: AudioPlaybackResilienceAssessment,
+): String? = when (assessment.readiness) {
+    AudioPlaybackReadiness.FFMPEG_RESCUE_EXPECTED ->
+        "FFMPEG READY"
+
+    AudioPlaybackReadiness.FFMPEG_RESCUED ->
+        "FFMPEG AUDIO"
+
+    AudioPlaybackReadiness.PLATFORM_ACTIVE ->
+        "PLATFORM AUDIO"
+
+    AudioPlaybackReadiness.PLATFORM_EXPECTED,
+    AudioPlaybackReadiness.NONE,
+    AudioPlaybackReadiness.UNKNOWN ->
+        null
 }
 
 private fun buildVideoCodecLabel(
