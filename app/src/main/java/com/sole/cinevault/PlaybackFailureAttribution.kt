@@ -1,7 +1,6 @@
 package com.sole.cinevault
 
 import androidx.media3.common.C
-import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.ExoPlaybackException
 
@@ -34,8 +33,9 @@ data class PlaybackFailureAttribution(
  * Converts Media3's player error into a stream-level failure attribution.
  *
  * Media3 1.9.0 does not expose a rendererType field on ExoPlaybackException.
- * For renderer errors we derive the track type from rendererFormat.sampleMimeType,
- * with rendererName as a conservative fallback when the format is unavailable.
+ * For renderer errors we derive the track type from rendererFormat.sampleMimeType
+ * using a JVM-test-safe MIME prefix classifier, with rendererName as a
+ * conservative fallback when the format is unavailable.
  */
 fun attributePlaybackFailure(
     error: PlaybackException,
@@ -64,9 +64,25 @@ fun inferRendererTrackType(
     sampleMimeType: String?,
     rendererName: String?,
 ): Int {
-    val fromMime = MimeTypes.getTrackType(sampleMimeType)
-    if (fromMime != C.TRACK_TYPE_UNKNOWN) {
-        return fromMime
+    val normalizedMime = sampleMimeType
+        ?.trim()
+        ?.lowercase()
+        .orEmpty()
+
+    when {
+        normalizedMime.startsWith("video/") ->
+            return C.TRACK_TYPE_VIDEO
+        normalizedMime.startsWith("audio/") ->
+            return C.TRACK_TYPE_AUDIO
+        normalizedMime.startsWith("text/") ||
+            normalizedMime.startsWith("application/") &&
+                (
+                    "subtitle" in normalizedMime ||
+                        "subrip" in normalizedMime ||
+                        "ttml" in normalizedMime ||
+                        "cea" in normalizedMime
+                ) ->
+            return C.TRACK_TYPE_TEXT
     }
 
     val normalizedName = rendererName
