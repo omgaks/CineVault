@@ -4,15 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,13 +13,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-
-private val PlaybackInfoAmber = Color(0xFFFFB547)
 
 private enum class PlaybackInfoSurface {
     NONE,
@@ -71,7 +59,8 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
                 end = sidePadding,
             ),
     ) {
-        PlaybackInfoTrigger(
+        PlaybackStatusPill(
+            snapshot = snapshot,
             onClick = { surface = PlaybackInfoSurface.INFO },
         )
     }
@@ -135,34 +124,6 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
             entries = compatibilityRecorder.entries(),
             onBack = { surface = PlaybackInfoSurface.REPORT },
             onDismiss = { surface = PlaybackInfoSurface.NONE },
-        )
-    }
-}
-
-@Composable
-private fun PlaybackInfoTrigger(
-    onClick: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .size(34.dp)
-            .background(
-                color = Color.Black.copy(alpha = 0.58f),
-                shape = CircleShape,
-            )
-            .border(
-                width = 1.dp,
-                color = PlaybackInfoAmber.copy(alpha = 0.72f),
-                shape = CircleShape,
-            )
-            .clickable { onClick() },
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "i",
-            color = PlaybackInfoAmber,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold,
         )
     }
 }
