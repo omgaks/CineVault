@@ -157,13 +157,38 @@ fun PlaybackCompatibilityReportPanel(
                 fontSize = 12.sp,
             )
         } else {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Column(
+                verticalArrangement = Arrangement.spacedBy(7.dp),
             ) {
-                ReportStat("NATIVE", summary.nativePasses.toString())
-                ReportStat("RESCUED", summary.softwareRescues.toString())
-                ReportStat("UNSTABLE", summary.unstableFailures.toString())
-                ReportStat("PENDING", summary.pending.toString())
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    ReportStat("NATIVE", summary.nativePasses.toString())
+                    ReportStat(
+                        "VIDEO RESCUE",
+                        summary.softwareRescues.toString(),
+                    )
+                    ReportStat(
+                        "AUDIO RESCUE",
+                        summary.audioRescues.toString(),
+                        emphasize = summary.audioRescues > 0,
+                    )
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    ReportStat(
+                        "MIXED",
+                        summary.mixedPipelines.toString(),
+                        emphasize = summary.mixedPipelines > 0,
+                    )
+                    ReportStat(
+                        "UNSTABLE",
+                        summary.unstableFailures.toString(),
+                    )
+                    ReportStat("PENDING", summary.pending.toString())
+                }
             }
 
             Column(
@@ -194,18 +219,19 @@ fun PlaybackCompatibilityReportPanel(
 private fun ReportStat(
     label: String,
     value: String,
+    emphasize: Boolean = false,
 ) {
     Column {
         Text(
             text = label,
-            color = ReportSecondary,
+            color = if (emphasize) ReportAmber else ReportSecondary,
             fontSize = 8.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.7.sp,
         )
         Text(
             text = value,
-            color = ReportPrimary,
+            color = if (emphasize) ReportAmber else ReportPrimary,
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
         )
