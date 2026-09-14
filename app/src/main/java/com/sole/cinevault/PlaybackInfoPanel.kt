@@ -111,9 +111,36 @@ fun PlaybackInfoPanel(
         }
 
         DiagnosticSection(
-            label = "DECODER",
+            label = "VIDEO DECODER",
             value = presentation.decoderSummary,
         )
+
+        presentation.audioSummary?.let { audio ->
+            DiagnosticSection(
+                label = "AUDIO",
+                value = audio,
+            )
+        }
+
+        presentation.audioDecoderSummary?.let { audioDecoder ->
+            DiagnosticSection(
+                label = "AUDIO DECODER",
+                value = audioDecoder,
+                emphasize =
+                    snapshot.activeAudioDecoderKind ==
+                        ActiveAudioDecoderKind.FFMPEG,
+            )
+        }
+
+        presentation.pipelineSummary?.let { pipeline ->
+            DiagnosticSection(
+                label = "PIPELINE",
+                value = pipeline,
+                emphasize =
+                    snapshot.activeAudioDecoderKind ==
+                        ActiveAudioDecoderKind.FFMPEG,
+            )
+        }
 
         DiagnosticSection(
             label = "COMPATIBILITY",

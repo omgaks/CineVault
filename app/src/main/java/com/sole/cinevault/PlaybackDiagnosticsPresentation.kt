@@ -6,6 +6,9 @@ data class PlaybackDiagnosticsPresentation(
     val decoderSummary: String,
     val compatibilitySummary: String,
     val fallbackSummary: String?,
+    val audioSummary: String? = null,
+    val audioDecoderSummary: String? = null,
+    val pipelineSummary: String? = null,
 )
 
 fun presentPlaybackDiagnostics(
@@ -60,6 +63,71 @@ fun presentPlaybackDiagnostics(
         else -> "Fallback: Software decoding"
     }
 
+    val audioAssessment = assessAudioStreamCapability(
+        snapshot.audioMimeType?.let {
+            PlaybackStreamDescriptor(
+                kind = PlaybackStreamKind.AUDIO,
+                mimeType = snapshot.audioMimeType,
+                codecString = snapshot.audioCodecString,
+                language = snapshot.audioLanguage,
+                selected = true,
+            )
+        }
+    )
+
+    val audioSummary = audioAssessment?.let { assessment ->
+        listOfNotNull(
+            assessment.codecLabel,
+            snapshot.audioLanguage
+                ?.takeIf { it.isNotBlank() }
+                ?.uppercase(),
+        ).joinToString(" · ")
+    }
+
+    val audioDecoderSummary = when {
+        snapshot.audioDecoderName.isNullOrBlank() &&
+            snapshot.activeAudioDecoderKind == ActiveAudioDecoderKind.UNKNOWN ->
+            null
+
+        else -> {
+            val kindLabel = when (snapshot.activeAudioDecoderKind) {
+                ActiveAudioDecoderKind.PLATFORM -> "Platform"
+                ActiveAudioDecoderKind.FFMPEG -> "FFmpeg"
+                ActiveAudioDecoderKind.UNKNOWN -> "Unknown"
+            }
+
+            listOfNotNull(
+                kindLabel,
+                snapshot.audioDecoderName?.takeIf { it.isNotBlank() },
+            ).joinToString(" · ")
+        }
+    }
+
+    val pipelineSummary = when {
+        snapshot.mixedPipeline ->
+            buildString {
+                append("Mixed pipeline")
+                when (snapshot.audioRoute) {
+                    PlaybackStreamRoute.AUDIO_FFMPEG_RESCUE_CANDIDATE ->
+                        append(" · audio rescue candidate")
+                    PlaybackStreamRoute.AUDIO_PLATFORM_OR_FFMPEG_EXTENSION ->
+                        append(" · independent audio lane")
+                    else -> Unit
+                }
+            }
+
+        snapshot.audioRoute != null ->
+            when (snapshot.audioRoute) {
+                PlaybackStreamRoute.AUDIO_FFMPEG_RESCUE_CANDIDATE ->
+                    "Audio rescue candidate"
+                PlaybackStreamRoute.AUDIO_PLATFORM_OR_FFMPEG_EXTENSION ->
+                    "Independent audio lane"
+                else -> null
+            }
+
+        else -> null
+    }
+
     return PlaybackDiagnosticsPresentation(
         videoSummary = videoParts
             .takeIf { it.isNotEmpty() }
@@ -69,6 +137,9 @@ fun presentPlaybackDiagnostics(
         decoderSummary = decoderSummary,
         compatibilitySummary = compatibilitySummary,
         fallbackSummary = fallbackSummary,
+        audioSummary = audioSummary,
+        audioDecoderSummary = audioDecoderSummary,
+        pipelineSummary = pipelineSummary,
     )
 }
 

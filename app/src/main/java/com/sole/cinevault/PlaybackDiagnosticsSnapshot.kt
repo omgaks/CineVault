@@ -20,6 +20,14 @@ data class PlaybackDiagnosticsSnapshot(
     val unhealthyDroppedFrameWindows: Int = 0,
     val startupPlaybackConfirmed: Boolean = false,
     val firstVideoFrameRendered: Boolean = false,
+    val audioMimeType: String? = null,
+    val audioCodecString: String? = null,
+    val audioLanguage: String? = null,
+    val audioDecoderName: String? = null,
+    val activeAudioDecoderKind: ActiveAudioDecoderKind =
+        ActiveAudioDecoderKind.UNKNOWN,
+    val audioRoute: PlaybackStreamRoute? = null,
+    val mixedPipeline: Boolean = false,
 )
 
 fun buildPlaybackDiagnosticsSnapshot(
@@ -28,6 +36,9 @@ fun buildPlaybackDiagnosticsSnapshot(
     val profile = recoveryState.videoStreamProfile
     val assessment = recoveryState.videoPlaybackCompatibilityAssessment
     val activeDecoder = recoveryState.activeVideoDecoderStatus
+    val activeAudioDecoder = recoveryState.activeAudioDecoderStatus
+    val selectedAudio = recoveryState.streamInventory.selectedAudio
+    val routingPlan = recoveryState.streamRoutingPlan
 
     return PlaybackDiagnosticsSnapshot(
         mimeType = profile?.mimeType,
@@ -53,5 +64,12 @@ fun buildPlaybackDiagnosticsSnapshot(
             recoveryState.startupPlaybackConfirmed,
         firstVideoFrameRendered =
             recoveryState.firstVideoFrameRendered,
+        audioMimeType = selectedAudio?.mimeType,
+        audioCodecString = selectedAudio?.codecString,
+        audioLanguage = selectedAudio?.language,
+        audioDecoderName = activeAudioDecoder.decoderName,
+        activeAudioDecoderKind = activeAudioDecoder.kind,
+        audioRoute = routingPlan.audioRoute,
+        mixedPipeline = routingPlan.isMixedPipeline,
     )
 }
