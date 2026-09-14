@@ -1,6 +1,7 @@
 package com.sole.cinevault
 
 import androidx.media3.common.C
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.ExoPlaybackException
 
@@ -32,9 +33,9 @@ data class PlaybackFailureAttribution(
 /**
  * Converts Media3's player error into a stream-level failure attribution.
  *
- * This does not decide recovery. It only answers which renderer lane failed,
- * so later recovery logic can avoid treating an audio decoder failure like a
- * video decoder failure.
+ * Media3 1.9.0 does not expose a rendererType field on ExoPlaybackException.
+ * For renderer errors we derive the track type from rendererFormat.sampleMimeType,
+ * with rendererName as a conservative fallback when the format is unavailable.
  */
 fun attributePlaybackFailure(
     error: PlaybackException,
@@ -42,14 +43,45 @@ fun attributePlaybackFailure(
     val exoError = error as? ExoPlaybackException
     val rendererFailure =
         exoError?.type == ExoPlaybackException.TYPE_RENDERER
-    val rendererTrackType =
-        if (rendererFailure) exoError?.rendererType else null
+
+    val rendererTrackType = if (rendererFailure) {
+        inferRendererTrackType(
+            sampleMimeType = exoError?.rendererFormat?.sampleMimeType,
+            rendererName = exoError?.rendererName,
+        )
+    } else {
+        null
+    }
 
     return buildPlaybackFailureAttribution(
         rendererFailure = rendererFailure,
         rendererTrackType = rendererTrackType,
         errorCode = error.errorCode,
     )
+}
+
+fun inferRendererTrackType(
+    sampleMimeType: String?,
+    rendererName: String?,
+): Int {
+    val fromMime = MimeTypes.getTrackType(sampleMimeType)
+    if (fromMime != C.TRACK_TYPE_UNKNOWN) {
+        return fromMime
+    }
+
+    val normalizedName = rendererName
+        ?.trim()
+        ?.lowercase()
+        .orEmpty()
+
+    return when {
+        "video" in normalizedName -> C.TRACK_TYPE_VIDEO
+        "audio" in normalizedName -> C.TRACK_TYPE_AUDIO
+        "text" in normalizedName ||
+            "subtitle" in normalizedName ->
+            C.TRACK_TYPE_TEXT
+        else -> C.TRACK_TYPE_UNKNOWN
+    }
 }
 
 fun buildPlaybackFailureAttribution(
