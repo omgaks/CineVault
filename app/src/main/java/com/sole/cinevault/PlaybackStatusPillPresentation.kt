@@ -28,8 +28,13 @@ fun buildPlaybackStatusPillPresentation(
 
     val failure = snapshot.lastFailureDiagnostic
     val failureLabel = failure?.let(::playbackFailureDiagnosticSummary)?.uppercase()
+    val verifiedAudioRescueLabel =
+        audioFfmpegRescuePillLabel(snapshot.audioFfmpegRescueOutcome)
 
     val primary = when {
+        snapshot.audioFfmpegRescueOutcome == AudioFfmpegRescueOutcome.FAILED ->
+            "AUDIO FAILED"
+
         failure?.severity == PlaybackFailureSeverity.TERMINAL ->
             when (failure.streamKind) {
                 PlaybackFailureStreamKind.VIDEO -> "VIDEO FAILED"
@@ -38,6 +43,9 @@ fun buildPlaybackStatusPillPresentation(
                 PlaybackFailureStreamKind.OTHER -> "PLAYBACK FAILED"
                 PlaybackFailureStreamKind.UNKNOWN -> "PLAYBACK FAILED"
             }
+
+        snapshot.audioFfmpegRescueOutcome == AudioFfmpegRescueOutcome.PENDING ->
+            "FFMPEG SWITCH"
 
         failure?.recoveryAction == PlaybackRecoveryAction.SWITCH_TO_SOFTWARE ->
             "SW RESCUE"
@@ -48,7 +56,8 @@ fun buildPlaybackStatusPillPresentation(
         pipelineKind == PlaybackPipelineKind.VIDEO_SOFTWARE_RESCUE ->
             "SW VIDEO"
 
-        pipelineKind == PlaybackPipelineKind.AUDIO_FFMPEG_RESCUE ->
+        snapshot.audioFfmpegRescueOutcome == AudioFfmpegRescueOutcome.CONFIRMED ||
+            pipelineKind == PlaybackPipelineKind.AUDIO_FFMPEG_RESCUE ->
             "FFMPEG AUDIO"
 
         pipelineKind == PlaybackPipelineKind.NATIVE ->
@@ -59,6 +68,10 @@ fun buildPlaybackStatusPillPresentation(
 
     val rotating = buildList {
         add(primary)
+
+        verifiedAudioRescueLabel
+            ?.takeIf { it != primary }
+            ?.let(::add)
 
         failureLabel
             ?.takeIf { it != primary }
@@ -82,7 +95,8 @@ fun buildPlaybackStatusPillPresentation(
     }.distinct()
 
     val audioNeedsAttention =
-        audioResilience.readiness ==
+        snapshot.audioFfmpegRescueOutcome != AudioFfmpegRescueOutcome.NOT_ATTEMPTED ||
+            audioResilience.readiness ==
             AudioPlaybackReadiness.FFMPEG_RESCUE_EXPECTED ||
             audioResilience.readiness ==
             AudioPlaybackReadiness.FFMPEG_RESCUED
@@ -108,7 +122,8 @@ fun classifyPlaybackSnapshotPipeline(
             snapshot.fallbackOccurred
 
     val audioRescued =
-        snapshot.activeAudioDecoderKind == ActiveAudioDecoderKind.FFMPEG
+        snapshot.audioFfmpegRescueOutcome == AudioFfmpegRescueOutcome.CONFIRMED &&
+            snapshot.activeAudioDecoderKind == ActiveAudioDecoderKind.FFMPEG
 
     return when {
         videoRescued && audioRescued ->

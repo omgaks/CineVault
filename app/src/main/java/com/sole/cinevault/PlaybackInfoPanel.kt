@@ -135,6 +135,15 @@ fun PlaybackInfoPanel(
             )
         }
 
+        audioFfmpegRescueOutcomeLabel(snapshot.audioFfmpegRescueOutcome)?.let {
+            DiagnosticSection(
+                "FFMPEG RESCUE",
+                it,
+                snapshot.audioFfmpegRescueOutcome !=
+                    AudioFfmpegRescueOutcome.NOT_ATTEMPTED,
+            )
+        }
+
         presentation.pipelineSummary?.let {
             DiagnosticSection(
                 "PIPELINE",
