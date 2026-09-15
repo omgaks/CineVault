@@ -33,7 +33,7 @@ internal fun PlayerEventListener(
     onAudioLanguageCheckedForPathChanged: (String?) -> Unit,
     onVideoDecoderCapabilityReportChanged: (VideoDecoderCapabilityReport?) -> Unit,
     onStreamInventoryChanged: (PlaybackStreamInventory) -> Unit,
-    onFailureDiagnostic: (PlaybackFailureDiagnostic) -> Unit,
+    onFailureDiagnostic: (PlaybackFailureDiagnostic) -> Unit = {},
     onBufferingChanged: (Boolean) -> Unit,
     onErrorRetryCountChanged: (Int) -> Unit,
     onPlayerErrorMessageChanged: (String?) -> Unit,
