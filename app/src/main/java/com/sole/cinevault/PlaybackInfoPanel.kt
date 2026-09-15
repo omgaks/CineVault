@@ -37,6 +37,8 @@ fun PlaybackInfoPanel(
 ) {
     val presentation = presentPlaybackDiagnostics(snapshot)
     val liveStatus = buildPlaybackDiagnosticsLiveStatus(snapshot)
+    val failureHistoryPresentation =
+        presentPlaybackFailureHistory(snapshot.failureHistory)
     val audioResilience = assessAudioPlaybackResilience(
         selectedAudio = snapshot.audioMimeType?.let {
             PlaybackStreamDescriptor(
@@ -150,6 +152,20 @@ fun PlaybackInfoPanel(
                 },
                 value = playbackFailureDiagnosticSummary(failure),
                 emphasize = true,
+            )
+        }
+
+        failureHistoryPresentation?.let { history ->
+            DiagnosticSection(
+                label = "RECOVERY HISTORY",
+                value = buildString {
+                    append(history.summary)
+                    history.latestEvents.forEach { event ->
+                        append("\\n")
+                        append(event)
+                    }
+                },
+                emphasize = history.hasTerminalFailure,
             )
         }
 
