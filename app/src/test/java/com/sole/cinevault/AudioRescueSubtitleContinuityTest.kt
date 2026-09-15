@@ -1,6 +1,5 @@
 package com.sole.cinevault
 
-import android.net.Uri
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -8,25 +7,25 @@ import org.junit.Test
 class AudioRescueSubtitleContinuityTest {
 
     @Test
-    fun primarySubtitleUriIsRestorableAcrossAudioRuntimeRebuild() {
+    fun selectedLocalTrackKeyIsRestorableAcrossAudioRuntimeRebuild() {
         assertTrue(
-            snapshot(primaryUri = Uri.parse("file:///movie/sub.srt"))
+            snapshot(selectedKey = "local:/movie/sub.srt")
                 .hasRestorableSubtitleSelection()
         )
     }
 
     @Test
-    fun originalSubtitleUriIsRestorableAcrossAudioRuntimeRebuild() {
-        assertTrue(
-            snapshot(originalUri = Uri.parse("file:///movie/original.srt"))
-                .hasRestorableSubtitleSelection()
-        )
-    }
-
-    @Test
-    fun selectedTrackKeyIsRestorableAcrossAudioRuntimeRebuild() {
+    fun selectedEmbeddedTrackKeyIsRestorableAcrossAudioRuntimeRebuild() {
         assertTrue(
             snapshot(selectedKey = "embedded:eng:0")
+                .hasRestorableSubtitleSelection()
+        )
+    }
+
+    @Test
+    fun blankSelectedTrackKeyNeedsNoRestore() {
+        assertFalse(
+            snapshot(selectedKey = "   ")
                 .hasRestorableSubtitleSelection()
         )
     }
@@ -37,12 +36,10 @@ class AudioRescueSubtitleContinuityTest {
     }
 
     private fun snapshot(
-        primaryUri: Uri? = null,
-        originalUri: Uri? = null,
         selectedKey: String? = null,
     ) = AudioRescueSubtitleSnapshot(
-        primaryUri = primaryUri,
-        originalUri = originalUri,
+        primaryUri = null,
+        originalUri = null,
         selectedKey = selectedKey,
         selectedLabel = "",
         selectedSource = "",
