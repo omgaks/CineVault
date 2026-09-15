@@ -15,6 +15,8 @@ class PlayerPlaybackRecoveryState {
     var fallbackSubtitleUri by mutableStateOf<Uri?>(null)
     var activeVideoDecoderStatus by mutableStateOf(ActiveVideoDecoderStatus())
     var activeAudioDecoderStatus by mutableStateOf(ActiveAudioDecoderStatus())
+    var audioFfmpegRescueAttempted by mutableStateOf(false)
+        private set
     var fallbackReason by mutableStateOf<PlaybackFallbackReason?>(null)
     var fallbackOccurred by mutableStateOf(false)
     var droppedFrameUnhealthyStreak by mutableIntStateOf(0)
@@ -46,6 +48,7 @@ class PlayerPlaybackRecoveryState {
         fallbackSubtitleUri = null
         activeVideoDecoderStatus = ActiveVideoDecoderStatus()
         activeAudioDecoderStatus = ActiveAudioDecoderStatus()
+        audioFfmpegRescueAttempted = false
         fallbackReason = null
         fallbackOccurred = false
         droppedFrameUnhealthyStreak = 0
@@ -75,6 +78,19 @@ class PlayerPlaybackRecoveryState {
             history = failureHistory,
             diagnostic = diagnostic,
         )
+    }
+
+    fun decideAudioRecovery(
+        attribution: PlaybackFailureAttribution,
+    ): AudioPlaybackRecoveryDecision = decideAudioPlaybackRecovery(
+        attribution = attribution,
+        selectedAudio = streamInventory.selectedAudio,
+        activeDecoder = activeAudioDecoderStatus,
+        ffmpegRescueAlreadyAttempted = audioFfmpegRescueAttempted,
+    )
+
+    fun markAudioFfmpegRescueAttempted() {
+        audioFfmpegRescueAttempted = true
     }
 
     val streamRoutingPlan: PlaybackStreamRoutingPlan
