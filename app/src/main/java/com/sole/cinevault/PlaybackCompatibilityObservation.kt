@@ -1,12 +1,5 @@
 package com.sole.cinevault
 
-/**
- * Stable stream identity used by CineVault's compatibility matrix.
- *
- * Runtime/device-specific values such as decoder name, dropped frames and
- * fallback state are deliberately excluded so the same media stream can be
- * compared across devices and decoder paths.
- */
 data class PlaybackCompatibilityKey(
     val mimeType: String?,
     val codecLabel: String?,
@@ -46,15 +39,10 @@ data class PlaybackCompatibilityObservation(
         ActiveAudioDecoderKind.UNKNOWN,
     val audioRoute: PlaybackStreamRoute? = null,
     val mixedPipeline: Boolean = false,
+    val terminalFailureStream: PlaybackFailureStreamKind? = null,
+    val terminalFailureErrorCode: Int? = null,
 )
 
-/**
- * Converts the live diagnostics snapshot into one deterministic,
- * machine-readable compatibility observation.
- *
- * This does not persist anything yet. It is the reusable data contract for
- * later torture-file runs, device comparisons and compatibility-matrix export.
- */
 fun buildPlaybackCompatibilityObservation(
     snapshot: PlaybackDiagnosticsSnapshot,
 ): PlaybackCompatibilityObservation {
@@ -63,7 +51,13 @@ fun buildPlaybackCompatibilityObservation(
         codecString = snapshot.codecString,
     )
 
+    val terminalFailure = snapshot.lastFailureDiagnostic
+        ?.takeIf { it.severity == PlaybackFailureSeverity.TERMINAL }
+
     val outcome = when {
+        terminalFailure != null ->
+            PlaybackCompatibilityOutcome.NATIVE_UNSTABLE
+
         snapshot.fallbackOccurred ||
             snapshot.decoderMode == PlaybackEngineMode.SOFTWARE ||
             snapshot.activeDecoderKind == ActiveVideoDecoderKind.SOFTWARE ->
@@ -113,5 +107,7 @@ fun buildPlaybackCompatibilityObservation(
         audioDecoderKind = snapshot.activeAudioDecoderKind,
         audioRoute = snapshot.audioRoute,
         mixedPipeline = snapshot.mixedPipeline,
+        terminalFailureStream = terminalFailure?.streamKind,
+        terminalFailureErrorCode = terminalFailure?.errorCode,
     )
 }
