@@ -1,6 +1,7 @@
 package com.sole.cinevault
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class PlaybackCompatibilityMatrixPresentationTest {
@@ -9,26 +10,12 @@ class PlaybackCompatibilityMatrixPresentationTest {
     fun groupsByCodecProfileAndBitDepth() {
         val groups = buildPlaybackCompatibilityMatrixGroups(
             listOf(
+                entry("hevc-a", verdict = PlaybackCompatibilityVerdict.PASS_NATIVE),
+                entry("hevc-b", verdict = PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE),
                 entry(
-                    id = "hevc-a",
-                    codec = "HEVC",
-                    profile = "Main 10",
-                    bitDepth = 10,
-                    verdict = PlaybackCompatibilityVerdict.PASS_NATIVE,
-                ),
-                entry(
-                    id = "hevc-b",
-                    codec = "HEVC",
-                    profile = "Main 10",
-                    bitDepth = 10,
-                    verdict =
-                        PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE,
-                ),
-                entry(
-                    id = "av1-a",
+                    "av1-a",
                     codec = "AV1",
                     profile = "Main",
-                    bitDepth = 10,
                     verdict = PlaybackCompatibilityVerdict.PASS_NATIVE,
                 ),
             )
@@ -44,23 +31,10 @@ class PlaybackCompatibilityMatrixPresentationTest {
     fun unstableAndRescuedRowsSortBeforeNativeAndPending() {
         val group = buildPlaybackCompatibilityMatrixGroups(
             listOf(
-                entry(
-                    "pending",
-                    verdict = PlaybackCompatibilityVerdict.PENDING,
-                ),
-                entry(
-                    "native",
-                    verdict = PlaybackCompatibilityVerdict.PASS_NATIVE,
-                ),
-                entry(
-                    "rescued",
-                    verdict =
-                        PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE,
-                ),
-                entry(
-                    "unstable",
-                    verdict = PlaybackCompatibilityVerdict.FAIL_UNSTABLE,
-                ),
+                entry("pending", verdict = PlaybackCompatibilityVerdict.PENDING),
+                entry("native", verdict = PlaybackCompatibilityVerdict.PASS_NATIVE),
+                entry("rescued", verdict = PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE),
+                entry("unstable", verdict = PlaybackCompatibilityVerdict.FAIL_UNSTABLE),
             )
         ).single()
 
@@ -77,11 +51,7 @@ class PlaybackCompatibilityMatrixPresentationTest {
                 entry(
                     id = "hevc-hdr",
                     source = "HEVC HDR Reference",
-                    codec = "HEVC",
-                    profile = "Main 10",
-                    bitDepth = 10,
-                    verdict =
-                        PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE,
+                    verdict = PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE,
                     decoderKind = ActiveVideoDecoderKind.SOFTWARE,
                     decoderName = "c2.android.hevc.decoder",
                 )
@@ -90,14 +60,43 @@ class PlaybackCompatibilityMatrixPresentationTest {
 
         assertEquals("HEVC HDR Reference", row.sourceLabel)
         assertEquals("3840×2160 · 23.98 fps · HDR10/PQ", row.streamSummary)
-        assertEquals(
-            "SW · c2.android.hevc.decoder",
-            row.decoderSummary,
-        )
-        assertEquals(
-            "RESCUED",
-            playbackCompatibilityVerdictLabel(row.verdict),
-        )
+        assertEquals("SW · c2.android.hevc.decoder", row.decoderSummary)
+        assertEquals("RESCUED", playbackCompatibilityVerdictLabel(row.verdict))
+        assertNull(row.failureSummary)
+    }
+
+    @Test
+    fun terminalAudioFailureShowsCodecAndError() {
+        val row = buildPlaybackCompatibilityMatrixGroups(
+            listOf(
+                entry(
+                    id = "dts-hd-fail",
+                    verdict = PlaybackCompatibilityVerdict.FAIL_UNSTABLE,
+                    terminalFailureStream = PlaybackFailureStreamKind.AUDIO,
+                    terminalFailureErrorCode = 4003,
+                    audioMimeType = "audio/vnd.dts.hd",
+                    audioCodecString = "dtsh",
+                )
+            )
+        ).single().entries.single()
+
+        assertEquals("AUDIO · DTS-HD · error 4003", row.failureSummary)
+    }
+
+    @Test
+    fun terminalSubtitleFailureUsesFriendlyStreamLabel() {
+        val row = buildPlaybackCompatibilityMatrixGroups(
+            listOf(
+                entry(
+                    id = "subtitle-fail",
+                    verdict = PlaybackCompatibilityVerdict.FAIL_UNSTABLE,
+                    terminalFailureStream = PlaybackFailureStreamKind.TEXT,
+                    terminalFailureErrorCode = 4003,
+                )
+            )
+        ).single().entries.single()
+
+        assertEquals("SUBTITLE · error 4003", row.failureSummary)
     }
 
     private fun entry(
@@ -107,31 +106,23 @@ class PlaybackCompatibilityMatrixPresentationTest {
         profile: String = "Main 10",
         bitDepth: Int = 10,
         verdict: PlaybackCompatibilityVerdict,
-        decoderKind: ActiveVideoDecoderKind =
-            ActiveVideoDecoderKind.HARDWARE,
+        decoderKind: ActiveVideoDecoderKind = ActiveVideoDecoderKind.HARDWARE,
         decoderName: String = "c2.vendor.decoder",
+        terminalFailureStream: PlaybackFailureStreamKind? = null,
+        terminalFailureErrorCode: Int? = null,
+        audioMimeType: String? = null,
+        audioCodecString: String? = null,
     ): PlaybackCompatibilityMatrixEntry {
         val outcome = when (verdict) {
-            PlaybackCompatibilityVerdict.PENDING ->
-                PlaybackCompatibilityOutcome.STARTING
-            PlaybackCompatibilityVerdict.PASS_NATIVE ->
-                PlaybackCompatibilityOutcome.NATIVE_HEALTHY
-            PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE ->
-                PlaybackCompatibilityOutcome.SOFTWARE_RESCUED
-            PlaybackCompatibilityVerdict.FAIL_UNSTABLE ->
-                PlaybackCompatibilityOutcome.NATIVE_UNSTABLE
+            PlaybackCompatibilityVerdict.PENDING -> PlaybackCompatibilityOutcome.STARTING
+            PlaybackCompatibilityVerdict.PASS_NATIVE -> PlaybackCompatibilityOutcome.NATIVE_HEALTHY
+            PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE -> PlaybackCompatibilityOutcome.SOFTWARE_RESCUED
+            PlaybackCompatibilityVerdict.FAIL_UNSTABLE -> PlaybackCompatibilityOutcome.NATIVE_UNSTABLE
         }
 
         return PlaybackCompatibilityMatrixEntry(
-            testCase = PlaybackCompatibilityTestCase(
-                testId = id,
-                sourceLabel = source,
-            ),
-            device = PlaybackCompatibilityDevice(
-                manufacturer = "Example",
-                model = "Phone",
-                sdkInt = 36,
-            ),
+            testCase = PlaybackCompatibilityTestCase(id, source),
+            device = PlaybackCompatibilityDevice("Example", "Phone", 36),
             observation = PlaybackCompatibilityObservation(
                 key = PlaybackCompatibilityKey(
                     mimeType = "video/hevc",
@@ -147,24 +138,19 @@ class PlaybackCompatibilityMatrixPresentationTest {
                 decoderName = decoderName,
                 decoderKind = decoderKind,
                 compatibilityRisk = VideoCompatibilityRisk.LOW,
-                recommendation =
-                    VideoDecoderRecommendation.PREFER_HARDWARE,
-                nativeReadiness =
-                    NativeVideoPlaybackReadiness.READY,
+                recommendation = VideoDecoderRecommendation.PREFER_HARDWARE,
+                nativeReadiness = NativeVideoPlaybackReadiness.READY,
                 softwareFallbackAvailable = true,
-                fallbackOccurred =
-                    verdict ==
-                        PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE,
-                fallbackReason = if (
-                    verdict ==
-                    PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE
-                ) {
+                fallbackOccurred = verdict == PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE,
+                fallbackReason = if (verdict == PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE) {
                     PlaybackFallbackReason.DECODER_INIT_FAILED
-                } else {
-                    null
-                },
+                } else null,
                 totalDroppedVideoFrames = 0,
                 unhealthyDroppedFrameWindows = 0,
+                audioMimeType = audioMimeType,
+                audioCodecString = audioCodecString,
+                terminalFailureStream = terminalFailureStream,
+                terminalFailureErrorCode = terminalFailureErrorCode,
             ),
             verdict = verdict,
         )
