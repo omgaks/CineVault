@@ -11,6 +11,7 @@ class AudioRescueSubtitleRestoreTest {
             mediaItem = androidx.media3.common.MediaItem.EMPTY,
             resumePositionMs = 0L,
             playWhenReady = false,
+            playbackSpeed = 1.0f,
             subtitleSnapshot = null,
         )
 
@@ -23,6 +24,7 @@ class AudioRescueSubtitleRestoreTest {
             mediaItem = androidx.media3.common.MediaItem.EMPTY,
             resumePositionMs = 0L,
             playWhenReady = false,
+            playbackSpeed = 1.0f,
             subtitleSnapshot = AudioRescueSubtitleSnapshot(
                 primaryUri = null,
                 originalUri = null,
