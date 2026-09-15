@@ -26,25 +26,43 @@ fun buildPlaybackStatusPillPresentation(
         ),
     )
 
-    val primary = when (pipelineKind) {
-        PlaybackPipelineKind.MIXED_VIDEO_AUDIO_RESCUE ->
+    val failure = snapshot.lastFailureDiagnostic
+    val failureLabel = failure?.let(::playbackFailureDiagnosticSummary)?.uppercase()
+
+    val primary = when {
+        failure?.severity == PlaybackFailureSeverity.TERMINAL ->
+            when (failure.streamKind) {
+                PlaybackFailureStreamKind.VIDEO -> "VIDEO FAILED"
+                PlaybackFailureStreamKind.AUDIO -> "AUDIO FAILED"
+                PlaybackFailureStreamKind.TEXT -> "SUBTITLE FAILED"
+                PlaybackFailureStreamKind.OTHER -> "PLAYBACK FAILED"
+                PlaybackFailureStreamKind.UNKNOWN -> "PLAYBACK FAILED"
+            }
+
+        failure?.recoveryAction == PlaybackRecoveryAction.SWITCH_TO_SOFTWARE ->
+            "SW RESCUE"
+
+        pipelineKind == PlaybackPipelineKind.MIXED_VIDEO_AUDIO_RESCUE ->
             "MIXED RESCUE"
 
-        PlaybackPipelineKind.VIDEO_SOFTWARE_RESCUE ->
+        pipelineKind == PlaybackPipelineKind.VIDEO_SOFTWARE_RESCUE ->
             "SW VIDEO"
 
-        PlaybackPipelineKind.AUDIO_FFMPEG_RESCUE ->
+        pipelineKind == PlaybackPipelineKind.AUDIO_FFMPEG_RESCUE ->
             "FFMPEG AUDIO"
 
-        PlaybackPipelineKind.NATIVE ->
+        pipelineKind == PlaybackPipelineKind.NATIVE ->
             "HW VIDEO"
 
-        PlaybackPipelineKind.UNKNOWN ->
-            "PLAYBACK"
+        else -> "PLAYBACK"
     }
 
     val rotating = buildList {
         add(primary)
+
+        failureLabel
+            ?.takeIf { it != primary }
+            ?.let(::add)
 
         buildAudioResilienceLabel(audioResilience)
             ?.takeIf { it != primary }
@@ -73,7 +91,8 @@ fun buildPlaybackStatusPillPresentation(
         primaryLabel = primary,
         rotatingLabels = rotating.ifEmpty { listOf(primary) },
         emphasized =
-            pipelineKind == PlaybackPipelineKind.VIDEO_SOFTWARE_RESCUE ||
+            failure != null ||
+                pipelineKind == PlaybackPipelineKind.VIDEO_SOFTWARE_RESCUE ||
                 pipelineKind == PlaybackPipelineKind.AUDIO_FFMPEG_RESCUE ||
                 pipelineKind == PlaybackPipelineKind.MIXED_VIDEO_AUDIO_RESCUE ||
                 audioNeedsAttention,
@@ -94,16 +113,12 @@ fun classifyPlaybackSnapshotPipeline(
     return when {
         videoRescued && audioRescued ->
             PlaybackPipelineKind.MIXED_VIDEO_AUDIO_RESCUE
-
         videoRescued ->
             PlaybackPipelineKind.VIDEO_SOFTWARE_RESCUE
-
         audioRescued ->
             PlaybackPipelineKind.AUDIO_FFMPEG_RESCUE
-
         snapshot.activeDecoderKind == ActiveVideoDecoderKind.HARDWARE ->
             PlaybackPipelineKind.NATIVE
-
         else ->
             PlaybackPipelineKind.UNKNOWN
     }
@@ -112,19 +127,12 @@ fun classifyPlaybackSnapshotPipeline(
 private fun buildAudioResilienceLabel(
     assessment: AudioPlaybackResilienceAssessment,
 ): String? = when (assessment.readiness) {
-    AudioPlaybackReadiness.FFMPEG_RESCUE_EXPECTED ->
-        "FFMPEG READY"
-
-    AudioPlaybackReadiness.FFMPEG_RESCUED ->
-        "FFMPEG AUDIO"
-
-    AudioPlaybackReadiness.PLATFORM_ACTIVE ->
-        "PLATFORM AUDIO"
-
+    AudioPlaybackReadiness.FFMPEG_RESCUE_EXPECTED -> "FFMPEG READY"
+    AudioPlaybackReadiness.FFMPEG_RESCUED -> "FFMPEG AUDIO"
+    AudioPlaybackReadiness.PLATFORM_ACTIVE -> "PLATFORM AUDIO"
     AudioPlaybackReadiness.PLATFORM_EXPECTED,
     AudioPlaybackReadiness.NONE,
-    AudioPlaybackReadiness.UNKNOWN ->
-        null
+    AudioPlaybackReadiness.UNKNOWN -> null
 }
 
 private fun buildVideoCodecLabel(
@@ -136,20 +144,12 @@ private fun buildVideoCodecLabel(
     )
 
     val parts = buildList {
-        details.codecLabel
-            ?.takeIf { it.isNotBlank() }
-            ?.let(::add)
-
-        details.profileLabel
-            ?.takeIf { it.isNotBlank() }
-            ?.let(::add)
-
-        details.inferredBitDepth
-            ?.let { add("$it-BIT") }
+        details.codecLabel?.takeIf { it.isNotBlank() }?.let(::add)
+        details.profileLabel?.takeIf { it.isNotBlank() }?.let(::add)
+        details.inferredBitDepth?.let { add("$it-BIT") }
     }
 
-    return parts
-        .takeIf { it.isNotEmpty() }
+    return parts.takeIf { it.isNotEmpty() }
         ?.joinToString(" · ")
         ?.uppercase()
 }
@@ -167,20 +167,14 @@ private fun buildAudioCodecLabel(
         )
     } ?: return null
 
-    val assessment = assessAudioStreamCapability(descriptor)
-        ?: return null
+    val assessment = assessAudioStreamCapability(descriptor) ?: return null
 
     return buildList {
         add(assessment.codecLabel.uppercase())
-
-        snapshot.audioLanguage
-            ?.takeIf { it.isNotBlank() }
-            ?.uppercase()
-            ?.let(::add)
-
+        snapshot.audioLanguage?.takeIf { it.isNotBlank() }?.uppercase()?.let(::add)
         when (snapshot.activeAudioDecoderKind) {
             ActiveAudioDecoderKind.FFMPEG -> add("FFMPEG")
-            ActiveAudioDecoderKind.PLATFORM -> Unit
+            ActiveAudioDecoderKind.PLATFORM,
             ActiveAudioDecoderKind.UNKNOWN -> Unit
         }
     }.joinToString(" · ")
@@ -191,10 +185,7 @@ private fun buildVideoFormatLabel(
 ): String? {
     val parts = buildList {
         snapshot.resolution
-            .takeIf {
-                it.isNotBlank() &&
-                    !it.equals("Unknown", ignoreCase = true)
-            }
+            .takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
             ?.uppercase()
             ?.let(::add)
 
@@ -202,11 +193,7 @@ private fun buildVideoFormatLabel(
             ?.takeIf { it > 0f }
             ?.let {
                 val rounded = kotlin.math.round(it * 100f) / 100f
-                val fps = if (rounded % 1f == 0f) {
-                    rounded.toInt().toString()
-                } else {
-                    rounded.toString()
-                }
+                val fps = if (rounded % 1f == 0f) rounded.toInt().toString() else rounded.toString()
                 add("$fps FPS")
             }
 
@@ -223,7 +210,5 @@ private fun buildVideoFormatLabel(
         }
     }
 
-    return parts
-        .takeIf { it.isNotEmpty() }
-        ?.joinToString(" · ")
+    return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
 }

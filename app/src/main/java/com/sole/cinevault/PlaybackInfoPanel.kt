@@ -70,14 +70,9 @@ fun PlaybackInfoPanel(
                 modifier = Modifier
                     .width(4.dp)
                     .height(22.dp)
-                    .background(
-                        DiagnosticsAmber,
-                        RoundedCornerShape(4.dp),
-                    ),
+                    .background(DiagnosticsAmber, RoundedCornerShape(4.dp)),
             )
-
             Spacer(Modifier.width(9.dp))
-
             Column {
                 Text(
                     text = "PLAYBACK INFO",
@@ -92,16 +87,12 @@ fun PlaybackInfoPanel(
                     fontSize = 10.sp,
                 )
             }
-
             Spacer(Modifier.weight(1f))
-
             DecoderModeBadge(
                 mode = snapshot.decoderMode,
                 kind = snapshot.activeDecoderKind,
             )
-
             Spacer(Modifier.width(7.dp))
-
             Text(
                 text = "×",
                 modifier = Modifier
@@ -113,89 +104,72 @@ fun PlaybackInfoPanel(
             )
         }
 
-        DiagnosticSection(
-            label = "VIDEO",
-            value = presentation.videoSummary,
-        )
+        DiagnosticSection("VIDEO", presentation.videoSummary)
 
-        presentation.codecDetailsSummary?.let { codecDetails ->
+        presentation.codecDetailsSummary?.let {
+            DiagnosticSection("CODEC DETAILS", it)
+        }
+
+        DiagnosticSection("VIDEO DECODER", presentation.decoderSummary)
+
+        presentation.audioSummary?.let {
+            DiagnosticSection("AUDIO", it)
+        }
+
+        presentation.audioDecoderSummary?.let {
             DiagnosticSection(
-                label = "CODEC DETAILS",
-                value = codecDetails,
+                "AUDIO DECODER",
+                it,
+                snapshot.activeAudioDecoderKind == ActiveAudioDecoderKind.FFMPEG,
             )
         }
 
-        DiagnosticSection(
-            label = "VIDEO DECODER",
-            value = presentation.decoderSummary,
-        )
-
-        presentation.audioSummary?.let { audio ->
+        presentation.audioResilienceSummary?.let {
             DiagnosticSection(
-                label = "AUDIO",
-                value = audio,
+                "AUDIO RESILIENCE",
+                it,
+                audioResilience.readiness == AudioPlaybackReadiness.FFMPEG_RESCUED ||
+                    audioResilience.readiness == AudioPlaybackReadiness.FFMPEG_RESCUE_EXPECTED,
             )
         }
 
-        presentation.audioDecoderSummary?.let { audioDecoder ->
+        presentation.pipelineSummary?.let {
             DiagnosticSection(
-                label = "AUDIO DECODER",
-                value = audioDecoder,
-                emphasize =
-                    snapshot.activeAudioDecoderKind ==
-                        ActiveAudioDecoderKind.FFMPEG,
+                "PIPELINE",
+                it,
+                snapshot.activeAudioDecoderKind == ActiveAudioDecoderKind.FFMPEG,
             )
         }
 
-        presentation.audioResilienceSummary?.let { audioResilienceText ->
+        snapshot.lastFailureDiagnostic?.let { failure ->
             DiagnosticSection(
-                label = "AUDIO RESILIENCE",
-                value = audioResilienceText,
-                emphasize =
-                    audioResilience.readiness ==
-                        AudioPlaybackReadiness.FFMPEG_RESCUED ||
-                        audioResilience.readiness ==
-                        AudioPlaybackReadiness.FFMPEG_RESCUE_EXPECTED,
-            )
-        }
-
-        presentation.pipelineSummary?.let { pipeline ->
-            DiagnosticSection(
-                label = "PIPELINE",
-                value = pipeline,
-                emphasize =
-                    snapshot.activeAudioDecoderKind ==
-                        ActiveAudioDecoderKind.FFMPEG,
-            )
-        }
-
-        DiagnosticSection(
-            label = "COMPATIBILITY",
-            value = presentation.compatibilitySummary
-                .removePrefix("Compatibility: "),
-        )
-
-        DiagnosticSection(
-            label = "READINESS",
-            value = liveStatus.readiness,
-        )
-
-        DiagnosticSection(
-            label = "HEALTH",
-            value = liveStatus.health,
-        )
-
-        DiagnosticSection(
-            label = "SOFTWARE RESCUE",
-            value = liveStatus.recovery,
-            emphasize = snapshot.fallbackOccurred,
-        )
-
-        presentation.fallbackSummary?.let { fallback ->
-            DiagnosticSection(
-                label = "RECOVERY",
-                value = fallback.removePrefix("Fallback: "),
+                label = if (failure.severity == PlaybackFailureSeverity.TERMINAL) {
+                    "LAST FAILURE"
+                } else {
+                    "LAST RECOVERY"
+                },
+                value = playbackFailureDiagnosticSummary(failure),
                 emphasize = true,
+            )
+        }
+
+        DiagnosticSection(
+            "COMPATIBILITY",
+            presentation.compatibilitySummary.removePrefix("Compatibility: "),
+        )
+        DiagnosticSection("READINESS", liveStatus.readiness)
+        DiagnosticSection("HEALTH", liveStatus.health)
+        DiagnosticSection(
+            "SOFTWARE RESCUE",
+            liveStatus.recovery,
+            snapshot.fallbackOccurred,
+        )
+
+        presentation.fallbackSummary?.let {
+            DiagnosticSection(
+                "RECOVERY",
+                it.removePrefix("Fallback: "),
+                true,
             )
         }
 
@@ -235,21 +209,12 @@ private fun DecoderModeBadge(
             PlaybackEngineMode.SOFTWARE -> "SW"
         }
     }
-
     val shape = RoundedCornerShape(999.dp)
-
     Text(
         text = text,
         modifier = Modifier
-            .background(
-                DiagnosticsAmber.copy(alpha = 0.12f),
-                shape,
-            )
-            .border(
-                1.dp,
-                DiagnosticsAmber.copy(alpha = 0.38f),
-                shape,
-            )
+            .background(DiagnosticsAmber.copy(alpha = 0.12f), shape)
+            .border(1.dp, DiagnosticsAmber.copy(alpha = 0.38f), shape)
             .padding(horizontal = 9.dp, vertical = 4.dp),
         color = DiagnosticsAmber,
         fontSize = 10.sp,
@@ -264,35 +229,20 @@ private fun DiagnosticSection(
     value: String,
     emphasize: Boolean = false,
 ) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(3.dp),
-    ) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(
             text = label,
-            color = if (emphasize) {
-                DiagnosticsAmber
-            } else {
-                DiagnosticsSecondary
-            },
+            color = if (emphasize) DiagnosticsAmber else DiagnosticsSecondary,
             fontSize = 9.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.9.sp,
         )
-
         Text(
             text = value,
-            color = if (emphasize) {
-                DiagnosticsAmber
-            } else {
-                DiagnosticsPrimary
-            },
+            color = if (emphasize) DiagnosticsAmber else DiagnosticsPrimary,
             fontSize = 12.sp,
             lineHeight = 16.sp,
-            fontWeight = if (emphasize) {
-                FontWeight.Medium
-            } else {
-                FontWeight.Normal
-            },
+            fontWeight = if (emphasize) FontWeight.Medium else FontWeight.Normal,
         )
     }
 }
