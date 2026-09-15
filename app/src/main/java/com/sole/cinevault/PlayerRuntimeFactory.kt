@@ -18,14 +18,6 @@ internal data class PlayerRuntime(
     val decoderSelector: RecoveryAwareMediaCodecSelector,
 )
 
-/**
- * Creates the Media3 runtime once for the active audio-renderer preference.
- *
- * Normal playback uses PLATFORM_FIRST. A one-shot audio rescue changes the
- * controller preference to FFMPEG_FIRST, which rebuilds this runtime. The
- * pending rescue plan then restores the exact MediaItem, position and
- * playWhenReady state onto the new player.
- */
 @Composable
 @OptIn(UnstableApi::class)
 internal fun rememberPlayerRuntime(
@@ -46,14 +38,16 @@ internal fun rememberPlayerRuntime(
         autoEnableEmbeddedSubtitles = autoEnableEmbeddedSubtitles,
         audioRendererPreference = audioRendererPreference,
     ).also { runtime ->
-        AudioRuntimeRescueController.consumePendingPlan()?.let { plan ->
-            runtime.player.setMediaItem(
-                plan.mediaItem,
-                plan.request.resumePositionMs,
-            )
-            runtime.player.prepare()
-            runtime.player.playWhenReady = plan.playWhenReady
-        }
+        AudioRuntimeRescueController.consumePendingPlan()
+            ?.toHandover()
+            ?.let { handover ->
+                runtime.player.setMediaItem(
+                    handover.mediaItem,
+                    handover.resumePositionMs,
+                )
+                runtime.player.prepare()
+                runtime.player.playWhenReady = handover.playWhenReady
+            }
     }
 }
 
@@ -79,10 +73,10 @@ internal fun createPlayerRuntime(
 
     val loadControl = DefaultLoadControl.Builder()
         .setBufferDurationsMs(
-            /* minBufferMs = */ 15_000,
-            /* maxBufferMs = */ 50_000,
-            /* bufferForPlaybackMs = */ 1_500,
-            /* bufferForPlaybackAfterRebufferMs = */ 3_000
+            15_000,
+            50_000,
+            1_500,
+            3_000
         )
         .setBackBuffer(30_000, true)
         .build()
@@ -106,7 +100,7 @@ internal fun createPlayerRuntime(
                 .setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
                 .build(),
-            /* handleAudioFocus = */ true
+            true
         )
         .build()
 
