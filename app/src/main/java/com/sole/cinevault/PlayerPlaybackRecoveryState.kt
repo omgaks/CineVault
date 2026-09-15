@@ -22,6 +22,7 @@ class PlayerPlaybackRecoveryState {
     var startupPlaybackConfirmed by mutableStateOf(false)
     var firstVideoFrameRendered by mutableStateOf(false)
     var lastFailureDiagnostic by mutableStateOf<PlaybackFailureDiagnostic?>(null)
+    var failureHistory by mutableStateOf(emptyList<PlaybackFailureHistoryEntry>())
 
     var videoDecoderCapabilityReport by mutableStateOf<VideoDecoderCapabilityReport?>(null)
     var nativeVideoPlaybackReadiness by mutableStateOf(NativeVideoPlaybackReadiness.UNKNOWN)
@@ -52,6 +53,7 @@ class PlayerPlaybackRecoveryState {
         startupPlaybackConfirmed = false
         firstVideoFrameRendered = false
         lastFailureDiagnostic = null
+        failureHistory = emptyList()
         videoDecoderCapabilityReport = null
         nativeVideoPlaybackReadiness = NativeVideoPlaybackReadiness.UNKNOWN
         streamInventory = PlaybackStreamInventory()
@@ -69,6 +71,10 @@ class PlayerPlaybackRecoveryState {
 
     fun recordFailureDiagnostic(diagnostic: PlaybackFailureDiagnostic) {
         lastFailureDiagnostic = diagnostic
+        failureHistory = appendPlaybackFailureHistory(
+            history = failureHistory,
+            diagnostic = diagnostic,
+        )
     }
 
     val streamRoutingPlan: PlaybackStreamRoutingPlan
