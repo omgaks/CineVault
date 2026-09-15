@@ -1,23 +1,11 @@
 package com.sole.cinevault
 
-/**
- * One device identity for CineVault compatibility-matrix results.
- *
- * Values are passed in by the caller rather than read directly from
- * android.os.Build so the matrix model stays deterministic and unit-testable.
- */
 data class PlaybackCompatibilityDevice(
     val manufacturer: String,
     val model: String,
     val sdkInt: Int,
 )
 
-/**
- * Stable identity for one torture-file / compatibility test case.
- *
- * The optional sourceLabel can be a friendly filename or suite label, while
- * testId should stay stable across devices so results can be compared.
- */
 data class PlaybackCompatibilityTestCase(
     val testId: String,
     val sourceLabel: String? = null,
@@ -45,13 +33,10 @@ fun buildPlaybackCompatibilityMatrixEntry(
     val verdict = when (observation.outcome) {
         PlaybackCompatibilityOutcome.STARTING ->
             PlaybackCompatibilityVerdict.PENDING
-
         PlaybackCompatibilityOutcome.NATIVE_HEALTHY ->
             PlaybackCompatibilityVerdict.PASS_NATIVE
-
         PlaybackCompatibilityOutcome.SOFTWARE_RESCUED ->
             PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE
-
         PlaybackCompatibilityOutcome.NATIVE_UNSTABLE ->
             PlaybackCompatibilityVerdict.FAIL_UNSTABLE
     }
@@ -90,13 +75,11 @@ private val matrixColumns = listOf(
     "audio_decoder_kind",
     "audio_route",
     "mixed_pipeline",
+    "terminal_failure_stream",
+    "terminal_failure_error",
     "verdict",
 )
 
-/**
- * TSV is intentional: filenames and decoder names frequently contain commas,
- * so tab-separated rows are easier to inspect in logs and paste into Excel.
- */
 fun playbackCompatibilityMatrixHeader(): String =
     matrixColumns.joinToString("\t")
 
@@ -146,6 +129,8 @@ fun formatPlaybackCompatibilityMatrixRow(
         observation.audioDecoderKind.name,
         observation.audioRoute?.name.orEmpty(),
         observation.mixedPipeline.toString(),
+        observation.terminalFailureStream?.name.orEmpty(),
+        observation.terminalFailureErrorCode?.toString().orEmpty(),
         entry.verdict.name,
     ).joinToString("\t")
 }
@@ -154,7 +139,6 @@ fun formatPlaybackCompatibilityMatrixReport(
     entries: List<PlaybackCompatibilityMatrixEntry>,
 ): String = buildString {
     append(playbackCompatibilityMatrixHeader())
-
     entries.forEach { entry ->
         append('\n')
         append(formatPlaybackCompatibilityMatrixRow(entry))
@@ -162,8 +146,7 @@ fun formatPlaybackCompatibilityMatrixReport(
 }
 
 private fun sanitizeMatrixCell(value: String?): String =
-    value
-        .orEmpty()
+    value.orEmpty()
         .replace('\t', ' ')
         .replace('\n', ' ')
         .replace('\r', ' ')
