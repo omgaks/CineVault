@@ -42,7 +42,7 @@ internal fun rememberPlayerRuntime(
             ?.toHandover()
             ?.let { handover ->
                 runtime.player.setMediaItem(
-                    handover.mediaItem,
+                    handover.mediaItemWithRestoredSubtitle(),
                     handover.resumePositionMs,
                 )
                 runtime.player.prepare()
