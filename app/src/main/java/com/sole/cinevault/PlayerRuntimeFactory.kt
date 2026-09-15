@@ -6,11 +6,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
-import androidx.media3.common.util.UnstableApi
 import com.sole.cinevault.smb.cineVaultMediaSourceFactory
 
 internal data class PlayerRuntime(
@@ -21,16 +20,41 @@ internal data class PlayerRuntime(
 
 /**
  * Creates the Media3 runtime once for the lifetime of VideoPlayerScreen.
- * Buffering, FFmpeg-extension preference, language selection and audio-focus
- * settings are unchanged from the former inline construction.
+ *
+ * Normal playback uses PLATFORM_FIRST. Audio-rescue runtime construction may
+ * request FFMPEG_FIRST; that changes only extension-audio renderer ordering.
+ * The video MediaCodec selector and decoder fallback policy remain unchanged.
  */
 @Composable
 @OptIn(UnstableApi::class)
 internal fun rememberPlayerRuntime(
     context: Context,
     preferredLanguage: String,
-    autoEnableEmbeddedSubtitles: Boolean
-): PlayerRuntime = remember {
+    autoEnableEmbeddedSubtitles: Boolean,
+    audioRendererPreference: CineAudioRendererPreference =
+        CineAudioRendererPreference.PLATFORM_FIRST,
+): PlayerRuntime = remember(
+    context,
+    preferredLanguage,
+    autoEnableEmbeddedSubtitles,
+    audioRendererPreference,
+) {
+    createPlayerRuntime(
+        context = context,
+        preferredLanguage = preferredLanguage,
+        autoEnableEmbeddedSubtitles = autoEnableEmbeddedSubtitles,
+        audioRendererPreference = audioRendererPreference,
+    )
+}
+
+@OptIn(UnstableApi::class)
+internal fun createPlayerRuntime(
+    context: Context,
+    preferredLanguage: String,
+    autoEnableEmbeddedSubtitles: Boolean,
+    audioRendererPreference: CineAudioRendererPreference =
+        CineAudioRendererPreference.PLATFORM_FIRST,
+): PlayerRuntime {
     val trackSelector = DefaultTrackSelector(context).apply {
         parameters = buildUponParameters()
             .setPreferredAudioLanguage(preferredLanguage)
@@ -53,18 +77,11 @@ internal fun rememberPlayerRuntime(
         .setBackBuffer(30_000, true)
         .build()
 
-    // Playback Resilience Slice 74:
-    // Let Media3 try another MediaCodec decoder when the device's preferred
-    // decoder fails to initialise or cannot handle the exact stream profile.
-    //
-    // This is still the native/hardware tier — it is deliberately separate
-    // from the future CPU software-video engine. The existing FFmpeg audio
-    // extension remains registered after the platform renderer.
     val decoderSelector = RecoveryAwareMediaCodecSelector()
 
     val renderersFactory = CineRenderersFactory(context)
         .setExtensionRendererMode(
-            DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+            extensionRendererModeForAudioPreference(audioRendererPreference)
         )
         .setMediaCodecSelector(decoderSelector)
         .setEnableDecoderFallback(true)
@@ -83,7 +100,7 @@ internal fun rememberPlayerRuntime(
         )
         .build()
 
-    PlayerRuntime(
+    return PlayerRuntime(
         player = player,
         trackSelector = trackSelector,
         decoderSelector = decoderSelector,
