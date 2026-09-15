@@ -16,6 +16,27 @@ internal data class AudioRuntimeRescuePlan(
     val subtitleSnapshot: AudioRescueSubtitleSnapshot? = null,
 )
 
+internal enum class AudioRuntimeRescueAdmission {
+    ACCEPT,
+    REJECT_PENDING_RESCUE,
+    REJECT_ALREADY_IN_RESCUE_MODE,
+}
+
+internal fun decideAudioRuntimeRescueAdmission(
+    hasPendingPlan: Boolean,
+    rendererPreference: CineAudioRendererPreference,
+): AudioRuntimeRescueAdmission =
+    when {
+        hasPendingPlan ->
+            AudioRuntimeRescueAdmission.REJECT_PENDING_RESCUE
+
+        rendererPreference != CineAudioRendererPreference.PLATFORM_FIRST ->
+            AudioRuntimeRescueAdmission.REJECT_ALREADY_IN_RESCUE_MODE
+
+        else ->
+            AudioRuntimeRescueAdmission.ACCEPT
+    }
+
 internal object AudioRuntimeRescueController {
     var rendererPreference by mutableStateOf(CineAudioRendererPreference.PLATFORM_FIRST)
         private set
@@ -29,6 +50,15 @@ internal object AudioRuntimeRescueController {
         videoPath: String? = player.currentMediaItem?.localConfiguration?.uri?.toString(),
         subtitleSnapshot: AudioRescueSubtitleSnapshot? = null,
     ): Boolean {
+        if (
+            decideAudioRuntimeRescueAdmission(
+                hasPendingPlan = pendingPlan != null,
+                rendererPreference = rendererPreference,
+            ) != AudioRuntimeRescueAdmission.ACCEPT
+        ) {
+            return false
+        }
+
         val mediaItem = player.currentMediaItem ?: return false
         pendingPlan = AudioRuntimeRescuePlan(
             request = request,
