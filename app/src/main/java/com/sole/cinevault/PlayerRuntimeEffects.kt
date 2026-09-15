@@ -167,6 +167,7 @@ internal fun PlayerRuntimeEffects(
                         player = player,
                         request = rescueRequest,
                         videoPath = currentVideoPath,
+                        subtitleSnapshot = trackUi.audioRescueSubtitleSnapshot(),
                     )
                 ) {
                     onAudioRescueRequested(rescueRequest)
