@@ -582,6 +582,9 @@ fun VideoPlayerScreen(
         onStreamInventoryChanged = {
             playbackRecovery.updateStreamInventory(it)
         },
+        onFailureDiagnostic = {
+            playbackRecovery.recordFailureDiagnostic(it)
+        },
         onBufferingChanged = { playbackHealth.isBuffering = it },
         onErrorRetryCountChanged = { playbackHealth.errorRetryCount = it },
         onPlayerErrorMessageChanged = { playbackHealth.playerErrorMessage = it },
