@@ -146,7 +146,11 @@ internal fun PlayerRuntimeEffects(
             )
             if (
                 rescueRequest != null &&
-                AudioRuntimeRescueController.request(player, rescueRequest)
+                AudioRuntimeRescueController.request(
+                    player = player,
+                    request = rescueRequest,
+                    videoPath = currentVideoPath,
+                )
             ) {
                 onAudioRescueRequested(rescueRequest)
                 true
