@@ -68,9 +68,7 @@ fun PlaybackCompatibilityMatrixPanel(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                groups.forEach { group ->
-                    MatrixGroupCard(group)
-                }
+                groups.forEach { group -> MatrixGroupCard(group) }
             }
         }
     }
@@ -95,9 +93,7 @@ private fun MatrixHeader(
             fontSize = 24.sp,
             fontWeight = FontWeight.Medium,
         )
-
         Spacer(Modifier.width(5.dp))
-
         Column {
             Text(
                 text = "COMPATIBILITY MATRIX",
@@ -112,9 +108,7 @@ private fun MatrixHeader(
                 fontSize = 10.sp,
             )
         }
-
         Spacer(Modifier.weight(1f))
-
         Text(
             text = "×",
             modifier = Modifier
@@ -138,11 +132,7 @@ private fun MatrixGroupCard(
                 Color.Black.copy(alpha = 0.24f),
                 RoundedCornerShape(13.dp),
             )
-            .border(
-                1.dp,
-                MatrixBorder,
-                RoundedCornerShape(13.dp),
-            )
+            .border(1.dp, MatrixBorder, RoundedCornerShape(13.dp))
             .padding(11.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
@@ -163,7 +153,6 @@ private fun MatrixGroupCard(
                         .padding(top = 1.dp),
                 )
             }
-
             MatrixRow(row)
         }
     }
@@ -181,9 +170,7 @@ private fun MatrixRow(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
-            ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = row.sourceLabel,
                     color = MatrixPrimary,
@@ -196,9 +183,7 @@ private fun MatrixRow(
                     fontSize = 9.sp,
                 )
             }
-
             Spacer(Modifier.width(10.dp))
-
             MatrixVerdictBadge(row.verdict)
         }
 
@@ -207,6 +192,15 @@ private fun MatrixRow(
             color = MatrixSecondary,
             fontSize = 9.sp,
         )
+
+        row.failureSummary?.let {
+            Text(
+                text = it,
+                color = MatrixAmber,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
 
         if (row.testId != row.sourceLabel) {
             Text(
@@ -224,27 +218,20 @@ private fun MatrixVerdictBadge(
 ) {
     val emphasized = verdict == PlaybackCompatibilityVerdict.FAIL_UNSTABLE ||
         verdict == PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE
-
     val shape = RoundedCornerShape(999.dp)
 
     Text(
         text = playbackCompatibilityVerdictLabel(verdict),
         modifier = Modifier
             .background(
-                if (emphasized) {
-                    MatrixAmber.copy(alpha = 0.14f)
-                } else {
-                    Color.White.copy(alpha = 0.06f)
-                },
+                if (emphasized) MatrixAmber.copy(alpha = 0.14f)
+                else Color.White.copy(alpha = 0.06f),
                 shape,
             )
             .border(
                 1.dp,
-                if (emphasized) {
-                    MatrixAmber.copy(alpha = 0.42f)
-                } else {
-                    MatrixBorder
-                },
+                if (emphasized) MatrixAmber.copy(alpha = 0.42f)
+                else MatrixBorder,
                 shape,
             )
             .padding(horizontal = 8.dp, vertical = 4.dp),

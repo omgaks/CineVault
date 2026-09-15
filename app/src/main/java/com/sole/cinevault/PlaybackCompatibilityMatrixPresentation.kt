@@ -11,14 +11,9 @@ data class PlaybackCompatibilityMatrixRow(
     val streamSummary: String,
     val decoderSummary: String,
     val verdict: PlaybackCompatibilityVerdict,
+    val failureSummary: String? = null,
 )
 
-/**
- * Builds the human-readable Compatibility Matrix used by the player UI.
- *
- * Rows are grouped by codec/profile/bit depth so repeated torture-file runs
- * are easy to scan. The underlying persisted matrix entries remain unchanged.
- */
 fun buildPlaybackCompatibilityMatrixGroups(
     entries: List<PlaybackCompatibilityMatrixEntry>,
 ): List<PlaybackCompatibilityMatrixGroup> =
@@ -53,13 +48,8 @@ private fun matrixGroupTitle(
     key: PlaybackCompatibilityKey,
 ): String = buildList {
     add(key.codecLabel?.takeIf { it.isNotBlank() } ?: "Unknown codec")
-
-    key.profileLabel
-        ?.takeIf { it.isNotBlank() }
-        ?.let(::add)
-
-    key.bitDepth
-        ?.let { add("$it-bit") }
+    key.profileLabel?.takeIf { it.isNotBlank() }?.let(::add)
+    key.bitDepth?.let { add("$it-bit") }
 }.joinToString(" · ")
 
 private fun presentCompatibilityMatrixRow(
@@ -70,11 +60,7 @@ private fun presentCompatibilityMatrixRow(
 
     val streamSummary = buildList {
         add(key.resolution)
-
-        key.frameRate?.let {
-            add(formatCompatibilityMatrixFps(it))
-        }
-
+        key.frameRate?.let { add(formatCompatibilityMatrixFps(it)) }
         if (key.dynamicRange != VideoDynamicRange.SDR) {
             add(
                 key.dynamicRange.name
@@ -92,11 +78,33 @@ private fun presentCompatibilityMatrixRow(
                 ActiveVideoDecoderKind.UNKNOWN -> "?"
             }
         )
-
         observation.decoderName
             ?.takeIf { it.isNotBlank() }
             ?.let(::add)
     }.joinToString(" · ")
+
+    val failureSummary = observation.terminalFailureStream?.let { stream ->
+        buildString {
+            append(playbackFailureStreamLabel(stream))
+            observation.audioMimeType
+                ?.takeIf { stream == PlaybackFailureStreamKind.AUDIO }
+                ?.let {
+                    val descriptor = PlaybackStreamDescriptor(
+                        kind = PlaybackStreamKind.AUDIO,
+                        mimeType = it,
+                        codecString = observation.audioCodecString,
+                        language = observation.audioLanguage,
+                        selected = true,
+                    )
+                    assessAudioStreamCapability(descriptor)
+                        ?.codecLabel
+                        ?.takeIf { label -> label.isNotBlank() }
+                        ?.let { label -> append(" · ").append(label) }
+                }
+            observation.terminalFailureErrorCode
+                ?.let { append(" · error ").append(it) }
+        }
+    }
 
     return PlaybackCompatibilityMatrixRow(
         testId = entry.testCase.testId,
@@ -106,7 +114,18 @@ private fun presentCompatibilityMatrixRow(
         streamSummary = streamSummary,
         decoderSummary = decoderSummary,
         verdict = entry.verdict,
+        failureSummary = failureSummary,
     )
+}
+
+private fun playbackFailureStreamLabel(
+    stream: PlaybackFailureStreamKind,
+): String = when (stream) {
+    PlaybackFailureStreamKind.VIDEO -> "VIDEO"
+    PlaybackFailureStreamKind.AUDIO -> "AUDIO"
+    PlaybackFailureStreamKind.TEXT -> "SUBTITLE"
+    PlaybackFailureStreamKind.OTHER -> "OTHER"
+    PlaybackFailureStreamKind.UNKNOWN -> "PLAYBACK"
 }
 
 private fun compatibilityVerdictSortRank(
