@@ -2,9 +2,9 @@ package com.sole.cinevault
 
 /**
  * Records the second renderer-level audio failure after CineVault has already
- * consumed its one FFmpeg-first rescue. The diagnostic is deliberately
- * terminal so the verified rescue outcome becomes FAILED and the event cannot
- * masquerade as a pending/confirmed rescue.
+ * consumed its one FFmpeg-first rescue. This terminal diagnostic prevents the
+ * failure from re-entering the generic retry path and makes the rescue outcome
+ * resolve as failed.
  */
 fun PlayerPlaybackRecoveryState.recordTerminalAudioFailureAfterFfmpegRescue(
     attribution: PlaybackFailureAttribution,
@@ -14,9 +14,9 @@ fun PlayerPlaybackRecoveryState.recordTerminalAudioFailureAfterFfmpegRescue(
         PlaybackFailureDiagnostic(
             streamKind = PlaybackFailureStreamKind.AUDIO,
             severity = PlaybackFailureSeverity.TERMINAL,
-            rendererFailure = attribution.rendererFailure,
-            rendererTrackType = attribution.rendererTrackType,
             errorCode = errorCode,
+            recoveryAction = PlaybackRecoveryAction.FAIL,
+            rendererFailure = attribution.rendererFailure,
         )
     )
 }
