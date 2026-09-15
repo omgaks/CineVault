@@ -26,6 +26,8 @@ data class PlaybackDiagnosticsSnapshot(
     val activeAudioDecoderKind: ActiveAudioDecoderKind = ActiveAudioDecoderKind.UNKNOWN,
     val audioRoute: PlaybackStreamRoute? = null,
     val mixedPipeline: Boolean = false,
+    val audioFfmpegRescueOutcome: AudioFfmpegRescueOutcome =
+        AudioFfmpegRescueOutcome.NOT_ATTEMPTED,
     val lastFailureDiagnostic: PlaybackFailureDiagnostic? = null,
     val failureHistory: List<PlaybackFailureHistoryEntry> = emptyList(),
 )
@@ -66,6 +68,7 @@ fun buildPlaybackDiagnosticsSnapshot(
         activeAudioDecoderKind = activeAudioDecoder.kind,
         audioRoute = routingPlan.audioRoute,
         mixedPipeline = routingPlan.isMixedPipeline,
+        audioFfmpegRescueOutcome = recoveryState.currentAudioFfmpegRescueOutcome(),
         lastFailureDiagnostic = recoveryState.lastFailureDiagnostic,
         failureHistory = recoveryState.failureHistory,
     )
