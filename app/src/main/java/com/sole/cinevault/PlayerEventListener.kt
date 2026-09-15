@@ -33,6 +33,7 @@ internal fun PlayerEventListener(
     onAudioLanguageCheckedForPathChanged: (String?) -> Unit,
     onVideoDecoderCapabilityReportChanged: (VideoDecoderCapabilityReport?) -> Unit,
     onStreamInventoryChanged: (PlaybackStreamInventory) -> Unit,
+    onFailureDiagnostic: (PlaybackFailureDiagnostic) -> Unit,
     onBufferingChanged: (Boolean) -> Unit,
     onErrorRetryCountChanged: (Int) -> Unit,
     onPlayerErrorMessageChanged: (String?) -> Unit,
@@ -49,21 +50,13 @@ internal fun PlayerEventListener(
     ) -> Unit,
 ) {
     DisposableEffect(
-        player,
-        currentVideoPath,
-        currentMediaType,
-        isStreamMedia,
-        episodeList,
-        autoPlayEnabled,
-        errorRetryCount,
-        playbackEngineMode,
-        softwareFallbackAvailable,
-        audioLanguageCheckedForPath,
+        player, currentVideoPath, currentMediaType, isStreamMedia, episodeList,
+        autoPlayEnabled, errorRetryCount, playbackEngineMode,
+        softwareFallbackAvailable, audioLanguageCheckedForPath,
     ) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 onBufferingChanged(state == Player.STATE_BUFFERING)
-
                 if (state == Player.STATE_READY) {
                     onErrorRetryCountChanged(0)
                     onPlayerErrorMessageChanged(null)
@@ -71,11 +64,8 @@ internal fun PlayerEventListener(
                     if (realDuration > 0L && !isStreamMedia) {
                         savePlayerDuration(context, currentVideoPath, realDuration)
                     }
-
-                    if (
-                        coreUi.behaviorPrefs.disableWhenAudioMatchesPreferred &&
-                        audioLanguageCheckedForPath != currentVideoPath
-                    ) {
+                    if (coreUi.behaviorPrefs.disableWhenAudioMatchesPreferred &&
+                        audioLanguageCheckedForPath != currentVideoPath) {
                         onAudioLanguageCheckedForPathChanged(currentVideoPath)
                         val audioLanguage = player.currentTracks.groups
                             .firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
@@ -85,30 +75,22 @@ internal fun PlayerEventListener(
                                     ?.let { index -> group.getTrackFormat(index).language }
                             }
                         val preferred = coreUi.behaviorPrefs.preferredLanguages.firstOrNull()
-                        if (
-                            audioLanguage != null && preferred != null &&
-                            audioLanguage.take(2).equals(preferred.take(2), ignoreCase = true)
-                        ) {
+                        if (audioLanguage != null && preferred != null &&
+                            audioLanguage.take(2).equals(preferred.take(2), ignoreCase = true)) {
                             coreUi.subtitlesEnabled = false
-                            trackSelector.parameters = trackSelector
-                                .buildUponParameters()
-                                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                                .build()
+                            trackSelector.parameters = trackSelector.buildUponParameters()
+                                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
                         }
                     }
                 }
-
                 if (state == Player.STATE_ENDED) {
                     onVideoEndedChanged(true)
                     if (autoPlayEnabled && episodeList.isNotEmpty()) {
                         val index = episodeList.indexOfFirst { it.video.path == currentVideoPath }
                         val next = episodeList.getOrNull(index + 1)
                         if (next != null) {
-                            if (currentMediaType.equals("tv", ignoreCase = true)) {
-                                onQueueNextEpisode(next)
-                            } else {
-                                onAdvanceImmediately(next)
-                            }
+                            if (currentMediaType.equals("tv", ignoreCase = true)) onQueueNextEpisode(next)
+                            else onAdvanceImmediately(next)
                         }
                     }
                     onShowControls()
@@ -118,22 +100,15 @@ internal fun PlayerEventListener(
             override fun onTracksChanged(tracks: Tracks) {
                 val inventory = inspectPlaybackStreamInventory(tracks)
                 onStreamInventoryChanged(inventory)
-
                 val selectedVideoFormat = tracks.groups
-                    .firstOrNull { group ->
-                        group.type == C.TRACK_TYPE_VIDEO && group.isSelected
-                    }
+                    .firstOrNull { it.type == C.TRACK_TYPE_VIDEO && it.isSelected }
                     ?.let { group ->
-                        (0 until group.length)
-                            .firstOrNull { index -> group.isTrackSelected(index) }
-                            ?.let { index -> group.getTrackFormat(index) }
+                        (0 until group.length).firstOrNull { group.isTrackSelected(it) }
+                            ?.let { group.getTrackFormat(it) }
                     }
-
-                val capabilityReport = selectedVideoFormat?.let {
-                    inspectVideoDecoderCapability(it)
-                }
-
-                onVideoDecoderCapabilityReportChanged(capabilityReport)
+                onVideoDecoderCapabilityReportChanged(
+                    selectedVideoFormat?.let { inspectVideoDecoderCapability(it) }
+                )
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -143,17 +118,22 @@ internal fun PlayerEventListener(
             override fun onPlayerError(error: PlaybackException) {
                 val positionAtError = player.currentPosition.coerceAtLeast(0L)
                 val attribution = attributePlaybackFailure(error)
-
                 val baseRecovery = decidePlaybackRecovery(
                     errorCode = error.errorCode,
                     currentRetryCount = errorRetryCount,
                     engineMode = playbackEngineMode,
                     softwareFallbackAvailable = softwareFallbackAvailable,
                 )
-
                 val recovery = routeRecoveryForFailure(
                     attribution = attribution,
                     recovery = baseRecovery,
+                )
+
+                onFailureDiagnostic(
+                    buildPlaybackFailureDiagnostic(
+                        attribution = attribution,
+                        recovery = recovery,
+                    )
                 )
 
                 when (recovery.action) {
@@ -164,32 +144,21 @@ internal fun PlayerEventListener(
                             onRetryPlayback(trackUi.originalUri, positionAtError)
                         }
                     }
-
                     PlaybackRecoveryAction.SWITCH_TO_SOFTWARE -> {
                         onSoftwareFallbackRequested(
-                            error.errorCode,
-                            positionAtError,
-                            trackUi.originalUri,
+                            error.errorCode, positionAtError, trackUi.originalUri,
                         )
                     }
-
                     PlaybackRecoveryAction.FAIL -> {
-                        val streamPrefix =
-                            if (attribution.rendererFailure) {
-                                "${playbackFailureStreamLabel(attribution)}: "
-                            } else {
-                                ""
-                            }
-
-                        onPlayerErrorMessageChanged(
-                            streamPrefix + friendlyPlaybackError(error)
-                        )
+                        val streamPrefix = if (attribution.rendererFailure) {
+                            "${playbackFailureStreamLabel(attribution)}: "
+                        } else ""
+                        onPlayerErrorMessageChanged(streamPrefix + friendlyPlaybackError(error))
                         onPlayingChanged(false)
                     }
                 }
             }
         }
-
         player.addListener(listener)
         onDispose { player.removeListener(listener) }
     }
