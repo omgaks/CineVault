@@ -48,6 +48,11 @@ internal fun rememberPlayerRuntime(
                 )
                 runtime.player.playbackParameters =
                     PlaybackParameters(handover.playbackSpeed)
+                restoreAudioTrackAfterRescue(
+                    player = runtime.player,
+                    trackSelector = runtime.trackSelector,
+                    identity = handover.audioTrackIdentity,
+                )
                 runtime.player.prepare()
                 runtime.player.playWhenReady = handover.playWhenReady
             }
