@@ -1,14 +1,5 @@
 package com.sole.cinevault
 
-/**
- * Recorder for CineVault compatibility testing.
- *
- * Results can be seeded from local persistence and every accepted change can
- * be persisted through onEntriesChanged. A single test case still progresses
- * monotonically:
- *
- * STARTING -> NATIVE_HEALTHY -> NATIVE_UNSTABLE -> SOFTWARE_RESCUED
- */
 class PlaybackCompatibilitySessionRecorder(
     val device: PlaybackCompatibilityDevice,
     private val maxEntries: Int = DEFAULT_MAX_ENTRIES,
@@ -20,17 +11,11 @@ class PlaybackCompatibilitySessionRecorder(
         LinkedHashMap<String, PlaybackCompatibilityMatrixEntry>()
 
     init {
-        require(maxEntries > 0) {
-            "maxEntries must be greater than zero"
-        }
-
-        initialEntries
-            .asSequence()
+        require(maxEntries > 0) { "maxEntries must be greater than zero" }
+        initialEntries.asSequence()
             .filter { it.device == device }
             .takeLastCompat(maxEntries)
-            .forEach { entry ->
-                entriesByTestId[entry.testCase.testId] = entry
-            }
+            .forEach { entriesByTestId[it.testCase.testId] = it }
     }
 
     fun record(
@@ -38,9 +23,8 @@ class PlaybackCompatibilitySessionRecorder(
         snapshot: PlaybackDiagnosticsSnapshot,
     ): PlaybackCompatibilityMatrixEntry =
         recordObservation(
-            testCase = testCase,
-            observation =
-                buildPlaybackCompatibilityObservation(snapshot),
+            testCase,
+            buildPlaybackCompatibilityObservation(snapshot),
         )
 
     fun recordObservation(
@@ -52,11 +36,9 @@ class PlaybackCompatibilitySessionRecorder(
             device = device,
             observation = observation,
         )
-
-        val existing = entriesByTestId[testCase.testId]
         val selected = selectCompatibilityEntry(
-            existing = existing,
-            candidate = candidate,
+            entriesByTestId[testCase.testId],
+            candidate,
         )
 
         if (selected === candidate) {
@@ -65,34 +47,26 @@ class PlaybackCompatibilitySessionRecorder(
             trimToLimit()
             notifyChanged()
         }
-
         return selected
     }
 
     fun entries(): List<PlaybackCompatibilityMatrixEntry> =
         entriesByTestId.values.toList()
 
-    fun entryFor(
-        testId: String,
-    ): PlaybackCompatibilityMatrixEntry? =
+    fun entryFor(testId: String): PlaybackCompatibilityMatrixEntry? =
         entriesByTestId[testId]
 
-    fun report(): String =
-        formatPlaybackCompatibilityMatrixReport(entries())
+    fun report(): String = formatPlaybackCompatibilityMatrixReport(entries())
 
     fun clear() {
-        if (entriesByTestId.isEmpty()) {
-            return
-        }
-
+        if (entriesByTestId.isEmpty()) return
         entriesByTestId.clear()
         notifyChanged()
     }
 
     private fun trimToLimit() {
         while (entriesByTestId.size > maxEntries) {
-            val oldestKey = entriesByTestId.keys.firstOrNull()
-                ?: return
+            val oldestKey = entriesByTestId.keys.firstOrNull() ?: return
             entriesByTestId.remove(oldestKey)
         }
     }
@@ -110,18 +84,18 @@ fun selectCompatibilityEntry(
     existing: PlaybackCompatibilityMatrixEntry?,
     candidate: PlaybackCompatibilityMatrixEntry,
 ): PlaybackCompatibilityMatrixEntry {
-    if (existing == null) {
-        return candidate
-    }
+    if (existing == null) return candidate
 
-    return if (
-        compatibilityOutcomeRank(candidate.observation.outcome) >=
-        compatibilityOutcomeRank(existing.observation.outcome)
-    ) {
-        candidate
-    } else {
-        existing
-    }
+    val candidateRank = compatibilityOutcomeRank(candidate.observation.outcome)
+    val existingRank = compatibilityOutcomeRank(existing.observation.outcome)
+
+    if (candidateRank > existingRank) return candidate
+    if (candidateRank < existingRank) return existing
+
+    val candidateFailureRank = terminalFailureEvidenceRank(candidate.observation)
+    val existingFailureRank = terminalFailureEvidenceRank(existing.observation)
+
+    return if (candidateFailureRank >= existingFailureRank) candidate else existing
 }
 
 private fun compatibilityOutcomeRank(
@@ -133,13 +107,16 @@ private fun compatibilityOutcomeRank(
     PlaybackCompatibilityOutcome.SOFTWARE_RESCUED -> 3
 }
 
-private fun <T> Sequence<T>.takeLastCompat(
-    count: Int,
-): List<T> {
+private fun terminalFailureEvidenceRank(
+    observation: PlaybackCompatibilityObservation,
+): Int = when {
+    observation.terminalFailureStream != null &&
+        observation.terminalFailureErrorCode != null -> 2
+    observation.terminalFailureStream != null -> 1
+    else -> 0
+}
+
+private fun <T> Sequence<T>.takeLastCompat(count: Int): List<T> {
     val items = toList()
-    return if (items.size <= count) {
-        items
-    } else {
-        items.takeLast(count)
-    }
+    return if (items.size <= count) items else items.takeLast(count)
 }
