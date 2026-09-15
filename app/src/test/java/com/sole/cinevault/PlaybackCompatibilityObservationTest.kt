@@ -1,6 +1,7 @@
 package com.sole.cinevault
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class PlaybackCompatibilityObservationTest {
@@ -45,6 +46,84 @@ class PlaybackCompatibilityObservationTest {
             PlaybackCompatibilityOutcome.NATIVE_HEALTHY,
             observation.outcome,
         )
+        assertNull(observation.terminalFailureStream)
+    }
+
+    @Test
+    fun terminalAudioFailureOverridesEarlierHealthyVideo() {
+        val observation = buildPlaybackCompatibilityObservation(
+            baseSnapshot(
+                nativeReadiness = NativeVideoPlaybackReadiness.READY,
+                firstVideoFrameRendered = true,
+                lastFailureDiagnostic = PlaybackFailureDiagnostic(
+                    streamKind = PlaybackFailureStreamKind.AUDIO,
+                    severity = PlaybackFailureSeverity.TERMINAL,
+                    errorCode = 4003,
+                    recoveryAction = PlaybackRecoveryAction.FAIL,
+                    rendererFailure = true,
+                ),
+            )
+        )
+
+        assertEquals(
+            PlaybackCompatibilityOutcome.NATIVE_UNSTABLE,
+            observation.outcome,
+        )
+        assertEquals(
+            PlaybackFailureStreamKind.AUDIO,
+            observation.terminalFailureStream,
+        )
+        assertEquals(4003, observation.terminalFailureErrorCode)
+    }
+
+    @Test
+    fun terminalSubtitleFailureAlsoPreventsHealthyCompatibilityResult() {
+        val observation = buildPlaybackCompatibilityObservation(
+            baseSnapshot(
+                firstVideoFrameRendered = true,
+                lastFailureDiagnostic = PlaybackFailureDiagnostic(
+                    streamKind = PlaybackFailureStreamKind.TEXT,
+                    severity = PlaybackFailureSeverity.TERMINAL,
+                    errorCode = 4003,
+                    recoveryAction = PlaybackRecoveryAction.FAIL,
+                    rendererFailure = true,
+                ),
+            )
+        )
+
+        assertEquals(
+            PlaybackCompatibilityOutcome.NATIVE_UNSTABLE,
+            observation.outcome,
+        )
+        assertEquals(
+            PlaybackFailureStreamKind.TEXT,
+            observation.terminalFailureStream,
+        )
+    }
+
+    @Test
+    fun recoverableFailureDoesNotOverrideSuccessfulSoftwareRescue() {
+        val observation = buildPlaybackCompatibilityObservation(
+            baseSnapshot(
+                decoderMode = PlaybackEngineMode.SOFTWARE,
+                decoderKind = ActiveVideoDecoderKind.SOFTWARE,
+                fallbackOccurred = true,
+                firstVideoFrameRendered = true,
+                lastFailureDiagnostic = PlaybackFailureDiagnostic(
+                    streamKind = PlaybackFailureStreamKind.VIDEO,
+                    severity = PlaybackFailureSeverity.RECOVERABLE,
+                    errorCode = 4003,
+                    recoveryAction = PlaybackRecoveryAction.SWITCH_TO_SOFTWARE,
+                    rendererFailure = true,
+                ),
+            )
+        )
+
+        assertEquals(
+            PlaybackCompatibilityOutcome.SOFTWARE_RESCUED,
+            observation.outcome,
+        )
+        assertNull(observation.terminalFailureStream)
     }
 
     @Test
@@ -131,6 +210,7 @@ class PlaybackCompatibilityObservationTest {
         firstVideoFrameRendered: Boolean = false,
         fallbackOccurred: Boolean = false,
         fallbackReason: PlaybackFallbackReason? = null,
+        lastFailureDiagnostic: PlaybackFailureDiagnostic? = null,
     ): PlaybackDiagnosticsSnapshot =
         PlaybackDiagnosticsSnapshot(
             mimeType = "video/hevc",
@@ -153,5 +233,6 @@ class PlaybackCompatibilityObservationTest {
                 unhealthyDroppedFrameWindows,
             startupPlaybackConfirmed = startupPlaybackConfirmed,
             firstVideoFrameRendered = firstVideoFrameRendered,
+            lastFailureDiagnostic = lastFailureDiagnostic,
         )
 }
