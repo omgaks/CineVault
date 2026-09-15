@@ -10,14 +10,6 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.sole.cinevault.library.VideoThumbnailHelper
 import kotlinx.coroutines.CoroutineScope
 
-/**
- * Slice 54: one host for the player-side Compose effects that are independent
- * from the main visual tree.
- *
- * Existing effect components still own their behavior. This function only
- * groups their wiring so VideoPlayerScreen no longer owns the lifecycle,
- * player listener, timeline polling, PiP effects, and auto-hide cluster.
- */
 @Composable
 internal fun PlayerRuntimeEffects(
     context: Context,
@@ -68,6 +60,7 @@ internal fun PlayerRuntimeEffects(
     onAudioLanguageCheckedForPathChanged: (String?) -> Unit,
     onVideoDecoderCapabilityReportChanged: (VideoDecoderCapabilityReport?) -> Unit,
     onStreamInventoryChanged: (PlaybackStreamInventory) -> Unit,
+    onFailureDiagnostic: (PlaybackFailureDiagnostic) -> Unit = {},
     onBufferingChanged: (Boolean) -> Unit,
     onErrorRetryCountChanged: (Int) -> Unit,
     onPlayerErrorMessageChanged: (String?) -> Unit,
@@ -135,6 +128,7 @@ internal fun PlayerRuntimeEffects(
         onAudioLanguageCheckedForPathChanged = onAudioLanguageCheckedForPathChanged,
         onVideoDecoderCapabilityReportChanged = onVideoDecoderCapabilityReportChanged,
         onStreamInventoryChanged = onStreamInventoryChanged,
+        onFailureDiagnostic = onFailureDiagnostic,
         onBufferingChanged = onBufferingChanged,
         onErrorRetryCountChanged = onErrorRetryCountChanged,
         onPlayerErrorMessageChanged = onPlayerErrorMessageChanged,
