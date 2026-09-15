@@ -6,6 +6,7 @@ internal data class AudioRuntimeRescueHandover(
     val mediaItem: MediaItem,
     val resumePositionMs: Long,
     val playWhenReady: Boolean,
+    val playbackSpeed: Float,
     val subtitleSnapshot: AudioRescueSubtitleSnapshot? = null,
 )
 
@@ -14,5 +15,6 @@ internal fun AudioRuntimeRescuePlan.toHandover(): AudioRuntimeRescueHandover =
         mediaItem = mediaItem,
         resumePositionMs = request.resumePositionMs.coerceAtLeast(0L),
         playWhenReady = playWhenReady,
+        playbackSpeed = playbackSpeed.coerceIn(0.25f, 4.0f),
         subtitleSnapshot = subtitleSnapshot,
     )

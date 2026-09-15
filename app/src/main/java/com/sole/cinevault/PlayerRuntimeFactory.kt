@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
@@ -45,6 +46,8 @@ internal fun rememberPlayerRuntime(
                     handover.mediaItemWithRestoredSubtitle(),
                     handover.resumePositionMs,
                 )
+                runtime.player.playbackParameters =
+                    PlaybackParameters(handover.playbackSpeed)
                 runtime.player.prepare()
                 runtime.player.playWhenReady = handover.playWhenReady
             }
