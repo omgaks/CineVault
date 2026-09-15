@@ -34,9 +34,10 @@ internal fun Format.toAudioRescueTrackIdentity() =
         sampleRate = sampleRate,
     )
 
-internal fun AudioRescueTrackIdentity.matches(format: Format): Boolean {
-    val candidate = format.toAudioRescueTrackIdentity()
+internal fun AudioRescueTrackIdentity.matches(format: Format): Boolean =
+    matches(format.toAudioRescueTrackIdentity())
 
+internal fun AudioRescueTrackIdentity.matches(candidate: AudioRescueTrackIdentity): Boolean {
     if (
         !language.isNullOrBlank() &&
         !candidate.language.isNullOrBlank() &&
