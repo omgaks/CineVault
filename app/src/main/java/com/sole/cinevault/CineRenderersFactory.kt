@@ -21,6 +21,40 @@ object AudioSyncHolder {
     var offsetUs: Long = 0L
 }
 
+enum class CineAudioRendererPreference {
+    PLATFORM_FIRST,
+    FFMPEG_FIRST,
+}
+
+/**
+ * Global renderer preference used only when a player runtime is constructed.
+ *
+ * Normal playback remains PLATFORM_FIRST. An explicit audio-rescue rebuild can
+ * set FFMPEG_FIRST before constructing the replacement runtime, without
+ * changing the video decoder selector or video renderer path.
+ */
+object CineAudioRendererPreferenceHolder {
+    @Volatile
+    var preference: CineAudioRendererPreference =
+        CineAudioRendererPreference.PLATFORM_FIRST
+}
+
+/**
+ * Maps CineVault's audio preference to Media3's extension renderer mode.
+ *
+ * Kept pure so the important ordering rule is unit tested independently from
+ * Android renderer construction.
+ */
+fun extensionRendererModeForAudioPreference(
+    preference: CineAudioRendererPreference,
+): Int = when (preference) {
+    CineAudioRendererPreference.PLATFORM_FIRST ->
+        DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+
+    CineAudioRendererPreference.FFMPEG_FIRST ->
+        DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+}
+
 /**
  * ExoPlayer has no public audio-delay API, so CineVault shifts the audio
  * renderer's reported clock instead. The audio renderer is the playback
@@ -29,23 +63,9 @@ object AudioSyncHolder {
  *
  * Also registers an FFmpeg-backed audio renderer (media3-ffmpeg-decoder,
  * see build.gradle.kts) as a FALLBACK for codecs the device's own hardware
- * decoder genuinely can't handle at all (DTS/DTS-HD, TrueHD). See the
- * ordering note on buildAudioRenderers below for why this doesn't affect
- * formats the device already decodes natively.
+ * decoder genuinely can't handle at all (DTS/DTS-HD, TrueHD).
  *
- * Also forces PCM decode instead of audio PASSTHROUGH (see buildAudioSink
- * below) — a separate, well-known ExoPlayer issue from the codec-support
- * one above: some devices report that they can play compressed AC3/DD5.1
- * as a raw "passthrough" bitstream (meant for a connected AV receiver that
- * decodes it itself) even when the output is the phone's own built-in
- * speaker, which obviously can't decode a compressed bitstream directly.
- * ExoPlayer trusts that claim and sends raw undecoded audio to the
- * speaker — video and subtitles keep working fine (they're unrelated
- * pipelines), and no error is thrown anywhere, since nothing actually
- * failed from the app's point of view. It just produces silence. Forcing
- * PCM-only capabilities means the platform decoder always decodes AC3
- * itself before handing audio to the speaker, which is the correct
- * behavior for a phone with no AV receiver attached anyway.
+ * Also forces PCM decode instead of audio PASSTHROUGH.
  */
 @UnstableApi
 class CineRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
@@ -56,10 +76,9 @@ class CineRenderersFactory(context: Context) : DefaultRenderersFactory(context) 
         enableAudioTrackPlaybackParams: Boolean
     ): AudioSink {
         return androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
-            // Forces every compressed format (AC3/DD5.1 included) through
-            // real decoding to PCM rather than being handed to the audio
-            // output as a raw passthrough bitstream.
-            .setAudioCapabilities(androidx.media3.exoplayer.audio.AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES)
+            .setAudioCapabilities(
+                androidx.media3.exoplayer.audio.AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES
+            )
             .setEnableFloatOutput(enableFloatOutput)
             .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
             .build()
@@ -93,18 +112,13 @@ class CineRenderersFactory(context: Context) : DefaultRenderersFactory(context) 
             return
         }
 
-        val ffmpegRenderer = FfmpegAudioRenderer(eventHandler, eventListener, audioSink)
+        val ffmpegRenderer =
+            FfmpegAudioRenderer(eventHandler, eventListener, audioSink)
 
         if (extensionRendererMode == EXTENSION_RENDERER_MODE_PREFER) {
-            // Not what CineVault actually uses (see VideoPlayerScreen.kt),
-            // but handled correctly in case that ever changes: FFmpeg tried
-            // first, platform decoder as the fallback.
             out.add(ffmpegRenderer)
             out.add(platformRenderer)
         } else {
-            // ON — the mode CineVault sets. Hardware decoder tried first;
-            // FFmpeg only engages when the device has no decoder at all
-            // for that particular codec.
             out.add(platformRenderer)
             out.add(ffmpegRenderer)
         }
