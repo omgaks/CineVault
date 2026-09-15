@@ -1,6 +1,7 @@
 package com.sole.cinevault
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -11,8 +12,7 @@ class PlaybackCompatibilityPersistenceCodecTest {
         val original = entry(
             testId = "hevc-main10-4k",
             source = "HEVC\nMain10\\Reference",
-            verdict =
-                PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE,
+            verdict = PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE,
         )
 
         val decoded = decodePlaybackCompatibilityEntries(
@@ -23,13 +23,57 @@ class PlaybackCompatibilityPersistenceCodecTest {
     }
 
     @Test
+    fun terminalFailureStreamAndErrorRoundTrip() {
+        val original = entry(
+            testId = "dts-hd-terminal",
+            source = "DTS-HD failure",
+            verdict = PlaybackCompatibilityVerdict.FAIL_UNSTABLE,
+            terminalFailureStream = PlaybackFailureStreamKind.AUDIO,
+            terminalFailureErrorCode = 4003,
+        )
+
+        val decoded = decodePlaybackCompatibilityEntries(
+            encodePlaybackCompatibilityEntries(listOf(original))
+        ).single()
+
+        assertEquals(
+            PlaybackFailureStreamKind.AUDIO,
+            decoded.observation.terminalFailureStream,
+        )
+        assertEquals(
+            4003,
+            decoded.observation.terminalFailureErrorCode,
+        )
+    }
+
+    @Test
+    fun cvcompat2RowsRemainReadableWithoutFailureMetadata() {
+        val original = entry(
+            testId = "legacy-v2",
+            source = "Legacy",
+            verdict = PlaybackCompatibilityVerdict.PASS_NATIVE,
+        )
+        val v3 = encodePlaybackCompatibilityEntries(listOf(original))
+        val fields = v3.lineSequence().drop(1).single()
+            .split('\u001F')
+            .toMutableList()
+
+        fields.removeAt(32)
+        fields.removeAt(31)
+        val v2 = "CVCOMPAT2\n" + fields.joinToString("\u001F")
+
+        val decoded = decodePlaybackCompatibilityEntries(v2).single()
+
+        assertEquals(original.testCase, decoded.testCase)
+        assertEquals(original.verdict, decoded.verdict)
+        assertNull(decoded.observation.terminalFailureStream)
+        assertNull(decoded.observation.terminalFailureErrorCode)
+    }
+
+    @Test
     fun emptyAndUnknownVersionsReturnEmptyList() {
-        assertTrue(
-            decodePlaybackCompatibilityEntries(null).isEmpty()
-        )
-        assertTrue(
-            decodePlaybackCompatibilityEntries("").isEmpty()
-        )
+        assertTrue(decodePlaybackCompatibilityEntries(null).isEmpty())
+        assertTrue(decodePlaybackCompatibilityEntries("").isEmpty())
         assertTrue(
             decodePlaybackCompatibilityEntries(
                 "CVCOMPAT999\nbad"
@@ -58,6 +102,8 @@ class PlaybackCompatibilityPersistenceCodecTest {
         testId: String,
         source: String,
         verdict: PlaybackCompatibilityVerdict,
+        terminalFailureStream: PlaybackFailureStreamKind? = null,
+        terminalFailureErrorCode: Int? = null,
     ): PlaybackCompatibilityMatrixEntry {
         val outcome = when (verdict) {
             PlaybackCompatibilityVerdict.PENDING ->
@@ -94,33 +140,21 @@ class PlaybackCompatibilityPersistenceCodecTest {
                 outcome = outcome,
                 decoderName = "c2.android.hevc.decoder",
                 decoderKind = if (
-                    verdict ==
-                    PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE
-                ) {
-                    ActiveVideoDecoderKind.SOFTWARE
-                } else {
-                    ActiveVideoDecoderKind.HARDWARE
-                },
-                compatibilityRisk =
-                    VideoCompatibilityRisk.ELEVATED,
-                recommendation =
-                    VideoDecoderRecommendation.WATCH_NATIVE_CLOSELY,
-                nativeReadiness =
-                    NativeVideoPlaybackReadiness.READY,
+                    verdict == PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE
+                ) ActiveVideoDecoderKind.SOFTWARE else ActiveVideoDecoderKind.HARDWARE,
+                compatibilityRisk = VideoCompatibilityRisk.ELEVATED,
+                recommendation = VideoDecoderRecommendation.WATCH_NATIVE_CLOSELY,
+                nativeReadiness = NativeVideoPlaybackReadiness.READY,
                 softwareFallbackAvailable = true,
                 fallbackOccurred =
-                    verdict ==
-                        PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE,
+                    verdict == PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE,
                 fallbackReason = if (
-                    verdict ==
-                    PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE
-                ) {
-                    PlaybackFallbackReason.DECODER_INIT_FAILED
-                } else {
-                    null
-                },
+                    verdict == PlaybackCompatibilityVerdict.PASS_SOFTWARE_RESCUE
+                ) PlaybackFallbackReason.DECODER_INIT_FAILED else null,
                 totalDroppedVideoFrames = 7,
                 unhealthyDroppedFrameWindows = 0,
+                terminalFailureStream = terminalFailureStream,
+                terminalFailureErrorCode = terminalFailureErrorCode,
             ),
             verdict = verdict,
         )
