@@ -25,7 +25,11 @@ internal object AudioRuntimeRescueController {
         videoPath: String? = player.currentMediaItem?.localConfiguration?.uri?.toString(),
     ): Boolean {
         val mediaItem = player.currentMediaItem ?: return false
-        pendingPlan = AudioRuntimeRescuePlan(request, mediaItem, player.playWhenReady)
+        pendingPlan = AudioRuntimeRescuePlan(
+            request = request,
+            mediaItem = mediaItem,
+            playWhenReady = player.playWhenReady,
+        )
         rescueVideoPath = videoPath
         rendererPreference = request.rendererPreference
         return true
@@ -34,9 +38,28 @@ internal object AudioRuntimeRescueController {
     fun consumePendingPlan(): AudioRuntimeRescuePlan? =
         pendingPlan.also { pendingPlan = null }
 
+    /**
+     * A rescue preference belongs only to the title that requested it.
+     * Moving to a different movie/episode restores normal platform-first audio.
+     */
     fun resetForVideo(videoPath: String): Boolean {
         val rescuedPath = rescueVideoPath ?: return false
         if (rescuedPath == videoPath) return false
+
+        reset()
+        return true
+    }
+
+    /**
+     * Clears rescue state when the player screen for the rescued title leaves
+     * composition. This prevents FFmpeg-first from leaking into a later player
+     * session that happens to reopen the same path.
+     *
+     * A stale screen cannot clear a newer title's rescue.
+     */
+    fun endVideoScope(videoPath: String): Boolean {
+        if (rescueVideoPath != videoPath) return false
+
         reset()
         return true
     }
