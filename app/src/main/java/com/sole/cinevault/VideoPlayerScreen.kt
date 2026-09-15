@@ -310,7 +310,8 @@ fun VideoPlayerScreen(
     val playerRuntime = rememberPlayerRuntime(
         context = context,
         preferredLanguage = coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en",
-        autoEnableEmbeddedSubtitles = coreUi.behaviorPrefs.autoEnableEmbeddedSubtitles
+        autoEnableEmbeddedSubtitles = coreUi.behaviorPrefs.autoEnableEmbeddedSubtitles,
+        currentVideoPath = currentVideo.path
     )
     val trackSelector = playerRuntime.trackSelector
     val exoPlayer = playerRuntime.player
