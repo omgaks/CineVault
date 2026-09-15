@@ -27,6 +27,7 @@ data class PlaybackDiagnosticsSnapshot(
     val audioRoute: PlaybackStreamRoute? = null,
     val mixedPipeline: Boolean = false,
     val lastFailureDiagnostic: PlaybackFailureDiagnostic? = null,
+    val failureHistory: List<PlaybackFailureHistoryEntry> = emptyList(),
 )
 
 fun buildPlaybackDiagnosticsSnapshot(
@@ -66,5 +67,6 @@ fun buildPlaybackDiagnosticsSnapshot(
         audioRoute = routingPlan.audioRoute,
         mixedPipeline = routingPlan.isMixedPipeline,
         lastFailureDiagnostic = recoveryState.lastFailureDiagnostic,
+        failureHistory = recoveryState.failureHistory,
     )
 }
