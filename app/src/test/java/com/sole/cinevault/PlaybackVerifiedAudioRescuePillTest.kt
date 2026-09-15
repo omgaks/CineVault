@@ -48,7 +48,7 @@ class PlaybackVerifiedAudioRescuePillTest {
         decoderMode = PlaybackEngineMode.HARDWARE,
         activeDecoderKind = ActiveVideoDecoderKind.HARDWARE,
         compatibilityRisk = VideoCompatibilityRisk.LOW,
-        decoderRecommendation = VideoDecoderRecommendation.HARDWARE_PREFERRED,
+        decoderRecommendation = VideoDecoderRecommendation.PREFER_HARDWARE,
         fallbackOccurred = false,
         fallbackReason = null,
         audioMimeType = "audio/vnd.dts",
