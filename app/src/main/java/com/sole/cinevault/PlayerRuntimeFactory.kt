@@ -25,12 +25,14 @@ internal fun rememberPlayerRuntime(
     context: Context,
     preferredLanguage: String,
     autoEnableEmbeddedSubtitles: Boolean,
+    currentVideoPath: String,
     audioRendererPreference: CineAudioRendererPreference =
         AudioRuntimeRescueController.rendererPreference,
 ): PlayerRuntime = remember(
     context,
     preferredLanguage,
     autoEnableEmbeddedSubtitles,
+    currentVideoPath,
     audioRendererPreference,
 ) {
     createPlayerRuntime(
@@ -39,7 +41,7 @@ internal fun rememberPlayerRuntime(
         autoEnableEmbeddedSubtitles = autoEnableEmbeddedSubtitles,
         audioRendererPreference = audioRendererPreference,
     ).also { runtime ->
-        AudioRuntimeRescueController.consumePendingPlan()
+        AudioRuntimeRescueController.consumePendingPlan(currentVideoPath)
             ?.toHandover()
             ?.let { handover ->
                 runtime.player.setMediaItem(

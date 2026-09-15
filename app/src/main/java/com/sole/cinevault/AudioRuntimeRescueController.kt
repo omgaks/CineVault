@@ -37,6 +37,14 @@ internal fun decideAudioRuntimeRescueAdmission(
             AudioRuntimeRescueAdmission.ACCEPT
     }
 
+internal fun shouldConsumeAudioRuntimeRescuePlan(
+    rescueVideoPath: String?,
+    expectedVideoPath: String?,
+): Boolean =
+    rescueVideoPath != null &&
+        expectedVideoPath != null &&
+        rescueVideoPath == expectedVideoPath
+
 internal object AudioRuntimeRescueController {
     var rendererPreference by mutableStateOf(CineAudioRendererPreference.PLATFORM_FIRST)
         private set
@@ -74,8 +82,18 @@ internal object AudioRuntimeRescueController {
         return true
     }
 
-    fun consumePendingPlan(): AudioRuntimeRescuePlan? =
-        pendingPlan.also { pendingPlan = null }
+    fun consumePendingPlan(expectedVideoPath: String): AudioRuntimeRescuePlan? {
+        if (
+            !shouldConsumeAudioRuntimeRescuePlan(
+                rescueVideoPath = rescueVideoPath,
+                expectedVideoPath = expectedVideoPath,
+            )
+        ) {
+            return null
+        }
+
+        return pendingPlan.also { pendingPlan = null }
+    }
 
     fun resetForVideo(videoPath: String): Boolean {
         val rescuedPath = rescueVideoPath ?: return false
