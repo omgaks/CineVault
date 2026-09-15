@@ -6,22 +6,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
-/**
- * Per-video runtime state for Playback Resilience.
- *
- * The state is intentionally remembered with currentVideo.path by the screen,
- * so a fallback decision made for one title cannot leak into the next title.
- */
 class PlayerPlaybackRecoveryState {
     var engineMode by mutableStateOf(PlaybackEngineMode.HARDWARE)
-
-    /**
-     * False until CineVault has a real software VIDEO engine that can accept
-     * the current item. Slice 73 wires the state; a later slice turns this on
-     * only when the fallback engine is actually available.
-     */
     var softwareFallbackAvailable by mutableStateOf(false)
-
     var softwareFallbackRequested by mutableStateOf(false)
     var fallbackResumePositionMs by mutableStateOf(0L)
     var fallbackErrorCode by mutableIntStateOf(0)
@@ -34,28 +21,17 @@ class PlayerPlaybackRecoveryState {
     var totalDroppedVideoFrames by mutableIntStateOf(0)
     var startupPlaybackConfirmed by mutableStateOf(false)
     var firstVideoFrameRendered by mutableStateOf(false)
+    var lastFailureDiagnostic by mutableStateOf<PlaybackFailureDiagnostic?>(null)
 
-    // Slice 76: capability report for the currently selected VIDEO track.
-    // Because this entire holder is remembered per currentVideo.path, the
-    // report cannot leak from one title/episode into another.
     var videoDecoderCapabilityReport by mutableStateOf<VideoDecoderCapabilityReport?>(null)
-    var nativeVideoPlaybackReadiness by mutableStateOf(
-        NativeVideoPlaybackReadiness.UNKNOWN
-    )
-
-    // Slice 104: selected media streams are now observed independently from
-    // the video decoder capability report. This is the foundation for partial
-    // stream fallback (for example HW video + FFmpeg audio) without forcing
-    // the whole item onto one decoder path.
+    var nativeVideoPlaybackReadiness by mutableStateOf(NativeVideoPlaybackReadiness.UNKNOWN)
     var streamInventory by mutableStateOf(PlaybackStreamInventory())
 
     val videoStreamProfile: VideoStreamProfile?
         get() = videoDecoderCapabilityReport?.streamProfile
 
     val videoPlaybackCompatibilityAssessment: VideoPlaybackCompatibilityAssessment
-        get() = assessVideoPlaybackCompatibility(
-            videoDecoderCapabilityReport
-        )
+        get() = assessVideoPlaybackCompatibility(videoDecoderCapabilityReport)
 
     val playbackDiagnosticsSnapshot: PlaybackDiagnosticsSnapshot
         get() = buildPlaybackDiagnosticsSnapshot(this)
@@ -75,23 +51,24 @@ class PlayerPlaybackRecoveryState {
         totalDroppedVideoFrames = 0
         startupPlaybackConfirmed = false
         firstVideoFrameRendered = false
+        lastFailureDiagnostic = null
         videoDecoderCapabilityReport = null
         nativeVideoPlaybackReadiness = NativeVideoPlaybackReadiness.UNKNOWN
         streamInventory = PlaybackStreamInventory()
     }
 
-    fun updateVideoDecoderCapability(
-        report: VideoDecoderCapabilityReport?,
-    ) {
+    fun updateVideoDecoderCapability(report: VideoDecoderCapabilityReport?) {
         videoDecoderCapabilityReport = report
         nativeVideoPlaybackReadiness = decideNativeVideoPlaybackReadiness(report)
         softwareFallbackAvailable = isPlatformSoftwareVideoFallbackAvailable(report)
     }
 
-    fun updateStreamInventory(
-        inventory: PlaybackStreamInventory,
-    ) {
+    fun updateStreamInventory(inventory: PlaybackStreamInventory) {
         streamInventory = inventory
+    }
+
+    fun recordFailureDiagnostic(diagnostic: PlaybackFailureDiagnostic) {
+        lastFailureDiagnostic = diagnostic
     }
 
     val streamRoutingPlan: PlaybackStreamRoutingPlan
@@ -101,11 +78,7 @@ class PlayerPlaybackRecoveryState {
             videoCapabilityReport = videoDecoderCapabilityReport,
         )
 
-    fun requestSoftwareFallback(
-        errorCode: Int,
-        resumePositionMs: Long,
-        subtitleUri: Uri?,
-    ) {
+    fun requestSoftwareFallback(errorCode: Int, resumePositionMs: Long, subtitleUri: Uri?) {
         fallbackErrorCode = errorCode
         fallbackReason = playbackFallbackReasonForErrorCode(errorCode)
         fallbackResumePositionMs = resumePositionMs.coerceAtLeast(0L)
@@ -113,19 +86,9 @@ class PlayerPlaybackRecoveryState {
         softwareFallbackRequested = true
     }
 
-    fun requestProactiveSoftwareFallback(
-        resumePositionMs: Long,
-        subtitleUri: Uri?,
-    ) {
-        if (
-            engineMode != PlaybackEngineMode.HARDWARE ||
-            fallbackOccurred ||
-            softwareFallbackRequested ||
-            !softwareFallbackAvailable
-        ) {
-            return
-        }
-
+    fun requestProactiveSoftwareFallback(resumePositionMs: Long, subtitleUri: Uri?) {
+        if (engineMode != PlaybackEngineMode.HARDWARE || fallbackOccurred ||
+            softwareFallbackRequested || !softwareFallbackAvailable) return
         fallbackErrorCode = 0
         fallbackReason = PlaybackFallbackReason.NATIVE_DECODER_UNAVAILABLE
         fallbackResumePositionMs = resumePositionMs.coerceAtLeast(0L)
@@ -133,28 +96,12 @@ class PlayerPlaybackRecoveryState {
         softwareFallbackRequested = true
     }
 
-    fun confirmPlaybackStarted() {
-        startupPlaybackConfirmed = true
-    }
+    fun confirmPlaybackStarted() { startupPlaybackConfirmed = true }
+    fun confirmFirstVideoFrameRendered() { firstVideoFrameRendered = true }
 
-    fun confirmFirstVideoFrameRendered() {
-        firstVideoFrameRendered = true
-    }
-
-    fun requestMissingFirstFrameFallback(
-        resumePositionMs: Long,
-        subtitleUri: Uri?,
-    ) {
-        if (
-            engineMode != PlaybackEngineMode.HARDWARE ||
-            !softwareFallbackAvailable ||
-            fallbackOccurred ||
-            softwareFallbackRequested ||
-            firstVideoFrameRendered
-        ) {
-            return
-        }
-
+    fun requestMissingFirstFrameFallback(resumePositionMs: Long, subtitleUri: Uri?) {
+        if (engineMode != PlaybackEngineMode.HARDWARE || !softwareFallbackAvailable ||
+            fallbackOccurred || softwareFallbackRequested || firstVideoFrameRendered) return
         fallbackErrorCode = 0
         fallbackReason = PlaybackFallbackReason.FIRST_VIDEO_FRAME_MISSING
         fallbackResumePositionMs = resumePositionMs.coerceAtLeast(0L)
@@ -162,20 +109,9 @@ class PlayerPlaybackRecoveryState {
         softwareFallbackRequested = true
     }
 
-    fun requestStartupStallFallback(
-        resumePositionMs: Long,
-        subtitleUri: Uri?,
-    ) {
-        if (
-            engineMode != PlaybackEngineMode.HARDWARE ||
-            !softwareFallbackAvailable ||
-            fallbackOccurred ||
-            softwareFallbackRequested ||
-            startupPlaybackConfirmed
-        ) {
-            return
-        }
-
+    fun requestStartupStallFallback(resumePositionMs: Long, subtitleUri: Uri?) {
+        if (engineMode != PlaybackEngineMode.HARDWARE || !softwareFallbackAvailable ||
+            fallbackOccurred || softwareFallbackRequested || startupPlaybackConfirmed) return
         fallbackErrorCode = 0
         fallbackReason = PlaybackFallbackReason.STARTUP_STALLED
         fallbackResumePositionMs = resumePositionMs.coerceAtLeast(0L)
@@ -184,42 +120,19 @@ class PlayerPlaybackRecoveryState {
     }
 
     fun onDroppedVideoFrames(
-        droppedFrames: Int,
-        elapsedMs: Long,
-        resumePositionMs: Long,
-        subtitleUri: Uri?,
+        droppedFrames: Int, elapsedMs: Long, resumePositionMs: Long, subtitleUri: Uri?,
     ) {
-        totalDroppedVideoFrames = (
-            totalDroppedVideoFrames.toLong() +
-                droppedFrames.coerceAtLeast(0).toLong()
-        ).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-
-        val thresholds = playbackHealthThresholdsFor(
-            videoPlaybackCompatibilityAssessment
-        )
-
-        val health = assessDroppedFrameHealth(
-            droppedFrames = droppedFrames,
-            elapsedMs = elapsedMs,
-            thresholds = thresholds,
-        )
-
+        totalDroppedVideoFrames = (totalDroppedVideoFrames.toLong() +
+            droppedFrames.coerceAtLeast(0).toLong()).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        val thresholds = playbackHealthThresholdsFor(videoPlaybackCompatibilityAssessment)
+        val health = assessDroppedFrameHealth(droppedFrames, elapsedMs, thresholds)
         droppedFrameUnhealthyStreak = nextDroppedFrameUnhealthyStreak(
-            currentStreak = droppedFrameUnhealthyStreak,
-            health = health,
+            droppedFrameUnhealthyStreak, health
         )
-
-        if (
-            shouldFallbackForDroppedFrames(
-                unhealthyStreak = droppedFrameUnhealthyStreak,
-                engineMode = engineMode,
-                softwareFallbackAvailable = softwareFallbackAvailable,
-                requiredUnhealthyWindows =
-                    thresholds.requiredUnhealthyDroppedFrameWindows,
-            ) &&
-            !fallbackOccurred &&
-            !softwareFallbackRequested
-        ) {
+        if (shouldFallbackForDroppedFrames(
+                droppedFrameUnhealthyStreak, engineMode, softwareFallbackAvailable,
+                thresholds.requiredUnhealthyDroppedFrameWindows
+            ) && !fallbackOccurred && !softwareFallbackRequested) {
             fallbackErrorCode = 0
             fallbackReason = PlaybackFallbackReason.EXCESSIVE_DROPPED_FRAMES
             fallbackResumePositionMs = resumePositionMs.coerceAtLeast(0L)

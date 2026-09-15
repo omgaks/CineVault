@@ -13,8 +13,7 @@ data class PlaybackDiagnosticsSnapshot(
     val decoderRecommendation: VideoDecoderRecommendation,
     val fallbackOccurred: Boolean,
     val fallbackReason: PlaybackFallbackReason?,
-    val nativeReadiness: NativeVideoPlaybackReadiness =
-        NativeVideoPlaybackReadiness.UNKNOWN,
+    val nativeReadiness: NativeVideoPlaybackReadiness = NativeVideoPlaybackReadiness.UNKNOWN,
     val softwareFallbackAvailable: Boolean = false,
     val totalDroppedVideoFrames: Int = 0,
     val unhealthyDroppedFrameWindows: Int = 0,
@@ -24,10 +23,10 @@ data class PlaybackDiagnosticsSnapshot(
     val audioCodecString: String? = null,
     val audioLanguage: String? = null,
     val audioDecoderName: String? = null,
-    val activeAudioDecoderKind: ActiveAudioDecoderKind =
-        ActiveAudioDecoderKind.UNKNOWN,
+    val activeAudioDecoderKind: ActiveAudioDecoderKind = ActiveAudioDecoderKind.UNKNOWN,
     val audioRoute: PlaybackStreamRoute? = null,
     val mixedPipeline: Boolean = false,
+    val lastFailureDiagnostic: PlaybackFailureDiagnostic? = null,
 )
 
 fun buildPlaybackDiagnosticsSnapshot(
@@ -54,16 +53,11 @@ fun buildPlaybackDiagnosticsSnapshot(
         fallbackOccurred = recoveryState.fallbackOccurred,
         fallbackReason = recoveryState.fallbackReason,
         nativeReadiness = recoveryState.nativeVideoPlaybackReadiness,
-        softwareFallbackAvailable =
-            recoveryState.softwareFallbackAvailable,
-        totalDroppedVideoFrames =
-            recoveryState.totalDroppedVideoFrames,
-        unhealthyDroppedFrameWindows =
-            recoveryState.droppedFrameUnhealthyStreak,
-        startupPlaybackConfirmed =
-            recoveryState.startupPlaybackConfirmed,
-        firstVideoFrameRendered =
-            recoveryState.firstVideoFrameRendered,
+        softwareFallbackAvailable = recoveryState.softwareFallbackAvailable,
+        totalDroppedVideoFrames = recoveryState.totalDroppedVideoFrames,
+        unhealthyDroppedFrameWindows = recoveryState.droppedFrameUnhealthyStreak,
+        startupPlaybackConfirmed = recoveryState.startupPlaybackConfirmed,
+        firstVideoFrameRendered = recoveryState.firstVideoFrameRendered,
         audioMimeType = selectedAudio?.mimeType,
         audioCodecString = selectedAudio?.codecString,
         audioLanguage = selectedAudio?.language,
@@ -71,5 +65,6 @@ fun buildPlaybackDiagnosticsSnapshot(
         activeAudioDecoderKind = activeAudioDecoder.kind,
         audioRoute = routingPlan.audioRoute,
         mixedPipeline = routingPlan.isMixedPipeline,
+        lastFailureDiagnostic = recoveryState.lastFailureDiagnostic,
     )
 }
