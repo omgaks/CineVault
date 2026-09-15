@@ -95,12 +95,23 @@ internal object AudioRuntimeRescueController {
         return pendingPlan.also { pendingPlan = null }
     }
 
-    fun resetForVideo(videoPath: String): Boolean {
-        val rescuedPath = rescueVideoPath ?: return false
-        if (rescuedPath == videoPath) return false
+    fun enterVideoScope(videoPath: String): Boolean {
+        val decision = decideAudioRuntimeRescueScope(
+            scope = AudioRuntimeRescueScope(
+                videoPath = rescueVideoPath,
+                hasPendingPlan = pendingPlan != null,
+                rendererPreference = rendererPreference,
+            ),
+            activeVideoPath = videoPath,
+        )
+
+        if (decision != AudioRuntimeRescueScopeDecision.RESET) return false
         reset()
         return true
     }
+
+    fun resetForVideo(videoPath: String): Boolean =
+        enterVideoScope(videoPath)
 
     fun endVideoScope(videoPath: String): Boolean {
         if (rescueVideoPath != videoPath) return false
