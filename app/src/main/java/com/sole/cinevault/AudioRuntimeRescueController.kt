@@ -11,6 +11,7 @@ internal data class AudioRuntimeRescuePlan(
     val mediaItem: MediaItem,
     val playWhenReady: Boolean,
     val playbackSpeed: Float,
+    val audioTrackIdentity: AudioRescueTrackIdentity? = null,
     val subtitleSnapshot: AudioRescueSubtitleSnapshot? = null,
 )
 
@@ -33,6 +34,7 @@ internal object AudioRuntimeRescueController {
             mediaItem = mediaItem,
             playWhenReady = player.playWhenReady,
             playbackSpeed = player.playbackParameters.speed,
+            audioTrackIdentity = player.selectedAudioTrackIdentityForRescue(),
             subtitleSnapshot = subtitleSnapshot,
         )
         rescueVideoPath = videoPath
