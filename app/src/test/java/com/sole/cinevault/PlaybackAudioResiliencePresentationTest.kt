@@ -31,6 +31,7 @@ class PlaybackAudioResiliencePresentationTest {
         val snapshot = snapshot(
             audioKind = ActiveAudioDecoderKind.FFMPEG,
             audioDecoderName = "ffmpegAudioDecoder",
+            rescueOutcome = AudioFfmpegRescueOutcome.CONFIRMED,
         )
 
         val diagnostics = presentPlaybackDiagnostics(snapshot)
@@ -66,6 +67,8 @@ class PlaybackAudioResiliencePresentationTest {
     private fun snapshot(
         audioKind: ActiveAudioDecoderKind,
         audioDecoderName: String?,
+        rescueOutcome: AudioFfmpegRescueOutcome =
+            AudioFfmpegRescueOutcome.NOT_ATTEMPTED,
     ): PlaybackDiagnosticsSnapshot =
         PlaybackDiagnosticsSnapshot(
             mimeType = "video/hevc",
@@ -89,5 +92,6 @@ class PlaybackAudioResiliencePresentationTest {
             audioRoute =
                 PlaybackStreamRoute.AUDIO_FFMPEG_RESCUE_CANDIDATE,
             mixedPipeline = false,
+            audioFfmpegRescueOutcome = rescueOutcome,
         )
 }

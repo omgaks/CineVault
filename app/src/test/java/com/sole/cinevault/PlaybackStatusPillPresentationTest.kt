@@ -32,6 +32,7 @@ class PlaybackStatusPillPresentationTest {
             snapshot(
                 videoKind = ActiveVideoDecoderKind.HARDWARE,
                 audioKind = ActiveAudioDecoderKind.FFMPEG,
+                rescueOutcome = AudioFfmpegRescueOutcome.CONFIRMED,
             )
         )
 
@@ -51,6 +52,7 @@ class PlaybackStatusPillPresentationTest {
                 videoKind = ActiveVideoDecoderKind.SOFTWARE,
                 audioKind = ActiveAudioDecoderKind.FFMPEG,
                 decoderMode = PlaybackEngineMode.SOFTWARE,
+                rescueOutcome = AudioFfmpegRescueOutcome.CONFIRMED,
             )
         )
 
@@ -76,6 +78,8 @@ class PlaybackStatusPillPresentationTest {
         videoKind: ActiveVideoDecoderKind,
         audioKind: ActiveAudioDecoderKind,
         decoderMode: PlaybackEngineMode = PlaybackEngineMode.HARDWARE,
+        rescueOutcome: AudioFfmpegRescueOutcome =
+            AudioFfmpegRescueOutcome.NOT_ATTEMPTED,
     ): PlaybackDiagnosticsSnapshot =
         PlaybackDiagnosticsSnapshot(
             mimeType = "video/hevc",
@@ -114,5 +118,6 @@ class PlaybackStatusPillPresentationTest {
             mixedPipeline =
                 videoKind == ActiveVideoDecoderKind.SOFTWARE &&
                     audioKind == ActiveAudioDecoderKind.FFMPEG,
+            audioFfmpegRescueOutcome = rescueOutcome,
         )
 }
