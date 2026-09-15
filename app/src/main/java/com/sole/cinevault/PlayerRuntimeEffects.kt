@@ -138,29 +138,47 @@ internal fun PlayerRuntimeEffects(
         onStreamInventoryChanged = onStreamInventoryChanged,
         onFailureDiagnostic = onFailureDiagnostic,
         onAudioFailure = { attribution, errorCode, resumePosition, subtitleUri ->
-            val rescueRequest = playbackRecoveryState?.prepareAudioFfmpegRescue(
-                attribution = attribution,
-                errorCode = errorCode,
-                resumePositionMs = resumePosition,
-                subtitleUri = subtitleUri,
-            )
+            val recoveryState = playbackRecoveryState
             if (
-                rescueRequest != null &&
-                AudioRuntimeRescueController.request(
-                    player = player,
-                    request = rescueRequest,
-                    videoPath = currentVideoPath,
-                )
+                recoveryState != null &&
+                decidePostFfmpegAudioFailureAction(
+                    attribution = attribution,
+                    ffmpegRescueAttempted = recoveryState.audioFfmpegRescueAttempted,
+                ) == PostFfmpegAudioFailureAction.FAIL_RESCUE
             ) {
-                onAudioRescueRequested(rescueRequest)
+                recoveryState.recordTerminalAudioFailureAfterFfmpegRescue(
+                    attribution = attribution,
+                    errorCode = errorCode,
+                )
+                onPlayerErrorMessageChanged(
+                    "Audio playback failed after FFmpeg rescue."
+                )
                 true
             } else {
-                onAudioFailure(
-                    attribution,
-                    errorCode,
-                    resumePosition,
-                    subtitleUri,
+                val rescueRequest = recoveryState?.prepareAudioFfmpegRescue(
+                    attribution = attribution,
+                    errorCode = errorCode,
+                    resumePositionMs = resumePosition,
+                    subtitleUri = subtitleUri,
                 )
+                if (
+                    rescueRequest != null &&
+                    AudioRuntimeRescueController.request(
+                        player = player,
+                        request = rescueRequest,
+                        videoPath = currentVideoPath,
+                    )
+                ) {
+                    onAudioRescueRequested(rescueRequest)
+                    true
+                } else {
+                    onAudioFailure(
+                        attribution,
+                        errorCode,
+                        resumePosition,
+                        subtitleUri,
+                    )
+                }
             }
         },
         onBufferingChanged = onBufferingChanged,
