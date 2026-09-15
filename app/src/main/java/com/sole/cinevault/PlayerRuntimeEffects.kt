@@ -61,6 +61,8 @@ internal fun PlayerRuntimeEffects(
     onVideoDecoderCapabilityReportChanged: (VideoDecoderCapabilityReport?) -> Unit,
     onStreamInventoryChanged: (PlaybackStreamInventory) -> Unit,
     onFailureDiagnostic: (PlaybackFailureDiagnostic) -> Unit = {},
+    playbackRecoveryState: PlayerPlaybackRecoveryState? = null,
+    onAudioRescueRequested: (AudioPlaybackRescueRequest) -> Unit = {},
     onAudioFailure: (
         attribution: PlaybackFailureAttribution,
         errorCode: Int,
@@ -135,7 +137,25 @@ internal fun PlayerRuntimeEffects(
         onVideoDecoderCapabilityReportChanged = onVideoDecoderCapabilityReportChanged,
         onStreamInventoryChanged = onStreamInventoryChanged,
         onFailureDiagnostic = onFailureDiagnostic,
-        onAudioFailure = onAudioFailure,
+        onAudioFailure = { attribution, errorCode, resumePosition, subtitleUri ->
+            val rescueRequest = playbackRecoveryState?.prepareAudioFfmpegRescue(
+                attribution = attribution,
+                errorCode = errorCode,
+                resumePositionMs = resumePosition,
+                subtitleUri = subtitleUri,
+            )
+            if (rescueRequest != null) {
+                onAudioRescueRequested(rescueRequest)
+                true
+            } else {
+                onAudioFailure(
+                    attribution,
+                    errorCode,
+                    resumePosition,
+                    subtitleUri,
+                )
+            }
+        },
         onBufferingChanged = onBufferingChanged,
         onErrorRetryCountChanged = onErrorRetryCountChanged,
         onPlayerErrorMessageChanged = onPlayerErrorMessageChanged,
