@@ -34,6 +34,12 @@ internal fun PlayerEventListener(
     onVideoDecoderCapabilityReportChanged: (VideoDecoderCapabilityReport?) -> Unit,
     onStreamInventoryChanged: (PlaybackStreamInventory) -> Unit,
     onFailureDiagnostic: (PlaybackFailureDiagnostic) -> Unit = {},
+    onAudioFailure: (
+        attribution: PlaybackFailureAttribution,
+        errorCode: Int,
+        resumePosition: Long,
+        subtitleUri: android.net.Uri?,
+    ) -> Boolean = { _, _, _, _ -> false },
     onBufferingChanged: (Boolean) -> Unit,
     onErrorRetryCountChanged: (Int) -> Unit,
     onPlayerErrorMessageChanged: (String?) -> Unit,
@@ -118,6 +124,19 @@ internal fun PlayerEventListener(
             override fun onPlayerError(error: PlaybackException) {
                 val positionAtError = player.currentPosition.coerceAtLeast(0L)
                 val attribution = attributePlaybackFailure(error)
+
+                if (
+                    attribution.isAudioRendererFailure &&
+                    onAudioFailure(
+                        attribution,
+                        error.errorCode,
+                        positionAtError,
+                        trackUi.originalUri,
+                    )
+                ) {
+                    return
+                }
+
                 val baseRecovery = decidePlaybackRecovery(
                     errorCode = error.errorCode,
                     currentRetryCount = errorRetryCount,
