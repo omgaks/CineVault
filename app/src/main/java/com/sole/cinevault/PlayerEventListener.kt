@@ -142,20 +142,18 @@ internal fun PlayerEventListener(
 
             override fun onPlayerError(error: PlaybackException) {
                 val positionAtError = player.currentPosition.coerceAtLeast(0L)
+                val attribution = attributePlaybackFailure(error)
 
-                // Playback Resilience Slice 72:
-                // Route every playback failure through the tested recovery policy.
-                //
-                // A real software VIDEO engine is not wired yet, so fallback
-                // availability intentionally remains false in this slice. This
-                // preserves today's behavior while replacing the old ad-hoc
-                // retry branch with the same decision engine that the software
-                // fallback path will use in the next slices.
-                val recovery = decidePlaybackRecovery(
+                val baseRecovery = decidePlaybackRecovery(
                     errorCode = error.errorCode,
                     currentRetryCount = errorRetryCount,
                     engineMode = playbackEngineMode,
                     softwareFallbackAvailable = softwareFallbackAvailable,
+                )
+
+                val recovery = routeRecoveryForFailure(
+                    attribution = attribution,
+                    recovery = baseRecovery,
                 )
 
                 when (recovery.action) {
@@ -176,7 +174,16 @@ internal fun PlayerEventListener(
                     }
 
                     PlaybackRecoveryAction.FAIL -> {
-                        onPlayerErrorMessageChanged(friendlyPlaybackError(error))
+                        val streamPrefix =
+                            if (attribution.rendererFailure) {
+                                "${playbackFailureStreamLabel(attribution)}: "
+                            } else {
+                                ""
+                            }
+
+                        onPlayerErrorMessageChanged(
+                            streamPrefix + friendlyPlaybackError(error)
+                        )
                         onPlayingChanged(false)
                     }
                 }
