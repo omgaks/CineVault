@@ -17,17 +17,16 @@ internal object AudioRuntimeRescueController {
         private set
 
     private var pendingPlan: AudioRuntimeRescuePlan? = null
+    private var rescueVideoPath: String? = null
 
     fun request(
         player: ExoPlayer,
         request: AudioPlaybackRescueRequest,
+        videoPath: String? = player.currentMediaItem?.localConfiguration?.uri?.toString(),
     ): Boolean {
         val mediaItem = player.currentMediaItem ?: return false
-        pendingPlan = AudioRuntimeRescuePlan(
-            request = request,
-            mediaItem = mediaItem,
-            playWhenReady = player.playWhenReady,
-        )
+        pendingPlan = AudioRuntimeRescuePlan(request, mediaItem, player.playWhenReady)
+        rescueVideoPath = videoPath
         rendererPreference = request.rendererPreference
         return true
     }
@@ -35,8 +34,16 @@ internal object AudioRuntimeRescueController {
     fun consumePendingPlan(): AudioRuntimeRescuePlan? =
         pendingPlan.also { pendingPlan = null }
 
+    fun resetForVideo(videoPath: String): Boolean {
+        val rescuedPath = rescueVideoPath ?: return false
+        if (rescuedPath == videoPath) return false
+        reset()
+        return true
+    }
+
     fun reset() {
         pendingPlan = null
+        rescueVideoPath = null
         rendererPreference = CineAudioRendererPreference.PLATFORM_FIRST
     }
 }
