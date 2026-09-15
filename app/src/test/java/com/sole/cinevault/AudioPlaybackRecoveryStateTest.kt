@@ -13,7 +13,7 @@ class AudioPlaybackRecoveryStateTest {
         val state = PlayerPlaybackRecoveryState()
         state.updateStreamInventory(
             PlaybackStreamInventory(
-                streams = listOf(
+                audioStreams = listOf(
                     PlaybackStreamDescriptor(
                         kind = PlaybackStreamKind.AUDIO,
                         mimeType = "audio/vnd.dts",
@@ -39,7 +39,7 @@ class AudioPlaybackRecoveryStateTest {
         val state = PlayerPlaybackRecoveryState()
         state.updateStreamInventory(
             PlaybackStreamInventory(
-                streams = listOf(
+                audioStreams = listOf(
                     PlaybackStreamDescriptor(
                         kind = PlaybackStreamKind.AUDIO,
                         mimeType = "audio/true-hd",
