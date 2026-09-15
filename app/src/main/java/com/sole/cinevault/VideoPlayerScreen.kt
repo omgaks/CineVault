@@ -276,6 +276,14 @@ fun VideoPlayerScreen(
         PlayerPlaybackRecoveryState()
     }
 
+    // Playback Resilience Slice 146: an FFmpeg-first audio rescue belongs only
+    // to the movie/episode that requested it. When navigation changes the
+    // active path, clear any rescue preference left by the previous title so
+    // the new title starts from CineVault's normal platform-first audio path.
+    AudioRuntimeRescueVideoScopeEffect(
+        videoPath = currentVideo.path,
+    )
+
     // Playback Resilience Slice 99: keep one compatibility recorder for this
     // player session and feed it live decoder/health/fallback snapshots for
     // every video that plays. The recorder itself prevents lower-information
