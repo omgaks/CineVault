@@ -144,7 +144,10 @@ internal fun PlayerRuntimeEffects(
                 resumePositionMs = resumePosition,
                 subtitleUri = subtitleUri,
             )
-            if (rescueRequest != null) {
+            if (
+                rescueRequest != null &&
+                AudioRuntimeRescueController.request(player, rescueRequest)
+            ) {
                 onAudioRescueRequested(rescueRequest)
                 true
             } else {

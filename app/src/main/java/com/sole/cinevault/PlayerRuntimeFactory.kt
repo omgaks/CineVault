@@ -19,11 +19,12 @@ internal data class PlayerRuntime(
 )
 
 /**
- * Creates the Media3 runtime once for the lifetime of VideoPlayerScreen.
+ * Creates the Media3 runtime once for the active audio-renderer preference.
  *
- * Normal playback uses PLATFORM_FIRST. Audio-rescue runtime construction may
- * request FFMPEG_FIRST; that changes only extension-audio renderer ordering.
- * The video MediaCodec selector and decoder fallback policy remain unchanged.
+ * Normal playback uses PLATFORM_FIRST. A one-shot audio rescue changes the
+ * controller preference to FFMPEG_FIRST, which rebuilds this runtime. The
+ * pending rescue plan then restores the exact MediaItem, position and
+ * playWhenReady state onto the new player.
  */
 @Composable
 @OptIn(UnstableApi::class)
@@ -32,7 +33,7 @@ internal fun rememberPlayerRuntime(
     preferredLanguage: String,
     autoEnableEmbeddedSubtitles: Boolean,
     audioRendererPreference: CineAudioRendererPreference =
-        CineAudioRendererPreference.PLATFORM_FIRST,
+        AudioRuntimeRescueController.rendererPreference,
 ): PlayerRuntime = remember(
     context,
     preferredLanguage,
@@ -44,7 +45,16 @@ internal fun rememberPlayerRuntime(
         preferredLanguage = preferredLanguage,
         autoEnableEmbeddedSubtitles = autoEnableEmbeddedSubtitles,
         audioRendererPreference = audioRendererPreference,
-    )
+    ).also { runtime ->
+        AudioRuntimeRescueController.consumePendingPlan()?.let { plan ->
+            runtime.player.setMediaItem(
+                plan.mediaItem,
+                plan.request.resumePositionMs,
+            )
+            runtime.player.prepare()
+            runtime.player.playWhenReady = plan.playWhenReady
+        }
+    }
 }
 
 @OptIn(UnstableApi::class)

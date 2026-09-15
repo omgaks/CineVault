@@ -31,7 +31,7 @@ internal fun PlayerSessionLifecycle(
     val currentNextRequested by rememberUpdatedState(onNextRequested)
     val currentPreviousRequested by rememberUpdatedState(onPreviousRequested)
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(player) {
         CineVaultPlayerHolder.currentPlayer = player
         CineVaultPlayerHolder.onNextRequested = { currentNextRequested() }
         CineVaultPlayerHolder.onPreviousRequested = { currentPreviousRequested() }
@@ -54,7 +54,7 @@ internal fun PlayerSessionLifecycle(
         activity?.enterImmersiveModeForPlayer()
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(player) {
         onDispose {
             if (!currentIsStreamMedia) {
                 savePlaybackPosition(
