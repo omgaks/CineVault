@@ -17,6 +17,16 @@ class PlayerTransientUiPolicyTest {
         assertTrue(PlayerTransientUiSnapshot(audioFxDashboard = true).anyVisible)
     }
 
+    @Test fun dialogueSyncDoesNotInstallFullScreenDismissLayer() {
+        val snapshot = PlayerTransientUiSnapshot(dialogueSyncArmed = true)
+        assertTrue(snapshot.anyVisible)
+        assertFalse(snapshot.needsDismissLayer)
+    }
+
+    @Test fun ordinaryMenuInstallsFullScreenDismissLayer() {
+        assertTrue(PlayerTransientUiSnapshot(audioFxDashboard = true).needsDismissLayer)
+    }
+
     @Test fun aiPanelCountsAsTransientUi() {
         assertTrue(PlayerTransientUiSnapshot(subtitleTranslationPanel = true).anyVisible)
     }

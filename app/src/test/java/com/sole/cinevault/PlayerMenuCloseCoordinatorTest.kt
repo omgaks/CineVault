@@ -12,6 +12,7 @@ class PlayerMenuCloseCoordinatorTest {
             closeAudioFxDashboard = { closed += "audioFx" },
             closeSettings = { closed += "settings" },
             closeDriftDialog = { closed += "drift" },
+            closeDialogueSync = { closed += "dialogueSync" },
             closeSpeedMenu = { closed += "speed" },
             closeSleepMenu = { closed += "sleep" },
             closeSrtBrowser = { closed += "srt" },
@@ -26,7 +27,7 @@ class PlayerMenuCloseCoordinatorTest {
 
         assertEquals(
             listOf(
-                "audioSelector", "audioFx", "settings", "drift", "speed",
+                "audioSelector", "audioFx", "settings", "drift", "dialogueSync", "speed",
                 "sleep", "srt", "subtitleDock", "subtitleBloom", "dualSubs",
                 "subtitleBehaviour", "subtitleSurfaces",
             ),
