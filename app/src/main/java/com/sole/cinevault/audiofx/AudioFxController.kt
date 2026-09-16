@@ -501,7 +501,17 @@ internal class AudioFxController(private val context: Context) {
         }
 
         if (dynamicsProcessingAvailable) {
-            val dp = runCatching { DynamicsProcessing(0, audioSessionId) }.getOrNull()
+            val dp = runCatching {
+                val config = DynamicsProcessing.Config.Builder(
+                    DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
+                    1,
+                    false, 0,
+                    true, 6,
+                    false, 0,
+                    true,
+                ).build()
+                DynamicsProcessing(0, audioSessionId, config)
+            }.getOrNull()
             if (dp != null) {
                 dp.setEnabled(shouldEnable)
                 applyCompressorAmount(dp, compressorAmount)
@@ -580,7 +590,7 @@ internal class AudioFxController(private val context: Context) {
     private fun applyLimiterEnabled(dp: DynamicsProcessing, isOn: Boolean) {
         runCatching {
             val limiter = dp.getLimiterByChannelIndex(0) ?: return@runCatching
-            limiter.enabled = isOn
+            limiter.isEnabled = isOn
             dp.setLimiterByChannelIndex(0, limiter)
         }
     }
