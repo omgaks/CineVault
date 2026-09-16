@@ -19,9 +19,6 @@ class PlayerMenuCloseCoordinator(
     private val closeSubtitleBloom: () -> Unit,
     private val closeDualSubsWindow: () -> Unit,
     private val closeSubtitleBehaviourWindow: () -> Unit,
-    private val closeSpeechSubtitlePanel: () -> Unit,
-    private val closeSubtitleTranslationPanel: () -> Unit,
-    private val cancelDialogueSync: () -> Unit,
     private val closeSubtitleSurfaces: () -> Unit,
 ) {
     fun closeAll() {
@@ -36,9 +33,6 @@ class PlayerMenuCloseCoordinator(
         closeSubtitleBloom()
         closeDualSubsWindow()
         closeSubtitleBehaviourWindow()
-        closeSpeechSubtitlePanel()
-        closeSubtitleTranslationPanel()
-        cancelDialogueSync()
         closeSubtitleSurfaces()
     }
 }

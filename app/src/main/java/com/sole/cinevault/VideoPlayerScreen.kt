@@ -370,9 +370,6 @@ fun VideoPlayerScreen(
             closeSubtitleBloom = { showSubtitleBloom = false; studioCategory = null },
             closeDualSubsWindow = { showDualSubsWindow = false },
             closeSubtitleBehaviourWindow = { showSubtitleBehaviourWindow = false },
-            closeSpeechSubtitlePanel = { subtitleAiUi.showSpeechSubtitlePanel = false },
-            closeSubtitleTranslationPanel = { subtitleAiUi.showSubtitleTranslationPanel = false },
-            cancelDialogueSync = { subtitleSyncTools.cancelDialogueSync() },
             closeSubtitleSurfaces = {
                 subtitleStudioNavigation.closeSubtitleSurfaces(
                     clearPendingImportCandidates = { searchUi.pendingImportCandidates = null },
@@ -1107,6 +1104,8 @@ fun VideoPlayerScreen(
             subtitleResetCoordinator = subtitleResetCoordinator,
             subtitleSyncTools = subtitleSyncTools,
             onPendingSrtUriChanged = { pendingSrtUri = it },
+            onShowSrtBrowserChanged = { chromeUi.showSrtBrowser = it },
+            onShowAudioSelectorChanged = { chromeUi.showAudioSelector = it },
             onAudioSyncMsChanged = { audioSyncMs = it },
             onAudioMenuInteraction = { menuTouchKey++ },
             onShowControlsChanged = { chromeUi.showControls = it },
@@ -1194,6 +1193,8 @@ fun VideoPlayerScreen(
             onBack = onBack,
             playbackNavigationCoordinator = playbackNavigationCoordinator,
             playerMenuCloseCoordinator = playerMenuCloseCoordinator,
+            onShowSpeedMenuChanged = { chromeUi.showSpeedMenu = it },
+            onShowSleepMenuChanged = { chromeUi.showSleepMenu = it },
             onShowControlsChanged = { chromeUi.showControls = it },
             onClusterHeightMeasured = { clusterHeightPx = it },
             onPlayNextEpisode = { next ->
@@ -1214,6 +1215,7 @@ fun VideoPlayerScreen(
             onShowTopBarChanged = { chromeUi.showTopBar = it },
             onVideoEndedChanged = { isVideoEnded = it },
             onAutoPlayEnabledChanged = { autoPlayEnabled = it },
+            onShowAudioSelectorChanged = { chromeUi.showAudioSelector = it },
             onMenuTouch = { menuTouchKey++ },
             onAudioCenterMeasured = { audioIconX = it },
             onAudioFxClick = {
@@ -1341,6 +1343,10 @@ fun VideoPlayerScreen(
             onStudioCategoryChanged = { studioCategory = it },
             onTrackSelectorManageModeChanged = { trackSelectorManageMode = it },
             onShowSubtitleBloomChanged = { showSubtitleBloom = it },
+            onShowSubtitleBehaviourWindowChanged = { showSubtitleBehaviourWindow = it },
+            onShowDualSubsWindowChanged = { showDualSubsWindow = it },
+            onShowSpeechSubtitlePanelChanged = { subtitleAiUi.showSpeechSubtitlePanel = it },
+            onShowSubtitleTranslationPanelChanged = { subtitleAiUi.showSubtitleTranslationPanel = it },
             onPendingDualAiLanguageChanged = { pendingDualAiLanguage = it },
             onDualSecondaryColorHexChanged = { dualSecondaryColorHex = it },
         )
