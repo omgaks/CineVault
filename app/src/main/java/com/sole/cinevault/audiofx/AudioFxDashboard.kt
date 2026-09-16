@@ -134,7 +134,7 @@ internal fun AudioFxDashboard(
             Text(text = "Enabled", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             Switch(
                 checked = controller.enabled,
-                onCheckedChange = { controller.setEnabled(it) },
+                onCheckedChange = { controller.updateEnabled(it) },
                 colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
             )
         }
@@ -160,7 +160,7 @@ internal fun AudioFxDashboard(
             }
             Switch(
                 checked = controller.loudnessNormalizationEnabled,
-                onCheckedChange = controller::setLoudnessNormalizationEnabled,
+                onCheckedChange = controller::updateLoudnessNormalizationEnabled,
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = AmberCore,
                     checkedTrackColor = AmberGlow.copy(alpha = 0.4f),
@@ -192,7 +192,7 @@ internal fun AudioFxDashboard(
             valueText = "${(controller.bassBoostStrength / 10)}%",
             value = controller.bassBoostStrength.toFloat(),
             range = 0f..1000f,
-            onValueChange = { controller.setBassBoostStrength(it.toInt()) }
+            onValueChange = { controller.updateBassBoostStrength(it.toInt()) }
         )
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -201,7 +201,7 @@ internal fun AudioFxDashboard(
             valueText = "${(controller.virtualizerStrength / 10)}%",
             value = controller.virtualizerStrength.toFloat(),
             range = 0f..1000f,
-            onValueChange = { controller.setVirtualizerStrength(it.toInt()) }
+            onValueChange = { controller.updateVirtualizerStrength(it.toInt()) }
         )
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -228,13 +228,13 @@ internal fun AudioFxDashboard(
                 valueText = "${controller.compressorAmount}%",
                 value = controller.compressorAmount.toFloat(),
                 range = 0f..100f,
-                onValueChange = { controller.setCompressorAmount(it.toInt()) }
+                onValueChange = { controller.updateCompressorAmount(it.toInt()) }
             )
             Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(text = "Peak limiter", color = TextBright, fontSize = 12.sp, modifier = Modifier.weight(1f))
                 Switch(
                     checked = controller.limiterEnabled,
-                    onCheckedChange = { controller.setLimiterEnabled(it) },
+                    onCheckedChange = { controller.updateLimiterEnabled(it) },
                     colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
                 )
             }
@@ -261,7 +261,7 @@ internal fun AudioFxDashboard(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
                         .background(if (selected) AmberCore else GlassSurface)
-                        .clickable { controller.setReverbPreset(value) }
+                        .clickable { controller.updateReverbPreset(value) }
                         .padding(horizontal = 12.dp, vertical = 7.dp)
                 )
             }
@@ -307,7 +307,7 @@ private fun AdaptiveAudioSection(controller: AudioFxController) {
         Text(text = "Enable adaptive audio", color = TextBright, fontSize = 12.sp, modifier = Modifier.weight(1f))
         Switch(
             checked = controller.adaptiveAudioEnabled,
-            onCheckedChange = { controller.setAdaptiveAudioEnabled(it) },
+            onCheckedChange = { controller.updateAdaptiveAudioEnabled(it) },
             colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
         )
     }

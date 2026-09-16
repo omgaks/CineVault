@@ -355,7 +355,7 @@ internal class AudioFxController(private val context: Context) {
         }
     }
 
-    fun setLoudnessNormalizationEnabled(value: Boolean) {
+    fun updateLoudnessNormalizationEnabled(value: Boolean) {
         loudnessNormalizationEnabled = value
         prefs.edit().putBoolean(KEY_LOUDNESS_NORM_ENABLED, value).apply()
         if (!value) {
@@ -474,29 +474,29 @@ internal class AudioFxController(private val context: Context) {
             // silently drop bands; pad/truncate to what's real here.
             val reconciled = (0 until numberOfBands).map { i -> bandLevelsDb.getOrElse(i) { 0 } }
             bandLevelsDb = reconciled
-            setEnabled(shouldEnable)
+            updateEnabled(shouldEnable)
             reconciled.forEachIndexed { index, db ->
                 runCatching { setBandLevel(index.toShort(), (db * 100).toShort()) }
             }
         }
 
         bassBoost = runCatching { BassBoost(0, audioSessionId) }.getOrNull()?.apply {
-            setEnabled(shouldEnable)
+            updateEnabled(shouldEnable)
             runCatching { setStrength(bassBoostStrength.toShort()) }
         }
 
         virtualizer = runCatching { Virtualizer(0, audioSessionId) }.getOrNull()?.apply {
-            setEnabled(shouldEnable)
+            updateEnabled(shouldEnable)
             runCatching { setStrength(virtualizerStrength.toShort()) }
         }
 
         presetReverb = runCatching { PresetReverb(0, audioSessionId) }.getOrNull()?.apply {
-            setEnabled(shouldEnable)
+            updateEnabled(shouldEnable)
             runCatching { preset = reverbPreset }
         }
 
         loudnessEnhancer = runCatching { LoudnessEnhancer(audioSessionId) }.getOrNull()?.apply {
-            setEnabled(shouldEnable)
+            updateEnabled(shouldEnable)
             runCatching { setTargetGain(loudnessGainMillibels) }
         }
 
@@ -595,7 +595,7 @@ internal class AudioFxController(private val context: Context) {
         }
     }
 
-    fun setAdaptiveAudioEnabled(value: Boolean) {
+    fun updateAdaptiveAudioEnabled(value: Boolean) {
         adaptiveAudioEnabled = value
         prefs.edit().putBoolean(KEY_ADAPTIVE_ENABLED, value).apply()
         if (!value) {
@@ -686,7 +686,7 @@ internal class AudioFxController(private val context: Context) {
         visualizer?.release(); visualizer = null
     }
 
-    fun setEnabled(value: Boolean) {
+    fun updateEnabled(value: Boolean) {
         enabled = value
         equalizer?.let { runCatching { it.enabled = value } }
         bassBoost?.let { runCatching { it.enabled = value } }
@@ -708,21 +708,21 @@ internal class AudioFxController(private val context: Context) {
         saveBandLevels(updated)
     }
 
-    fun setBassBoostStrength(strength: Int) {
+    fun updateBassBoostStrength(strength: Int) {
         val clamped = strength.coerceIn(0, 1000)
         bassBoostStrength = clamped
         runCatching { bassBoost?.setStrength(clamped.toShort()) }
         prefs.edit().putInt(KEY_BASS_STRENGTH, clamped).apply()
     }
 
-    fun setVirtualizerStrength(strength: Int) {
+    fun updateVirtualizerStrength(strength: Int) {
         val clamped = strength.coerceIn(0, 1000)
         virtualizerStrength = clamped
         runCatching { virtualizer?.setStrength(clamped.toShort()) }
         prefs.edit().putInt(KEY_VIRTUALIZER_STRENGTH, clamped).apply()
     }
 
-    fun setReverbPreset(preset: Short) {
+    fun updateReverbPreset(preset: Short) {
         reverbPreset = preset
         runCatching { presetReverb?.preset = preset }
         prefs.edit().putInt(KEY_REVERB_PRESET, preset.toInt()).apply()
@@ -740,30 +740,30 @@ internal class AudioFxController(private val context: Context) {
         prefs.edit().putInt(KEY_LOUDNESS_MB, clamped).apply()
     }
 
-    fun setCompressorAmount(amount: Int) {
+    fun updateCompressorAmount(amount: Int) {
         val clamped = amount.coerceIn(0, 100)
         compressorAmount = clamped
         dynamicsProcessing?.let { applyCompressorAmount(it, clamped) }
         prefs.edit().putInt(KEY_COMPRESSOR_AMOUNT, clamped).apply()
     }
 
-    fun setLimiterEnabled(isOn: Boolean) {
+    fun updateLimiterEnabled(isOn: Boolean) {
         limiterEnabled = isOn
         dynamicsProcessing?.let { applyLimiterEnabled(it, isOn) }
         prefs.edit().putBoolean(KEY_LIMITER_ENABLED, isOn).apply()
     }
 
     fun resetAll() {
-        setAdaptiveAudioEnabled(false)
-        setLoudnessNormalizationEnabled(false)
-        setEnabled(false)
+        updateAdaptiveAudioEnabled(false)
+        updateLoudnessNormalizationEnabled(false)
+        updateEnabled(false)
         bandLevelsDb.indices.forEach { setBandLevel(it, 0) }
-        setBassBoostStrength(0)
-        setVirtualizerStrength(0)
-        setReverbPreset(PresetReverb.PRESET_NONE)
+        updateBassBoostStrength(0)
+        updateVirtualizerStrength(0)
+        updateReverbPreset(PresetReverb.PRESET_NONE)
         setLoudnessGain(0)
-        setCompressorAmount(0)
-        setLimiterEnabled(false)
+        updateCompressorAmount(0)
+        updateLimiterEnabled(false)
     }
 
     /**
@@ -800,14 +800,14 @@ internal class AudioFxController(private val context: Context) {
      */
     fun applyPreset(name: String) {
         val preset = presets.firstOrNull { it.name == name } ?: return
-        setEnabled(preset.enabled)
+        updateEnabled(preset.enabled)
         preset.bandLevelsDb.forEachIndexed { index, db -> setBandLevel(index, db) }
-        setBassBoostStrength(preset.bassBoostStrength)
-        setVirtualizerStrength(preset.virtualizerStrength)
-        setReverbPreset(preset.reverbPreset)
+        updateBassBoostStrength(preset.bassBoostStrength)
+        updateVirtualizerStrength(preset.virtualizerStrength)
+        updateReverbPreset(preset.reverbPreset)
         setLoudnessGain(preset.loudnessGainMillibels)
-        setCompressorAmount(preset.compressorAmount)
-        setLimiterEnabled(preset.limiterEnabled)
+        updateCompressorAmount(preset.compressorAmount)
+        updateLimiterEnabled(preset.limiterEnabled)
     }
 
     fun deletePreset(name: String) {
