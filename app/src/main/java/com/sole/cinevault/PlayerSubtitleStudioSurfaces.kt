@@ -1,5 +1,8 @@
 package com.sole.cinevault
 
+import com.sole.cinevault.ui.responsive.CineResponsive
+import com.sole.cinevault.ui.responsive.rememberCineWindowSizeInfo
+
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.geometry.Offset
@@ -67,8 +70,8 @@ internal fun PlayerSubtitleStudioSurfaces(
                 containerHeight.roundToPx(),
             )
         }
-        val quickHudWidth =
-            (containerWidth * 0.33f).coerceIn(211.dp, 264.dp)
+        val windowInfo = rememberCineWindowSizeInfo()
+        val quickHudWidth = CineResponsive.quickHudWidth(containerWidth, windowInfo)
         val quickHudOffsetX =
             calculatePlayerPopupOffsetX(
                 iconCenterX = subtitleIconCenterX,
