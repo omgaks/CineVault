@@ -249,6 +249,8 @@ internal fun PlayerPlaybackGestureLayer(
                 onTap = {
                     if (transientUi.anyVisible) {
                         onDismissTransientUi()
+                        onShowControlsChanged(true)
+                        onShowTopBarChanged(true)
                     } else {
                         val visible = !showControls
                         onShowControlsChanged(visible)
@@ -260,8 +262,6 @@ internal fun PlayerPlaybackGestureLayer(
                         playerSeekBackPosition(player.currentPosition)
                     )
                     onPositionChanged(player.currentPosition)
-                    onShowControlsChanged(true)
-                    onShowTopBarChanged(true)
                 },
                 onSeekForward = {
                     player.seekTo(
@@ -271,8 +271,6 @@ internal fun PlayerPlaybackGestureLayer(
                         )
                     )
                     onPositionChanged(player.currentPosition)
-                    onShowControlsChanged(true)
-                    onShowTopBarChanged(true)
                 },
                 onToggleZoomMode = {
                     onZoomModeToggle()

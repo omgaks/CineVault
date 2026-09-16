@@ -12,6 +12,7 @@ class PlayerMenuCloseCoordinator(
     private val closeAudioFxDashboard: () -> Unit,
     private val closeSettings: () -> Unit,
     private val closeDriftDialog: () -> Unit,
+    private val closeDialogueSync: () -> Unit,
     private val closeSpeedMenu: () -> Unit,
     private val closeSleepMenu: () -> Unit,
     private val closeSrtBrowser: () -> Unit,
@@ -26,6 +27,7 @@ class PlayerMenuCloseCoordinator(
         closeAudioFxDashboard()
         closeSettings()
         closeDriftDialog()
+        closeDialogueSync()
         closeSpeedMenu()
         closeSleepMenu()
         closeSrtBrowser()

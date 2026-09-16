@@ -20,6 +20,17 @@ data class PlayerTransientUiSnapshot(
     val sleepMenu: Boolean = false,
     val srtBrowser: Boolean = false,
 ) {
+    /** Surfaces that need a full-player empty-space dismissal layer.
+     * Dialogue sync is intentionally excluded: its compact listening pill must not
+     * monopolize the playback gesture surface while it is armed.
+     */
+    val needsDismissLayer: Boolean
+        get() = audioSelector || audioFxDashboard || subtitleSettings ||
+            trackSelector || subtitleSearch || driftDialog || appearanceStudio ||
+            subtitleDock || subtitleBloom || dualSubsWindow ||
+            subtitleBehaviourWindow || speechSubtitlePanel ||
+            subtitleTranslationPanel || speedMenu || sleepMenu || srtBrowser
+
     val anyVisible: Boolean
         get() = audioSelector || audioFxDashboard || subtitleSettings ||
             trackSelector || subtitleSearch || driftDialog || appearanceStudio ||

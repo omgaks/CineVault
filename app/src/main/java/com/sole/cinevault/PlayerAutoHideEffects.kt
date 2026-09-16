@@ -55,14 +55,14 @@ internal fun PlayerAutoHideEffects(
             coreUi.dialogueSyncArmed || showSpeedMenu ||
             showSleepMenu || showSrtBrowser
         if (showControls && !anyMenuOpen && !isDraggingSeekbar) {
-            delay(4500)
+            delay(9000)
             if (!isDraggingSeekbar && !anyMenuOpen) onHideControls()
         }
     }
 
     LaunchedEffect(controlsLocked, lockButtonVisibleWhileLocked) {
         if (controlsLocked && lockButtonVisibleWhileLocked) {
-            delay(4500)
+            delay(9000)
             onHideLockedButton()
         }
     }
@@ -83,7 +83,7 @@ internal fun PlayerAutoHideEffects(
             coreUi.dialogueSyncArmed || showSpeedMenu ||
             showSleepMenu || showSrtBrowser
         if (showTopBar && !anyMenuOpen && !isDraggingSeekbar) {
-            delay(2800)
+            delay(9000)
             if (!isDraggingSeekbar && !anyMenuOpen) onHideTopBar()
         }
     }

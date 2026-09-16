@@ -55,7 +55,7 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
         modifier = Modifier
             .align(Alignment.TopEnd)
             .padding(
-                top = topPadding + 42.dp,
+                top = topPadding + 72.dp,
                 end = sidePadding,
             ),
     ) {
@@ -72,7 +72,7 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
         modifier = Modifier
             .align(Alignment.TopEnd)
             .padding(
-                top = topPadding + 42.dp,
+                top = topPadding + 72.dp,
                 end = sidePadding,
             ),
     ) {
@@ -92,7 +92,7 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
         modifier = Modifier
             .align(Alignment.TopEnd)
             .padding(
-                top = topPadding + 42.dp,
+                top = topPadding + 72.dp,
                 end = sidePadding,
             ),
     ) {
@@ -116,7 +116,7 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
         modifier = Modifier
             .align(Alignment.TopEnd)
             .padding(
-                top = topPadding + 42.dp,
+                top = topPadding + 72.dp,
                 end = sidePadding,
             ),
     ) {

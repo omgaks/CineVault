@@ -355,14 +355,14 @@ fun VideoPlayerScreen(
         )
     }
 
-    // Slice 43: closing all transient player menus is now coordinated outside
-    // VideoPlayerScreen. The player owns state; the coordinator owns the close sequence.
+    // Transient player menus share one close coordinator.
     val playerMenuCloseCoordinator = remember {
         PlayerMenuCloseCoordinator(
             closeAudioSelector = { chromeUi.showAudioSelector = false },
             closeAudioFxDashboard = { showAudioFxDashboard = false },
             closeSettings = { coreUi.showSettings = false },
             closeDriftDialog = { driftUi.showDialog = false },
+            closeDialogueSync = { coreUi.dialogueSyncArmed = false; coreUi.dialogueSyncReferenceMs = null },
             closeSpeedMenu = { chromeUi.showSpeedMenu = false },
             closeSleepMenu = { chromeUi.showSleepMenu = false },
             closeSrtBrowser = { chromeUi.showSrtBrowser = false },
@@ -1118,7 +1118,7 @@ fun VideoPlayerScreen(
         // Slice 59: visibility policy, top chrome, transient status pills,
         // and the transport/seek host are now one cohesive player-chrome surface.
         PlayerTransientDismissLayer(
-            visible = transientUiSnapshot.anyVisible,
+            visible = transientUiSnapshot.needsDismissLayer,
             onDismiss = {
                 playerMenuCloseCoordinator.closeAll()
                 chromeUi.showControls = true
