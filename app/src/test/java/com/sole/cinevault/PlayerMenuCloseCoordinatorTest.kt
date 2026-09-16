@@ -5,7 +5,7 @@ import org.junit.Test
 
 class PlayerMenuCloseCoordinatorTest {
     @Test
-    fun closeAllClosesAudioStudioAndEveryTransientSurface() {
+    fun closeAllClosesEveryTransientPlayerSurface() {
         val closed = mutableListOf<String>()
         val coordinator = PlayerMenuCloseCoordinator(
             closeAudioSelector = { closed += "audioSelector" },
@@ -15,21 +15,20 @@ class PlayerMenuCloseCoordinatorTest {
             closeSpeedMenu = { closed += "speed" },
             closeSleepMenu = { closed += "sleep" },
             closeSrtBrowser = { closed += "srt" },
-            closeSubtitleSurfaces = { closed += "subtitles" },
+            closeSubtitleDock = { closed += "subtitleDock" },
+            closeSubtitleBloom = { closed += "subtitleBloom" },
+            closeDualSubsWindow = { closed += "dualSubs" },
+            closeSubtitleBehaviourWindow = { closed += "subtitleBehaviour" },
+            closeSubtitleSurfaces = { closed += "subtitleSurfaces" },
         )
 
         coordinator.closeAll()
 
         assertEquals(
             listOf(
-                "audioSelector",
-                "audioFx",
-                "settings",
-                "drift",
-                "speed",
-                "sleep",
-                "srt",
-                "subtitles",
+                "audioSelector", "audioFx", "settings", "drift", "speed",
+                "sleep", "srt", "subtitleDock", "subtitleBloom", "dualSubs",
+                "subtitleBehaviour", "subtitleSurfaces",
             ),
             closed,
         )
