@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.ui.responsive.CineResponsive
+import com.sole.cinevault.ui.responsive.cineAdaptiveTokens
 import com.sole.cinevault.ui.responsive.rememberCineWindowSizeInfo
 import com.sole.cinevault.ui.theme.*
 
@@ -56,7 +57,6 @@ import com.sole.cinevault.ui.theme.*
  * this dashboard can't answer for you; there's no substitute for turning
  * a slider and listening.
  */
-// AmberSectionPill exists already in subtitles/Subtitleappearancestudio.kt
 // but is private to that package — replicated here (same styling) rather
 // than exposing it cross-package or duplicating a public API surface that
 // belongs to a different concern.
@@ -84,16 +84,10 @@ internal fun AudioFxDashboard(
     popupWidth: Dp? = null,
     popupMaxHeight: Dp? = null
 ) {
-    // Responsive by default: null means "use the project-wide window-size
-    // rules" (RESPONSIVE_DESIGN.md at the repo root) rather than a fixed dp
-    // value that
-    // would look stranded on a 12" tablet or crowd a small phone. A caller
-    // can still pass an explicit width/height to override this for a
-    // specific layout need, but nothing about this dashboard assumes one
-    // fixed screen size by default anymore.
     val windowInfo = rememberCineWindowSizeInfo()
+    val tokens = cineAdaptiveTokens(windowInfo)
     val resolvedWidth = popupWidth ?: CineResponsive.popupMaxWidth(windowInfo)
-    val resolvedMaxHeight = popupMaxHeight ?: (windowInfo.heightDp * 0.82f)
+    val resolvedMaxHeight = popupMaxHeight ?: CineResponsive.popupMaxHeight(windowInfo)
 
     Column(
         modifier = Modifier
@@ -102,7 +96,7 @@ internal fun AudioFxDashboard(
             .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.90f))
             .border(1.dp, AmberCore.copy(alpha = 0.20f), RoundedCornerShape(20.dp))
             .verticalScroll(rememberScrollState())
-            .padding(14.dp)
+            .padding(tokens.componentGap)
     ) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Icon(imageVector = Icons.Filled.Equalizer, contentDescription = null, tint = AmberCore, modifier = Modifier.size(16.dp))
@@ -121,7 +115,12 @@ internal fun AudioFxDashboard(
             )
             Icon(
                 imageVector = Icons.Filled.Close, contentDescription = "Close", tint = AmberCore,
-                modifier = Modifier.size(16.dp).clip(CircleShape).background(GlassSurface).padding(2.dp).clickable { onDismiss() }
+                modifier = Modifier
+                    .sizeIn(minWidth = tokens.minimumTouchTarget, minHeight = tokens.minimumTouchTarget)
+                    .clip(CircleShape)
+                    .background(GlassSurface)
+                    .clickable { onDismiss() }
+                    .padding(14.dp)
             )
         }
 
@@ -551,3 +550,4 @@ private fun formatFreqLabel(hz: Int): String =
     } else {
         "$hz"
     }
+
