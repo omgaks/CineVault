@@ -35,8 +35,10 @@ import androidx.media3.common.Player
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
+import com.sole.cinevault.subtitles.SubtitlePositionPolicy
 import com.sole.cinevault.R
 import kotlin.math.roundToInt
 
@@ -201,7 +203,8 @@ internal class CineVaultVideoPresentation(
     private var sleepMinutes = 0
     private var sleepRunnable: Runnable? = null
     private var controlsPinned = false
-    private var subtitleTextSizeSp = 26f
+    private var subtitleTextSizeSp = 28f
+    private var subtitleBottomPadding = 0.08f
     private var viewportScale = 1f
     private var viewportOffsetX = 0f
     private var viewportOffsetY = 0f
@@ -270,6 +273,7 @@ internal class CineVaultVideoPresentation(
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setShutterBackgroundColor(Color.BLACK)
             subtitleView?.setViewType(SubtitleView.VIEW_TYPE_CANVAS)
+            applyExternalSubtitleProfile(subtitleView)
             layoutParams = FrameLayout.LayoutParams(-1, -1)
             // The host screen transfers ownership atomically with
             // PlayerView.switchTargetView; attaching here can clear the
@@ -438,6 +442,30 @@ internal class CineVaultVideoPresentation(
         previewCard = this
     }
 
+    private fun applyExternalSubtitleProfile(subtitleView: SubtitleView?) {
+        subtitleView ?: return
+        subtitleBottomPadding = SubtitlePositionPolicy.sanitize(
+            subtitleBottomPadding,
+            subtitleTextSizeSp,
+        )
+        subtitleView.setApplyEmbeddedFontSizes(false)
+        subtitleView.setFixedTextSize(
+            android.util.TypedValue.COMPLEX_UNIT_SP,
+            subtitleTextSizeSp,
+        )
+        subtitleView.setBottomPaddingFraction(subtitleBottomPadding)
+        subtitleView.setStyle(
+            CaptionStyleCompat(
+                Color.WHITE,
+                Color.TRANSPARENT,
+                Color.TRANSPARENT,
+                CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW,
+                Color.argb(210, 0, 0, 0),
+                null,
+            ),
+        )
+    }
+
     private fun buildQuickSubtitlePanel(): View = LinearLayout(context).apply quickPanel@ {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
@@ -461,29 +489,41 @@ internal class CineVaultVideoPresentation(
             gravity = Gravity.CENTER
             addView(textButton("TEXT -") {
                 subtitleTextSizeSp = (subtitleTextSizeSp - 2f).coerceAtLeast(14f)
-                playerView?.subtitleView?.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, subtitleTextSizeSp)
+                subtitleBottomPadding = SubtitlePositionPolicy.sanitize(
+                    subtitleBottomPadding,
+                    subtitleTextSizeSp,
+                )
+                applyExternalSubtitleProfile(playerView?.subtitleView)
             })
             addView(textButton("TEXT +") {
-                subtitleTextSizeSp = (subtitleTextSizeSp + 2f).coerceAtMost(54f)
-                playerView?.subtitleView?.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, subtitleTextSizeSp)
+                subtitleTextSizeSp = (subtitleTextSizeSp + 2f).coerceAtMost(36f)
+                subtitleBottomPadding = SubtitlePositionPolicy.sanitize(
+                    subtitleBottomPadding,
+                    subtitleTextSizeSp,
+                )
+                applyExternalSubtitleProfile(playerView?.subtitleView)
             })
             addView(textButton("SUB ↑") {
-                val view = playerView?.subtitleView ?: return@textButton
-                view.setBottomPaddingFraction(0.18f)
+                subtitleBottomPadding = SubtitlePositionPolicy.sanitize(
+                    subtitleBottomPadding + 0.04f,
+                    subtitleTextSizeSp,
+                )
+                applyExternalSubtitleProfile(playerView?.subtitleView)
             })
             addView(textButton("SUB ↓") {
-                val view = playerView?.subtitleView ?: return@textButton
-                view.setBottomPaddingFraction(0.04f)
+                subtitleBottomPadding = SubtitlePositionPolicy.sanitize(
+                    subtitleBottomPadding - 0.04f,
+                    subtitleTextSizeSp,
+                )
+                applyExternalSubtitleProfile(playerView?.subtitleView)
             })
         })
         addView(LinearLayout(context).apply {
             gravity = Gravity.CENTER
             addView(textButton("RESET") {
-                subtitleTextSizeSp = 26f
-                playerView?.subtitleView?.apply {
-                    setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, subtitleTextSizeSp)
-                    setBottomPaddingFraction(0.08f)
-                }
+                subtitleTextSizeSp = 28f
+                subtitleBottomPadding = 0.08f
+                applyExternalSubtitleProfile(playerView?.subtitleView)
             })
             addView(textButton("×", "Close") { this@quickPanel.visibility = View.GONE; hideControls() })
             addView(textButton("↩", "Back") { this@quickPanel.visibility = View.GONE; showControls() })
