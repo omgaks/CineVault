@@ -9,6 +9,7 @@ package com.sole.cinevault
  */
 class PlayerMenuCloseCoordinator(
     private val closeAudioSelector: () -> Unit,
+    private val closeAudioFxDashboard: () -> Unit,
     private val closeSettings: () -> Unit,
     private val closeDriftDialog: () -> Unit,
     private val closeSpeedMenu: () -> Unit,
@@ -18,6 +19,7 @@ class PlayerMenuCloseCoordinator(
 ) {
     fun closeAll() {
         closeAudioSelector()
+        closeAudioFxDashboard()
         closeSettings()
         closeDriftDialog()
         closeSpeedMenu()

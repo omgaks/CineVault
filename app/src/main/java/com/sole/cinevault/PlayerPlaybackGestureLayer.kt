@@ -44,6 +44,7 @@ internal fun PlayerPlaybackGestureLayer(
     screenHeightPx: Float,
     showControls: Boolean,
     showAudioSelector: Boolean,
+    showAudioFxDashboard: Boolean,
     showSubtitleDock: Boolean,
     showSubtitleBloom: Boolean,
     showDualSubsWindow: Boolean,
@@ -72,6 +73,7 @@ internal fun PlayerPlaybackGestureLayer(
     onShowControlsChanged: (Boolean) -> Unit,
     onShowTopBarChanged: (Boolean) -> Unit,
     onShowAudioSelectorChanged: (Boolean) -> Unit,
+    onShowAudioFxDashboardChanged: (Boolean) -> Unit,
     onShowSubtitleDockChanged: (Boolean) -> Unit,
     onShowSubtitleBloomChanged: (Boolean) -> Unit,
     onShowDualSubsWindowChanged: (Boolean) -> Unit,
@@ -272,6 +274,9 @@ internal fun PlayerPlaybackGestureLayer(
                 edgeSwipeNextEnabled = { canChangeEpisode },
                 onTap = {
                     when {
+                        showAudioFxDashboard ->
+                            onShowAudioFxDashboardChanged(false)
+
                         showAudioSelector ->
                             onShowAudioSelectorChanged(false)
 

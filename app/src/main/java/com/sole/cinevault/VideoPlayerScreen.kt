@@ -360,6 +360,7 @@ fun VideoPlayerScreen(
     val playerMenuCloseCoordinator = remember {
         PlayerMenuCloseCoordinator(
             closeAudioSelector = { chromeUi.showAudioSelector = false },
+            closeAudioFxDashboard = { showAudioFxDashboard = false },
             closeSettings = { coreUi.showSettings = false },
             closeDriftDialog = { driftUi.showDialog = false },
             closeSpeedMenu = { chromeUi.showSpeedMenu = false },
@@ -921,6 +922,7 @@ fun VideoPlayerScreen(
             screenHeightPx = playerLayout.screenHeightPx,
             showControls = chromeUi.showControls,
             showAudioSelector = chromeUi.showAudioSelector,
+            showAudioFxDashboard = showAudioFxDashboard,
             showSubtitleDock = showSubtitleDock,
             showSubtitleBloom = showSubtitleBloom,
             showDualSubsWindow = showDualSubsWindow,
@@ -953,6 +955,7 @@ fun VideoPlayerScreen(
             onShowControlsChanged = { chromeUi.showControls = it },
             onShowTopBarChanged = { chromeUi.showTopBar = it },
             onShowAudioSelectorChanged = { chromeUi.showAudioSelector = it },
+            onShowAudioFxDashboardChanged = { showAudioFxDashboard = it },
             onShowSubtitleDockChanged = { showSubtitleDock = it },
             onShowSubtitleBloomChanged = {
                 showSubtitleBloom = it
@@ -1213,7 +1216,19 @@ fun VideoPlayerScreen(
             onShowAudioSelectorChanged = { chromeUi.showAudioSelector = it },
             onMenuTouch = { menuTouchKey++ },
             onAudioCenterMeasured = { audioIconX = it },
-            onAudioFxClick = { showAudioFxDashboard = !showAudioFxDashboard },
+            onAudioFxClick = {
+                val wasOpen = showAudioFxDashboard
+                playerMenuCloseCoordinator.closeAll()
+                showAudioFxDashboard = !wasOpen
+                if (showAudioFxDashboard) {
+                    chromeUi.showControls = false
+                    chromeUi.showTopBar = false
+                } else {
+                    chromeUi.showControls = true
+                    chromeUi.showTopBar = true
+                }
+                menuTouchKey++
+            },
             onSubtitleClick = {
                 val wasOpen = showSubtitleDock ||
                     showSubtitleBloom ||
@@ -1333,7 +1348,7 @@ fun VideoPlayerScreen(
         PlaybackDecoderStatusPill(
             status = playbackRecovery.activeVideoDecoderStatus,
             fallbackReason = playbackRecovery.fallbackReason,
-            visible = isPlaying || playbackHealth.isBuffering,
+            visible = chromeUi.showControls && (isPlaying || playbackHealth.isBuffering),
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(
