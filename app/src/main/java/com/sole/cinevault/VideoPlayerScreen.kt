@@ -366,6 +366,13 @@ fun VideoPlayerScreen(
             closeSpeedMenu = { chromeUi.showSpeedMenu = false },
             closeSleepMenu = { chromeUi.showSleepMenu = false },
             closeSrtBrowser = { chromeUi.showSrtBrowser = false },
+            closeSubtitleDock = { showSubtitleDock = false },
+            closeSubtitleBloom = { showSubtitleBloom = false; studioCategory = null },
+            closeDualSubsWindow = { showDualSubsWindow = false },
+            closeSubtitleBehaviourWindow = { showSubtitleBehaviourWindow = false },
+            closeSpeechSubtitlePanel = { subtitleAiUi.showSpeechSubtitlePanel = false },
+            closeSubtitleTranslationPanel = { subtitleAiUi.showSubtitleTranslationPanel = false },
+            cancelDialogueSync = { subtitleSyncTools.cancelDialogueSync() },
             closeSubtitleSurfaces = {
                 subtitleStudioNavigation.closeSubtitleSurfaces(
                     clearPendingImportCandidates = { searchUi.pendingImportCandidates = null },
@@ -897,9 +904,26 @@ fun VideoPlayerScreen(
             }
         )
 
-        // Slice 55: tablet + glasses playback gesture orchestration now lives
-        // outside VideoPlayerScreen. This keeps the giant composable focused on
-        // presentation while preserving the exact gesture callbacks and state.
+        val transientUiSnapshot = PlayerTransientUiSnapshot(
+            audioSelector = chromeUi.showAudioSelector,
+            audioFxDashboard = showAudioFxDashboard,
+            subtitleSettings = coreUi.showSettings,
+            trackSelector = trackUi.showSelector,
+            subtitleSearch = searchUi.showSearch,
+            driftDialog = driftUi.showDialog,
+            appearanceStudio = coreUi.showAppearanceStudio,
+            dialogueSyncArmed = coreUi.dialogueSyncArmed,
+            subtitleDock = showSubtitleDock,
+            subtitleBloom = showSubtitleBloom,
+            dualSubsWindow = showDualSubsWindow,
+            subtitleBehaviourWindow = showSubtitleBehaviourWindow,
+            speechSubtitlePanel = subtitleAiUi.showSpeechSubtitlePanel,
+            subtitleTranslationPanel = subtitleAiUi.showSubtitleTranslationPanel,
+            speedMenu = chromeUi.showSpeedMenu,
+            sleepMenu = chromeUi.showSleepMenu,
+            srtBrowser = chromeUi.showSrtBrowser,
+        )
+
         PlayerPlaybackGestureLayer(
             context = context,
             activity = activity,
@@ -921,22 +945,8 @@ fun VideoPlayerScreen(
             screenWidthPx = playerLayout.screenWidthPx,
             screenHeightPx = playerLayout.screenHeightPx,
             showControls = chromeUi.showControls,
-            showAudioSelector = chromeUi.showAudioSelector,
-            showAudioFxDashboard = showAudioFxDashboard,
-            showSubtitleDock = showSubtitleDock,
-            showSubtitleBloom = showSubtitleBloom,
-            showDualSubsWindow = showDualSubsWindow,
-            showSubtitleBehaviourWindow = showSubtitleBehaviourWindow,
-            showSpeechSubtitlePanel = subtitleAiUi.showSpeechSubtitlePanel,
-            showSubtitleTranslationPanel = subtitleAiUi.showSubtitleTranslationPanel,
-            showSpeedMenu = chromeUi.showSpeedMenu,
-            showSleepMenu = chromeUi.showSleepMenu,
-            showSrtBrowser = chromeUi.showSrtBrowser,
-            coreUi = coreUi,
-            trackUi = trackUi,
-            searchUi = searchUi,
-            driftUi = driftUi,
-            subtitleSyncTools = subtitleSyncTools,
+            transientUi = transientUiSnapshot,
+            onDismissTransientUi = { playerMenuCloseCoordinator.closeAll() },
             playbackNavigationCoordinator = playbackNavigationCoordinator,
             onDraggingSeekbarChanged = { chromeUi.isDraggingSeekbar = it },
             onPreviewPositionChanged = { gestureUi.previewPosition = it },
@@ -954,20 +964,6 @@ fun VideoPlayerScreen(
             onZoomModeToggle = { gestureUi.isZoomMode = !gestureUi.isZoomMode },
             onShowControlsChanged = { chromeUi.showControls = it },
             onShowTopBarChanged = { chromeUi.showTopBar = it },
-            onShowAudioSelectorChanged = { chromeUi.showAudioSelector = it },
-            onShowAudioFxDashboardChanged = { showAudioFxDashboard = it },
-            onShowSubtitleDockChanged = { showSubtitleDock = it },
-            onShowSubtitleBloomChanged = {
-                showSubtitleBloom = it
-                if (!it) studioCategory = null
-            },
-            onShowDualSubsWindowChanged = { showDualSubsWindow = it },
-            onShowSubtitleBehaviourWindowChanged = { showSubtitleBehaviourWindow = it },
-            onShowSpeechSubtitlePanelChanged = { subtitleAiUi.showSpeechSubtitlePanel = it },
-            onShowSubtitleTranslationPanelChanged = { subtitleAiUi.showSubtitleTranslationPanel = it },
-            onShowSpeedMenuChanged = { chromeUi.showSpeedMenu = it },
-            onShowSleepMenuChanged = { chromeUi.showSleepMenu = it },
-            onShowSrtBrowserChanged = { chromeUi.showSrtBrowser = it },
             onGestureEnd = {
                 chromeUi.brightnessGestureKey++
                 chromeUi.volumeGestureKey++
@@ -1111,8 +1107,6 @@ fun VideoPlayerScreen(
             subtitleResetCoordinator = subtitleResetCoordinator,
             subtitleSyncTools = subtitleSyncTools,
             onPendingSrtUriChanged = { pendingSrtUri = it },
-            onShowSrtBrowserChanged = { chromeUi.showSrtBrowser = it },
-            onShowAudioSelectorChanged = { chromeUi.showAudioSelector = it },
             onAudioSyncMsChanged = { audioSyncMs = it },
             onAudioMenuInteraction = { menuTouchKey++ },
             onShowControlsChanged = { chromeUi.showControls = it },
@@ -1124,6 +1118,15 @@ fun VideoPlayerScreen(
 
         // Slice 59: visibility policy, top chrome, transient status pills,
         // and the transport/seek host are now one cohesive player-chrome surface.
+        PlayerTransientDismissLayer(
+            visible = transientUiSnapshot.anyVisible,
+            onDismiss = {
+                playerMenuCloseCoordinator.closeAll()
+                chromeUi.showControls = true
+                chromeUi.showTopBar = true
+            },
+        )
+
         PlayerMainControlsChrome(
             context = context,
             activity = activity,
@@ -1191,8 +1194,6 @@ fun VideoPlayerScreen(
             onBack = onBack,
             playbackNavigationCoordinator = playbackNavigationCoordinator,
             playerMenuCloseCoordinator = playerMenuCloseCoordinator,
-            onShowSpeedMenuChanged = { chromeUi.showSpeedMenu = it },
-            onShowSleepMenuChanged = { chromeUi.showSleepMenu = it },
             onShowControlsChanged = { chromeUi.showControls = it },
             onClusterHeightMeasured = { clusterHeightPx = it },
             onPlayNextEpisode = { next ->
@@ -1213,7 +1214,6 @@ fun VideoPlayerScreen(
             onShowTopBarChanged = { chromeUi.showTopBar = it },
             onVideoEndedChanged = { isVideoEnded = it },
             onAutoPlayEnabledChanged = { autoPlayEnabled = it },
-            onShowAudioSelectorChanged = { chromeUi.showAudioSelector = it },
             onMenuTouch = { menuTouchKey++ },
             onAudioCenterMeasured = { audioIconX = it },
             onAudioFxClick = {
@@ -1264,11 +1264,15 @@ fun VideoPlayerScreen(
             visible = showAudioFxDashboard,
             enter = fadeIn(animationSpec = tween(150)),
             exit = fadeOut(animationSpec = tween(180)),
-            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 20.dp),
+            modifier = Modifier.align(Alignment.CenterEnd).padding(end = playerLayout.sidePadding),
         ) {
             AudioFxDashboard(
                 controller = audioFxController,
-                onDismiss = { showAudioFxDashboard = false },
+                onDismiss = {
+                    showAudioFxDashboard = false
+                    chromeUi.showControls = true
+                    chromeUi.showTopBar = true
+                },
             )
         }
 
@@ -1337,10 +1341,6 @@ fun VideoPlayerScreen(
             onStudioCategoryChanged = { studioCategory = it },
             onTrackSelectorManageModeChanged = { trackSelectorManageMode = it },
             onShowSubtitleBloomChanged = { showSubtitleBloom = it },
-            onShowSubtitleBehaviourWindowChanged = { showSubtitleBehaviourWindow = it },
-            onShowDualSubsWindowChanged = { showDualSubsWindow = it },
-            onShowSpeechSubtitlePanelChanged = { subtitleAiUi.showSpeechSubtitlePanel = it },
-            onShowSubtitleTranslationPanelChanged = { subtitleAiUi.showSubtitleTranslationPanel = it },
             onPendingDualAiLanguageChanged = { pendingDualAiLanguage = it },
             onDualSecondaryColorHexChanged = { dualSecondaryColorHex = it },
         )

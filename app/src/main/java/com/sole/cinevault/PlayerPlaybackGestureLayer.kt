@@ -12,7 +12,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.library.VideoThumbnailHelper
-import com.sole.cinevault.subtitles.SubtitleSyncToolsCoordinator
 
 /**
  * Slice 55: owns tablet + glasses playback gesture wiring.
@@ -43,22 +42,8 @@ internal fun PlayerPlaybackGestureLayer(
     screenWidthPx: Float,
     screenHeightPx: Float,
     showControls: Boolean,
-    showAudioSelector: Boolean,
-    showAudioFxDashboard: Boolean,
-    showSubtitleDock: Boolean,
-    showSubtitleBloom: Boolean,
-    showDualSubsWindow: Boolean,
-    showSubtitleBehaviourWindow: Boolean,
-    showSpeechSubtitlePanel: Boolean,
-    showSubtitleTranslationPanel: Boolean,
-    showSpeedMenu: Boolean,
-    showSleepMenu: Boolean,
-    showSrtBrowser: Boolean,
-    coreUi: SubtitleCoreUiState,
-    trackUi: SubtitleTrackSelectionState,
-    searchUi: SubtitleAcquisitionUiState,
-    driftUi: DriftCorrectionState,
-    subtitleSyncTools: SubtitleSyncToolsCoordinator,
+    transientUi: PlayerTransientUiSnapshot,
+    onDismissTransientUi: () -> Unit,
     playbackNavigationCoordinator: PlaybackNavigationCoordinator,
     onDraggingSeekbarChanged: (Boolean) -> Unit,
     onPreviewPositionChanged: (Long) -> Unit,
@@ -72,17 +57,6 @@ internal fun PlayerPlaybackGestureLayer(
     onZoomModeToggle: () -> Unit,
     onShowControlsChanged: (Boolean) -> Unit,
     onShowTopBarChanged: (Boolean) -> Unit,
-    onShowAudioSelectorChanged: (Boolean) -> Unit,
-    onShowAudioFxDashboardChanged: (Boolean) -> Unit,
-    onShowSubtitleDockChanged: (Boolean) -> Unit,
-    onShowSubtitleBloomChanged: (Boolean) -> Unit,
-    onShowDualSubsWindowChanged: (Boolean) -> Unit,
-    onShowSubtitleBehaviourWindowChanged: (Boolean) -> Unit,
-    onShowSpeechSubtitlePanelChanged: (Boolean) -> Unit,
-    onShowSubtitleTranslationPanelChanged: (Boolean) -> Unit,
-    onShowSpeedMenuChanged: (Boolean) -> Unit,
-    onShowSleepMenuChanged: (Boolean) -> Unit,
-    onShowSrtBrowserChanged: (Boolean) -> Unit,
     onGestureEnd: () -> Unit,
     externalControlsVisible: () -> Boolean,
     externalShowTouchPulse: () -> Unit,
@@ -273,63 +247,12 @@ internal fun PlayerPlaybackGestureLayer(
                 episodeListKey = episodeList,
                 edgeSwipeNextEnabled = { canChangeEpisode },
                 onTap = {
-                    when {
-                        showAudioFxDashboard ->
-                            onShowAudioFxDashboardChanged(false)
-
-                        showAudioSelector ->
-                            onShowAudioSelectorChanged(false)
-
-                        coreUi.showSettings ->
-                            coreUi.showSettings = false
-
-                        trackUi.showSelector ->
-                            trackUi.showSelector = false
-
-                        searchUi.showSearch ->
-                            searchUi.showSearch = false
-
-                        driftUi.showDialog ->
-                            driftUi.showDialog = false
-
-                        coreUi.showAppearanceStudio ->
-                            coreUi.showAppearanceStudio = false
-
-                        coreUi.dialogueSyncArmed ->
-                            subtitleSyncTools.cancelDialogueSync()
-
-                        showSubtitleDock ->
-                            onShowSubtitleDockChanged(false)
-
-                        showSubtitleBloom ->
-                            onShowSubtitleBloomChanged(false)
-
-                        showDualSubsWindow ->
-                            onShowDualSubsWindowChanged(false)
-
-                        showSubtitleBehaviourWindow ->
-                            onShowSubtitleBehaviourWindowChanged(false)
-
-                        showSpeechSubtitlePanel ->
-                            onShowSpeechSubtitlePanelChanged(false)
-
-                        showSubtitleTranslationPanel ->
-                            onShowSubtitleTranslationPanelChanged(false)
-
-                        showSpeedMenu ->
-                            onShowSpeedMenuChanged(false)
-
-                        showSleepMenu ->
-                            onShowSleepMenuChanged(false)
-
-                        showSrtBrowser ->
-                            onShowSrtBrowserChanged(false)
-
-                        else -> {
-                            val visible = !showControls
-                            onShowControlsChanged(visible)
-                            onShowTopBarChanged(visible)
-                        }
+                    if (transientUi.anyVisible) {
+                        onDismissTransientUi()
+                    } else {
+                        val visible = !showControls
+                        onShowControlsChanged(visible)
+                        onShowTopBarChanged(visible)
                     }
                 },
                 onSeekBack = {
