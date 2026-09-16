@@ -12,13 +12,21 @@ internal data class AudioRuntimeRescueHandover(
     val subtitleSnapshot: AudioRescueSubtitleSnapshot? = null,
 )
 
-internal fun AudioRuntimeRescuePlan.toHandover(): AudioRuntimeRescueHandover =
-    AudioRuntimeRescueHandover(
-        mediaItem = mediaItem,
-        resumePositionMs = request.resumePositionMs.coerceAtLeast(0L),
+internal fun AudioRuntimeRescuePlan.toHandover(): AudioRuntimeRescueHandover {
+    val playback = AudioRuntimeRescuePlaybackSnapshot(
+        resumePositionMs = request.resumePositionMs,
         playWhenReady = playWhenReady,
-        playbackSpeed = playbackSpeed.coerceIn(0.25f, 4.0f),
-        volume = volume.coerceIn(0.0f, 1.0f),
+        playbackSpeed = playbackSpeed,
+        volume = volume,
+    ).normalized()
+
+    return AudioRuntimeRescueHandover(
+        mediaItem = mediaItem,
+        resumePositionMs = playback.resumePositionMs,
+        playWhenReady = playback.playWhenReady,
+        playbackSpeed = playback.playbackSpeed,
+        volume = playback.volume,
         audioTrackIdentity = audioTrackIdentity,
         subtitleSnapshot = subtitleSnapshot,
     )
+}
