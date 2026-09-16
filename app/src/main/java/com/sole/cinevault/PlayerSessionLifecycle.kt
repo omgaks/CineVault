@@ -13,6 +13,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.core.content.ContextCompat
 import androidx.media3.exoplayer.ExoPlayer
+import com.sole.cinevault.audiofx.AudioFxController
+import kotlinx.coroutines.delay
 import com.sole.cinevault.library.savePlaybackPosition
 
 @Composable
@@ -22,6 +24,7 @@ internal fun PlayerSessionLifecycle(
     player: ExoPlayer,
     videoPath: String,
     isStreamMedia: Boolean,
+    audioFxController: AudioFxController,
     onNextRequested: () -> Unit,
     onPreviousRequested: () -> Unit,
     onInitialBrightnessChanged: (Int) -> Unit,
@@ -35,6 +38,8 @@ internal fun PlayerSessionLifecycle(
         CineVaultPlayerHolder.currentPlayer = player
         CineVaultPlayerHolder.onNextRequested = { currentNextRequested() }
         CineVaultPlayerHolder.onPreviousRequested = { currentPreviousRequested() }
+        audioFxController.attachToPlayer(player)
+        audioFxController.startAutoSwitching()
 
         ContextCompat.startForegroundService(
             context,
@@ -54,6 +59,17 @@ internal fun PlayerSessionLifecycle(
         activity?.enterImmersiveModeForPlayer()
     }
 
+    LaunchedEffect(player, videoPath, audioFxController.loudnessNormalizationEnabled) {
+        if (!audioFxController.loudnessNormalizationEnabled || isStreamMedia) return@LaunchedEffect
+        while (player.playbackState != androidx.media3.common.Player.STATE_READY) {
+            delay(250L)
+        }
+        val durationMs = player.duration
+        if (durationMs > 0L && durationMs != androidx.media3.common.C.TIME_UNSET) {
+            audioFxController.analyzeAndNormalizeLoudnessOnce(videoPath, durationMs)
+        }
+    }
+
     DisposableEffect(player) {
         onDispose {
             if (!currentIsStreamMedia) {
@@ -63,6 +79,9 @@ internal fun PlayerSessionLifecycle(
                     player.currentPosition.coerceAtLeast(0L),
                 )
             }
+            audioFxController.stopAutoSwitching()
+            audioFxController.detachFromPlayer(player)
+            audioFxController.release()
             player.release()
             AudioSyncHolder.offsetUs = 0L
             if (CineVaultPlayerHolder.currentPlayer == player) {

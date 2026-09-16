@@ -7,6 +7,7 @@ import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import com.sole.cinevault.audiofx.AudioFxController
 import com.sole.cinevault.library.VideoThumbnailHelper
 import kotlinx.coroutines.CoroutineScope
 
@@ -17,6 +18,7 @@ internal fun PlayerRuntimeEffects(
     scope: CoroutineScope,
     player: ExoPlayer,
     trackSelector: DefaultTrackSelector,
+    audioFxController: AudioFxController,
     currentVideoPath: String,
     currentMediaType: String,
     isStreamMedia: Boolean,
@@ -112,6 +114,7 @@ internal fun PlayerRuntimeEffects(
         player = player,
         videoPath = currentVideoPath,
         isStreamMedia = isStreamMedia,
+        audioFxController = audioFxController,
         onNextRequested = onNextRequested,
         onPreviousRequested = onPreviousRequested,
         onInitialBrightnessChanged = onInitialBrightnessChanged,

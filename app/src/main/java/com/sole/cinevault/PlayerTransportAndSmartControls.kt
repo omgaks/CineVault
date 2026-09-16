@@ -79,6 +79,7 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
     onShowAudioSelectorChanged: (Boolean) -> Unit,
     onMenuTouch: () -> Unit,
     onAudioCenterMeasured: (Float) -> Unit,
+    onAudioFxClick: () -> Unit,
     onSubtitleClick: () -> Unit,
     onSubtitleLongClick: () -> Unit,
     onSubtitleCenterMeasured: (Float) -> Unit,
@@ -218,6 +219,7 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
             onMenuTouch()
         },
         onAudioCenterMeasured = onAudioCenterMeasured,
+        onAudioFxClick = onAudioFxClick,
         onSubtitleClick = onSubtitleClick,
         onSubtitleLongClick = onSubtitleLongClick,
         onSubtitleCenterMeasured = onSubtitleCenterMeasured,

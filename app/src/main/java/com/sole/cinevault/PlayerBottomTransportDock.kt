@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.rounded.AllInclusive
 import androidx.compose.material.icons.rounded.Audiotrack
 import androidx.compose.material.icons.rounded.Subtitles
@@ -72,6 +73,7 @@ internal fun BoxScope.PlayerBottomTransportDock(
     onNext: () -> Unit,
     onToggleAutoplay: () -> Unit,
     onAudioClick: () -> Unit,
+    onAudioFxClick: () -> Unit,
     onAudioCenterMeasured: (Float) -> Unit,
     onSubtitleClick: () -> Unit,
     onSubtitleLongClick: () -> Unit,
@@ -145,6 +147,13 @@ internal fun BoxScope.PlayerBottomTransportDock(
                     onAudioCenterMeasured(it.positionInRoot().x + it.size.width / 2f)
                 },
                 onClick = onAudioClick
+            )
+
+            IconCircle(
+                icon = Icons.Filled.Equalizer,
+                size = smallButton,
+                tint = TextBright,
+                onClick = onAudioFxClick,
             )
 
             if (!isStreamMedia) {

@@ -1,5 +1,7 @@
 package com.sole.cinevault
 
+import com.sole.cinevault.audiofx.AudioFxController
+import com.sole.cinevault.audiofx.AudioFxDashboard
 import com.sole.cinevault.library.*
 import com.sole.cinevault.smb.*
 
@@ -315,6 +317,8 @@ fun VideoPlayerScreen(
     )
     val trackSelector = playerRuntime.trackSelector
     val exoPlayer = playerRuntime.player
+    val audioFxController = remember { AudioFxController(context) }
+    var showAudioFxDashboard by remember { mutableStateOf(false) }
 
     var localPlayerView by remember { mutableStateOf<PlayerView?>(null) }
     val glasses = rememberPlayerGlassesMode(
@@ -544,6 +548,7 @@ fun VideoPlayerScreen(
         scope = scope,
         player = exoPlayer,
         trackSelector = trackSelector,
+        audioFxController = audioFxController,
         currentVideoPath = currentVideo.path,
         currentMediaType = currentMediaType,
         isStreamMedia = isStreamMedia,
@@ -1208,6 +1213,7 @@ fun VideoPlayerScreen(
             onShowAudioSelectorChanged = { chromeUi.showAudioSelector = it },
             onMenuTouch = { menuTouchKey++ },
             onAudioCenterMeasured = { audioIconX = it },
+            onAudioFxClick = { showAudioFxDashboard = !showAudioFxDashboard },
             onSubtitleClick = {
                 val wasOpen = showSubtitleDock ||
                     showSubtitleBloom ||
@@ -1238,6 +1244,18 @@ fun VideoPlayerScreen(
             onPreviewPositionChanged = { gestureUi.previewPosition = it },
             onPreviewBitmapChanged = { gestureUi.previewBitmap = it },
         )
+
+        AnimatedVisibility(
+            visible = showAudioFxDashboard,
+            enter = fadeIn(animationSpec = tween(150)),
+            exit = fadeOut(animationSpec = tween(180)),
+            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 20.dp),
+        ) {
+            AudioFxDashboard(
+                controller = audioFxController,
+                onDismiss = { showAudioFxDashboard = false },
+            )
+        }
 
         // Slice 60: all non-main-control overlay surfaces are now hosted
         // together: lock/Auto-Sync/delete feedback, Subtitle Studio surfaces,
