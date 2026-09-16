@@ -8,11 +8,10 @@ import com.sole.cinevault.SubtitleTrackSelectionState
 import kotlinx.coroutines.delay
 
 /**
- * Slice 30: owns per-movie subtitle appearance restore and persistence.
+ * Owns per-movie subtitle appearance restore and persistence.
  *
- * VideoPlayerScreen still owns the LaunchedEffect keys because Compose should
- * cancel/restart them when the movie or settings change. This coordinator owns
- * the actual restore mutation, debounce, snapshot construction and save.
+ * Position is normalized on both restore and save so legacy values that could
+ * push subtitles off-screen are repaired once and are not persisted again.
  */
 class MovieSubtitleMemoryCoordinator(
     private val context: Context,
@@ -28,8 +27,12 @@ class MovieSubtitleMemoryCoordinator(
         memory: MovieSubtitleMemory?,
     ) {
         if (memoryReady && memory != null) {
-            appearanceUi.textSizeSp = memory.textSizeSp
-            appearanceUi.bottomPadding = memory.bottomPadding
+            appearanceUi.textSizeSp = memory.textSizeSp.coerceIn(12f, 32f)
+            appearanceUi.bottomPadding =
+                SubtitlePositionPolicy.sanitize(
+                    memory.bottomPadding,
+                    appearanceUi.textSizeSp,
+                )
             appearanceUi.preset = memory.presetName
             appearanceUi.appearance = SubtitleAppearance(
                 memory.foregroundColor,
@@ -53,6 +56,13 @@ class MovieSubtitleMemoryCoordinator(
 
         delay(600)
 
+        val safeTextSize = appearanceUi.textSizeSp.coerceIn(12f, 32f)
+        val safeBottomPadding =
+            SubtitlePositionPolicy.sanitize(
+                appearanceUi.bottomPadding,
+                safeTextSize,
+            )
+
         saveMovieSubtitleMemory(
             context = context,
             videoPath = videoPath,
@@ -69,8 +79,8 @@ class MovieSubtitleMemoryCoordinator(
                 dualSecondarySource = dualUi.secondarySourceLabel,
                 dualSecondaryColorHex = getDualSecondaryColorHex(),
                 syncOffsetSeconds = coreUi.syncOffset,
-                textSizeSp = appearanceUi.textSizeSp,
-                bottomPadding = appearanceUi.bottomPadding,
+                textSizeSp = safeTextSize,
+                bottomPadding = safeBottomPadding,
                 presetName = appearanceUi.preset,
                 foregroundColor = appearanceUi.appearance.foregroundColor,
                 edgeType = appearanceUi.appearance.edgeType,

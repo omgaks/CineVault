@@ -7,11 +7,11 @@ import androidx.media3.ui.PlayerView
 import com.sole.cinevault.SubtitleAppearanceUiState
 
 /**
- * Slice 31: owns applying CineVault subtitle appearance to Media3 SubtitleView.
+ * Owns applying CineVault subtitle appearance to Media3 SubtitleView.
  *
- * VideoPlayerScreen still owns the Compose effect keys so this is reapplied
- * whenever the player view, style, size, position, dual-sub mode, or embedded
- * styling preference changes.
+ * Position is sanitized at the final rendering boundary so every source of
+ * subtitle state (Studio, Quick HUD, gestures, restored movie memory) remains
+ * inside the visible-safe range.
  */
 class SubtitleAppearanceCoordinator {
 
@@ -25,9 +25,6 @@ class SubtitleAppearanceCoordinator {
 
         subtitleView.setUserDefaultStyle()
 
-        // Dual subtitles need the injected <font color> tag to remain active.
-        // ASS/SSA embedded styling is only honoured when the user explicitly
-        // asks to preserve it.
         val useEmbeddedStyles =
             dualSubtitlesEnabled ||
                 (appearanceUi.preserveOriginalStyling && isAssOrSsaFormat)
@@ -41,7 +38,10 @@ class SubtitleAppearanceCoordinator {
         )
 
         subtitleView.setBottomPaddingFraction(
-            appearanceUi.bottomPadding,
+            SubtitlePositionPolicy.sanitize(
+                bottomPadding = appearanceUi.bottomPadding,
+                textSizeSp = appearanceUi.textSizeSp,
+            ),
         )
 
         subtitleView.setStyle(
