@@ -26,16 +26,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import com.sole.cinevault.subtitles.SubtitlePositionPolicy
 import com.sole.cinevault.ui.theme.AmberCore
 import com.sole.cinevault.ui.theme.GlassSurfaceStrong
 import kotlinx.coroutines.delay
 
 /*
- * PlayerSubtitleGestureOverlay.kt
- *
- * Owns the optional gesture band above the transport controls. It remains
- * disabled by default and writes to the same subtitle state holders used by
- * Subtitle Studio, so gestures and menu controls stay synchronized.
+ * Owns the optional gesture band above the transport controls.
+ * Vertical subtitle movement now shares the same safe-position policy as
+ * Media3 rendering and per-movie persistence.
  */
 
 @Composable
@@ -84,6 +83,11 @@ internal fun PlayerSubtitleGestureOverlay(
                     onPinchTextSize = { zoom ->
                         appearanceUi.textSizeSp =
                             (appearanceUi.textSizeSp * zoom).coerceIn(12f, 32f)
+                        appearanceUi.bottomPadding =
+                            SubtitlePositionPolicy.sanitize(
+                                appearanceUi.bottomPadding,
+                                appearanceUi.textSizeSp,
+                            )
                         studioUi.gestureFeedback =
                             "${appearanceUi.textSizeSp.toInt()}sp"
                     },
@@ -104,8 +108,10 @@ internal fun PlayerSubtitleGestureOverlay(
                     },
                     onVerticalPositionDrag = { deltaFraction ->
                         appearanceUi.bottomPadding =
-                            (appearanceUi.bottomPadding + deltaFraction)
-                                .coerceIn(0.02f, 0.90f)
+                            SubtitlePositionPolicy.sanitize(
+                                appearanceUi.bottomPadding + deltaFraction,
+                                appearanceUi.textSizeSp,
+                            )
                         studioUi.gestureFeedback = "Position"
                     },
                     onDoubleTapResetSync = {
