@@ -114,7 +114,11 @@ internal object AudioRuntimeRescueController {
         enterVideoScope(videoPath)
 
     fun endVideoScope(videoPath: String): Boolean {
-        if (rescueVideoPath != videoPath) return false
+        val decision = decideAudioRuntimeRescueExit(
+            rescueVideoPath = rescueVideoPath,
+            exitingVideoPath = videoPath,
+        )
+        if (decision != AudioRuntimeRescueExitDecision.RESET) return false
         reset()
         return true
     }
