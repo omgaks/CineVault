@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -68,9 +68,7 @@ fun QuickHud(
     ) { dragHandleModifier ->
         Column(
             modifier = Modifier
-                // Width is selected by the player from its real measured
-                // landscape size. This keeps the same design line while
-                // avoiding a one-size-fits-all 240dp panel on small/large screens.
+                // Width comes from the player's current adaptive window policy.
                 .width(windowWidth)
                 .glassPanel(cornerRadius = 16.dp, fill = GlassSurfaceStrong.copy(alpha = 0.82f))
                 .border(1.dp, AmberCore.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
@@ -162,6 +160,7 @@ fun QuickHud(
                     .background(AmberCore.copy(alpha = 0.10f))
                     .border(1.dp, AmberCore.copy(alpha = 0.30f), RoundedCornerShape(50))
                     .clickable { onReset() }
+                    .sizeIn(minHeight = 48.dp)
                     .padding(vertical = 5.dp)
             )
         }
@@ -177,7 +176,7 @@ private fun DelayStepButton(symbol: String, onClick: () -> Unit) {
         fontWeight = FontWeight.Medium,
         textAlign = TextAlign.Center,
         modifier = Modifier
-            .size(20.dp)
+            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
             .clip(CircleShape)
             .background(AmberCore.copy(alpha = 0.14f))
             .clickable { onClick() }
@@ -215,3 +214,4 @@ private fun HudRow(label: String, valueText: String?, slider: @Composable () -> 
 
 private fun formatDelay(seconds: Float): String =
     if (seconds >= 0f) "+${"%.1f".format(seconds)}s" else "${"%.1f".format(seconds)}s"
+
