@@ -150,8 +150,13 @@ internal fun PlayerRuntimeEffects(
                     attribution = attribution,
                     errorCode = errorCode,
                 )
+                val presentation =
+                    terminalAudioRescueFailureOrNull(
+                        PostFfmpegAudioFailureAction.FAIL_RESCUE
+                    )?.toPresentation()
                 onPlayerErrorMessageChanged(
-                    "Audio playback failed after FFmpeg rescue."
+                    presentation?.userMessage
+                        ?: "Audio playback failed after FFmpeg rescue."
                 )
                 true
             } else {
