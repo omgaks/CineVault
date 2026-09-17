@@ -1,33 +1,27 @@
 package com.sole.cinevault
 
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 
 /**
- * One full-player dismissal surface for transient menus/studios.
+ * 1B.2S — interaction-order regression repair.
  *
- * It is deliberately placed above the video gesture layer and below the
- * actual popup/studio content. This means a tap on unused video space closes
- * the active transient UI, while taps inside the popup continue to belong to
- * that popup. Keeping this behaviour in one layer prevents each menu from
- * inventing a different empty-space contract.
+ * VideoPlayerScreen currently composes PlayerTransientDismissLayer AFTER
+ * PlayerSubtitleSelectionAndAcquisitionSurfaces. In Compose, that places this
+ * full-screen pointer surface above Style, Tracks and Smart Search, so their
+ * first touch is consumed here instead of reaching the popup.
+ *
+ * Until the host is reordered, this layer must be non-intercepting.
+ * Popups retain their own Close/Back controls. This deliberately trades
+ * tap-outside-to-dismiss for correct popup interaction.
  */
 @Composable
 internal fun PlayerTransientDismissLayer(
     visible: Boolean,
     onDismiss: () -> Unit,
 ) {
+    // Intentionally no full-screen pointerInput surface.
+    //
+    // Do not restore detectTapGestures here unless this composable is moved
+    // BELOW all transient popup/studio surfaces in VideoPlayerScreen.
     if (!visible) return
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = { onDismiss() })
-            },
-    )
 }
