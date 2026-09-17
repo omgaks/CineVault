@@ -683,6 +683,8 @@ fun VideoPlayerScreen(
         exoPlayer = exoPlayer,
         trackSelector = trackSelector,
         currentVideoPath = currentVideo.path,
+        availableWidthDp = maxWidth.value,
+        availableHeightDp = maxHeight.value,
         pendingSrtUri = pendingSrtUri,
         dualSecondaryColorHex = dualSecondaryColorHex,
         movieSubtitleMemoryReady = movieSubtitleMemoryReady,

@@ -49,6 +49,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -186,12 +187,13 @@ fun DraggableFloatingPopup(
                     onUserInteraction()
                 }
             }
-            // Slice 17: immediate "grab and move" behaviour, matching the
-            // Sub Studio pill. No hold delay. A normal tap still goes to the
-            // child control; once the pointer crosses drag slop the popup
-            // follows the finger immediately.
+            // Adaptive UI 1B.2: standalone Studio content owns ordinary
+            // vertical drags for scrolling. Moving the floating window now
+            // requires a long-press first, so a normal swipe inside Style,
+            // Tracks, or another scrollable Studio surface is never stolen
+            // by the popup container.
             .pointerInput(maxOffsetXPx, maxOffsetYPx) {
-                detectDragGestures { change, dragAmount ->
+                detectDragGesturesAfterLongPress { change, dragAmount ->
                     change.consume()
                     dragOffsetX =
                         (dragOffsetX + dragAmount.x).coerceIn(-maxOffsetXPx, maxOffsetXPx)

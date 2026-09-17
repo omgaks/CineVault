@@ -31,6 +31,8 @@ fun rememberPlayerSubtitleRuntimeEffects(
     exoPlayer: ExoPlayer,
     trackSelector: DefaultTrackSelector,
     currentVideoPath: String,
+    availableWidthDp: Float,
+    availableHeightDp: Float,
     pendingSrtUri: Uri?,
     dualSecondaryColorHex: String,
     movieSubtitleMemoryReady: Boolean,
@@ -103,12 +105,16 @@ fun rememberPlayerSubtitleRuntimeEffects(
         dualUi.enabled,
         appearanceUi.preserveOriginalStyling,
         isAssOrSsaFormat,
+        availableWidthDp,
+        availableHeightDp,
     ) {
         subtitleAppearanceCoordinator.apply(
             playerView = studioUi.playerView,
             appearanceUi = appearanceUi,
             dualSubtitlesEnabled = dualUi.enabled,
             isAssOrSsaFormat = isAssOrSsaFormat,
+            availableWidthDp = availableWidthDp,
+            availableHeightDp = availableHeightDp,
         )
     }
 
