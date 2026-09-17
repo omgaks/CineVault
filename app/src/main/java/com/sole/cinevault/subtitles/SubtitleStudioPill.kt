@@ -470,7 +470,7 @@ fun DualSubsWindow(
                     modifier = Modifier
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.06f))
-                        .clickable { onGapLinesChange(gapLines + 1) }
+                        .clickable { if (gapLines < 2) onGapLinesChange(gapLines + 1) }
                         .padding(horizontal = 8.dp, vertical = 2.dp)
                 )
             }

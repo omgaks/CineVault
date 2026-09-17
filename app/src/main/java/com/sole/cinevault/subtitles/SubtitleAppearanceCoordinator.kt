@@ -20,6 +20,8 @@ class SubtitleAppearanceCoordinator {
         appearanceUi: SubtitleAppearanceUiState,
         dualSubtitlesEnabled: Boolean,
         isAssOrSsaFormat: Boolean,
+        availableWidthDp: Float,
+        availableHeightDp: Float,
     ) {
         val subtitleView = playerView?.subtitleView ?: return
 
@@ -32,9 +34,15 @@ class SubtitleAppearanceCoordinator {
         subtitleView.setApplyEmbeddedStyles(useEmbeddedStyles)
         subtitleView.setApplyEmbeddedFontSizes(false)
 
+        val renderedTextSizeSp = adaptiveSubtitleRenderSizeSp(
+            requestedSp = appearanceUi.textSizeSp,
+            availableWidthDp = availableWidthDp,
+            availableHeightDp = availableHeightDp,
+        )
+
         subtitleView.setFixedTextSize(
             TypedValue.COMPLEX_UNIT_SP,
-            appearanceUi.textSizeSp,
+            renderedTextSizeSp,
         )
 
         subtitleView.setBottomPaddingFraction(
