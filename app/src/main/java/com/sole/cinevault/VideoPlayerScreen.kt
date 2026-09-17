@@ -677,14 +677,20 @@ fun VideoPlayerScreen(
     // subtitle application, live appearance updates, sync/drift re-rendering,
     // restored Dual Subs re-apply, and the shared subtitle sync-tools
     // coordinator. The player keeps only the returned UI-facing handles.
+    // Adaptive subtitle rendering must use the actual current window rather than
+    // BoxWithConstraints values, because this runtime is created before the
+    // player surface BoxWithConstraints below. LocalWindowInfo also follows
+    // split-screen/freeform resizing.
+    val subtitleWindowInfo = com.sole.cinevault.ui.responsive.rememberCineWindowSizeInfo()
+
     val subtitleRuntimeEffects = rememberPlayerSubtitleRuntimeEffects(
         context = context,
         scope = scope,
         exoPlayer = exoPlayer,
         trackSelector = trackSelector,
         currentVideoPath = currentVideo.path,
-        availableWidthDp = maxWidth.value,
-        availableHeightDp = maxHeight.value,
+        availableWidthDp = subtitleWindowInfo.widthDp.value,
+        availableHeightDp = subtitleWindowInfo.heightDp.value,
         pendingSrtUri = pendingSrtUri,
         dualSecondaryColorHex = dualSecondaryColorHex,
         movieSubtitleMemoryReady = movieSubtitleMemoryReady,
