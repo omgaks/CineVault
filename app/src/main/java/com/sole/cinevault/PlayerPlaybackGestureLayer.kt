@@ -8,6 +8,8 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.media3.exoplayer.ExoPlayer
@@ -80,6 +82,14 @@ internal fun PlayerPlaybackGestureLayer(
     var liveVideoScale = videoScale
     var liveVideoOffsetX = videoOffsetX
     var liveVideoOffsetY = videoOffsetY
+
+    // The pointerInput gesture detector is intentionally keyed to the video, so it
+    // survives ordinary recompositions. Keep the values read by its tap callback
+    // fresh without restarting the detector every time chrome/menu state changes.
+    // Without this, the detector can retain the initial showControls=true value:
+    // the first tap hides chrome, but every later single tap keeps requesting false.
+    val currentShowControls by rememberUpdatedState(showControls)
+    val currentTransientUi by rememberUpdatedState(transientUi)
 
     val playbackGestureModifier =
         if (externalDisplayActive) {
@@ -247,12 +257,12 @@ internal fun PlayerPlaybackGestureLayer(
                 episodeListKey = episodeList,
                 edgeSwipeNextEnabled = { canChangeEpisode },
                 onTap = {
-                    if (transientUi.anyVisible) {
+                    if (currentTransientUi.anyVisible) {
                         onDismissTransientUi()
                         onShowControlsChanged(true)
                         onShowTopBarChanged(true)
                     } else {
-                        val visible = !showControls
+                        val visible = !currentShowControls
                         onShowControlsChanged(visible)
                         onShowTopBarChanged(visible)
                     }
