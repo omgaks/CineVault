@@ -6,13 +6,7 @@ import androidx.core.content.edit
 import java.io.File
 import java.security.MessageDigest
 
-/**
- * Per-video subtitle session memory.
- *
- * This deliberately sits beside the existing per-display profile system:
- * display profiles remain the defaults for a phone/tablet/external display,
- * while this memory restores the user's last choices for one specific video.
- */
+/** Per-video subtitle session memory. */
 data class MovieSubtitleMemory(
     val subtitlesEnabled: Boolean,
     val primaryUri: String?,
@@ -44,10 +38,7 @@ private fun movieSubtitleKey(videoPath: String): String {
     return digest.take(12).joinToString("") { "%02x".format(it) }
 }
 
-fun loadMovieSubtitleMemory(
-    context: Context,
-    videoPath: String,
-): MovieSubtitleMemory? {
+fun loadMovieSubtitleMemory(context: Context, videoPath: String): MovieSubtitleMemory? {
     val prefs = context.getSharedPreferences(MOVIE_SUBTITLE_PREFS, Context.MODE_PRIVATE)
     val key = movieSubtitleKey(videoPath)
     if (!prefs.getBoolean("$key.saved", false)) return null
@@ -61,7 +52,7 @@ fun loadMovieSubtitleMemory(
         selectedSource = prefs.getString("$key.selectedSource", "") ?: "",
         dualEnabled = prefs.getBoolean("$key.dualEnabled", false),
         dualSecondaryLanguage = prefs.getString("$key.dualSecondaryLanguage", "hi") ?: "hi",
-        dualGapLines = prefs.getInt("$key.dualGapLines", 1).coerceIn(0, 2),
+        dualGapLines = prefs.getInt("$key.dualGapLines", 0).coerceIn(0, 2),
         dualSecondarySource = prefs.getString("$key.dualSecondarySource", "") ?: "",
         dualSecondaryColorHex = prefs.getString("$key.dualSecondaryColorHex", "#00E5FF") ?: "#00E5FF",
         syncOffsetSeconds = prefs.getFloat("$key.syncOffsetSeconds", 0f),
@@ -76,14 +67,9 @@ fun loadMovieSubtitleMemory(
     )
 }
 
-fun saveMovieSubtitleMemory(
-    context: Context,
-    videoPath: String,
-    memory: MovieSubtitleMemory,
-) {
+fun saveMovieSubtitleMemory(context: Context, videoPath: String, memory: MovieSubtitleMemory) {
     val prefs = context.getSharedPreferences(MOVIE_SUBTITLE_PREFS, Context.MODE_PRIVATE)
     val key = movieSubtitleKey(videoPath)
-
     prefs.edit {
         putBoolean("$key.saved", true)
         putBoolean("$key.subtitlesEnabled", memory.subtitlesEnabled)
@@ -109,16 +95,8 @@ fun saveMovieSubtitleMemory(
     }
 }
 
-/**
- * Restores only URIs CineVault can still read. If a cache file was cleaned
- * by Android, the normal subtitle discovery path is allowed to take over.
- */
-fun canRestoreMovieSubtitleUri(
-    context: Context,
-    uriText: String?,
-): Boolean {
+fun canRestoreMovieSubtitleUri(context: Context, uriText: String?): Boolean {
     if (uriText.isNullOrBlank()) return false
-
     return try {
         val uri = Uri.parse(uriText)
         when (uri.scheme?.lowercase()) {
