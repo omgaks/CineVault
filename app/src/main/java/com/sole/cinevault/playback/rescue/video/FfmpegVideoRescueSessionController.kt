@@ -3,16 +3,16 @@ package com.sole.cinevault.playback.rescue.video
 /**
  * Owns exactly one live FFmpeg rescue session.
  *
- * This is the lifecycle/handoff layer between the player and the future native
- * FFmpeg implementation. Replacing a session always releases the old one first,
- * preventing two rescue decoders from owning playback resources at once.
+ * Replacing a session always releases the previous session first so two rescue
+ * decoders cannot own playback resources at the same time.
  */
 class FfmpegVideoRescueSessionController {
 
     private var activeSession: FfmpegVideoRescueSession? = null
 
     val hasActiveSession: Boolean
-        get() = activeSession?.state != FfmpegVideoRescueSessionState.RELEASED
+        get() = activeSession != null &&
+            activeSession?.state != FfmpegVideoRescueSessionState.RELEASED
 
     val state: FfmpegVideoRescueSessionState?
         get() = activeSession?.state
