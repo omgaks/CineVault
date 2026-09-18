@@ -4,7 +4,11 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -62,6 +66,22 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
         PlaybackStatusPill(
             snapshot = snapshot,
             onClick = { surface = PlaybackInfoSurface.INFO },
+        )
+    }
+
+    // Full-player dismiss layer. It is emitted before the panel so the panel
+    // remains interactive above it, while any empty area outside closes the
+    // current Playback Info surface.
+    if (visibility.showPanel) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) {
+                    surface = PlaybackInfoSurface.NONE
+                },
         )
     }
 

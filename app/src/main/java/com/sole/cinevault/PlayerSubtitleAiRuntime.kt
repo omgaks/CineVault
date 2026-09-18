@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.subtitles.*
 import kotlinx.coroutines.CoroutineScope
@@ -53,15 +55,34 @@ fun rememberPlayerSubtitleAiRuntime(
     onTranslationSuccessLanguageChanged: (String?) -> Unit,
     playCurrentVideoWithSubtitle: (uri: android.net.Uri, resumeAt: Long) -> Unit,
 ): PlayerSubtitleAiRuntime {
+    // Coordinators are deliberately remembered so active jobs survive ordinary
+    // recomposition. Their callbacks therefore must read the latest Compose
+    // values instead of capturing the values from the composition in which the
+    // coordinator was first created. Without this, AI translation could keep
+    // doing real work while the progress gate still saw Idle, leaving the pill
+    // visually stuck at 0%; the same stale capture could also lose the pending
+    // Dual-Subs AI destination when translation completed.
+    val latestVideoPath by rememberUpdatedState(currentVideoPath)
+    val latestSpeechSubtitleStatus by rememberUpdatedState(speechSubtitleStatus)
+    val latestTranslationStatus by rememberUpdatedState(subtitleTranslationStatus)
+    val latestPendingDualAiLanguage by rememberUpdatedState(pendingDualAiLanguage)
+    val latestSpeechStatusChanged by rememberUpdatedState(onSpeechSubtitleStatusChanged)
+    val latestTranslationStatusChanged by rememberUpdatedState(onSubtitleTranslationStatusChanged)
+    val latestPendingDualChanged by rememberUpdatedState(onPendingDualAiLanguageChanged)
+    val latestGeneratedRefreshRequested by rememberUpdatedState(onGeneratedSubtitleRefreshRequested)
+    val latestGeneratedFilesLoaded by rememberUpdatedState(onGeneratedSubtitleFilesLoaded)
+    val latestTranslationSuccessChanged by rememberUpdatedState(onTranslationSuccessLanguageChanged)
+    val latestPlayCurrentVideoWithSubtitle by rememberUpdatedState(playCurrentVideoWithSubtitle)
+
     val generatedSubtitleLibraryCoordinator = remember {
         GeneratedSubtitleLibraryCoordinator(
             context = context,
-            getCurrentVideoPath = { currentVideoPath },
+            getCurrentVideoPath = { latestVideoPath },
         )
     }
 
     LaunchedEffect(currentVideoPath, generatedSubtitleRefreshKey) {
-        onGeneratedSubtitleFilesLoaded(
+        latestGeneratedFilesLoaded(
             generatedSubtitleLibraryCoordinator.loadForCurrentVideo()
         )
     }
@@ -85,7 +106,7 @@ fun rememberPlayerSubtitleAiRuntime(
             setSelectedLabel = { trackUi.selectedLabel = it },
             setSelectedSource = { trackUi.selectedSource = it },
             playWithSubtitle = { uri, resumeAt ->
-                playCurrentVideoWithSubtitle(uri, resumeAt)
+                latestPlayCurrentVideoWithSubtitle(uri, resumeAt)
             },
         )
     }
@@ -95,9 +116,9 @@ fun rememberPlayerSubtitleAiRuntime(
             context = context,
             scope = scope,
             exoPlayer = exoPlayer,
-            getCurrentVideoPath = { currentVideoPath },
-            getStatus = { speechSubtitleStatus },
-            setStatus = onSpeechSubtitleStatusChanged,
+            getCurrentVideoPath = { latestVideoPath },
+            getStatus = { latestSpeechSubtitleStatus },
+            setStatus = { latestSpeechStatusChanged(it) },
             onSubtitleReady = { file, language ->
                 generatedSubtitleOrchestrator.apply(
                     file,
@@ -105,7 +126,7 @@ fun rememberPlayerSubtitleAiRuntime(
                     "Speech recognition",
                 )
             },
-            onGeneratedLibraryChanged = onGeneratedSubtitleRefreshRequested,
+            onGeneratedLibraryChanged = { latestGeneratedRefreshRequested() },
         )
     }
 
@@ -113,9 +134,9 @@ fun rememberPlayerSubtitleAiRuntime(
         SubtitleTranslationResultCoordinator(
             scope = scope,
             isDualEnabled = { dualUi.enabled },
-            getPendingDualLanguage = { pendingDualAiLanguage },
+            getPendingDualLanguage = { latestPendingDualAiLanguage },
             clearPendingDualLanguage = {
-                onPendingDualAiLanguageChanged(null)
+                latestPendingDualChanged(null)
             },
             applyDualSecondary = { uri ->
                 subtitleSyncTools.applyDualSecondaryUri(uri, "AI")
@@ -128,12 +149,12 @@ fun rememberPlayerSubtitleAiRuntime(
                 )
             },
             showTranslationSuccess = { language ->
-                onTranslationSuccessLanguageChanged(
+                latestTranslationSuccessChanged(
                     SubtitleLanguageRegistry.displayName(language)
                 )
             },
             clearTranslationSuccess = {
-                onTranslationSuccessLanguageChanged(null)
+                latestTranslationSuccessChanged(null)
             },
         )
     }
@@ -142,27 +163,27 @@ fun rememberPlayerSubtitleAiRuntime(
         SubtitleTranslationCoordinator(
             context = context,
             scope = scope,
-            getCurrentVideoPath = { currentVideoPath },
+            getCurrentVideoPath = { latestVideoPath },
             resolveActiveSubtitle = {
                 generatedSubtitleOrchestrator.resolveActiveSubtitle()
             },
-            getStatus = { subtitleTranslationStatus },
-            setStatus = onSubtitleTranslationStatusChanged,
+            getStatus = { latestTranslationStatus },
+            setStatus = { latestTranslationStatusChanged(it) },
             onSubtitleReady = { file, language ->
                 subtitleTranslationResultCoordinator.onTranslationReady(
                     file = file,
                     language = language,
                 )
             },
-            onGeneratedLibraryChanged = onGeneratedSubtitleRefreshRequested,
+            onGeneratedLibraryChanged = { latestGeneratedRefreshRequested() },
         )
     }
 
     val dualAiTranslationCoordinator = remember {
         DualAiTranslationCoordinator(
-            getPendingLanguage = { pendingDualAiLanguage },
+            getPendingLanguage = { latestPendingDualAiLanguage },
             clearPendingLanguage = {
-                onPendingDualAiLanguageChanged(null)
+                latestPendingDualChanged(null)
             },
             isDualEnabled = { dualUi.enabled },
             disableDual = { dualUi.enabled = false },
