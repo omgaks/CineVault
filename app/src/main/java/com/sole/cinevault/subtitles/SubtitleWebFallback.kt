@@ -12,6 +12,8 @@ import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -99,8 +101,10 @@ fun SubtitleFallbackSheet(
         Column(
             modifier = Modifier
                 .widthIn(min = 300.dp, max = 390.dp)
+                .heightIn(max = 560.dp)
                 .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.84f))
                 .border(1.dp, AmberCore.copy(alpha = 0.20f), RoundedCornerShape(20.dp))
+                .verticalScroll(rememberScrollState())
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
