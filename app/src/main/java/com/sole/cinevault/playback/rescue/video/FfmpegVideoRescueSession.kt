@@ -27,6 +27,9 @@ class FfmpegVideoRescueSession(val runtime: FfmpegVideoRescueRuntime) {
         state = FfmpegVideoRescueSessionState.PLAYING
     }
 
+    // Compatibility entry point already used by the rescue handoff/controller.
+    fun resume() = play()
+
     fun pause() {
         check(state == FfmpegVideoRescueSessionState.PLAYING) { "pause requires PLAYING state" }
         runtime.decoderController.pause()
