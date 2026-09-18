@@ -1066,6 +1066,15 @@ fun VideoPlayerScreen(
         // Slice 57: local/audio track popups, quick subtitle controls, track
         // selector, acquisition flow, drift sync and appearance studio now live
         // in one subtitle selection/acquisition presentation host.
+        PlayerTransientDismissLayer(
+            visible = transientUiSnapshot.needsDismissLayer,
+            onDismiss = {
+                playerMenuCloseCoordinator.closeAll()
+                chromeUi.showControls = true
+                chromeUi.showTopBar = true
+            },
+        )
+
         PlayerSubtitleSelectionAndAcquisitionSurfaces(
             context = context,
             player = exoPlayer,
@@ -1125,15 +1134,6 @@ fun VideoPlayerScreen(
 
         // Slice 59: visibility policy, top chrome, transient status pills,
         // and the transport/seek host are now one cohesive player-chrome surface.
-        PlayerTransientDismissLayer(
-            visible = transientUiSnapshot.needsDismissLayer,
-            onDismiss = {
-                playerMenuCloseCoordinator.closeAll()
-                chromeUi.showControls = true
-                chromeUi.showTopBar = true
-            },
-        )
-
         PlayerMainControlsChrome(
             context = context,
             activity = activity,
