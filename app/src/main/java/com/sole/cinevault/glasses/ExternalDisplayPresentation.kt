@@ -103,9 +103,9 @@ fun rememberExternalVideoPresentation(
     externalDisplay: ExternalDisplayInfo,
     title: String,
     ratingText: String?,
-    cinemaVoidEnabled: Boolean,
-    initialSubtitleContentLocked: Boolean,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    cinemaVoidEnabled: Boolean = false,
+    initialSubtitleContentLocked: Boolean = false,
 ): State<ExternalPresentationHandle?> {
     val context = LocalContext.current
     val handle = remember { mutableStateOf<ExternalPresentationHandle?>(null) }
