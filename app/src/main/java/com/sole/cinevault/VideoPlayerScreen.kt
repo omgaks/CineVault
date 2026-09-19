@@ -1,5 +1,8 @@
 package com.sole.cinevault
 
+import com.sole.cinevault.glasses.gestures.HeadGesture
+import com.sole.cinevault.glasses.gestures.rememberHeadGestureDetector
+
 import com.sole.cinevault.audiofx.AudioFxController
 import com.sole.cinevault.audiofx.AudioFxDashboard
 import com.sole.cinevault.library.*
@@ -12,7 +15,6 @@ import com.sole.cinevault.smb.*
 // into that package.
 import com.sole.cinevault.subtitles.*
 import com.sole.cinevault.segments.*
-import com.sole.cinevault.glasses.settings.isCinemaVoidEnabled
 
 import androidx.compose.ui.graphics.Brush
 import android.app.Activity
@@ -322,21 +324,12 @@ fun VideoPlayerScreen(
     var showAudioFxDashboard by remember { mutableStateOf(false) }
 
     var localPlayerView by remember { mutableStateOf<PlayerView?>(null) }
-
-    // G6B-1: Cinema Void is a persisted glasses preference. Read it once for
-    // this player composition and pass it through the existing glasses-mode
-    // boundary; the external Presentation already owns the true-black render.
-    val cinemaVoidEnabled = remember(context) {
-        isCinemaVoidEnabled(context)
-    }
-
     val glasses = rememberPlayerGlassesMode(
         player = exoPlayer,
         title = if (currentMediaType.equals("stream", ignoreCase = true)) currentVideo.name else cleanVideoTitle(currentVideo.path),
         ratingText = remember(currentVideo.path, episodeList) {
             buildExternalRatingText(currentVideo.path, episodeList)
         },
-        cinemaVoidEnabled = cinemaVoidEnabled,
         onBack = onBack,
         localPlayerView = localPlayerView,
         onBoundPlayerViewChanged = { studioUi.playerView = it }
@@ -345,20 +338,6 @@ fun VideoPlayerScreen(
     val showGlassesConnectedHint = glasses.showConnectedHint
     val externalPresentation = glasses.presentation
     val externalPlayerView = glasses.externalPlayerView
-
-    // G6B-2: decide calibration once for each connected external display/model.
-    // needsCalibration() already skips known-good and previously calibrated models.
-    val calibrationDisplayName = externalDisplay.displayName
-    var showGlassesCalibration by remember(
-        externalDisplay.displayId,
-        calibrationDisplayName,
-    ) {
-        mutableStateOf(
-            externalDisplay.isConnected &&
-                calibrationDisplayName != null &&
-                needsCalibration(context, calibrationDisplayName)
-        )
-    }
 
     val canDownloadExternalSubtitles = currentMediaType.equals("movie", ignoreCase = true) || currentMediaType.equals("tv", ignoreCase = true) || currentMediaType.equals("restricted", ignoreCase = true)
     val isCurrentTvShow = currentMediaType.equals("tv", ignoreCase = true)
@@ -933,18 +912,6 @@ fun VideoPlayerScreen(
             }
         )
 
-        // G6B-2: one-time per-model calibration. Saving is handled by the
-        // calibration component itself using the EXTERNAL subtitle profile.
-        if (calibrationDisplayName != null) {
-            GlassesCalibrationPrompt(
-                visible = showGlassesCalibration,
-                displayName = calibrationDisplayName,
-                isLandscape = playerLayout.isLandscape,
-                onDone = { showGlassesCalibration = false },
-                modifier = Modifier.align(Alignment.Center),
-            )
-        }
-
         val transientUiSnapshot = PlayerTransientUiSnapshot(
             audioSelector = chromeUi.showAudioSelector,
             audioFxDashboard = showAudioFxDashboard,
@@ -964,6 +931,35 @@ fun VideoPlayerScreen(
             sleepMenu = chromeUi.showSleepMenu,
             srtBrowser = chromeUi.showSrtBrowser,
         )
+
+        // G6B-4: head gestures are deliberately active only during an
+        // external-display glasses session. The detector itself refuses to
+        // use the tablet/phone's own rotation sensor, so these actions never
+        // fire from moving the controller device.
+        rememberHeadGestureDetector(
+            enabled = externalPlayerView != null,
+        ) { gesture ->
+            when (gesture) {
+                HeadGesture.NOD -> {
+                    if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                    externalPresentation?.showGestureHud(
+                        if (exoPlayer.isPlaying) "PLAY" else "PAUSE",
+                        if (exoPlayer.isPlaying) "Playing" else "Paused",
+                    )
+                }
+
+                HeadGesture.SHAKE -> {
+                    if (transientUiSnapshot.needsDismissLayer) {
+                        playerMenuCloseCoordinator.closeAll()
+                    } else {
+                        val nextVisible = !chromeUi.showControls
+                        chromeUi.showControls = nextVisible
+                        chromeUi.showTopBar = nextVisible
+                        if (nextVisible) externalPresentation?.showControls()
+                    }
+                }
+            }
+        }
 
         PlayerPlaybackGestureLayer(
             context = context,
