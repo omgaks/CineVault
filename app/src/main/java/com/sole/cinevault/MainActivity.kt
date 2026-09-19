@@ -1,6 +1,11 @@
 package com.sole.cinevault
 
 import com.sole.cinevault.library.*
+import com.sole.cinevault.glasses.rememberExternalDisplayState
+import com.sole.cinevault.glasses.tutorial.GlassesFirstRunTutorial
+import com.sole.cinevault.glasses.tutorial.GlassesGestureTutorialScreen
+import com.sole.cinevault.glasses.tutorial.hasSeenGlassesFirstRunTutorial
+import com.sole.cinevault.glasses.tutorial.markGlassesFirstRunTutorialSeen
 
 import android.os.Build
 import android.os.Bundle
@@ -367,6 +372,7 @@ sealed class Destination {
     data class NativeCollectionPage(val collectionId: Int, val collectionName: String) : Destination()
     data class CuratedCollectionPage(val collectionName: String) : Destination()
     data class RestrictedFolderPage(val folderId: String, val folderName: String, val lastPlayedVideoPath: String? = null) : Destination()
+    data object GlassesGestureTutorial : Destination()
 }
 
 private fun validLibraryVideoEntry(item: VideoWithMetadata): Boolean =
@@ -383,6 +389,18 @@ fun CineVaultApp() {
     // plain callback lambdas (onClick, onSecretChanged), not coroutines
     // themselves.
     val scope = rememberCoroutineScope()
+
+    // G6B-3: app-wide first-run glasses onboarding. This watches the same
+    // external-display state as playback, but does not alter player behavior.
+    val glassesDisplay by rememberExternalDisplayState()
+    var showGlassesFirstRunTutorial by remember {
+        mutableStateOf(false)
+    }
+    LaunchedEffect(glassesDisplay.isConnected) {
+        if (glassesDisplay.isConnected && !hasSeenGlassesFirstRunTutorial(context)) {
+            showGlassesFirstRunTutorial = true
+        }
+    }
 
     var backStack by remember { mutableStateOf<List<Destination>>(listOf(Destination.Tab(0))) }
     var libraryVideos by remember { mutableStateOf<List<VideoWithMetadata>>(emptyList()) }
@@ -612,10 +630,15 @@ fun CineVaultApp() {
                     )
                 }
 
+                Destination.GlassesGestureTutorial -> {
+                    GlassesGestureTutorialScreen(onBack = { pop() })
+                }
+
                 is Destination.Tab -> {
                     when (dest.index) {
                         3 -> SettingsScreen(
                             onOpenScanSources = { switchTab(1) },
+                            onOpenGlassesGestureTutorial = { push(Destination.GlassesGestureTutorial) },
                             // FIX: previously just switched to the Library tab and
                             // discarded the typed URL entirely — Play did nothing.
                             // Now it actually pushes a Player destination for it.
@@ -676,4 +699,12 @@ fun CineVaultApp() {
             }
         }
     }
+
+    GlassesFirstRunTutorial(
+        visible = showGlassesFirstRunTutorial,
+        onDismiss = {
+            markGlassesFirstRunTutorialSeen(context)
+            showGlassesFirstRunTutorial = false
+        },
+    )
 }
