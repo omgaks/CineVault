@@ -346,6 +346,20 @@ fun VideoPlayerScreen(
     val externalPresentation = glasses.presentation
     val externalPlayerView = glasses.externalPlayerView
 
+    // G6B-2: decide calibration once for each connected external display/model.
+    // needsCalibration() already skips known-good and previously calibrated models.
+    val calibrationDisplayName = externalDisplay.displayName
+    var showGlassesCalibration by remember(
+        externalDisplay.displayId,
+        calibrationDisplayName,
+    ) {
+        mutableStateOf(
+            externalDisplay.isConnected &&
+                calibrationDisplayName != null &&
+                needsCalibration(context, calibrationDisplayName)
+        )
+    }
+
     val canDownloadExternalSubtitles = currentMediaType.equals("movie", ignoreCase = true) || currentMediaType.equals("tv", ignoreCase = true) || currentMediaType.equals("restricted", ignoreCase = true)
     val isCurrentTvShow = currentMediaType.equals("tv", ignoreCase = true)
     val isStreamMedia = currentMediaType.equals("stream", ignoreCase = true)
@@ -918,6 +932,18 @@ fun VideoPlayerScreen(
                 externalPresentation?.updateResizeMode(resizeMode)
             }
         )
+
+        // G6B-2: one-time per-model calibration. Saving is handled by the
+        // calibration component itself using the EXTERNAL subtitle profile.
+        if (calibrationDisplayName != null) {
+            GlassesCalibrationPrompt(
+                visible = showGlassesCalibration,
+                displayName = calibrationDisplayName,
+                isLandscape = playerLayout.isLandscape,
+                onDone = { showGlassesCalibration = false },
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
 
         val transientUiSnapshot = PlayerTransientUiSnapshot(
             audioSelector = chromeUi.showAudioSelector,
