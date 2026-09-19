@@ -1,4 +1,4 @@
-package com.sole.cinevault
+package com.sole.cinevault.glasses.tutorial
 
 import android.content.Context
 import androidx.compose.animation.AnimatedContent
