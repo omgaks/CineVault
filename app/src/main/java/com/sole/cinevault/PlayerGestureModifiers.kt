@@ -18,6 +18,7 @@ import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
+import com.sole.cinevault.glasses.gestures.GlassesGesturePolicy
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -191,7 +192,15 @@ fun Modifier.glassesTouchpadGestures(
     onPinchZoomPan: (Float, Offset) -> Unit,
     onEmergencyReturnToTablet: () -> Unit,
     onGestureEnd: () -> Unit,
-): Modifier = this
+): Modifier {
+    // Shared between the two pointerInput blocks below: written live by the
+    // five-finger/pinch detector (it's the only one that ever sees the true
+    // pointer count), read by the seek/drag detector so a second finger
+    // joining always wins over an already-armed seek. See the fix comment
+    // on multiFingerGestureActive's read site, in the seek onDrag block.
+    var multiFingerGestureActive = false
+
+    return this
     .onGloballyPositioned { coordinates ->
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val b = coordinates.boundsInWindow()
@@ -216,7 +225,7 @@ fun Modifier.glassesTouchpadGestures(
         // the old check only compared X-travel to Y-travel, never to an
         // absolute minimum. Mirrors the 48dp threshold the edge-swipe
         // next/previous gesture already uses below.
-        val seekArmThresholdPx = 32.dp.toPx()
+        val seekArmThresholdPx = GlassesGesturePolicy.SEEK_ARM_THRESHOLD_DP.dp.toPx()
         var startX = 0f
         var totalX = 0f
         var totalY = 0f
@@ -225,13 +234,13 @@ fun Modifier.glassesTouchpadGestures(
             onDragStart = { startX = it.x; totalX = 0f; totalY = 0f; seeking = false },
             onDragEnd = {
                 val w = size.width.toFloat()
-                val horizontal = abs(totalX) > abs(totalY) * 1.35f && abs(totalX) > 48.dp.toPx()
+                val horizontal = abs(totalX) > abs(totalY) * 1.35f && abs(totalX) > GlassesGesturePolicy.EDGE_SWIPE_THRESHOLD_DP.dp.toPx()
                 when {
-                    startX < w * 0.10f && horizontal && totalX > 0f && canChangeEpisode() -> {
+                    GlassesGesturePolicy.isLeftEdge(startX, w) && horizontal && totalX > 0f && canChangeEpisode() -> {
                         view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
                         onPrevious()
                     }
-                    startX > w * 0.90f && horizontal && totalX < 0f && canChangeEpisode() -> {
+                    GlassesGesturePolicy.isRightEdge(startX, w) && horizontal && totalX < 0f && canChangeEpisode() -> {
                         view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
                         onNext()
                     }
@@ -241,19 +250,40 @@ fun Modifier.glassesTouchpadGestures(
             },
             onDragCancel = { if (seeking) onSeekEnd(); onGestureEnd() },
             onDrag = { change, drag ->
+                // BUG FIX: detectDragGestures only ever sees the single
+                // pointer it's tracking — it has no idea a second, third,
+                // fourth or fifth finger has also landed, because that's
+                // handled entirely by the separate awaitEachGesture block
+                // below. In a dim/near-black glasses session, the finger
+                // that goes down first as part of a five-finger emergency
+                // spread (or an ordinary two-finger pinch) almost always
+                // drifts sideways a little as the hand spreads — enough to
+                // arm this detector's own seek, which then kept consuming
+                // drag deltas and scrubbing playback AT THE SAME TIME as
+                // the emergency/pinch gesture was recognized elsewhere.
+                // multiFingerGestureActive (below) is live pointer-count
+                // state shared from that block; the instant it goes true,
+                // seeking here backs off instead of continuing to fight it.
+                if (multiFingerGestureActive) {
+                    if (seeking) {
+                        seeking = false
+                        onSeekEnd()
+                    }
+                    return@detectDragGestures
+                }
                 totalX += drag.x; totalY += drag.y
                 val w = size.width.toFloat()
                 val vertical = abs(totalY) > abs(totalX) * 1.15f
                 val horizontal = abs(totalX) > abs(totalY) * 1.15f
                 when {
-                    startX < w * 0.10f || startX > w * 0.90f -> Unit
-                    startX < w / 3f && vertical -> { change.consume(); onBrightnessDrag(drag.y) }
-                    startX > w * 2f / 3f && vertical -> { change.consume(); onVolumeDrag(drag.y) }
+                    GlassesGesturePolicy.isLeftEdge(startX, w) || GlassesGesturePolicy.isRightEdge(startX, w) -> Unit
+                    GlassesGesturePolicy.isBrightnessZone(startX, w) && vertical -> { change.consume(); onBrightnessDrag(drag.y) }
+                    GlassesGesturePolicy.isVolumeZone(startX, w) && vertical -> { change.consume(); onVolumeDrag(drag.y) }
                     // Visible controls turn the centre into a true pointer
                     // surface. This check must precede direct seeking or a
                     // normal attempt to reach a button scrubs the movie.
                     controlsVisible() -> { change.consume(); onPointerMove(drag) }
-                    startX in (w / 3f)..(w * 2f / 3f) && horizontal &&
+                    GlassesGesturePolicy.isCenterZone(startX, w) && horizontal &&
                         (seeking || abs(totalX) > seekArmThresholdPx) -> {
                         change.consume()
                         if (!seeking) {
@@ -277,13 +307,17 @@ fun Modifier.glassesTouchpadGestures(
             var emergencyTriggered = false
             do {
                 val event = awaitPointerEvent()
-                if (event.changes.count { it.pressed } >= 5) {
+                val pressedCount = event.changes.count { it.pressed }
+                // Written every frame this gesture is live, read by the
+                // sibling seek/drag detector above — see the comment there.
+                multiFingerGestureActive = pressedCount >= 2
+                if (pressedCount >= 5) {
                     fiveFingerSpread *= event.calculateZoom()
                     event.changes.forEach { if (it.positionChanged()) it.consume() }
                     // A deliberate 35% five-finger spread is the emergency
                     // escape hatch. Two-finger viewport zoom can never enter
                     // this branch, and the one-shot guard prevents repeats.
-                    if (!emergencyTriggered && fiveFingerSpread >= 1.35f) {
+                    if (!emergencyTriggered && fiveFingerSpread >= GlassesGesturePolicy.EMERGENCY_SPREAD_SCALE) {
                         emergencyTriggered = true
                         onEmergencyReturnToTablet()
                     }
@@ -295,8 +329,10 @@ fun Modifier.glassesTouchpadGestures(
                     }
                 }
             } while (event.changes.any { it.pressed })
+            multiFingerGestureActive = false
         }
     }
+}
 
 /**
  * Opt-in subtitle gesture zone: pinch to resize subtitle text, horizontal
