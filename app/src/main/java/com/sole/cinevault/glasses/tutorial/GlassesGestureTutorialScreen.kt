@@ -1,7 +1,4 @@
-package com.sole.cinevault.glasses.tutorial
-
-import com.sole.cinevault.glasses.gestures.HeadGesture
-import com.sole.cinevault.glasses.gestures.rememberHeadGestureDetector
+package com.sole.cinevault
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -98,7 +95,7 @@ fun GlassesGestureTutorialScreen(onBack: () -> Unit) {
                                 .background(AmberCore.copy(alpha = if (lastGesture != null) 0.35f else 0.12f)),
                             contentAlignment = Alignment.Center,
                         ) {
-                            androidx.compose.animation.AnimatedVisibility(
+                            AnimatedVisibility(
                                 visible = lastGesture != null,
                                 enter = fadeIn(tween(120)),
                                 exit = fadeOut(tween(400)),
