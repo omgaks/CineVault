@@ -1,4 +1,4 @@
-package com.sole.cinevault.glasses.gestures
+package com.sole.cinevault
 
 import android.content.Context
 import android.hardware.Sensor
