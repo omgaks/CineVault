@@ -321,50 +321,18 @@ fun VideoPlayerScreen(
     var showAudioFxDashboard by remember { mutableStateOf(false) }
 
     var localPlayerView by remember { mutableStateOf<PlayerView?>(null) }
-    // Read once per player-screen entry, not observed live — toggling in
-    // Settings takes effect the next time a video is opened, which keeps
-    // this a plain remembered read instead of a global settings listener.
-    var cinemaVoidEnabled by remember { mutableStateOf(isCinemaVoidEnabled(context)) }
-
     val glasses = rememberPlayerGlassesMode(
         player = exoPlayer,
         title = if (currentMediaType.equals("stream", ignoreCase = true)) currentVideo.name else cleanVideoTitle(currentVideo.path),
         ratingText = remember(currentVideo.path, episodeList) {
             buildExternalRatingText(currentVideo.path, episodeList)
         },
-        cinemaVoidEnabled = cinemaVoidEnabled,
-        initialSubtitleContentLocked = coreUi.behaviorPrefs.glassesSubtitleContentLocked,
         onBack = onBack,
         localPlayerView = localPlayerView,
         onBoundPlayerViewChanged = { studioUi.playerView = it }
     )
-    // The toggle in Sub Studio's Settings tab can be flipped live, mid-
-    // playback — this is what actually carries that change to the
-    // presentation, animated rather than snapped (see
-    // setSubtitleContentLocked in ExternalDisplayPresentation.kt).
-    LaunchedEffect(coreUi.behaviorPrefs.glassesSubtitleContentLocked, glasses.presentation) {
-        glasses.presentation?.setSubtitleContentLocked(coreUi.behaviorPrefs.glassesSubtitleContentLocked)
-    }
     val externalDisplay = glasses.display
     val showGlassesConnectedHint = glasses.showConnectedHint
-    // Phase 7: shown once per unconfirmed glasses model — see
-    // GlassesCalibrationPrefs.kt for how "unconfirmed" is tracked.
-    var showCalibration by remember(externalDisplay.displayId) {
-        mutableStateOf(
-            externalDisplay.isConnected && needsCalibration(context, externalDisplay.displayName)
-        )
-    }
-    // Cinema Void auto-suggest: fires once, ever, the first time glasses
-    // connect while it's still off and unseen — never again after that,
-    // regardless of how many more times glasses connect.
-    val glassesConnectedHintText = remember(externalDisplay.isConnected) {
-        if (externalDisplay.isConnected && !cinemaVoidEnabled && !hasCinemaVoidBeenSuggested(context)) {
-            markCinemaVoidSuggested(context)
-            "External display connected — try Cinema Void (true black) in Settings"
-        } else {
-            "External display connected — glasses subtitle profile"
-        }
-    }
     val externalPresentation = glasses.presentation
     val externalPlayerView = glasses.externalPlayerView
 
@@ -929,8 +897,6 @@ fun VideoPlayerScreen(
             player = exoPlayer,
             externalDisplayActive = externalPlayerView != null,
             isZoomMode = gestureUi.isZoomMode,
-            sbs3DEnabled = gestureUi.sbs3DEnabled,
-            sbs3DToggleTick = gestureUi.sbs3DToggleTick,
             videoScale = gestureUi.videoScale,
             videoOffsetX = gestureUi.videoOffsetX,
             videoOffsetY = gestureUi.videoOffsetY,
@@ -942,36 +908,6 @@ fun VideoPlayerScreen(
                 externalPresentation?.updateResizeMode(resizeMode)
             }
         )
-
-        // Phase 6: the tablet touchpad skin (TabletRemoteSkin) is already
-        // wired in further below, right after PlayerAuxiliarySurfaces —
-        // no duplicate needed here.
-
-        externalDisplay.displayName?.let { name ->
-            GlassesCalibrationPrompt(
-                visible = showCalibration && externalPlayerView != null,
-                displayName = name,
-                isLandscape = playerLayout.isLandscape,
-                onDone = { showCalibration = false },
-                modifier = Modifier.align(Alignment.Center),
-            )
-        }
-
-        // Phase 8 — best-effort, per the doc: silently does nothing if
-        // this model exposes no external orientation sensor. Nod = the
-        // natural "confirm" (toggle play/pause); shake = "dismiss/cancel"
-        // (toggle controls visibility). Never active outside glasses
-        // playback.
-        rememberHeadGestureDetector(enabled = externalPlayerView != null) { gesture ->
-            when (gesture) {
-                HeadGesture.NOD -> {
-                    if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
-                }
-                HeadGesture.SHAKE -> {
-                    chromeUi.showControls = !chromeUi.showControls
-                }
-            }
-        }
 
         val transientUiSnapshot = PlayerTransientUiSnapshot(
             audioSelector = chromeUi.showAudioSelector,
@@ -1076,18 +1012,6 @@ fun VideoPlayerScreen(
             },
         )
 
-        // Phase 6 — replaces the blank dark screen the tablet would
-        // otherwise show while glasses own the actual video (see the
-        // file's own doc comment for why this is needed at all).
-        TabletRemoteSkin(
-            visible = externalPlayerView != null,
-            posterUrl = currentMeta?.posterUrl,
-            title = if (isStreamMedia) currentVideo.name else cleanVideoTitle(currentVideo.path),
-            onSubtitleQuickAction = {
-                externalPresentation?.openQuickSubtitles()
-            },
-        )
-
         // Slice 64: auxiliary playback surfaces are now hosted together:
         // subtitle gestures, transient playback/status overlays and speed/sleep menus.
         PlayerAuxiliarySurfaces(
@@ -1107,7 +1031,6 @@ fun VideoPlayerScreen(
             volumePercent = chromeUi.volumePercent,
             edgeSwipeHint = gestureUi.edgeSwipeHint,
             showGlassesConnectedHint = showGlassesConnectedHint,
-            glassesConnectedHintText = glassesConnectedHintText,
             showBufferingSpinner = playbackHealth.showBufferingSpinner,
             stuckBufferingHint = playbackHealth.stuckBufferingHint,
             playerErrorMessage = playbackHealth.playerErrorMessage,
@@ -1248,14 +1171,6 @@ fun VideoPlayerScreen(
             autoSubtitleStatus = autoSubtitleFetch.status,
             playbackSpeed = playbackSpeed,
             sleepTimerActive = sleepTimerActive,
-            sbs3DEnabled = gestureUi.sbs3DEnabled,
-            onSbs3DClick = {
-                gestureUi.sbs3DEnabled = !gestureUi.sbs3DEnabled
-                // Entering SBS 3D always drops zoom mode — see the resize
-                // mode comment in PlayerVideoSurface.kt for why.
-                if (gestureUi.sbs3DEnabled) gestureUi.isZoomMode = false
-                gestureUi.sbs3DToggleTick++
-            },
             topClusterPaddingTop = playerLayout.topClusterPaddingTop,
             sidePadding = playerLayout.sidePadding,
             topIconSize = playerLayout.topIconSize,
