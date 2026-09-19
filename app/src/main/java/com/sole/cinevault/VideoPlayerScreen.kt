@@ -12,6 +12,7 @@ import com.sole.cinevault.smb.*
 // into that package.
 import com.sole.cinevault.subtitles.*
 import com.sole.cinevault.segments.*
+import com.sole.cinevault.glasses.settings.isCinemaVoidEnabled
 
 import androidx.compose.ui.graphics.Brush
 import android.app.Activity
@@ -321,12 +322,21 @@ fun VideoPlayerScreen(
     var showAudioFxDashboard by remember { mutableStateOf(false) }
 
     var localPlayerView by remember { mutableStateOf<PlayerView?>(null) }
+
+    // G6B-1: Cinema Void is a persisted glasses preference. Read it once for
+    // this player composition and pass it through the existing glasses-mode
+    // boundary; the external Presentation already owns the true-black render.
+    val cinemaVoidEnabled = remember(context) {
+        isCinemaVoidEnabled(context)
+    }
+
     val glasses = rememberPlayerGlassesMode(
         player = exoPlayer,
         title = if (currentMediaType.equals("stream", ignoreCase = true)) currentVideo.name else cleanVideoTitle(currentVideo.path),
         ratingText = remember(currentVideo.path, episodeList) {
             buildExternalRatingText(currentVideo.path, episodeList)
         },
+        cinemaVoidEnabled = cinemaVoidEnabled,
         onBack = onBack,
         localPlayerView = localPlayerView,
         onBoundPlayerViewChanged = { studioUi.playerView = it }
