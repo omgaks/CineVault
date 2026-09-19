@@ -45,6 +45,8 @@ fun rememberPlayerGlassesMode(
     player: Player,
     title: String,
     ratingText: String?,
+    cinemaVoidEnabled: Boolean,
+    initialSubtitleContentLocked: Boolean,
     onBack: () -> Unit,
     localPlayerView: PlayerView?,
     onBoundPlayerViewChanged: (PlayerView?) -> Unit,
@@ -104,6 +106,8 @@ fun rememberPlayerGlassesMode(
         externalDisplay = externalDisplay,
         title = title,
         ratingText = ratingText,
+        cinemaVoidEnabled = cinemaVoidEnabled,
+        initialSubtitleContentLocked = initialSubtitleContentLocked,
         onBack = onBack,
     )
     val externalPlayerView = if (sessionDisabled) null else presentation?.playerView
