@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Switch
@@ -79,6 +80,7 @@ private val AccentStream = Color(0xFFC792FF)
 private val AccentSupport = Color(0xFFFF6E8C)
 private val AccentAbout = Color(0xFFE8C77A)
 private val AccentPrivacy = Color(0xFF8FD9A8)
+private val AccentGlasses = Color(0xFF8FA8FF)
 
 // Distinct color per folder pill — cycled by position so every added folder
 // reads as visually its own thing rather than a uniform list.
@@ -115,6 +117,7 @@ fun SettingsScreen(
     // removing it would also require an edit to MainActivity.kt's call site
     // for no real benefit.
     onOpenScanSources: () -> Unit,
+    onOpenGestureTutorial: () -> Unit,
     // FIX: previously took no argument, so the URL typed into the Stream
     // dialog was captured then silently discarded — Play did nothing.
     // Now the URL is actually passed through to whoever handles playback.
@@ -271,6 +274,44 @@ fun SettingsScreen(
                         colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
                     )
                 }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Glasses Mode — Cinema Void: true-black, zero-glow OLED
+            // profile for the glasses' own external display during
+            // playback. Read fresh on entry, saved immediately on toggle,
+            // same as every other setting on this screen — takes effect
+            // the next time a video is opened with glasses connected.
+            GlassSectionCard(title = "Glasses Mode", subtitle = "Tune how playback looks on connected AR glasses.", icon = Icons.Rounded.Tv, accent = AccentGlasses) {
+                var cinemaVoidEnabled by remember { mutableStateOf(isCinemaVoidEnabled(context)) }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "Cinema Void", color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "True black, no ambient glow, on the glasses' display during playback — for micro-OLED panels where even a faint glow shows as a haze.",
+                            color = TextMuted, fontSize = 12.sp, lineHeight = 17.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Switch(
+                        checked = cinemaVoidEnabled,
+                        onCheckedChange = {
+                            cinemaVoidEnabled = it
+                            setCinemaVoidEnabled(context, it)
+                        },
+                        colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                GlassActionRow(
+                    icon = Icons.Rounded.Tv,
+                    iconTint = AccentGlasses,
+                    title = "Head gesture tutorial",
+                    subtitle = "Practice nod/shake — tells you plainly if this pair doesn't support it.",
+                    action = "TRY"
+                ) { onOpenGestureTutorial() }
             }
 
             Spacer(modifier = Modifier.height(18.dp))

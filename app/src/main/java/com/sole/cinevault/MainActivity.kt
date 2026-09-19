@@ -11,7 +11,10 @@ import android.content.res.Configuration
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -35,6 +38,10 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.ui.theme.CineVaultTheme
+import com.sole.cinevault.glasses.AppWideGlassesPointer
+import com.sole.cinevault.glasses.appWideGlassesInput
+import com.sole.cinevault.glasses.rememberAppWidePointerState
+import com.sole.cinevault.glasses.rememberExternalDisplayState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -367,6 +374,7 @@ sealed class Destination {
     data class NativeCollectionPage(val collectionId: Int, val collectionName: String) : Destination()
     data class CuratedCollectionPage(val collectionName: String) : Destination()
     data class RestrictedFolderPage(val folderId: String, val folderName: String, val lastPlayedVideoPath: String? = null) : Destination()
+    object GestureTutorial : Destination()
 }
 
 private fun validLibraryVideoEntry(item: VideoWithMetadata): Boolean =
@@ -472,6 +480,28 @@ fun CineVaultApp() {
         }
     }
 
+    // BUG FIX: the halo pointer on Home/Library/Search/Settings moved but
+    // never clicked anything. AppWideGlassesPointer.kt (glasses package)
+    // already had a fully-built, vendor-agnostic click-settle fix for this
+    // — it was just never actually wired into the app's own screens, so
+    // outside the player, touches never reached this modifier at all.
+    // Wiring it here, on the same Box the app already uses for
+    // Home/Library/Search/Settings/Downloads. Disabled on the player screen
+    // itself, which owns its own Presentation-based pointer
+    // (ExternalDisplayPresentation.kt) — the two must never both be live.
+    val externalDisplay by rememberExternalDisplayState()
+    var glassesSessionDisabled by remember(externalDisplay.displayId) { mutableStateOf(false) }
+    val glassesPointerState = rememberAppWidePointerState(sessionKey = externalDisplay.displayId)
+    val useAppWideGlassesPointer = externalDisplay.isConnected && !glassesSessionDisabled && !isPlayerActive
+
+    // Phase 9 — shown once ever, the very first time glasses connect,
+    // app-wide rather than tied to the player (this is about the halo
+    // pointer and emergency gesture, both of which work outside playback
+    // too). See GlassesFirstRunTutorial.kt.
+    var showFirstRunTutorial by remember(externalDisplay.displayId) {
+        mutableStateOf(externalDisplay.isConnected && !hasSeenGlassesFirstRunTutorial(context))
+    }
+
     Scaffold(
         containerColor = Color(0xFF080808),
         bottomBar = {
@@ -485,6 +515,18 @@ fun CineVaultApp() {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .let { base ->
+                    if (useAppWideGlassesPointer) {
+                        base.appWideGlassesInput(
+                            activity = activity,
+                            sessionKey = externalDisplay.displayId,
+                            state = glassesPointerState,
+                            onEmergencyReturnToTablet = { glassesSessionDisabled = true }
+                        )
+                    } else {
+                        base
+                    }
+                }
         ) {
             when (val dest = current) {
                 is Destination.Player -> {
@@ -612,10 +654,15 @@ fun CineVaultApp() {
                     )
                 }
 
+                is Destination.GestureTutorial -> {
+                    GlassesGestureTutorialScreen(onBack = { pop() })
+                }
+
                 is Destination.Tab -> {
                     when (dest.index) {
                         3 -> SettingsScreen(
                             onOpenScanSources = { switchTab(1) },
+                            onOpenGestureTutorial = { push(Destination.GestureTutorial) },
                             // FIX: previously just switched to the Library tab and
                             // discarded the typed URL entirely — Play did nothing.
                             // Now it actually pushes a Player destination for it.
@@ -674,6 +721,28 @@ fun CineVaultApp() {
                     }
                 }
             }
+
+            // Draw-only halo — input for it is already attached on this
+            // Box above. Sits last so it paints on top of whichever screen
+            // is current. Cross-fades in/out (motion pass) instead of
+            // snapping into existence the instant glasses connect.
+            AnimatedVisibility(
+                visible = useAppWideGlassesPointer,
+                enter = fadeIn(tween(durationMillis = 250)),
+                exit = fadeOut(tween(durationMillis = 250))
+            ) {
+                AppWideGlassesPointer(glassesPointerState)
+            }
+
+            // Sits above even the halo — a modal, so it should be the
+            // very last thing composed here.
+            GlassesFirstRunTutorial(
+                visible = showFirstRunTutorial,
+                onDismiss = {
+                    showFirstRunTutorial = false
+                    markGlassesFirstRunTutorialSeen(context)
+                }
+            )
         }
     }
 }
