@@ -71,6 +71,7 @@ class ExternalPresentationHandle internal constructor(
         presentation.updateSeekPreview(bitmap, positionMs, visible)
     fun applyViewportTransform(zoom: Float, panX: Float, panY: Float) =
         presentation.applyViewportTransform(zoom, panX, panY)
+    fun setSubtitleContentLocked(locked: Boolean) = presentation.setSubtitleContentLocked(locked)
     fun updateResizeMode(resizeMode: Int) { playerView.resizeMode = resizeMode }
     fun showGestureHud(label: String, value: String? = null, progress: Int? = null) =
         presentation.showGestureHud(label, value, progress)
@@ -102,12 +103,14 @@ fun rememberExternalVideoPresentation(
     externalDisplay: ExternalDisplayInfo,
     title: String,
     ratingText: String?,
+    cinemaVoidEnabled: Boolean,
+    initialSubtitleContentLocked: Boolean,
     onBack: () -> Unit
 ): State<ExternalPresentationHandle?> {
     val context = LocalContext.current
     val handle = remember { mutableStateOf<ExternalPresentationHandle?>(null) }
 
-    DisposableEffect(context, player, externalDisplay.displayId, title, ratingText) {
+    DisposableEffect(context, player, externalDisplay.displayId, title, ratingText, cinemaVoidEnabled) {
         val display = externalDisplay.displayId?.let { findDisplay(context, it) }
         if (display == null) {
             handle.value = null
@@ -119,6 +122,8 @@ fun rememberExternalVideoPresentation(
                 player = player,
                 title = title,
                 ratingText = ratingText,
+                cinemaVoidEnabled = cinemaVoidEnabled,
+                initialSubtitleContentLocked = initialSubtitleContentLocked,
                 onBack = onBack,
                 onReady = { handle.value = it },
                 onDismissed = { handle.value = null }
@@ -153,6 +158,18 @@ private fun findDisplay(context: Context, displayId: Int): Display? {
         .firstOrNull { it.displayId == displayId && it.isValid }
 }
 
+// Subtitle lock modes (Phase 4 — see the "content-locked" section of the
+// Glasses Mode roadmap doc for why this replaced the earlier fixed 0.75
+// parallax approximation from the motion pass). This value is how much of
+// the video's viewport pan/zoom the subtitle layer COUNTERS:
+// 1f = screen-locked (fully countered — subtitle never moves, stays
+//      pinned to a fixed spot regardless of where the panel is)
+// 0f = content-locked (no counter — subtitle moves in full lockstep with
+//      the panel, staying visually attached beneath the picture)
+private const val SCREEN_LOCKED_COUNTER = 1f
+private const val CONTENT_LOCKED_COUNTER = 0f
+private const val SUBTITLE_LOCK_TRANSITION_MS = 250L
+
 @UnstableApi
 internal class CineVaultVideoPresentation(
     outerContext: Context,
@@ -160,6 +177,8 @@ internal class CineVaultVideoPresentation(
     private val player: Player,
     private val title: String,
     private val ratingText: String?,
+    private val cinemaVoidEnabled: Boolean,
+    initialSubtitleContentLocked: Boolean,
     private val onBack: () -> Unit,
     private val onReady: (ExternalPresentationHandle) -> Unit,
     private val onDismissed: () -> Unit
@@ -208,6 +227,11 @@ internal class CineVaultVideoPresentation(
     private var viewportScale = 1f
     private var viewportOffsetX = 0f
     private var viewportOffsetY = 0f
+    // Starts at the persisted preference's target counter value — no
+    // transition animation on first show, only on a later live toggle.
+    private var subtitleParallaxCounter =
+        if (initialSubtitleContentLocked) CONTENT_LOCKED_COUNTER else SCREEN_LOCKED_COUNTER
+    private var subtitleLockAnimator: android.animation.ValueAnimator? = null
 
     private val hideRunnable = Runnable { hideControls() }
     private val hideHudRunnable = Runnable { gestureHud?.visibility = View.GONE }
@@ -246,7 +270,9 @@ internal class CineVaultVideoPresentation(
             View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE
 
-        val container = FrameLayout(context).apply { setBackgroundColor(spaceBlack) }
+        val container = FrameLayout(context).apply {
+            setBackgroundColor(if (cinemaVoidEnabled) Color.BLACK else spaceBlack)
+        }
         // FIX: the real app's every screen has SpaceGlassBackground() —
         // two soft, blurred radial amber glows, top-left and bottom-
         // right, described in its own comment as "like light spilling
@@ -259,7 +285,12 @@ internal class CineVaultVideoPresentation(
         // it fills the screen — the same relationship the real
         // background effect has with foreground content elsewhere in
         // the app.
-        container.addView(buildAmbientGlow())
+        // Cinema Void is the deliberate exception: the whole point is
+        // zero glow on a burn-in-sensitive micro-OLED panel, so this is
+        // skipped entirely rather than dimmed.
+        if (!cinemaVoidEnabled) {
+            container.addView(buildAmbientGlow())
+        }
         // A TextureView is deliberately used on the secondary display.
         // Several USB-C display stacks accepted subtitle/canvas output from
         // PlayerView while leaving its default SurfaceView black — confirmed
@@ -902,6 +933,53 @@ internal class CineVaultVideoPresentation(
         video.scaleY = viewportScale
         video.translationX = viewportOffsetX
         video.translationY = viewportOffsetY
+        updateSubtitlePosition()
+    }
+
+    // Media3's SubtitleView lives INSIDE PlayerView, so it already
+    // inherits `video`'s full scale/translation for free — without
+    // countering that here it would always zoom and pan in exact lockstep
+    // with the picture (content-locked), with no way to pin it in place.
+    // subtitleParallaxCounter is 1f (screen-locked) or 0f (content-locked),
+    // or a value animating between the two on a live toggle — see
+    // setSubtitleContentLocked.
+    private fun updateSubtitlePosition() {
+        val video = playerView ?: return
+        video.subtitleView?.let { subtitles ->
+            subtitles.translationX = -viewportOffsetX * subtitleParallaxCounter
+            subtitles.translationY = -viewportOffsetY * subtitleParallaxCounter
+
+            // The SubtitleView is a child of PlayerView, so it inherits the
+            // viewport scale too. Screen-locked mode fully counters that scale;
+            // content-locked mode leaves it untouched so subtitles genuinely
+            // travel AND scale with the virtual video panel. Intermediate
+            // values keep the live 250 ms transition smooth.
+            val inverseViewportScale = 1f / viewportScale
+            val subtitleCounterScale =
+                1f + (inverseViewportScale - 1f) * subtitleParallaxCounter
+            subtitles.scaleX = subtitleCounterScale
+            subtitles.scaleY = subtitleCounterScale
+        }
+    }
+
+    // Live toggle — deliberately NOT a Presentation recreate (unlike
+    // Cinema Void): this is something a person may flip back and forth
+    // while actually testing it out mid-playback, so it animates the
+    // subtitle sliding from its current position to the new one over
+    // SUBTITLE_LOCK_TRANSITION_MS, per the roadmap doc's "sliding, not
+    // snapping" spec, rather than tearing anything down.
+    fun setSubtitleContentLocked(locked: Boolean) {
+        val target = if (locked) CONTENT_LOCKED_COUNTER else SCREEN_LOCKED_COUNTER
+        if (target == subtitleParallaxCounter) return
+        subtitleLockAnimator?.cancel()
+        subtitleLockAnimator = android.animation.ValueAnimator.ofFloat(subtitleParallaxCounter, target).apply {
+            duration = SUBTITLE_LOCK_TRANSITION_MS
+            addUpdateListener {
+                subtitleParallaxCounter = it.animatedValue as Float
+                updateSubtitlePosition()
+            }
+            start()
+        }
     }
 
     fun movePointer(deltaX: Float, deltaY: Float) {
@@ -1011,6 +1089,7 @@ internal class CineVaultVideoPresentation(
 
     fun detachPlayer() {
         handler.removeCallbacksAndMessages(null)
+        subtitleLockAnimator?.cancel()
         playerView?.player = null
         playerView = null
     }
