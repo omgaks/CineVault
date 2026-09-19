@@ -34,6 +34,14 @@ data class SubtitleBehaviorPrefs(
     // with the existing brightness/volume/seek/zoom gestures already
     // living there, so the person has to deliberately choose this on.
     val enableSubtitleGestures: Boolean = false,
+    // Glasses mode only — no effect anywhere else. Off (screen-locked,
+    // the default) keeps the subtitle pinned to a fixed spot in view no
+    // matter how the virtual screen is placed or zoomed (Phase 5). On
+    // (content-locked) makes it travel with the video panel instead,
+    // staying visually attached beneath the picture. There's no true
+    // "head-locked" option — that would need head-orientation data this
+    // app doesn't have; see the Glasses Mode roadmap doc for why.
+    val glassesSubtitleContentLocked: Boolean = false,
     // FIX: previously lived only as remember-scoped Compose state in
     // VideoPlayerScreen.kt (DualSubtitleState.secondaryLanguage) —
     // resetting to the "hi" default every time the player screen
@@ -59,6 +67,7 @@ fun loadSubtitleBehaviorPrefs(context: Context): SubtitleBehaviorPrefs {
         rememberLastSelectedLanguage = prefs.getBoolean("rememberLastLanguage", true),
         disableWhenAudioMatchesPreferred = prefs.getBoolean("disableWhenAudioMatches", false),
         enableSubtitleGestures = prefs.getBoolean("enableSubtitleGestures", false),
+        glassesSubtitleContentLocked = prefs.getBoolean("glassesSubtitleContentLocked", false),
         dualSecondaryLanguage = prefs.getString("dualSecondaryLanguage", "hi") ?: "hi"
     )
 }
@@ -74,6 +83,7 @@ fun saveSubtitleBehaviorPrefs(context: Context, prefs: SubtitleBehaviorPrefs) {
         .putBoolean("rememberLastLanguage", prefs.rememberLastSelectedLanguage)
         .putBoolean("disableWhenAudioMatches", prefs.disableWhenAudioMatchesPreferred)
         .putBoolean("enableSubtitleGestures", prefs.enableSubtitleGestures)
+        .putBoolean("glassesSubtitleContentLocked", prefs.glassesSubtitleContentLocked)
         .putString("dualSecondaryLanguage", prefs.dualSecondaryLanguage)
         .apply()
 }

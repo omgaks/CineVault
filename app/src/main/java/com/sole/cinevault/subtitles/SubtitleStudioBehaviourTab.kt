@@ -154,6 +154,14 @@ internal fun StudioBehaviourTab(
         )
 
         StudioDivider()
+        BehaviourSectionPill("Glasses mode")
+        StudioToggleRow(label = "Content-locked subtitles (travel with the video panel)", checked = prefs.glassesSubtitleContentLocked) { onChange(prefs.copy(glassesSubtitleContentLocked = it)) }
+        Text(
+            text = "Off (screen-locked) keeps subtitles pinned to a fixed spot no matter where the virtual screen is placed or zoomed. On (content-locked) makes them travel with the video panel instead, staying attached beneath the picture. Only affects glasses playback.",
+            color = TextMuted, fontSize = 9.5.sp, lineHeight = 13.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+
+        StudioDivider()
         BehaviourSectionPill("Subtitle cleaning")
         Text(
             text = "Applies to downloaded and local .srt files only — embedded tracks can't be rewritten this way. SDH users who want the sound descriptions should leave the first toggle off.",
