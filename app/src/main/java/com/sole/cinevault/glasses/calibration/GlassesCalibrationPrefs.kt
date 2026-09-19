@@ -1,4 +1,4 @@
-package com.sole.cinevault.glasses.calibration
+package com.sole.cinevault
 
 import android.content.Context
 
@@ -30,16 +30,17 @@ fun bundledFontScale(displayName: String?): Float? {
 // No reported name at all → skip calibration rather than nag forever with
 // nothing to key a saved answer against.
 fun needsCalibration(context: Context, displayName: String?): Boolean {
-    if (GlassesCalibrationIdentity.normalizedDisplayName(displayName) == null) return false
+    if (displayName == null) return false
     if (bundledFontScale(displayName) != null) return false
     return !context.getSharedPreferences(CALIBRATION_PREFS, Context.MODE_PRIVATE)
-        .contains(requireNotNull(GlassesCalibrationIdentity.preferenceKey(displayName)))
+        .contains(calibratedKey(displayName))
 }
 
 fun markCalibrated(context: Context, displayName: String) {
     context.getSharedPreferences(CALIBRATION_PREFS, Context.MODE_PRIVATE)
         .edit()
-        .putBoolean(requireNotNull(GlassesCalibrationIdentity.preferenceKey(displayName)), true)
+        .putBoolean(calibratedKey(displayName), true)
         .apply()
 }
 
+private fun calibratedKey(displayName: String) = "calibrated_$displayName"

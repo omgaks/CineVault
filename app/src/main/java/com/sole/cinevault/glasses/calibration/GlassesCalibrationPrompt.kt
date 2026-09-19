@@ -1,4 +1,4 @@
-package com.sole.cinevault.glasses.calibration
+package com.sole.cinevault
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
