@@ -2,29 +2,34 @@ package com.sole.cinevault.glasses.halo
 
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 
 /**
- * D2-16 — first live input cutover.
+ * D2-18 — controlled live handover, part 1.
  *
- * Owns ONLY the three drag lanes that D2-11 defined:
+ * This modifier owns the SINGLE-FINGER drag surface for glasses playback:
+ *
  *   top 30%   -> seek
  *   left 20%  -> brightness
  *   right 20% -> volume
+ *   centre    -> existing CineVault Halo pointer movement
  *
- * The centre remains untouched for the canonical CineVault/Halo pointer UI.
+ * The important D2-18 change is that CANONICAL_UI is no longer a dead/no-op
+ * branch. Centre drags are forwarded to the existing external pointer callback,
+ * so handing drag ownership away from glassesTouchpadGestures does not regress
+ * the usable Halo pointer.
  *
- * IMPORTANT:
- * This modifier is intended to REPLACE the old single-finger drag ownership
- * inside glassesTouchpadGestures, not to be stacked beside that old drag
- * detector. Tap/double-tap, pinch and five-finger emergency remain separate
- * until their later migration slices.
+ * Tap/double-tap/long-press, pinch and five-finger emergency are intentionally
+ * NOT implemented here. They stay on the legacy support path until their own
+ * migration slices.
  */
 fun Modifier.haloPlayerLiveDragGestures(
     gestureKey: Any?,
     playbackPositionMs: () -> Long,
     durationMs: () -> Long,
     liveSession: HaloPlayerLiveSession,
+    onCanonicalPointerMove: (Offset) -> Unit,
     onGestureEnd: () -> Unit,
 ): Modifier =
     pointerInput(gestureKey, liveSession) {
@@ -39,7 +44,7 @@ fun Modifier.haloPlayerLiveDragGestures(
                     durationMs = durationMs(),
                 )
             },
-            onDrag = { change, _ ->
+            onDrag = { change, dragAmount ->
                 val intent =
                     liveSession.onDrag(
                         xPx = change.position.x,
@@ -48,10 +53,17 @@ fun Modifier.haloPlayerLiveDragGestures(
                         heightPx = size.height,
                     )
 
-                // Consume only when this gesture belongs to one of our actual
-                // player-action lanes. Centre remains available to canonical UI.
-                if (HaloPlayerLiveDragPolicy.shouldConsume(intent)) {
-                    change.consume()
+                when (HaloPlayerLiveDragPolicy.route(intent)) {
+                    HaloPlayerLiveDragRoute.PLAYER_ACTION -> {
+                        change.consume()
+                    }
+
+                    HaloPlayerLiveDragRoute.CANONICAL_POINTER -> {
+                        onCanonicalPointerMove(dragAmount)
+                        change.consume()
+                    }
+
+                    HaloPlayerLiveDragRoute.NONE -> Unit
                 }
             },
             onDragEnd = {
@@ -65,14 +77,30 @@ fun Modifier.haloPlayerLiveDragGestures(
         )
     }
 
+enum class HaloPlayerLiveDragRoute {
+    PLAYER_ACTION,
+    CANONICAL_POINTER,
+    NONE,
+}
+
 object HaloPlayerLiveDragPolicy {
-    fun shouldConsume(intent: HaloPlayerGestureIntent?): Boolean =
+
+    fun route(intent: HaloPlayerGestureIntent?): HaloPlayerLiveDragRoute =
         when (intent) {
             is HaloPlayerGestureIntent.Brightness,
             is HaloPlayerGestureIntent.Volume,
-            is HaloPlayerGestureIntent.Seek -> true
+            is HaloPlayerGestureIntent.Seek ->
+                HaloPlayerLiveDragRoute.PLAYER_ACTION
 
-            HaloPlayerGestureIntent.CanonicalUi,
-            null -> false
+            HaloPlayerGestureIntent.CanonicalUi ->
+                HaloPlayerLiveDragRoute.CANONICAL_POINTER
+
+            null ->
+                HaloPlayerLiveDragRoute.NONE
         }
+
+    // Kept for compatibility with the D2-16 tests/callers while the handover
+    // is in progress.
+    fun shouldConsume(intent: HaloPlayerGestureIntent?): Boolean =
+        route(intent) != HaloPlayerLiveDragRoute.NONE
 }
