@@ -30,18 +30,9 @@ private const val POINTER_SENSITIVITY = 1.15f
 private const val POINTER_MARGIN_PX = 12f
 private const val MOVE_SLOP_PX = 8f
 private const val EMERGENCY_SPREAD = 1.35f
-// A one-finger touch clicks if the pointer was effectively still for this
-// long right before release — not if the WHOLE touch (from initial
-// down) stayed under MOVE_SLOP_PX. That old all-or-nothing rule meant a
-// completely ordinary "drag the halo onto the button, then just let go"
-// motion could never click anything, since the drag itself already
-// exceeded the slop early on. Tracking a trailing settle window instead
-// means both a genuinely stationary tap AND a drag-then-pause-then-release
-// register as a click, while a fast swipe that's still moving at the
-// moment of release does not.
 private const val SETTLE_MS = 110L
 
-/** State shared by the full-window trackpad surface and its draw-only halo. */
+/** State shared by the full-window external-display trackpad surface and its draw-only halo. */
 @Stable
 class AppWidePointerState internal constructor() {
     var position by mutableStateOf(Offset.Unspecified)
@@ -49,21 +40,22 @@ class AppWidePointerState internal constructor() {
     var scrolling by mutableStateOf(false)
 }
 
-/** The display id is the session key, so navigation never resets the halo. */
+/** The display/session id is the key, so navigation does not reset the halo. */
 @Composable
 fun rememberAppWidePointerState(sessionKey: Any?): AppWidePointerState =
     remember(sessionKey) { AppWidePointerState() }
 
 /**
- * App-wide glasses trackpad input used outside playback — vendor-agnostic,
- * works the same for any connected AR glasses (RayNeo, Viture, XREAL, etc.).
+ * App-wide external-display trackpad input used outside playback.
  *
- * One finger moves a persistent relative pointer; a stationary one-finger tap
- * clicks at that pointer. Two-finger movement is replayed as a normal drag at
- * the pointer, allowing existing Compose lazy lists, rows and detail pages to
- * keep their native scrolling behaviour. Physical touch events are consumed.
- * Replayed events use the mouse source and therefore bypass this detector while
- * continuing through the real content hierarchy below it.
+ * This path is vendor-agnostic. One finger moves a persistent relative halo;
+ * a stationary one-finger tap clicks at that halo. Two-finger movement is
+ * replayed as a normal drag at the halo so existing Compose lists, rows and
+ * detail pages retain their native scrolling behavior.
+ *
+ * Physical touch events are consumed. Replayed events use the mouse source,
+ * allowing them to pass through the real content hierarchy without being
+ * recaptured by this detector.
  */
 fun Modifier.appWideGlassesInput(
     activity: Activity?,
@@ -75,8 +67,14 @@ fun Modifier.appWideGlassesInput(
         state.position.x.isFinite() && state.position.y.isFinite()
 
     fun clamp(point: Offset): Offset = Offset(
-        point.x.coerceIn(POINTER_MARGIN_PX, (size.width - POINTER_MARGIN_PX).coerceAtLeast(POINTER_MARGIN_PX)),
-        point.y.coerceIn(POINTER_MARGIN_PX, (size.height - POINTER_MARGIN_PX).coerceAtLeast(POINTER_MARGIN_PX))
+        point.x.coerceIn(
+            POINTER_MARGIN_PX,
+            (size.width - POINTER_MARGIN_PX).coerceAtLeast(POINTER_MARGIN_PX)
+        ),
+        point.y.coerceIn(
+            POINTER_MARGIN_PX,
+            (size.height - POINTER_MARGIN_PX).coerceAtLeast(POINTER_MARGIN_PX)
+        )
     )
 
     fun dispatchSynthetic(
@@ -89,6 +87,7 @@ fun Modifier.appWideGlassesInput(
         val content = host.findViewById<View>(android.R.id.content)
         val origin = IntArray(2)
         content?.getLocationInWindow(origin)
+
         MotionEvent.obtain(
             downTime,
             eventTime,
@@ -133,9 +132,6 @@ fun Modifier.appWideGlassesInput(
         var emergencyTriggered = false
         var syntheticDragDownTime = 0L
         var syntheticDragPoint = state.position
-        // Resets on every one-finger move past a tiny noise threshold;
-        // click-eligibility at release is judged against how long it's
-        // been since THIS, not against total travel since initial down.
         var lastSignificantMoveTime = SystemClock.uptimeMillis()
 
         do {
@@ -158,7 +154,9 @@ fun Modifier.appWideGlassesInput(
                     .fold(Offset.Zero) { total, change -> total + change.position } /
                     pressedChanges.size.toFloat()
 
-                if (lastTwoFingerCentroid.x.isFinite() && lastTwoFingerCentroid.y.isFinite()) {
+                if (lastTwoFingerCentroid.x.isFinite() &&
+                    lastTwoFingerCentroid.y.isFinite()
+                ) {
                     val delta = centroid - lastTwoFingerCentroid
                     if (abs(delta.x) > 0.5f || abs(delta.y) > 0.5f) {
                         if (syntheticDragDownTime == 0L) {
@@ -171,6 +169,7 @@ fun Modifier.appWideGlassesInput(
                                 syntheticDragDownTime
                             )
                         }
+
                         syntheticDragPoint = clamp(syntheticDragPoint + delta)
                         dispatchSynthetic(
                             MotionEvent.ACTION_MOVE,
@@ -180,23 +179,24 @@ fun Modifier.appWideGlassesInput(
                         state.scrolling = true
                     }
                 }
+
                 lastTwoFingerCentroid = centroid
                 event.changes.forEach { it.consume() }
             } else if (pressedChanges.size == 1 && maximumPointerCount == 1) {
                 lastTwoFingerCentroid = Offset.Unspecified
                 val change = pressedChanges.first()
                 val delta = change.position - lastOneFingerPosition
+
                 if (abs(delta.x) > 0.25f || abs(delta.y) > 0.25f) {
                     oneFingerTravel += delta.getDistance()
                     state.position = clamp(state.position + delta * POINTER_SENSITIVITY)
                     lastOneFingerPosition = change.position
-                    // MOVE_SLOP_PX, not the 0.25f noise floor above — small
-                    // jitter shouldn't keep resetting the settle timer, or a
-                    // "held mostly still" finger would never count as settled.
+
                     if (delta.getDistance() > MOVE_SLOP_PX) {
                         lastSignificantMoveTime = SystemClock.uptimeMillis()
                     }
                 }
+
                 change.consume()
             } else {
                 event.changes.forEach { it.consume() }
@@ -213,8 +213,10 @@ fun Modifier.appWideGlassesInput(
             }
 
             maximumPointerCount == 1 &&
-                (oneFingerTravel < MOVE_SLOP_PX ||
-                    SystemClock.uptimeMillis() - lastSignificantMoveTime >= SETTLE_MS) -> {
+                (
+                    oneFingerTravel < MOVE_SLOP_PX ||
+                        SystemClock.uptimeMillis() - lastSignificantMoveTime >= SETTLE_MS
+                    ) -> {
                 val now = SystemClock.uptimeMillis()
                 dispatchSynthetic(MotionEvent.ACTION_DOWN, state.position, now, now)
                 dispatchSynthetic(MotionEvent.ACTION_UP, state.position, now)
@@ -226,20 +228,23 @@ fun Modifier.appWideGlassesInput(
     }
 }
 
-/** Draw-only overlay. Input belongs to the parent modifier, so this blocks nothing. */
+/** Draw-only halo overlay. Input belongs to the parent modifier, so this blocks nothing. */
 @Composable
 fun BoxScope.AppWideGlassesPointer(state: AppWidePointerState) {
     Canvas(Modifier.fillMaxSize()) {
-        val point = if (state.position.x.isFinite() && state.position.y.isFinite()) {
-            state.position
-        } else {
-            center
-        }
+        val point =
+            if (state.position.x.isFinite() && state.position.y.isFinite()) {
+                state.position
+            } else {
+                center
+            }
+
         val radius = when {
             state.scrolling -> 21f
             state.pressed -> 19f
             else -> 16f
         }
+
         drawCircle(Color(0x55FFC24D), radius = radius + 6f, center = point)
         drawCircle(
             Color(0xFFFFC24D),
@@ -248,6 +253,7 @@ fun BoxScope.AppWideGlassesPointer(state: AppWidePointerState) {
             style = Stroke(width = 3f)
         )
         drawCircle(Color.White, radius = 2.5f, center = point)
+
         if (state.scrolling) {
             drawLine(
                 Color(0xFFFFC24D),
