@@ -9,18 +9,32 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.media3.exoplayer.ExoPlayer
+import com.sole.cinevault.glasses.halo.HaloPlayerLiveSessionFactory
+import com.sole.cinevault.glasses.halo.haloPlayerLiveDragGestures
+import com.sole.cinevault.glasses.halo.haloPlayerSupportGestures
 import com.sole.cinevault.library.VideoThumbnailHelper
 
 /**
- * Slice 55: owns tablet + glasses playback gesture wiring.
+ * D2-21: live Halo handover for external-display playback.
  *
- * The gesture implementations and all state still live in their existing
- * helpers/owners. This composable only centralizes which callbacks are attached
- * for tablet playback versus external-display playback.
+ * External display no longer uses glassesTouchpadGestures().
+ * Single-finger drag ownership:
+ *   - left/right vertical -> canonical brightness/volume
+ *   - top 50% horizontal -> canonical seek
+ *   - otherwise -> canonical Halo pointer
+ *
+ * Support surface:
+ *   - single tap -> show / target click / hide
+ *   - double tap -> play/pause
+ *   - pinch/pan -> viewport transform
+ *   - five-finger spread -> emergency return
+ *
+ * No glasses-only long press.
  */
 @Composable
 internal fun PlayerPlaybackGestureLayer(
@@ -64,8 +78,8 @@ internal fun PlayerPlaybackGestureLayer(
     externalShowTouchPulse: () -> Unit,
     externalClickPointer: () -> Boolean,
     externalShowControls: () -> Unit,
+    externalHideControls: () -> Unit,
     externalShowGestureHud: (title: String, value: String, progress: Int?) -> Unit,
-    externalOpenQuickSubtitles: () -> Unit,
     externalUpdateSeekPreview: (bitmap: Bitmap?, positionMs: Long, visible: Boolean) -> Unit,
     externalMovePointer: (x: Float, y: Float) -> Unit,
     externalApplyViewportTransform: (zoom: Float, panX: Float, panY: Float) -> Unit,
@@ -83,86 +97,13 @@ internal fun PlayerPlaybackGestureLayer(
     var liveVideoOffsetX = videoOffsetX
     var liveVideoOffsetY = videoOffsetY
 
-    // The pointerInput gesture detector is intentionally keyed to the video, so it
-    // survives ordinary recompositions. Keep the values read by its tap callback
-    // fresh without restarting the detector every time chrome/menu state changes.
-    // Without this, the detector can retain the initial showControls=true value:
-    // the first tap hides chrome, but every later single tap keeps requesting false.
     val currentShowControls by rememberUpdatedState(showControls)
     val currentTransientUi by rememberUpdatedState(transientUi)
 
-    val playbackGestureModifier =
-        if (externalDisplayActive) {
-            Modifier.glassesTouchpadGestures(
-                view = view,
-                gestureKey = currentVideoPath to isLandscape,
-                controlsVisible = externalControlsVisible,
-                canChangeEpisode = { canChangeEpisode },
-                onSingleTap = {
-                    externalShowTouchPulse()
-                    if (externalControlsVisible()) {
-                        if (!externalClickPointer()) externalShowControls()
-                    } else {
-                        externalShowControls()
-                    }
-                },
-                onDoubleTap = {
-                    if (player.isPlaying) player.pause() else player.play()
-                    externalShowGestureHud(
-                        "Playback",
-                        if (player.isPlaying) "PLAY" else "PAUSE",
-                        null,
-                    )
-                },
-                onLongPress = externalOpenQuickSubtitles,
-                onSeekStart = {
-                    onDraggingSeekbarChanged(true)
-                    livePreviewPosition = player.currentPosition
-                    onPreviewPositionChanged(livePreviewPosition)
-                    livePreviewBitmap =
-                        VideoThumbnailHelper.nearestPreviewFrame(
-                            previewFrames,
-                            livePreviewPosition,
-                        )
-                    onPreviewBitmapChanged(livePreviewBitmap)
-                    externalUpdateSeekPreview(
-                        livePreviewBitmap,
-                        livePreviewPosition,
-                        true,
-                    )
-                },
-                onSeekDelta = { fraction ->
-                    val safeDuration = playerSafeSeekDuration(player.duration)
-                    livePreviewPosition =
-                        calculatePlayerSeekPreviewPosition(
-                            livePreviewPosition,
-                            fraction,
-                            safeDuration,
-                        )
-                    onPreviewPositionChanged(livePreviewPosition)
-                    livePreviewBitmap =
-                        VideoThumbnailHelper.nearestPreviewFrame(
-                            previewFrames,
-                            livePreviewPosition,
-                        )
-                    onPreviewBitmapChanged(livePreviewBitmap)
-                    externalUpdateSeekPreview(
-                        livePreviewBitmap,
-                        livePreviewPosition,
-                        true,
-                    )
-                },
-                onSeekEnd = {
-                    player.seekTo(livePreviewPosition)
-                    onPositionChanged(livePreviewPosition)
-                    onDraggingSeekbarChanged(false)
-                    externalUpdateSeekPreview(
-                        livePreviewBitmap,
-                        livePreviewPosition,
-                        false,
-                    )
-                },
-                onBrightnessDrag = { deltaY ->
+    val liveHaloSession =
+        remember(currentVideoPath, isLandscape) {
+            HaloPlayerLiveSessionFactory.create(
+                brightnessDrag = { deltaY ->
                     liveBrightnessPercent =
                         adjustPlayerBrightnessPercent(
                             liveBrightnessPercent,
@@ -181,7 +122,7 @@ internal fun PlayerPlaybackGestureLayer(
                         liveBrightnessPercent,
                     )
                 },
-                onVolumeDrag = { deltaY ->
+                volumeDrag = { deltaY ->
                     liveVolumePercent =
                         adjustPlayerVolumePercent(
                             liveVolumePercent,
@@ -203,53 +144,101 @@ internal fun PlayerPlaybackGestureLayer(
                         liveVolumePercent,
                     )
                 },
-                onPrevious = {
-                    externalShowGestureHud("Episode", "PREVIOUS", null)
-                    playbackNavigationCoordinator.playPrevious()
-                },
-                onNext = {
-                    externalShowGestureHud("Episode", "NEXT", null)
-                    playbackNavigationCoordinator.playNext()
-                },
-                onPointerMove = {
-                    externalMovePointer(it.x, it.y)
-                },
-                onPointerClick = {
-                    externalShowTouchPulse()
-                    externalClickPointer()
-                },
-                onPinchZoomPan = { zoom, pan ->
-                    externalApplyViewportTransform(zoom, pan.x, pan.y)
-                    val zoomHud =
-                        calculatePlayerExternalZoomHud(liveVideoScale, zoom)
-                    liveVideoScale = zoomHud.scale
-                    onVideoTransformChanged(
-                        liveVideoScale,
-                        liveVideoOffsetX,
-                        liveVideoOffsetY,
+                seekTo = { targetMs ->
+                    val safeDuration = playerSafeSeekDuration(player.duration)
+                    livePreviewPosition =
+                        targetMs.coerceIn(0L, safeDuration.coerceAtLeast(0L))
+                    onPreviewPositionChanged(livePreviewPosition)
+                    livePreviewBitmap =
+                        VideoThumbnailHelper.nearestPreviewFrame(
+                            previewFrames,
+                            livePreviewPosition,
+                        )
+                    onPreviewBitmapChanged(livePreviewBitmap)
+                    onDraggingSeekbarChanged(true)
+                    externalUpdateSeekPreview(
+                        livePreviewBitmap,
+                        livePreviewPosition,
+                        true,
                     )
-                    externalShowGestureHud(
-                        "Screen size",
-                        "${zoomHud.percent}%",
-                        zoomHud.progressPercent,
-                    )
+                    player.seekTo(livePreviewPosition)
+                    onPositionChanged(livePreviewPosition)
                 },
-                onEmergencyReturnToTablet = {
-                    externalShowGestureHud(
-                        "Emergency return",
-                        "TABLET",
-                        null,
-                    )
-                    externalEnterTabletStandby()
-                    disableGlassesSession()
-                    Toast.makeText(
-                        context,
-                        "Glasses Mode ended — playback returned to tablet",
-                        Toast.LENGTH_LONG,
-                    ).show()
+                userActivity = {
+                    externalShowControls()
                 },
-                onGestureEnd = onGestureEnd,
             )
+        }
+
+    val playbackGestureModifier =
+        if (externalDisplayActive) {
+            Modifier
+                .haloPlayerLiveDragGestures(
+                    gestureKey = currentVideoPath to isLandscape,
+                    playbackPositionMs = { player.currentPosition },
+                    durationMs = { playerSafeSeekDuration(player.duration) },
+                    liveSession = liveHaloSession,
+                    onCanonicalPointerMove = { delta ->
+                        externalMovePointer(delta.x, delta.y)
+                    },
+                    onGestureEnd = {
+                        onDraggingSeekbarChanged(false)
+                        externalUpdateSeekPreview(
+                            livePreviewBitmap,
+                            livePreviewPosition,
+                            false,
+                        )
+                        onGestureEnd()
+                    },
+                )
+                .haloPlayerSupportGestures(
+                    gestureKey = currentVideoPath to isLandscape,
+                    view = view,
+                    controlsVisible = externalControlsVisible,
+                    clickHaloTarget = externalClickPointer,
+                    onShowControls = externalShowControls,
+                    onHideControls = externalHideControls,
+                    onDoubleTap = {
+                        if (player.isPlaying) player.pause() else player.play()
+                        externalShowGestureHud(
+                            "Playback",
+                            if (player.isPlaying) "PLAY" else "PAUSE",
+                            null,
+                        )
+                    },
+                    onTouchPulse = externalShowTouchPulse,
+                    onPinchZoomPan = { zoom, pan ->
+                        externalApplyViewportTransform(zoom, pan.x, pan.y)
+                        val zoomHud =
+                            calculatePlayerExternalZoomHud(liveVideoScale, zoom)
+                        liveVideoScale = zoomHud.scale
+                        onVideoTransformChanged(
+                            liveVideoScale,
+                            liveVideoOffsetX,
+                            liveVideoOffsetY,
+                        )
+                        externalShowGestureHud(
+                            "Screen size",
+                            "${zoomHud.percent}%",
+                            zoomHud.progressPercent,
+                        )
+                    },
+                    onEmergencyReturnToTablet = {
+                        liveHaloSession.reset()
+                        externalShowGestureHud(
+                            "Emergency return",
+                            "TABLET",
+                            null,
+                        )
+                        externalEnterTabletStandby()
+                        disableGlassesSession()
+                        Toast.makeText(
+                            context,
+                            "Glasses Mode ended — playback returned to tablet",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    },
+                )
         } else {
             Modifier.videoPlaybackGestures(
                 view = view,

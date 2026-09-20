@@ -1017,15 +1017,15 @@ fun VideoPlayerScreen(
             externalShowControls = {
                 externalPresentation?.showControls()
             },
+            externalHideControls = {
+                externalPresentation?.hideControls()
+            },
             externalShowGestureHud = { title, value, progress ->
                 if (progress == null) {
                     externalPresentation?.showGestureHud(title, value)
                 } else {
                     externalPresentation?.showGestureHud(title, value, progress)
                 }
-            },
-            externalOpenQuickSubtitles = {
-                externalPresentation?.openQuickSubtitles()
             },
             externalUpdateSeekPreview = { bitmap, positionMs, visible ->
                 externalPresentation?.updateSeekPreview(bitmap, positionMs, visible)
