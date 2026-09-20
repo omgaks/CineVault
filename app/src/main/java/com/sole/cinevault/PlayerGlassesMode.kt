@@ -1,6 +1,5 @@
 package com.sole.cinevault
 
-import android.content.pm.ActivityInfo
 import androidx.annotation.OptIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,11 +19,17 @@ import com.sole.cinevault.glasses.rememberExternalVideoPresentation
 import kotlinx.coroutines.delay
 
 /**
- * Glasses / external-display state used by VideoPlayerScreen.
+ * External-display state used by VideoPlayerScreen.
  *
- * Extracted from VideoPlayerScreen so orientation lock, brightness dimming,
- * Presentation creation, five-finger session disable, and PlayerView handoff
- * live in one place. Playback behavior is unchanged.
+ * D3-1:
+ * - no vendor-specific behavior
+ * - no forced device orientation
+ * - host window remains free to rotate, resize, fold, split-screen or run
+ *   freeform while the external CineVault surface is active
+ * - brightness dimming keeps the host usable as the Cinema Void controller
+ *
+ * Layout decisions belong to the current available window, never to a device
+ * name, physical model or assumed resolution.
  */
 @Stable
 @UnstableApi
@@ -56,51 +61,29 @@ fun rememberPlayerGlassesMode(
 
     val externalDisplay by rememberExternalDisplayState()
     var showConnectedHint by remember { mutableStateOf(false) }
-    var sessionDisabled by remember(externalDisplay.displayId) { mutableStateOf(false) }
+    var sessionDisabled by remember(externalDisplay.displayId) {
+        mutableStateOf(false)
+    }
 
-    // Detects a USB-C DisplayPort Alt Mode external display (any AR glasses
-    // that present this way — RayNeo, Viture, XREAL, Rokid, etc. — this
-    // check is vendor-agnostic) and locks the player to landscape while
-    // it's connected —
-    // these devices render a fixed-aspect virtual screen, so letting the
-    // player sit in portrait while one's attached just produces an
-    // unnecessarily letterboxed picture. Also auto-dims the tablet's own
-    // brightness to near-zero while connected, while keeping the screen
-    // genuinely ON and touchable so it still works as a remote/control
-    // surface. Reverts automatically on disconnect or when leaving the player.
+    // Never force orientation for an external display. Cinema Void must adapt
+    // to the host window it actually receives at runtime.
     LaunchedEffect(externalDisplay.isConnected) {
         if (externalDisplay.isConnected) {
-            // setRequestedOrientation() throws IllegalStateException if the
-            // Activity isn't in a plain fullscreen state at that moment
-            // (split-screen, floating/free-form window, or a PiP
-            // transition — all real states HyperOS's tablet multitasking
-            // can put an app into). An orientation lock is a nice-to-have,
-            // never something that should be allowed to crash the app.
-            try {
-                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            } catch (_: Exception) {
-            }
-            activity?.window?.attributes = activity?.window?.attributes?.apply {
-                screenBrightness = playerGlassesConnectedBrightness()
-            }
+            activity?.window?.attributes =
+                activity?.window?.attributes?.apply {
+                    screenBrightness = playerGlassesConnectedBrightness()
+                }
             showConnectedHint = true
             delay(playerGlassesConnectedHintDurationMs())
             showConnectedHint = false
         } else {
-            try {
-                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
-            } catch (_: Exception) {
-            }
-            activity?.window?.attributes = activity?.window?.attributes?.apply {
-                screenBrightness = playerDefaultWindowBrightness()
-            }
+            activity?.window?.attributes =
+                activity?.window?.attributes?.apply {
+                    screenBrightness = playerDefaultWindowBrightness()
+                }
         }
     }
 
-    // Presentation creation is tied to the player + physical display ID, so
-    // hot-unplug disposes only the external surface and the local PlayerView
-    // immediately takes ownership of the same ExoPlayer again at the same
-    // playback position.
     val presentation by rememberExternalVideoPresentation(
         player = player,
         externalDisplay = externalDisplay,
@@ -110,7 +93,9 @@ fun rememberPlayerGlassesMode(
         initialSubtitleContentLocked = initialSubtitleContentLocked,
         onBack = onBack,
     )
-    val externalPlayerView = if (sessionDisabled) null else presentation?.playerView
+
+    val externalPlayerView =
+        if (sessionDisabled) null else presentation?.playerView
 
     LaunchedEffect(externalPlayerView, localPlayerView) {
         val localView = localPlayerView
@@ -120,7 +105,9 @@ fun rememberPlayerGlassesMode(
                 PlayerView.switchTargetView(player, localView, externalView)
                 onBoundPlayerViewChanged(externalView)
             }
-            externalView == null && localView != null && localView.player !== player -> {
+            externalView == null &&
+                localView != null &&
+                localView.player !== player -> {
                 localView.player = player
                 onBoundPlayerViewChanged(localView)
             }
