@@ -13,9 +13,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 
 /**
- * D2-20 — temporary non-drag support surface used during the live Halo cutover.
+ * D2-23 — final support-gesture owner for the live Halo player path.
  *
- * Single-finger drag ownership is NOT here; D2 live drag owns it.
+ * Single-finger drag is owned exclusively by HaloPlayerLiveDragModifier.
  *
  * Tap contract:
  *  - controls hidden -> show controls
@@ -23,11 +23,11 @@ import androidx.compose.ui.input.pointer.positionChanged
  *  - controls visible + Halo over empty UI -> hide controls
  *  - double tap -> play/pause
  *
- * Long press is deliberately absent.
- *
- * Multi-finger behavior retained while it migrates:
+ * Multi-finger contract:
  *  - two-finger pinch/pan -> external viewport transform
  *  - five-finger spread -> emergency return to tablet
+ *
+ * Long press is intentionally absent.
  */
 fun Modifier.haloPlayerSupportGestures(
     gestureKey: Any?,
@@ -46,12 +46,14 @@ fun Modifier.haloPlayerSupportGestures(
             detectTapGestures(
                 onTap = {
                     onTouchPulse()
+                    val controlsAreVisible = controlsVisible()
+                    val targetClicked =
+                        controlsAreVisible && clickHaloTarget()
+
                     when (
                         HaloPlayerTapPolicy.route(
-                            controlsVisible = controlsVisible(),
-                            targetClicked =
-                                if (controlsVisible()) clickHaloTarget()
-                                else false,
+                            controlsVisible = controlsAreVisible,
+                            targetClicked = targetClicked,
                         )
                     ) {
                         HaloPlayerTapRoute.SHOW_CONTROLS -> onShowControls()
@@ -60,6 +62,7 @@ fun Modifier.haloPlayerSupportGestures(
                     }
                 },
                 onDoubleTap = {
+                    onTouchPulse()
                     onDoubleTap()
                 },
             )
@@ -73,9 +76,8 @@ fun Modifier.haloPlayerSupportGestures(
 
                 do {
                     val event = awaitPointerEvent()
-                    val pressedCount = event.changes.count { change ->
-                        change.pressed
-                    }
+                    val pressedCount =
+                        event.changes.count { change -> change.pressed }
 
                     if (pressedCount >= 5) {
                         fiveFingerSpread *= event.calculateZoom()
