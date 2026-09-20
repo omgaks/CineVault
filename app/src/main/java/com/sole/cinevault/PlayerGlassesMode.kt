@@ -13,24 +13,13 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import com.sole.cinevault.glasses.ExternalDisplayInfo
+import com.sole.cinevault.glasses.ExternalDisplayLifecyclePolicy
+import com.sole.cinevault.glasses.ExternalDisplayLifecycleState
 import com.sole.cinevault.glasses.ExternalPresentationHandle
 import com.sole.cinevault.glasses.rememberExternalDisplayState
 import com.sole.cinevault.glasses.rememberExternalVideoPresentation
 import kotlinx.coroutines.delay
 
-/**
- * External-display state used by VideoPlayerScreen.
- *
- * D3-1:
- * - no vendor-specific behavior
- * - no forced device orientation
- * - host window remains free to rotate, resize, fold, split-screen or run
- *   freeform while the external CineVault surface is active
- * - brightness dimming keeps the host usable as the Cinema Void controller
- *
- * Layout decisions belong to the current available window, never to a device
- * name, physical model or assumed resolution.
- */
 @Stable
 @UnstableApi
 class PlayerGlassesMode(
@@ -58,15 +47,25 @@ fun rememberPlayerGlassesMode(
 ): PlayerGlassesMode {
     val context = LocalContext.current
     val activity = context.findCineActivity()
-
     val externalDisplay by rememberExternalDisplayState()
+
     var showConnectedHint by remember { mutableStateOf(false) }
-    var sessionDisabled by remember(externalDisplay.displayId) {
-        mutableStateOf(false)
+    var lifecycle by remember {
+        mutableStateOf(
+            ExternalDisplayLifecycleState(
+                connectedDisplayId = externalDisplay.displayId,
+            )
+        )
     }
 
-    // Never force orientation for an external display. Cinema Void must adapt
-    // to the host window it actually receives at runtime.
+    LaunchedEffect(externalDisplay.displayId) {
+        lifecycle =
+            ExternalDisplayLifecyclePolicy.onDisplayChanged(
+                previous = lifecycle,
+                newDisplayId = externalDisplay.displayId,
+            )
+    }
+
     LaunchedEffect(externalDisplay.isConnected) {
         if (externalDisplay.isConnected) {
             activity?.window?.attributes =
@@ -77,6 +76,7 @@ fun rememberPlayerGlassesMode(
             delay(playerGlassesConnectedHintDurationMs())
             showConnectedHint = false
         } else {
+            showConnectedHint = false
             activity?.window?.attributes =
                 activity?.window?.attributes?.apply {
                     screenBrightness = playerDefaultWindowBrightness()
@@ -95,20 +95,26 @@ fun rememberPlayerGlassesMode(
     )
 
     val externalPlayerView =
-        if (sessionDisabled) null else presentation?.playerView
+        if (lifecycle.isSessionEnabled) presentation?.playerView else null
 
     LaunchedEffect(externalPlayerView, localPlayerView) {
         val localView = localPlayerView
         val externalView = externalPlayerView
+
         when {
             externalView != null && externalView.player !== player -> {
                 PlayerView.switchTargetView(player, localView, externalView)
                 onBoundPlayerViewChanged(externalView)
             }
+
             externalView == null &&
                 localView != null &&
                 localView.player !== player -> {
-                localView.player = player
+                PlayerView.switchTargetView(player, null, localView)
+                onBoundPlayerViewChanged(localView)
+            }
+
+            externalView == null && localView != null -> {
                 onBoundPlayerViewChanged(localView)
             }
         }
@@ -119,6 +125,9 @@ fun rememberPlayerGlassesMode(
         presentation = presentation,
         showConnectedHint = showConnectedHint,
         externalPlayerView = externalPlayerView,
-        disableSession = { sessionDisabled = true },
+        disableSession = {
+            lifecycle =
+                ExternalDisplayLifecyclePolicy.disableCurrentSession(lifecycle)
+        },
     )
 }
