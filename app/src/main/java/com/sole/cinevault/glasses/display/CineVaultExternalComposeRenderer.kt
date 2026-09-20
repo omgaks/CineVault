@@ -17,12 +17,13 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.sole.cinevault.CineVaultRoot
+import com.sole.cinevault.glasses.halo.HaloCanonicalCineVaultSurface
 import com.sole.cinevault.ui.theme.CineVaultTheme
 
 /**
- * D1-15 update:
- * the external display now enters the canonical CineVault root through the
- * SAME session boundary that the tablet root will use.
+ * D2-8:
+ * external rendering still enters the SAME canonical CineVault session/root,
+ * now through the shared Halo integration boundary.
  *
  * No glasses-only player/navigation/subtitle tree exists here.
  */
@@ -94,7 +95,9 @@ private class CineVaultExternalPresentation(
             setContent {
                 CineVaultTheme {
                     CineVaultSessionRoot {
-                        CineVaultRoot()
+                        HaloCanonicalCineVaultSurface {
+                            CineVaultRoot()
+                        }
                     }
                 }
             }
