@@ -2,7 +2,6 @@ package com.sole.cinevault
 
 import android.graphics.Rect
 import android.os.Build
-import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -18,47 +17,20 @@ import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
-import com.sole.cinevault.glasses.gestures.GlassesGesturePolicy
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /*
  * PlayerGestureModifiers.kt
  *
- * First extraction out of VideoPlayerScreen.kt, per Review 1's recommended
- * split order ("GestureController"). This is the raw touch-gesture code
- * for the main video surface — single-tap, double-tap seek/zoom-toggle,
- * single-finger drag (brightness/volume + edge-swipe next-episode), and
- * two-finger pinch/pan — plus the separate opt-in subtitle gesture zone
- * (pinch = text size, drag = sync offset / position, double-tap = reset,
- * long-press = play/pause).
+ * Touch gestures for normal host-device video playback and the opt-in
+ * subtitle gesture zone.
  *
- * Deliberately callback-driven rather than taking raw MutableState objects.
- * Every `by remember { mutableStateOf(...) }` property in VideoPlayerScreen
- * stays declared exactly as it already is — this file never touches how
- * that state is held, only pulls the gesture-DETECTION code out. All the
- * "what does this gesture actually mean for app state" decisions that are
- * genuinely positional (which half of the screen, which edge, drag
- * direction) still happen in here, since that's shape-of-the-gesture logic,
- * not business logic. Everything else is a lambda back into
- * VideoPlayerScreen, which still owns all the state it always did.
- *
- * Pure move, not a rewrite — no behavior change from the original inline
- * version.
+ * External-display/Halo input does NOT live here. It is owned by the
+ * dedicated Halo playback path, so the old parallel glasses touchpad
+ * controller has been removed rather than kept as a second gesture system.
  */
 
-/**
- * Excludes the right-edge strip from the OS predictive-back gesture, then
- * chains the three touch detectors for the main video surface.
- *
- * @param edgeSwipeNextEnabled current value of `showPrevNextButtons` at the
- *   time a drag gesture ends — passed as a plain Boolean rather than a
- *   MutableState since this modifier never needs to observe it recompose,
- *   only read it when a gesture actually completes.
- * @param onDragSettled fired on both drag-end and drag-cancel — bumps
- *   whatever gesture keys VideoPlayerScreen uses to auto-hide the
- *   brightness/volume HUD circles.
- */
 fun Modifier.videoPlaybackGestures(
     view: View,
     videoPathKey: Any?,
@@ -74,13 +46,6 @@ fun Modifier.videoPlaybackGestures(
     onVolumeDrag: (deltaY: Float) -> Unit,
     onPinchZoomPan: (zoom: Float, pan: Offset) -> Unit,
 ): Modifier = this
-    // Reserves ONLY the right-edge strip from Android's system back
-    // gesture — the zone the edge-swipe-to-next drag detector below
-    // needs, since without this a right-edge swipe gets intercepted by
-    // the OS's predictive-back gesture first. Left edge is deliberately
-    // NOT excluded — see original VideoPlayerScreen.kt history for why
-    // (some OEM overlays don't respect exclusion rects, so native
-    // BackHandler is left to own the left edge instead of double-firing).
     .onGloballyPositioned { coordinates ->
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val bounds = coordinates.boundsInWindow()
@@ -95,7 +60,6 @@ fun Modifier.videoPlaybackGestures(
             )
         }
     }
-
     .pointerInput(videoPathKey) {
         detectTapGestures(
             onTap = { onTap() },
@@ -115,40 +79,41 @@ fun Modifier.videoPlaybackGestures(
         var dragTotalY = 0f
         detectDragGestures(
             onDragStart = { offset ->
-                dragStartX = offset.x; dragTotalX = 0f; dragTotalY = 0f
+                dragStartX = offset.x
+                dragTotalX = 0f
+                dragTotalY = 0f
             },
             onDragEnd = {
                 onDragSettled()
                 val w = size.width.toFloat()
-                val isHorizontal = abs(dragTotalX) > abs(dragTotalY) * 1.5f &&
+                val isHorizontal =
+                    abs(dragTotalX) > abs(dragTotalY) * 1.5f &&
                         abs(dragTotalX) > 48.dp.toPx()
-                // Left edge intentionally NOT handled here — see the
-                // exclusion-rect comment above.
+
                 if (isHorizontal && dragStartX > w * 0.88f && dragTotalX < 0f) {
                     if (edgeSwipeNextEnabled()) onEdgeSwipeNext()
                 }
             },
             onDragCancel = { onDragSettled() },
             onDrag = { change, dragAmount ->
-                dragTotalX += dragAmount.x; dragTotalY += dragAmount.y
-                val x = change.position.x; val w = size.width
-                val absX = abs(dragAmount.x); val absY = abs(dragAmount.y)
+                dragTotalX += dragAmount.x
+                dragTotalY += dragAmount.y
+                val x = change.position.x
+                val w = size.width
+                val absX = abs(dragAmount.x)
+                val absY = abs(dragAmount.y)
                 val gestureIsVertical = abs(dragTotalY) >= abs(dragTotalX)
+
                 if (gestureIsVertical && absY > absX) {
-                    // Wider, easier-to-reach vertical zones for a dark host
-                    // used as a glasses controller. The centre 30% remains
-                    // free for seeking/pointer movement.
-                    if (x < w * 0.35f) onBrightnessDrag(dragAmount.y)
-                    else if (x > w * 0.65f) onVolumeDrag(dragAmount.y)
+                    if (x < w * 0.35f) {
+                        onBrightnessDrag(dragAmount.y)
+                    } else if (x > w * 0.65f) {
+                        onVolumeDrag(dragAmount.y)
+                    }
                 }
             }
         )
     }
-    // FIX (E2, corrected): detectTransformGestures ALSO processes a single
-    // finger as a valid one-pointer pan, silently starving the separate
-    // single-finger drag detector above that brightness/volume/seek relies
-    // on. This explicitly requires 2+ simultaneous pointers before it ever
-    // touches (or consumes) anything.
     .pointerInput(Unit) {
         awaitEachGesture {
             awaitFirstDown(requireUnconsumed = false)
@@ -158,192 +123,22 @@ fun Modifier.videoPlaybackGestures(
                     val zoom = event.calculateZoom()
                     val pan = event.calculatePan()
                     if (zoom != 1f || pan != Offset.Zero) {
-                        event.changes.forEach { if (it.positionChanged()) it.consume() }
-                        onPinchZoomPan(zoom, pan)
-                    }
-                }
-            } while (event.changes.any { it.pressed })
-        }
-    }
-
-/**
- * Stable, zone-based controller used while any secondary AR-glasses display
- * is active (RayNeo, Viture, XREAL, Rokid, or anything else that shows up
- * as a standard USB-C DisplayPort Alt Mode / Presentation display — nothing
- * here is tied to a specific vendor).
- */
-fun Modifier.glassesTouchpadGestures(
-    view: View,
-    gestureKey: Any?,
-    controlsVisible: () -> Boolean,
-    canChangeEpisode: () -> Boolean,
-    onSingleTap: () -> Unit,
-    onDoubleTap: () -> Unit,
-    onLongPress: () -> Unit,
-    onSeekStart: () -> Unit,
-    onSeekDelta: (fractionDelta: Float) -> Unit,
-    onSeekEnd: () -> Unit,
-    onBrightnessDrag: (Float) -> Unit,
-    onVolumeDrag: (Float) -> Unit,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    onPointerMove: (Offset) -> Unit,
-    onPointerClick: () -> Boolean,
-    onPinchZoomPan: (Float, Offset) -> Unit,
-    onEmergencyReturnToTablet: () -> Unit,
-    onGestureEnd: () -> Unit,
-): Modifier {
-    // Shared between the two pointerInput blocks below: written live by the
-    // five-finger/pinch detector (it's the only one that ever sees the true
-    // pointer count), read by the seek/drag detector so a second finger
-    // joining always wins over an already-armed seek. See the fix comment
-    // on multiFingerGestureActive's read site, in the seek onDrag block.
-    var multiFingerGestureActive = false
-
-    return this
-    .onGloballyPositioned { coordinates ->
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val b = coordinates.boundsInWindow()
-            view.systemGestureExclusionRects = listOf(Rect(b.left.roundToInt(), b.top.roundToInt(), b.right.roundToInt(), b.bottom.roundToInt()))
-        }
-    }
-    .pointerInput(gestureKey) {
-        detectTapGestures(
-            onTap = {
-                if (!controlsVisible() || !onPointerClick()) onSingleTap()
-            },
-            onDoubleTap = { onDoubleTap() },
-            onLongPress = { onLongPress() }
-        )
-    }
-    .pointerInput(gestureKey) {
-        // Seeking only ARMS once accumulated centre-zone horizontal travel
-        // clears this — otherwise a couple of pixels of incidental drift
-        // (reaching for the edge zone, settling into a tap, an unsteady
-        // hand in a dim/near-black idle state with no visual feedback on
-        // the host screen) was enough to start scrubbing playback, since
-        // the old check only compared X-travel to Y-travel, never to an
-        // absolute minimum. Mirrors the 48dp threshold the edge-swipe
-        // next/previous gesture already uses below.
-        val seekArmThresholdPx = GlassesGesturePolicy.SEEK_ARM_THRESHOLD_DP.dp.toPx()
-        var startX = 0f
-        var totalX = 0f
-        var totalY = 0f
-        var seeking = false
-        detectDragGestures(
-            onDragStart = { startX = it.x; totalX = 0f; totalY = 0f; seeking = false },
-            onDragEnd = {
-                val w = size.width.toFloat()
-                val horizontal = abs(totalX) > abs(totalY) * 1.35f && abs(totalX) > GlassesGesturePolicy.EDGE_SWIPE_THRESHOLD_DP.dp.toPx()
-                when {
-                    GlassesGesturePolicy.isLeftEdge(startX, w) && horizontal && totalX > 0f && canChangeEpisode() -> {
-                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                        onPrevious()
-                    }
-                    GlassesGesturePolicy.isRightEdge(startX, w) && horizontal && totalX < 0f && canChangeEpisode() -> {
-                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                        onNext()
-                    }
-                    seeking -> onSeekEnd()
-                }
-                onGestureEnd()
-            },
-            onDragCancel = { if (seeking) onSeekEnd(); onGestureEnd() },
-            onDrag = { change, drag ->
-                // BUG FIX: detectDragGestures only ever sees the single
-                // pointer it's tracking — it has no idea a second, third,
-                // fourth or fifth finger has also landed, because that's
-                // handled entirely by the separate awaitEachGesture block
-                // below. In a dim/near-black glasses session, the finger
-                // that goes down first as part of a five-finger emergency
-                // spread (or an ordinary two-finger pinch) almost always
-                // drifts sideways a little as the hand spreads — enough to
-                // arm this detector's own seek, which then kept consuming
-                // drag deltas and scrubbing playback AT THE SAME TIME as
-                // the emergency/pinch gesture was recognized elsewhere.
-                // multiFingerGestureActive (below) is live pointer-count
-                // state shared from that block; the instant it goes true,
-                // seeking here backs off instead of continuing to fight it.
-                if (multiFingerGestureActive) {
-                    if (seeking) {
-                        seeking = false
-                        onSeekEnd()
-                    }
-                    return@detectDragGestures
-                }
-                totalX += drag.x; totalY += drag.y
-                val w = size.width.toFloat()
-                val vertical = abs(totalY) > abs(totalX) * 1.15f
-                val horizontal = abs(totalX) > abs(totalY) * 1.15f
-                when {
-                    GlassesGesturePolicy.isLeftEdge(startX, w) || GlassesGesturePolicy.isRightEdge(startX, w) -> Unit
-                    GlassesGesturePolicy.isBrightnessZone(startX, w) && vertical -> { change.consume(); onBrightnessDrag(drag.y) }
-                    GlassesGesturePolicy.isVolumeZone(startX, w) && vertical -> { change.consume(); onVolumeDrag(drag.y) }
-                    // Visible controls turn the centre into a true pointer
-                    // surface. This check must precede direct seeking or a
-                    // normal attempt to reach a button scrubs the movie.
-                    controlsVisible() -> { change.consume(); onPointerMove(drag) }
-                    GlassesGesturePolicy.isCenterZone(startX, w) && horizontal &&
-                        (seeking || abs(totalX) > seekArmThresholdPx) -> {
-                        change.consume()
-                        if (!seeking) {
-                            seeking = true
-                            onSeekStart()
-                            // Only feedback available while the host screen
-                            // is dimmed near-black for glasses playback —
-                            // confirms a deliberate scrub actually started.
-                            view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                        event.changes.forEach {
+                            if (it.positionChanged()) it.consume()
                         }
-                        onSeekDelta(drag.x / w)
-                    }
-                }
-            }
-        )
-    }
-    .pointerInput(gestureKey) {
-        awaitEachGesture {
-            awaitFirstDown(requireUnconsumed = false)
-            var fiveFingerSpread = 1f
-            var emergencyTriggered = false
-            do {
-                val event = awaitPointerEvent()
-                val pressedCount = event.changes.count { it.pressed }
-                // Written every frame this gesture is live, read by the
-                // sibling seek/drag detector above — see the comment there.
-                multiFingerGestureActive = pressedCount >= 2
-                if (pressedCount >= 5) {
-                    fiveFingerSpread *= event.calculateZoom()
-                    event.changes.forEach { if (it.positionChanged()) it.consume() }
-                    // A deliberate 35% five-finger spread is the emergency
-                    // escape hatch. Two-finger viewport zoom can never enter
-                    // this branch, and the one-shot guard prevents repeats.
-                    if (!emergencyTriggered && fiveFingerSpread >= GlassesGesturePolicy.EMERGENCY_SPREAD_SCALE) {
-                        emergencyTriggered = true
-                        onEmergencyReturnToTablet()
-                    }
-                } else if (event.changes.size >= 2 && !emergencyTriggered) {
-                    val zoom = event.calculateZoom(); val pan = event.calculatePan()
-                    if (zoom != 1f || pan != Offset.Zero) {
-                        event.changes.forEach { if (it.positionChanged()) it.consume() }
                         onPinchZoomPan(zoom, pan)
                     }
                 }
             } while (event.changes.any { it.pressed })
-            multiFingerGestureActive = false
         }
     }
-}
 
 /**
  * Opt-in subtitle gesture zone: pinch to resize subtitle text, horizontal
  * drag to adjust sync offset, vertical drag to reposition, double-tap to
- * reset sync, long-press to toggle play/pause. Caller (VideoPlayerScreen)
- * still owns sizing/placement of the Box this attaches to, and still
- * renders the feedback pill.
+ * reset sync, long-press to toggle play/pause.
  *
- * @param onVerticalPositionDrag receives the already-computed fraction
- *   delta (`-pan.y / zoneHeight * 0.6f`), matching the original sign
- *   convention (dragging up raises the subtitle).
+ * Subtitle editing remains independent from Halo/external-display navigation.
  */
 fun Modifier.subtitleGestureZone(
     enabledKey: Any?,
