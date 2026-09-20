@@ -2,15 +2,13 @@ package com.sole.cinevault.glasses.halo
 
 import android.view.HapticFeedbackConstants
 import android.view.View
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.pointer.awaitEachGesture
-import androidx.compose.ui.input.pointer.awaitFirstDown
-import androidx.compose.ui.input.pointer.awaitPointerEvent
-import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.input.pointer.pointerInput
 
 /**
@@ -24,8 +22,7 @@ import androidx.compose.ui.input.pointer.pointerInput
  *  - controls visible + Halo over empty UI -> hide controls
  *  - double tap -> play/pause
  *
- * Long press is deliberately absent. Quick subtitles remain available through
- * CineVault's normal subtitle controls/HUD rather than a glasses-only shortcut.
+ * Long press is deliberately absent.
  *
  * Multi-finger behavior retained while it migrates:
  *  - two-finger pinch/pan -> external viewport transform
@@ -51,7 +48,9 @@ fun Modifier.haloPlayerSupportGestures(
                     when (
                         HaloPlayerTapPolicy.route(
                             controlsVisible = controlsVisible(),
-                            targetClicked = if (controlsVisible()) clickHaloTarget() else false,
+                            targetClicked =
+                                if (controlsVisible()) clickHaloTarget()
+                                else false,
                         )
                     ) {
                         HaloPlayerTapRoute.SHOW_CONTROLS -> onShowControls()
@@ -67,22 +66,29 @@ fun Modifier.haloPlayerSupportGestures(
         .pointerInput(gestureKey) {
             awaitEachGesture {
                 awaitFirstDown(requireUnconsumed = false)
+
                 var fiveFingerSpread = 1f
                 var emergencyTriggered = false
 
                 do {
                     val event = awaitPointerEvent()
-                    val pressedCount = event.changes.count { it.pressed }
+                    val pressedCount = event.changes.count { change ->
+                        change.pressed
+                    }
 
                     if (pressedCount >= 5) {
                         fiveFingerSpread *= event.calculateZoom()
-                        event.changes.forEach {
-                            if (it.positionChanged()) it.consume()
+
+                        event.changes.forEach { change ->
+                            if (change.positionChanged()) {
+                                change.consume()
+                            }
                         }
 
                         if (
                             !emergencyTriggered &&
-                            fiveFingerSpread >= HaloPlayerSupportPolicy.EMERGENCY_SPREAD_SCALE
+                            fiveFingerSpread >=
+                                HaloPlayerSupportPolicy.EMERGENCY_SPREAD_SCALE
                         ) {
                             emergencyTriggered = true
                             view.performHapticFeedback(
@@ -90,18 +96,25 @@ fun Modifier.haloPlayerSupportGestures(
                             )
                             onEmergencyReturnToTablet()
                         }
-                    } else if (event.changes.size >= 2 && !emergencyTriggered) {
+                    } else if (
+                        event.changes.size >= 2 &&
+                        !emergencyTriggered
+                    ) {
                         val zoom = event.calculateZoom()
                         val pan = event.calculatePan()
 
                         if (zoom != 1f || pan != Offset.Zero) {
-                            event.changes.forEach {
-                                if (it.positionChanged()) it.consume()
+                            event.changes.forEach { change ->
+                                if (change.positionChanged()) {
+                                    change.consume()
+                                }
                             }
                             onPinchZoomPan(zoom, pan)
                         }
                     }
-                } while (event.changes.any { it.pressed })
+                } while (
+                    event.changes.any { change -> change.pressed }
+                )
             }
         }
 
