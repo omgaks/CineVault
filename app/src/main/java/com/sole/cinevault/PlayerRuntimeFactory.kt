@@ -3,6 +3,7 @@ package com.sole.cinevault
 import android.content.Context
 import androidx.annotation.OptIn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -27,29 +28,49 @@ internal fun rememberPlayerRuntime(
     currentVideoPath: String,
     audioRendererPreference: CineAudioRendererPreference =
         AudioRuntimeRescueController.rendererPreference,
-): PlayerRuntime = remember(
-    context,
-    preferredLanguage,
-    autoEnableEmbeddedSubtitles,
-    currentVideoPath,
-    audioRendererPreference,
-) {
-    createPlayerRuntime(
-        context = context,
-        preferredLanguage = preferredLanguage,
-        autoEnableEmbeddedSubtitles = autoEnableEmbeddedSubtitles,
-        audioRendererPreference = audioRendererPreference,
-    ).also { runtime ->
-        AudioRuntimeRescueController.consumePendingPlan(currentVideoPath)
-            ?.toHandover()
-            ?.let { handover ->
-                applyAudioRuntimeRescueHandover(
-                    player = runtime.player,
-                    trackSelector = runtime.trackSelector,
-                    handover = handover,
-                )
-            }
+): PlayerRuntime {
+    // G7A-1: subtitle-behaviour toggles must NOT recreate ExoPlayer.
+    // Recreating the runtime while the player screen is active leaves the
+    // surrounding subtitle/player effects briefly holding different player
+    // instances, which can pause/crash the session. Runtime identity remains
+    // tied only to things that genuinely require a new player.
+    val runtime = remember(
+        context,
+        preferredLanguage,
+        currentVideoPath,
+        audioRendererPreference,
+    ) {
+        createPlayerRuntime(
+            context = context,
+            preferredLanguage = preferredLanguage,
+            autoEnableEmbeddedSubtitles = autoEnableEmbeddedSubtitles,
+            audioRendererPreference = audioRendererPreference,
+        ).also { created ->
+            AudioRuntimeRescueController.consumePendingPlan(currentVideoPath)
+                ?.toHandover()
+                ?.let { handover ->
+                    applyAudioRuntimeRescueHandover(
+                        player = created.player,
+                        trackSelector = created.trackSelector,
+                        handover = handover,
+                    )
+                }
+        }
     }
+
+    // Apply the embedded-subtitle preference live to the existing selector.
+    // This changes text-track eligibility without interrupting playback.
+    LaunchedEffect(runtime.trackSelector, autoEnableEmbeddedSubtitles) {
+        runtime.trackSelector.parameters =
+            runtime.trackSelector.buildUponParameters()
+                .setTrackTypeDisabled(
+                    C.TRACK_TYPE_TEXT,
+                    !autoEnableEmbeddedSubtitles,
+                )
+                .build()
+    }
+
+    return runtime
 }
 
 @OptIn(UnstableApi::class)
