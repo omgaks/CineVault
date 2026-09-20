@@ -1,24 +1,20 @@
 package com.sole.cinevault.glasses.halo
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.unit.IntSize
 
 /**
- * D2-1 — universal Halo input surface.
- *
- * This is an additive, transparent input layer. It does not draw or replace
- * CineVault UI. The complete available surface participates in Halo movement.
+ * D2-9 — universal Halo input observer.
  *
  * IMPORTANT:
- * D2-1 observes pointer motion at PointerEventPass.Final and intentionally does
- * not consume events. Existing CineVault buttons, cards, scrolling and player
- * gestures therefore remain authoritative while Halo learns the same input.
- * Click injection / drag ownership comes in later D2 slices.
+ * The observer now lives on the PARENT Box rather than on a full-screen sibling
+ * overlay. That keeps the real CineVault child in the normal Compose hit path,
+ * so buttons/cards/player controls remain the actual interaction targets.
+ *
+ * We observe at PointerEventPass.Final and never consume changes.
  */
 @Composable
 fun HaloInputSurface(
@@ -27,37 +23,32 @@ fun HaloInputSurface(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    Box(modifier = modifier) {
-        content()
+    val haloModifier = if (enabled) {
+        modifier.pointerInput(enabled) {
+            awaitPointerEventScope {
+                while (true) {
+                    val event = awaitPointerEvent(pass = PointerEventPass.Final)
+                    val change = event.changes.firstOrNull() ?: continue
+                    val size = this@pointerInput.size
 
-        if (enabled) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(enabled) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent(
-                                    pass = PointerEventPass.Final,
-                                )
-
-                                val change = event.changes.firstOrNull() ?: continue
-                                val size = this@pointerInput.size
-
-                                onSample(
-                                    HaloPointerMapper.sample(
-                                        xPx = change.position.x,
-                                        yPx = change.position.y,
-                                        widthPx = size.width,
-                                        heightPx = size.height,
-                                        pressed = change.pressed,
-                                    )
-                                )
-                            }
-                        }
-                    }
-            )
+                    onSample(
+                        HaloPointerMapper.sample(
+                            xPx = change.position.x,
+                            yPx = change.position.y,
+                            widthPx = size.width,
+                            heightPx = size.height,
+                            pressed = change.pressed,
+                        )
+                    )
+                }
+            }
         }
+    } else {
+        modifier
+    }
+
+    Box(modifier = haloModifier) {
+        content()
     }
 }
 
