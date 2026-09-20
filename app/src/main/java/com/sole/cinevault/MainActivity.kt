@@ -40,6 +40,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.ui.theme.CineVaultTheme
+import com.sole.cinevault.glasses.display.CineVaultTabletSessionHost
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -105,7 +106,7 @@ class MainActivity : FragmentActivity() {
 
         setContent {
             CineVaultTheme {
-                CineVaultRoot()
+                CineVaultTabletSessionHost()
             }
         }
     }
