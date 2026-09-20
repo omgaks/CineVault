@@ -20,15 +20,11 @@ import com.sole.cinevault.CineVaultRoot
 import com.sole.cinevault.ui.theme.CineVaultTheme
 
 /**
- * D1-10: real Compose binding for the external CineVault display.
+ * D1-15 update:
+ * the external display now enters the canonical CineVault root through the
+ * SAME session boundary that the tablet root will use.
  *
- * This is the first slice that renders the actual CineVault root on the
- * external display. It deliberately calls the same CineVaultRoot() used by
- * MainActivity; there is no glasses-only navigation/player/subtitle tree.
- *
- * Important: this slice establishes render ownership only. Cross-display
- * navigation/state sharing is handled in later D1 slices; do not duplicate
- * player or feature code here.
+ * No glasses-only player/navigation/subtitle tree exists here.
  */
 class CineVaultExternalComposeRenderer(
     private val activity: Activity,
@@ -64,13 +60,6 @@ class CineVaultExternalComposeRenderer(
     }
 }
 
-/**
- * Presentation-backed Compose owner for the glasses/external display.
- *
- * Presentation is not a ComponentActivity, so Compose needs explicit
- * Lifecycle/SavedState/ViewModel tree owners. Without them, app-level
- * composables can fail as soon as they reach lifecycle-aware content.
- */
 private class CineVaultExternalPresentation(
     activity: Activity,
     display: Display,
@@ -104,7 +93,9 @@ private class CineVaultExternalPresentation(
 
             setContent {
                 CineVaultTheme {
-                    CineVaultRoot()
+                    CineVaultSessionRoot {
+                        CineVaultRoot()
+                    }
                 }
             }
         }
