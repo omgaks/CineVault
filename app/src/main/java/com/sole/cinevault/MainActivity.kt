@@ -41,6 +41,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.ui.theme.CineVaultTheme
 import com.sole.cinevault.glasses.display.CineVaultTabletSessionHost
+import com.sole.cinevault.glasses.display.LocalCineVaultComposeAppState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -403,17 +404,40 @@ fun CineVaultApp() {
         }
     }
 
-    var backStack by remember { mutableStateOf<List<Destination>>(listOf(Destination.Tab(0))) }
+    // D1-18: first real shared-state migration.
+    // Keep CineVault's existing Destination/backStack navigation intact, but
+    // move the tab identity + Search query to the canonical display session.
+    // This lets tablet and external display observe the same lightweight app
+    // state without attempting the risky full route migration in one slice.
+    val sessionAppState = LocalCineVaultComposeAppState.current
+    val sessionSnapshot by sessionAppState.snapshot.collectAsState()
+
+    var backStack by remember {
+        mutableStateOf<List<Destination>>(
+            listOf(Destination.Tab(sessionSnapshot.selectedTab))
+        )
+    }
     var libraryVideos by remember { mutableStateOf<List<VideoWithMetadata>>(emptyList()) }
-    var searchQuery by remember { mutableStateOf("") }
 
     val current = backStack.last()
     val activeTabIndex = (backStack.firstOrNull() as? Destination.Tab)?.index ?: 0
 
     fun push(dest: Destination) { backStack = backStack + dest }
     fun pop() { if (backStack.size > 1) backStack = backStack.dropLast(1) }
-    fun switchTab(index: Int) { backStack = listOf(Destination.Tab(index)) }
+    fun switchTab(index: Int) {
+        sessionAppState.onTabSelected(index)
+        backStack = listOf(Destination.Tab(index))
+    }
     fun replaceTop(dest: Destination) { backStack = backStack.dropLast(1) + dest }
+
+    // A tab change coming from the other render surface must move this
+    // composition to the same top-level tab. Do not touch deeper destinations
+    // unless the shared tab identity actually changed.
+    LaunchedEffect(sessionSnapshot.selectedTab) {
+        if (activeTabIndex != sessionSnapshot.selectedTab) {
+            backStack = listOf(Destination.Tab(sessionSnapshot.selectedTab))
+        }
+    }
 
     // "Open with CineVault" / "Share to CineVault" — reacts whenever
     // MainActivity writes a new Uri into IncomingIntentHolder (onCreate or
@@ -651,8 +675,8 @@ fun CineVaultApp() {
 
                         2 -> SearchScreen(
                             videos = libraryVideos,
-                            query = searchQuery,
-                            onQueryChange = { newQuery -> searchQuery = newQuery },
+                            query = sessionSnapshot.searchQuery,
+                            onQueryChange = sessionAppState::onSearchQueryChanged,
                             onVideoClick = { item -> push(Destination.Detail(item)) }
                         )
 
