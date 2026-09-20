@@ -6,23 +6,17 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 
 /**
- * D2-18 — controlled live handover, part 1.
+ * D2-22 — live-drag stabilization checkpoint.
  *
- * This modifier owns the SINGLE-FINGER drag surface for glasses playback:
+ * Single-finger external-player ownership:
+ *  - top 50% horizontal -> seek
+ *  - left 20% vertical -> brightness
+ *  - right 20% vertical -> volume
+ *  - otherwise -> canonical CineVault Halo pointer
  *
- *   top 30%   -> seek
- *   left 20%  -> brightness
- *   right 20% -> volume
- *   centre    -> existing CineVault Halo pointer movement
- *
- * The important D2-18 change is that CANONICAL_UI is no longer a dead/no-op
- * branch. Centre drags are forwarded to the existing external pointer callback,
- * so handing drag ownership away from glassesTouchpadGestures does not regress
- * the usable Halo pointer.
- *
- * Tap/double-tap/long-press, pinch and five-finger emergency are intentionally
- * NOT implemented here. They stay on the legacy support path until their own
- * migration slices.
+ * Gesture classification is direction-aware in HaloPlayerGestureRouter.
+ * Tap/double-tap, pinch and emergency return remain in
+ * HaloPlayerSupportGestures. Long press is intentionally absent.
  */
 fun Modifier.haloPlayerLiveDragGestures(
     gestureKey: Any?,
@@ -99,8 +93,6 @@ object HaloPlayerLiveDragPolicy {
                 HaloPlayerLiveDragRoute.NONE
         }
 
-    // Kept for compatibility with the D2-16 tests/callers while the handover
-    // is in progress.
     fun shouldConsume(intent: HaloPlayerGestureIntent?): Boolean =
         route(intent) != HaloPlayerLiveDragRoute.NONE
 }
