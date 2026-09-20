@@ -1,20 +1,25 @@
 package com.sole.cinevault.glasses.halo
 
+import kotlin.math.abs
+
 /**
- * D2-11 — geometry-only router for the agreed glasses player gestures.
+ * D2-19 — direction-aware geometry router for the agreed glasses player
+ * gestures.
  *
- * This does NOT create a glasses player. It classifies Halo interaction against
- * the existing CineVault player surface so later wiring can call the same
- * brightness / volume / seek actions already used by the normal player.
+ * Same CineVault player, another display.
  *
- * Agreed zones:
+ * Locked controller geometry:
  *  - left 20%  : vertical brightness
  *  - right 20% : vertical volume
- *  - top 30%   : horizontal seek scrub
- *  - remaining centre: normal Halo/canonical CineVault interaction
+ *  - top 50%   : HORIZONTAL seek-eligible area
+ *  - otherwise : canonical Halo/CineVault pointer interaction
  *
- * Corner precedence is intentional: TOP SEEK wins over LEFT/RIGHT vertical
- * zones so the complete top strip behaves consistently from edge to edge.
+ * Important: top 50% is SEEK-ELIGIBLE, not seek-exclusive. A vertical drag
+ * starting in the left/right 20% still wins brightness/volume. This preserves
+ * large, easy seek coverage without sacrificing the side controls.
+ *
+ * A small normalized movement threshold prevents ordinary pointer settling
+ * from immediately becoming brightness/volume/seek.
  */
 object HaloPlayerGestureRouter {
 
@@ -32,7 +37,8 @@ object HaloPlayerGestureRouter {
             x >= 1f - HaloPlayerGestureGeometry.SIDE_FRACTION ->
                 HaloPlayerGestureZone.VOLUME
 
-            else -> HaloPlayerGestureZone.CANONICAL_UI
+            else ->
+                HaloPlayerGestureZone.CANONICAL_UI
         }
     }
 
@@ -40,34 +46,72 @@ object HaloPlayerGestureRouter {
         start: HaloVector,
         current: HaloVector,
     ): HaloPlayerGestureIntent {
-        return when (zoneFor(start)) {
-            HaloPlayerGestureZone.SEEK ->
-                HaloPlayerGestureIntent.Seek(
-                    horizontalDeltaFraction =
-                        (current.x - start.x).coerceIn(-1f, 1f),
-                )
+        val x = start.x.coerceIn(0f, 1f)
+        val y = start.y.coerceIn(0f, 1f)
 
-            HaloPlayerGestureZone.BRIGHTNESS ->
-                HaloPlayerGestureIntent.Brightness(
-                    verticalDeltaFraction =
-                        (start.y - current.y).coerceIn(-1f, 1f),
-                )
+        val deltaX = (current.x - start.x).coerceIn(-1f, 1f)
+        // Positive means finger moved upward, matching the existing bridge.
+        val deltaY = (start.y - current.y).coerceIn(-1f, 1f)
 
-            HaloPlayerGestureZone.VOLUME ->
-                HaloPlayerGestureIntent.Volume(
-                    verticalDeltaFraction =
-                        (start.y - current.y).coerceIn(-1f, 1f),
-                )
+        val absX = abs(deltaX)
+        val absY = abs(deltaY)
 
-            HaloPlayerGestureZone.CANONICAL_UI ->
-                HaloPlayerGestureIntent.CanonicalUi
+        if (
+            absX < HaloPlayerGestureGeometry.ARM_THRESHOLD_FRACTION &&
+            absY < HaloPlayerGestureGeometry.ARM_THRESHOLD_FRACTION
+        ) {
+            return HaloPlayerGestureIntent.CanonicalUi
         }
+
+        val horizontal =
+            absX > absY * HaloPlayerGestureGeometry.DIRECTION_DOMINANCE
+        val vertical =
+            absY > absX * HaloPlayerGestureGeometry.DIRECTION_DOMINANCE
+
+        // Side vertical actions get first refusal, including in the top half.
+        if (
+            x <= HaloPlayerGestureGeometry.SIDE_FRACTION &&
+            vertical
+        ) {
+            return HaloPlayerGestureIntent.Brightness(
+                verticalDeltaFraction = deltaY,
+            )
+        }
+
+        if (
+            x >= 1f - HaloPlayerGestureGeometry.SIDE_FRACTION &&
+            vertical
+        ) {
+            return HaloPlayerGestureIntent.Volume(
+                verticalDeltaFraction = deltaY,
+            )
+        }
+
+        // The complete top half is an easy horizontal scrub surface.
+        if (
+            y <= HaloPlayerGestureGeometry.TOP_SEEK_FRACTION &&
+            horizontal
+        ) {
+            return HaloPlayerGestureIntent.Seek(
+                horizontalDeltaFraction = deltaX,
+            )
+        }
+
+        return HaloPlayerGestureIntent.CanonicalUi
     }
 }
 
 object HaloPlayerGestureGeometry {
     const val SIDE_FRACTION = 0.20f
-    const val TOP_SEEK_FRACTION = 0.30f
+
+    // D2-19: expanded from 30% to the locked 50% seek-eligible surface.
+    const val TOP_SEEK_FRACTION = 0.50f
+
+    // Normalized surface travel required before a player action can arm.
+    const val ARM_THRESHOLD_FRACTION = 0.012f
+
+    // Keeps diagonal pointer travel from accidentally becoming an adjustment.
+    const val DIRECTION_DOMINANCE = 1.15f
 }
 
 enum class HaloPlayerGestureZone {
