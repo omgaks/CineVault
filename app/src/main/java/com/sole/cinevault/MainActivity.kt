@@ -42,6 +42,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.ui.theme.CineVaultTheme
 import com.sole.cinevault.glasses.display.CineVaultTabletSessionHost
 import com.sole.cinevault.glasses.display.LocalCineVaultComposeAppState
+import com.sole.cinevault.glasses.display.CineVaultNavigationKeyFactory
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -411,6 +412,7 @@ fun CineVaultApp() {
     // state without attempting the risky full route migration in one slice.
     val sessionAppState = LocalCineVaultComposeAppState.current
     val sessionSnapshot by sessionAppState.snapshot.collectAsState()
+    val sessionKeys = remember { CineVaultNavigationKeyFactory() }
 
     var backStack by remember {
         mutableStateOf<List<Destination>>(
@@ -436,6 +438,36 @@ fun CineVaultApp() {
     LaunchedEffect(sessionSnapshot.selectedTab) {
         if (activeTabIndex != sessionSnapshot.selectedTab) {
             backStack = listOf(Destination.Tab(sessionSnapshot.selectedTab))
+        }
+    }
+
+    // D1-19: project the canonical CineVault routes into the shared session.
+    // This is intentionally ONE-WAY for Detail/TV/Player in this slice:
+    // the existing backStack remains the source of truth while the display
+    // session learns what CineVault is showing. We do not reconstruct model
+    // objects from keys or create a second navigation stack for glasses.
+    LaunchedEffect(current) {
+        when (val destination = current) {
+            is Destination.Detail ->
+                sessionAppState.onDetailSelected(
+                    sessionKeys.detail(destination.item.video.path)
+                )
+
+            is Destination.TvShow ->
+                sessionAppState.onTvGroupSelected(
+                    sessionKeys.tvGroup(destination.group.toString())
+                )
+
+            is Destination.Player ->
+                sessionAppState.onVideoSelected(
+                    sessionKeys.video(destination.video.path)
+                )
+
+            is Destination.Tab -> Unit
+
+            // Deep metadata/library pages stay owned by CineVault's real
+            // backStack. D1 does not invent parallel route models for them.
+            else -> Unit
         }
     }
 
