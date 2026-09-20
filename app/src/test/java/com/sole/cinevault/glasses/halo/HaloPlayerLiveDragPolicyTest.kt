@@ -1,5 +1,6 @@
 package com.sole.cinevault.glasses.halo
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -7,43 +8,60 @@ import org.junit.Test
 class HaloPlayerLiveDragPolicyTest {
 
     @Test
-    fun brightnessIsConsumed() {
-        assertTrue(
-            HaloPlayerLiveDragPolicy.shouldConsume(
+    fun brightnessRoutesToPlayerAction() {
+        assertEquals(
+            HaloPlayerLiveDragRoute.PLAYER_ACTION,
+            HaloPlayerLiveDragPolicy.route(
                 HaloPlayerGestureIntent.Brightness(0.1f)
-            )
+            ),
         )
     }
 
     @Test
-    fun volumeIsConsumed() {
-        assertTrue(
-            HaloPlayerLiveDragPolicy.shouldConsume(
+    fun volumeRoutesToPlayerAction() {
+        assertEquals(
+            HaloPlayerLiveDragRoute.PLAYER_ACTION,
+            HaloPlayerLiveDragPolicy.route(
                 HaloPlayerGestureIntent.Volume(0.1f)
-            )
+            ),
         )
     }
 
     @Test
-    fun seekIsConsumed() {
-        assertTrue(
-            HaloPlayerLiveDragPolicy.shouldConsume(
+    fun seekRoutesToPlayerAction() {
+        assertEquals(
+            HaloPlayerLiveDragRoute.PLAYER_ACTION,
+            HaloPlayerLiveDragPolicy.route(
                 HaloPlayerGestureIntent.Seek(0.1f)
-            )
+            ),
         )
     }
 
     @Test
-    fun canonicalUiIsNotConsumed() {
-        assertFalse(
+    fun canonicalUiRoutesToExistingHaloPointer() {
+        assertEquals(
+            HaloPlayerLiveDragRoute.CANONICAL_POINTER,
+            HaloPlayerLiveDragPolicy.route(
+                HaloPlayerGestureIntent.CanonicalUi
+            ),
+        )
+    }
+
+    @Test
+    fun absentIntentRoutesNowhere() {
+        assertEquals(
+            HaloPlayerLiveDragRoute.NONE,
+            HaloPlayerLiveDragPolicy.route(null),
+        )
+    }
+
+    @Test
+    fun canonicalPointerIsNowOwnedByLiveDragSurface() {
+        assertTrue(
             HaloPlayerLiveDragPolicy.shouldConsume(
                 HaloPlayerGestureIntent.CanonicalUi
             )
         )
-    }
-
-    @Test
-    fun absentSessionIntentIsNotConsumed() {
         assertFalse(HaloPlayerLiveDragPolicy.shouldConsume(null))
     }
 }
