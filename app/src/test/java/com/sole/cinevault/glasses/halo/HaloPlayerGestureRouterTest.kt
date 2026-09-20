@@ -7,97 +7,77 @@ import org.junit.Test
 class HaloPlayerGestureRouterTest {
 
     @Test
-    fun leftTwentyPercentRoutesToBrightness() {
-        assertEquals(
-            HaloPlayerGestureZone.BRIGHTNESS,
-            HaloPlayerGestureRouter.zoneFor(HaloVector(0.10f, 0.60f)),
-        )
-    }
-
-    @Test
-    fun rightTwentyPercentRoutesToVolume() {
-        assertEquals(
-            HaloPlayerGestureZone.VOLUME,
-            HaloPlayerGestureRouter.zoneFor(HaloVector(0.90f, 0.60f)),
-        )
-    }
-
-    @Test
-    fun topThirtyPercentRoutesToSeekAcrossWholeWidth() {
-        assertEquals(
-            HaloPlayerGestureZone.SEEK,
-            HaloPlayerGestureRouter.zoneFor(HaloVector(0.05f, 0.10f)),
-        )
-        assertEquals(
-            HaloPlayerGestureZone.SEEK,
-            HaloPlayerGestureRouter.zoneFor(HaloVector(0.50f, 0.20f)),
-        )
-        assertEquals(
-            HaloPlayerGestureZone.SEEK,
-            HaloPlayerGestureRouter.zoneFor(HaloVector(0.95f, 0.30f)),
-        )
-    }
-
-    @Test
-    fun centreRemainsCanonicalCineVaultInteraction() {
-        assertEquals(
-            HaloPlayerGestureZone.CANONICAL_UI,
-            HaloPlayerGestureRouter.zoneFor(HaloVector(0.50f, 0.60f)),
-        )
-    }
-
-    @Test
-    fun upwardLeftDragProducesPositiveBrightnessDelta() {
+    fun topHalfHorizontalDragSeeks() {
         val intent = HaloPlayerGestureRouter.classifyDrag(
-            start = HaloVector(0.10f, 0.70f),
-            current = HaloVector(0.10f, 0.50f),
-        )
-
-        assertTrue(intent is HaloPlayerGestureIntent.Brightness)
-        assertEquals(
-            0.20f,
-            (intent as HaloPlayerGestureIntent.Brightness).verticalDeltaFraction,
-            0.0001f,
-        )
-    }
-
-    @Test
-    fun upwardRightDragProducesPositiveVolumeDelta() {
-        val intent = HaloPlayerGestureRouter.classifyDrag(
-            start = HaloVector(0.90f, 0.70f),
-            current = HaloVector(0.90f, 0.40f),
-        )
-
-        assertTrue(intent is HaloPlayerGestureIntent.Volume)
-        assertEquals(
-            0.30f,
-            (intent as HaloPlayerGestureIntent.Volume).verticalDeltaFraction,
-            0.0001f,
-        )
-    }
-
-    @Test
-    fun rightwardTopDragProducesPositiveSeekDelta() {
-        val intent = HaloPlayerGestureRouter.classifyDrag(
-            start = HaloVector(0.30f, 0.15f),
-            current = HaloVector(0.65f, 0.15f),
+            start = HaloVector(0.50f, 0.45f),
+            current = HaloVector(0.70f, 0.45f),
         )
 
         assertTrue(intent is HaloPlayerGestureIntent.Seek)
-        assertEquals(
-            0.35f,
-            (intent as HaloPlayerGestureIntent.Seek).horizontalDeltaFraction,
-            0.0001f,
-        )
     }
 
     @Test
-    fun gestureOwnershipIsLockedToStartingZone() {
+    fun belowTopHalfHorizontalDragRemainsCanonicalPointer() {
         val intent = HaloPlayerGestureRouter.classifyDrag(
-            start = HaloVector(0.10f, 0.60f),
-            current = HaloVector(0.80f, 0.10f),
+            start = HaloVector(0.50f, 0.55f),
+            current = HaloVector(0.70f, 0.55f),
+        )
+
+        assertEquals(HaloPlayerGestureIntent.CanonicalUi, intent)
+    }
+
+    @Test
+    fun leftVerticalWinsEvenInsideTopHalf() {
+        val intent = HaloPlayerGestureRouter.classifyDrag(
+            start = HaloVector(0.10f, 0.25f),
+            current = HaloVector(0.10f, 0.10f),
         )
 
         assertTrue(intent is HaloPlayerGestureIntent.Brightness)
+    }
+
+    @Test
+    fun rightVerticalWinsEvenInsideTopHalf() {
+        val intent = HaloPlayerGestureRouter.classifyDrag(
+            start = HaloVector(0.90f, 0.25f),
+            current = HaloVector(0.90f, 0.10f),
+        )
+
+        assertTrue(intent is HaloPlayerGestureIntent.Volume)
+    }
+
+    @Test
+    fun topLeftHorizontalStillSeeks() {
+        val intent = HaloPlayerGestureRouter.classifyDrag(
+            start = HaloVector(0.10f, 0.25f),
+            current = HaloVector(0.30f, 0.25f),
+        )
+
+        assertTrue(intent is HaloPlayerGestureIntent.Seek)
+    }
+
+    @Test
+    fun tinyMovementDoesNotArmPlayerAction() {
+        val intent = HaloPlayerGestureRouter.classifyDrag(
+            start = HaloVector(0.50f, 0.20f),
+            current = HaloVector(0.505f, 0.20f),
+        )
+
+        assertEquals(HaloPlayerGestureIntent.CanonicalUi, intent)
+    }
+
+    @Test
+    fun diagonalMovementRemainsCanonicalPointer() {
+        val intent = HaloPlayerGestureRouter.classifyDrag(
+            start = HaloVector(0.50f, 0.20f),
+            current = HaloVector(0.60f, 0.10f),
+        )
+
+        assertEquals(HaloPlayerGestureIntent.CanonicalUi, intent)
+    }
+
+    @Test
+    fun geometryReportsTopHalfAsSeekEligible() {
+        assertEquals(0.50f, HaloPlayerGestureGeometry.TOP_SEEK_FRACTION)
     }
 }
