@@ -70,7 +70,11 @@ class HaloInteractionCoordinatorTest {
     @Test fun nonStablePressKeepsStandardClickEnvelope() {
         val coordinator = HaloInteractionCoordinator()
         coordinator.update(sample(0.50f, 0.5f, true), 1000L, 16L)
-        val release = coordinator.update(sample(0.52f, 0.5f, false), 1100L, 16L)
+
+        // Keep the raw travel inside the standard click envelope after the
+        // motion engine applies acceleration/smoothing. This test is about
+        // standard-vs-precision click ownership, not motion gain.
+        val release = coordinator.update(sample(0.51f, 0.5f, false), 1100L, 16L)
 
         assertTrue(release.clickEvents.any { it.type == HaloClickEventType.CLICK })
     }
