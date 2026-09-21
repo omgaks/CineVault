@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -17,13 +19,15 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 
 /**
  * Canonical CineVault surface for Halo.
  *
- * D4-4 exposes D4 precision stability visually without creating a second UI
- * or changing click/drag semantics. The normal Halo remains compact; once it
- * settles over a target it becomes a tighter precision reticle.
+ * D4-8 completes the precision-feedback path:
+ * - stable Halo -> compact precision reticle
+ * - successful click -> short finite confirmation pulse
+ * - no permanent ring, snapping, auto-click, or device-locked sizing
  */
 @Composable
 fun HaloCanonicalCineVaultSurface(
@@ -34,6 +38,7 @@ fun HaloCanonicalCineVaultSurface(
 ) {
     val coordinator = remember { HaloInteractionCoordinator() }
     val clock = remember { HaloEventClock() }
+    val pulseController = remember { HaloClickPulseController() }
     val rootView = LocalView.current
     val syntheticGuard = remember { HaloSyntheticDispatchGuard() }
 
@@ -49,13 +54,27 @@ fun HaloCanonicalCineVaultSurface(
 
     var haloPosition by remember { mutableStateOf<HaloVector?>(null) }
     var haloStable by remember { mutableStateOf(false) }
-    var clickPulse by remember { mutableStateOf(0) }
+    var pulseGeneration by remember { mutableStateOf(0) }
+    var pulseProgress by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(pulseGeneration) {
+        if (pulseGeneration == 0) return@LaunchedEffect
+
+        while (true) {
+            val progress = pulseController.progress(SystemClock.uptimeMillis())
+            pulseProgress = progress
+            if (progress <= 0f) break
+            delay(16L)
+        }
+    }
 
     DisposableEffect(enabled, dragDispatcher) {
         onDispose {
             dragDispatcher.cancel()
             coordinator.reset()
             clock.reset()
+            pulseController.reset()
+            pulseProgress = 0f
         }
     }
 
@@ -82,7 +101,11 @@ fun HaloCanonicalCineVaultSurface(
                 frame.clickEvents
                     .firstOrNull { it.type == HaloClickEventType.CLICK }
                     ?.let { click ->
-                        clickPulse += 1
+                        if (click.feedback.visualPulse) {
+                            pulseController.trigger(now)
+                            pulseProgress = 1f
+                            pulseGeneration += 1
+                        }
                         targetDispatcher.dispatchClick(click.position)
                     }
             }
@@ -96,7 +119,7 @@ fun HaloCanonicalCineVaultSurface(
                     HaloCursor(
                         position = position,
                         stable = haloStable,
-                        pulseKey = clickPulse,
+                        pulseProgress = pulseProgress,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -109,7 +132,7 @@ fun HaloCanonicalCineVaultSurface(
 private fun HaloCursor(
     position: HaloVector,
     stable: Boolean,
-    pulseKey: Int,
+    pulseProgress: Float,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
@@ -117,6 +140,7 @@ private fun HaloCursor(
     val precisionRadiusPx = with(density) { 6.dp.toPx() }
     val normalRingPx = with(density) { 15.dp.toPx() }
     val precisionRingPx = with(density) { 12.dp.toPx() }
+    val pulseExpansionPx = with(density) { 8.dp.toPx() }
     val strokePx = with(density) { 2.dp.toPx() }
     val precisionTickPx = with(density) { 4.dp.toPx() }
 
@@ -175,10 +199,13 @@ private fun HaloCursor(
             )
         }
 
-        if (pulseKey > 0) {
+        val pulse = pulseProgress.coerceIn(0f, 1f)
+        if (pulse > 0f) {
+            val baseRing = if (stable) precisionRingPx else normalRingPx
+            val expansion = pulseExpansionPx * (1f - pulse)
             drawCircle(
-                color = Color.White.copy(alpha = 0.45f),
-                radius = if (stable) precisionRingPx else normalRingPx,
+                color = Color.White.copy(alpha = 0.55f * pulse),
+                radius = baseRing + expansion,
                 center = centre,
                 style = Stroke(width = strokePx),
             )
