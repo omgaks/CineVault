@@ -1,22 +1,17 @@
 package com.sole.cinevault.glasses.halo
 
 /**
- * D2-7 — first Halo integration layer.
+ * Central Halo interaction stream.
  *
- * Brings D2-4 (motion), D2-5 (click) and D2-6 (drag) into one interaction
- * stream and, critically, emits ACTIVITY for every meaningful Halo operation.
- *
- * Player/UI code can use ACTIVITY to restart its existing controls auto-hide
- * timer. Halo therefore counts as real user interaction instead of allowing
- * controls to disappear while the user is operating them.
- *
- * This coordinator does not render a new player and does not own CineVault
- * controls. It only describes canonical interaction intent.
+ * D4-3 integrates the D4 target-stability engine without changing click/drag
+ * ownership. Stability is descriptive UI state only: it never auto-clicks,
+ * snaps, or steals an active gesture.
  */
 class HaloInteractionCoordinator(
     private val motionEngine: HaloMotionEngine = HaloMotionEngine(),
     private val clickController: HaloClickController = HaloClickController(),
     private val dragController: HaloDragController = HaloDragController(),
+    private val stabilityEngine: HaloTargetStabilityEngine = HaloTargetStabilityEngine(),
 ) {
     private var lastPressed = false
 
@@ -43,11 +38,25 @@ class HaloInteractionCoordinator(
             }
 
         val clickEvents = if (dragOwnsGesture) {
-            // Once drag wins, a release must never become a click.
             clickController.cancel()
             emptyList()
         } else {
             clickController.update(
+                position = position,
+                pressed = sample.pressed,
+                eventTimeMillis = eventTimeMillis,
+            )
+        }
+
+        val stability = if (dragOwnsGesture) {
+            stabilityEngine.reset(position)
+            HaloTargetStability(
+                isStable = false,
+                dwellMillis = 0L,
+                distanceFromAnchor = 0f,
+            )
+        } else {
+            stabilityEngine.update(
                 position = position,
                 pressed = sample.pressed,
                 eventTimeMillis = eventTimeMillis,
@@ -74,6 +83,7 @@ class HaloInteractionCoordinator(
             position = position,
             clickEvents = clickEvents,
             dragEvents = dragEvents,
+            stability = stability,
             activity = reasons.takeIf { it.isNotEmpty() }?.let {
                 HaloActivityEvent(
                     eventTimeMillis = eventTimeMillis,
@@ -83,13 +93,12 @@ class HaloInteractionCoordinator(
         )
     }
 
-    /**
-     * Re-anchor after display/orientation/session changes so Halo does not jump.
-     */
+    /** Re-anchor every stateful engine after display/orientation/session changes. */
     fun reset(position: HaloVector? = null) {
         motionEngine.reset(position)
         clickController.cancel()
         dragController.cancel()
+        stabilityEngine.reset(position)
         lastPressed = false
     }
 }
@@ -98,6 +107,7 @@ data class HaloInteractionFrame(
     val position: HaloVector,
     val clickEvents: List<HaloClickEvent>,
     val dragEvents: List<HaloDragEvent>,
+    val stability: HaloTargetStability,
     val activity: HaloActivityEvent?,
 )
 
