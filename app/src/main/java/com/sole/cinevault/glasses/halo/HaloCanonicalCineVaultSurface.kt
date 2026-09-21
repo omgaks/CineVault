@@ -24,9 +24,10 @@ import kotlinx.coroutines.delay
 /**
  * Canonical CineVault surface for Halo.
  *
- * D4-18 confirms the real Android activation outcome before success feedback.
- * Android/Compose still owns the real target hit test. A visual success pulse is
- * emitted only when dispatchTouchEvent reports that the synthetic click was handled.
+ * D4-20 closes the activation pipeline by routing confirmed outcomes through
+ * the canonical feedback policy before rendering success feedback.
+ * Android/Compose still owns the real target hit test. The surface no longer
+ * defines success semantics itself; HaloActivationFeedbackPolicy owns that contract.
  */
 @Composable
 fun HaloCanonicalCineVaultSurface(
@@ -135,10 +136,12 @@ fun HaloCanonicalCineVaultSurface(
                             dispatchHandled = dispatchHandled,
                         )
 
-                        if (
-                            outcome == HaloTargetActivationOutcome.HANDLED &&
-                            click.feedback.visualPulse
-                        ) {
+                        val feedback = HaloActivationFeedbackPolicy.resolve(
+                            outcome = outcome,
+                            visualPulseRequested = click.feedback.visualPulse,
+                        )
+
+                        if (feedback.showSuccessPulse) {
                             pulseController.trigger(now)
                             pulseProgress = 1f
                             pulseGeneration += 1
