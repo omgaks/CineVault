@@ -3,23 +3,20 @@ package com.sole.cinevault.glasses.halo
 /**
  * Central Halo interaction stream.
  *
- * D4-6 wires precision-aware click qualification into the canonical stream.
- * The key rule is that precision is captured from the PRE-PRESS stable state.
- * Pressing still clears visible stability immediately, and drag remains the
- * highest-priority owner of the gesture.
+ * D4-10 promotes focus confidence into the canonical interaction frame.
+ * Confidence remains descriptive only: it never clicks, snaps, captures
+ * Compose focus, or changes drag/click ownership.
  */
 class HaloInteractionCoordinator(
     private val motionEngine: HaloMotionEngine = HaloMotionEngine(),
     private val clickController: HaloClickController = HaloClickController(),
     private val dragController: HaloDragController = HaloDragController(),
     private val stabilityEngine: HaloTargetStabilityEngine = HaloTargetStabilityEngine(),
+    private val focusConfidenceController: HaloFocusConfidenceController =
+        HaloFocusConfidenceController(),
 ) {
     private var lastPressed = false
-    private var lastStability = HaloTargetStability(
-        isStable = false,
-        dwellMillis = 0L,
-        distanceFromAnchor = 0f,
-    )
+    private var lastStability = inactiveStability()
 
     fun update(
         sample: HaloPointerSample,
@@ -70,6 +67,12 @@ class HaloInteractionCoordinator(
         }
         lastStability = stability
 
+        val focusConfidence = focusConfidenceController.evaluate(
+            stability = stability,
+            pressed = sample.pressed,
+            dragging = dragOwnsGesture,
+        )
+
         val moved = position.x != sample.xFraction ||
             position.y != sample.yFraction ||
             sample.pressed
@@ -91,6 +94,7 @@ class HaloInteractionCoordinator(
             clickEvents = clickEvents,
             dragEvents = dragEvents,
             stability = stability,
+            focusConfidence = focusConfidence,
             activity = reasons.takeIf { it.isNotEmpty() }?.let {
                 HaloActivityEvent(
                     eventTimeMillis = eventTimeMillis,
@@ -122,6 +126,7 @@ data class HaloInteractionFrame(
     val clickEvents: List<HaloClickEvent>,
     val dragEvents: List<HaloDragEvent>,
     val stability: HaloTargetStability,
+    val focusConfidence: HaloFocusConfidence,
     val activity: HaloActivityEvent?,
 )
 
