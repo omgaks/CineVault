@@ -21,13 +21,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
-/**
- * Canonical CineVault surface for Halo.
- *
- * D4-11 consumes canonical focus confidence in the visible Halo itself.
- * Confidence changes only the reticle treatment; it does not snap, auto-click,
- * capture Compose focus, or alter gesture ownership.
- */
 @Composable
 fun HaloCanonicalCineVaultSurface(
     enabled: Boolean = true,
@@ -40,18 +33,22 @@ fun HaloCanonicalCineVaultSurface(
     val pulseController = remember { HaloClickPulseController() }
     val rootView = LocalView.current
     val syntheticGuard = remember { HaloSyntheticDispatchGuard() }
-
     val targetDispatcher = remember(rootView) { HaloCanonicalTargetDispatcher(rootView) }
     val dragDispatcher = remember(rootView, syntheticGuard) {
-        HaloCanonicalDragDispatcher(
-            rootView = rootView,
-            syntheticDispatchGuard = syntheticGuard,
-        )
+        HaloCanonicalDragDispatcher(rootView, syntheticGuard)
     }
 
     var haloPosition by remember { mutableStateOf<HaloVector?>(null) }
     var haloStable by remember { mutableStateOf(false) }
-    var focusConfidence by remember { mutableStateOf(HaloFocusConfidence.NONE) }
+    var awareness by remember {
+        mutableStateOf(
+            HaloTargetAwareness(
+                HaloTargetPresence.UNAVAILABLE,
+                HaloFocusConfidence.NONE,
+                false,
+            )
+        )
+    }
     var pulseGeneration by remember { mutableStateOf(0) }
     var pulseProgress by remember { mutableFloatStateOf(0f) }
 
@@ -72,7 +69,11 @@ fun HaloCanonicalCineVaultSurface(
             clock.reset()
             pulseController.reset()
             pulseProgress = 0f
-            focusConfidence = HaloFocusConfidence.NONE
+            awareness = HaloTargetAwareness(
+                HaloTargetPresence.UNAVAILABLE,
+                HaloFocusConfidence.NONE,
+                false,
+            )
         }
     }
 
@@ -92,9 +93,13 @@ fun HaloCanonicalCineVaultSurface(
 
                 haloPosition = frame.position
                 haloStable = frame.stability.isStable
-                focusConfidence = frame.focusConfidence
+                awareness = HaloTargetAwarenessResolver.resolve(
+                    position = frame.position,
+                    widthPx = rootView.width,
+                    heightPx = rootView.height,
+                    focusConfidence = frame.focusConfidence,
+                )
                 frame.activity?.let(onActivity)
-
                 frame.dragEvents.forEach(dragDispatcher::dispatch)
 
                 frame.clickEvents
@@ -110,14 +115,14 @@ fun HaloCanonicalCineVaultSurface(
             }
         },
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
             content()
             if (enabled) {
-                haloPosition?.let { position ->
+                haloPosition?.let {
                     HaloCursor(
-                        position = position,
+                        position = it,
                         stable = haloStable,
-                        focusConfidence = focusConfidence,
+                        awareness = awareness,
                         pulseProgress = pulseProgress,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -131,89 +136,61 @@ fun HaloCanonicalCineVaultSurface(
 private fun HaloCursor(
     position: HaloVector,
     stable: Boolean,
-    focusConfidence: HaloFocusConfidence,
+    awareness: HaloTargetAwareness,
     pulseProgress: Float,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
-    val normalRadiusPx = with(density) { 9.dp.toPx() }
-    val precisionRadiusPx = with(density) { 6.dp.toPx() }
-    val normalRingPx = with(density) { 15.dp.toPx() }
-    val precisionRingPx = with(density) { 12.dp.toPx() }
-    val confidenceRingPx = with(density) { 18.dp.toPx() }
-    val pulseExpansionPx = with(density) { 8.dp.toPx() }
-    val strokePx = with(density) { 2.dp.toPx() }
-    val precisionTickPx = with(density) { 4.dp.toPx() }
+    val normalRadius = with(density) { 9.dp.toPx() }
+    val precisionRadius = with(density) { 6.dp.toPx() }
+    val normalRing = with(density) { 15.dp.toPx() }
+    val precisionRing = with(density) { 12.dp.toPx() }
+    val confidenceRing = with(density) { 18.dp.toPx() }
+    val pulseExpansion = with(density) { 8.dp.toPx() }
+    val stroke = with(density) { 2.dp.toPx() }
+    val tick = with(density) { 4.dp.toPx() }
 
-    Canvas(modifier = modifier) {
+    Canvas(modifier) {
         val centre = Offset(
-            x = position.x.coerceIn(0f, 1f) * size.width,
-            y = position.y.coerceIn(0f, 1f) * size.height,
+            position.x.coerceIn(0f, 1f) * size.width,
+            position.y.coerceIn(0f, 1f) * size.height,
         )
-        val radius = if (stable) precisionRadiusPx else normalRadiusPx
-
-        drawCircle(
-            color = Color.White.copy(alpha = if (stable) 1f else 0.95f),
-            radius = radius,
-            center = centre,
-        )
-        drawCircle(
-            color = Color.Black.copy(alpha = 0.72f),
-            radius = radius,
-            center = centre,
-            style = Stroke(width = strokePx),
-        )
+        val radius = if (stable) precisionRadius else normalRadius
+        drawCircle(Color.White.copy(alpha = if (stable) 1f else .95f), radius, centre)
+        drawCircle(Color.Black.copy(alpha = .72f), radius, centre, style = Stroke(stroke))
 
         if (stable) {
-            drawCircle(
-                color = Color.White.copy(alpha = 0.78f),
-                radius = precisionRingPx,
-                center = centre,
-                style = Stroke(width = strokePx),
-            )
-
-            val tickAlpha = when (focusConfidence) {
+            drawCircle(Color.White.copy(alpha = .78f), precisionRing, centre, style = Stroke(stroke))
+            val confidence =
+                if (awareness.canPresentFocusFeedback) awareness.focusConfidence
+                else HaloFocusConfidence.NONE
+            val alpha = when (confidence) {
                 HaloFocusConfidence.NONE -> 0f
-                HaloFocusConfidence.SETTLING -> 0.45f
-                HaloFocusConfidence.READY -> 0.72f
+                HaloFocusConfidence.SETTLING -> .45f
+                HaloFocusConfidence.READY -> .72f
                 HaloFocusConfidence.STRONG -> 1f
             }
-
-            if (tickAlpha > 0f) {
-                val tickColor = Color.White.copy(alpha = tickAlpha)
-                drawLine(tickColor, Offset(centre.x - precisionRingPx - precisionTickPx, centre.y),
-                    Offset(centre.x - precisionRingPx, centre.y), strokePx)
-                drawLine(tickColor, Offset(centre.x + precisionRingPx, centre.y),
-                    Offset(centre.x + precisionRingPx + precisionTickPx, centre.y), strokePx)
-                drawLine(tickColor, Offset(centre.x, centre.y - precisionRingPx - precisionTickPx),
-                    Offset(centre.x, centre.y - precisionRingPx), strokePx)
-                drawLine(tickColor, Offset(centre.x, centre.y + precisionRingPx),
-                    Offset(centre.x, centre.y + precisionRingPx + precisionTickPx), strokePx)
+            if (alpha > 0f) {
+                val c = Color.White.copy(alpha = alpha)
+                drawLine(c, Offset(centre.x-precisionRing-tick,centre.y), Offset(centre.x-precisionRing,centre.y), stroke)
+                drawLine(c, Offset(centre.x+precisionRing,centre.y), Offset(centre.x+precisionRing+tick,centre.y), stroke)
+                drawLine(c, Offset(centre.x,centre.y-precisionRing-tick), Offset(centre.x,centre.y-precisionRing), stroke)
+                drawLine(c, Offset(centre.x,centre.y+precisionRing), Offset(centre.x,centre.y+precisionRing+tick), stroke)
             }
-
-            if (focusConfidence == HaloFocusConfidence.READY ||
-                focusConfidence == HaloFocusConfidence.STRONG
-            ) {
-                val confidenceAlpha =
-                    if (focusConfidence == HaloFocusConfidence.STRONG) 0.58f else 0.30f
-                drawCircle(
-                    color = Color.White.copy(alpha = confidenceAlpha),
-                    radius = confidenceRingPx,
-                    center = centre,
-                    style = Stroke(width = strokePx),
-                )
+            if (confidence == HaloFocusConfidence.READY || confidence == HaloFocusConfidence.STRONG) {
+                val a = if (confidence == HaloFocusConfidence.STRONG) .58f else .30f
+                drawCircle(Color.White.copy(alpha=a), confidenceRing, centre, style=Stroke(stroke))
             }
         }
 
-        val pulse = pulseProgress.coerceIn(0f, 1f)
+        val pulse = pulseProgress.coerceIn(0f,1f)
         if (pulse > 0f) {
-            val baseRing = if (stable) precisionRingPx else normalRingPx
-            val expansion = pulseExpansionPx * (1f - pulse)
+            val base = if (stable) precisionRing else normalRing
             drawCircle(
-                color = Color.White.copy(alpha = 0.55f * pulse),
-                radius = baseRing + expansion,
-                center = centre,
-                style = Stroke(width = strokePx),
+                Color.White.copy(alpha=.55f*pulse),
+                base + pulseExpansion*(1f-pulse),
+                centre,
+                style=Stroke(stroke),
             )
         }
     }
@@ -221,15 +198,10 @@ private fun HaloCursor(
 
 internal class HaloEventClock {
     private var previousMillis: Long? = null
-
     fun deltaMillis(nowMillis: Long): Long {
         val previous = previousMillis
         previousMillis = nowMillis
-        return if (previous == null) 16L
-        else (nowMillis - previous).coerceAtLeast(1L)
+        return if (previous == null) 16L else (nowMillis-previous).coerceAtLeast(1L)
     }
-
-    fun reset() {
-        previousMillis = null
-    }
+    fun reset() { previousMillis = null }
 }
