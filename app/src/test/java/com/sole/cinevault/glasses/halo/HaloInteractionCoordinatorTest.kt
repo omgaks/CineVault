@@ -48,12 +48,31 @@ class HaloInteractionCoordinatorTest {
         assertTrue(frame.stability.isStable)
     }
 
-    @Test fun pressedPointerCannotRemainStable() {
+    @Test fun pressedPointerCannotRemainVisiblyStable() {
         val coordinator = HaloInteractionCoordinator()
         coordinator.update(sample(0.5f, 0.5f, false), 1000L, 16L)
         coordinator.update(sample(0.5f, 0.5f, false), 1150L, 16L)
         val frame = coordinator.update(sample(0.5f, 0.5f, true), 1160L, 16L)
         assertFalse(frame.stability.isStable)
+    }
+
+    @Test fun stableBeforePressUsesPrecisionClickEnvelope() {
+        val coordinator = HaloInteractionCoordinator()
+        coordinator.update(sample(0.50f, 0.5f, false), 1000L, 16L)
+        coordinator.update(sample(0.50f, 0.5f, false), 1150L, 16L)
+
+        coordinator.update(sample(0.50f, 0.5f, true), 1160L, 16L)
+        val release = coordinator.update(sample(0.52f, 0.5f, false), 1200L, 16L)
+
+        assertFalse(release.clickEvents.any { it.type == HaloClickEventType.CLICK })
+    }
+
+    @Test fun nonStablePressKeepsStandardClickEnvelope() {
+        val coordinator = HaloInteractionCoordinator()
+        coordinator.update(sample(0.50f, 0.5f, true), 1000L, 16L)
+        val release = coordinator.update(sample(0.52f, 0.5f, false), 1100L, 16L)
+
+        assertTrue(release.clickEvents.any { it.type == HaloClickEventType.CLICK })
     }
 
     @Test fun activeDragCancelsPrecisionStability() {
