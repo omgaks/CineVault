@@ -1,5 +1,6 @@
 package com.sole.cinevault.glasses.halo
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -54,6 +55,7 @@ class HaloInteractionCoordinatorTest {
         coordinator.update(sample(0.5f, 0.5f, false), 1150L, 16L)
         val frame = coordinator.update(sample(0.5f, 0.5f, true), 1160L, 16L)
         assertFalse(frame.stability.isStable)
+        assertEquals(HaloFocusConfidence.NONE, frame.focusConfidence)
     }
 
     @Test fun stableBeforePressUsesPrecisionClickEnvelope() {
@@ -70,16 +72,20 @@ class HaloInteractionCoordinatorTest {
     @Test fun nonStablePressKeepsStandardClickEnvelope() {
         val coordinator = HaloInteractionCoordinator()
         coordinator.update(sample(0.50f, 0.5f, true), 1000L, 16L)
-
-        // Keep the raw travel inside the standard click envelope after the
-        // motion engine applies acceleration/smoothing. This test is about
-        // standard-vs-precision click ownership, not motion gain.
         val release = coordinator.update(sample(0.51f, 0.5f, false), 1100L, 16L)
-
         assertTrue(release.clickEvents.any { it.type == HaloClickEventType.CLICK })
     }
 
-    @Test fun activeDragCancelsPrecisionStability() {
+    @Test fun canonicalFrameExposesFocusConfidence() {
+        val coordinator = HaloInteractionCoordinator()
+        coordinator.update(sample(0.5f, 0.5f, false), 1000L, 16L)
+        coordinator.update(sample(0.5f, 0.5f, false), 1150L, 16L)
+        val frame = coordinator.update(sample(0.5f, 0.5f, false), 1320L, 16L)
+
+        assertEquals(HaloFocusConfidence.STRONG, frame.focusConfidence)
+    }
+
+    @Test fun dragCancelsFocusConfidence() {
         val coordinator = HaloInteractionCoordinator()
         coordinator.update(sample(0.2f, 0.2f, false), 1000L, 16L)
         coordinator.update(sample(0.2f, 0.2f, false), 1150L, 16L)
@@ -88,6 +94,7 @@ class HaloInteractionCoordinatorTest {
 
         assertTrue(frame.dragEvents.isNotEmpty())
         assertFalse(frame.stability.isStable)
+        assertEquals(HaloFocusConfidence.NONE, frame.focusConfidence)
     }
 
     @Test fun resetClearsPendingGestureOwnershipAndStability() {
@@ -98,5 +105,6 @@ class HaloInteractionCoordinatorTest {
 
         assertFalse(frame.clickEvents.any { it.type == HaloClickEventType.CLICK })
         assertFalse(frame.stability.isStable)
+        assertEquals(HaloFocusConfidence.NONE, frame.focusConfidence)
     }
 }
