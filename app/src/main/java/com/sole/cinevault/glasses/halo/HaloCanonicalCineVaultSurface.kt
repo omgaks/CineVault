@@ -19,11 +19,11 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 
 /**
- * D2-10 — canonical click + drag/scroll dispatch.
+ * Canonical CineVault surface for Halo.
  *
- * CineVault remains the only UI. Halo classifies interaction, draws the cursor,
- * and forwards CLICK/DRAG through Android's normal input pipeline so the real
- * CineVault target performs its existing action.
+ * D4-4 exposes D4 precision stability visually without creating a second UI
+ * or changing click/drag semantics. The normal Halo remains compact; once it
+ * settles over a target it becomes a tighter precision reticle.
  */
 @Composable
 fun HaloCanonicalCineVaultSurface(
@@ -48,6 +48,7 @@ fun HaloCanonicalCineVaultSurface(
     }
 
     var haloPosition by remember { mutableStateOf<HaloVector?>(null) }
+    var haloStable by remember { mutableStateOf(false) }
     var clickPulse by remember { mutableStateOf(0) }
 
     DisposableEffect(enabled, dragDispatcher) {
@@ -73,10 +74,9 @@ fun HaloCanonicalCineVaultSurface(
                 )
 
                 haloPosition = frame.position
+                haloStable = frame.stability.isStable
                 frame.activity?.let(onActivity)
 
-                // Drag owns the gesture once D2-6 crosses its threshold.
-                // The coordinator already guarantees click/drag exclusivity.
                 frame.dragEvents.forEach(dragDispatcher::dispatch)
 
                 frame.clickEvents
@@ -95,6 +95,7 @@ fun HaloCanonicalCineVaultSurface(
                 haloPosition?.let { position ->
                     HaloCursor(
                         position = position,
+                        stable = haloStable,
                         pulseKey = clickPulse,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -107,13 +108,17 @@ fun HaloCanonicalCineVaultSurface(
 @Composable
 private fun HaloCursor(
     position: HaloVector,
+    stable: Boolean,
     pulseKey: Int,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
-    val radiusPx = with(density) { 9.dp.toPx() }
-    val ringPx = with(density) { 15.dp.toPx() }
+    val normalRadiusPx = with(density) { 9.dp.toPx() }
+    val precisionRadiusPx = with(density) { 6.dp.toPx() }
+    val normalRingPx = with(density) { 15.dp.toPx() }
+    val precisionRingPx = with(density) { 12.dp.toPx() }
     val strokePx = with(density) { 2.dp.toPx() }
+    val precisionTickPx = with(density) { 4.dp.toPx() }
 
     Canvas(modifier = modifier) {
         val centre = Offset(
@@ -121,22 +126,59 @@ private fun HaloCursor(
             y = position.y.coerceIn(0f, 1f) * size.height,
         )
 
+        val radius = if (stable) precisionRadiusPx else normalRadiusPx
+
         drawCircle(
-            color = Color.White.copy(alpha = 0.95f),
-            radius = radiusPx,
+            color = Color.White.copy(alpha = if (stable) 1f else 0.95f),
+            radius = radius,
             center = centre,
         )
         drawCircle(
             color = Color.Black.copy(alpha = 0.72f),
-            radius = radiusPx,
+            radius = radius,
             center = centre,
             style = Stroke(width = strokePx),
         )
 
+        if (stable) {
+            val ringRadius = precisionRingPx
+            drawCircle(
+                color = Color.White.copy(alpha = 0.78f),
+                radius = ringRadius,
+                center = centre,
+                style = Stroke(width = strokePx),
+            )
+
+            drawLine(
+                color = Color.White.copy(alpha = 0.9f),
+                start = Offset(centre.x - ringRadius - precisionTickPx, centre.y),
+                end = Offset(centre.x - ringRadius, centre.y),
+                strokeWidth = strokePx,
+            )
+            drawLine(
+                color = Color.White.copy(alpha = 0.9f),
+                start = Offset(centre.x + ringRadius, centre.y),
+                end = Offset(centre.x + ringRadius + precisionTickPx, centre.y),
+                strokeWidth = strokePx,
+            )
+            drawLine(
+                color = Color.White.copy(alpha = 0.9f),
+                start = Offset(centre.x, centre.y - ringRadius - precisionTickPx),
+                end = Offset(centre.x, centre.y - ringRadius),
+                strokeWidth = strokePx,
+            )
+            drawLine(
+                color = Color.White.copy(alpha = 0.9f),
+                start = Offset(centre.x, centre.y + ringRadius),
+                end = Offset(centre.x, centre.y + ringRadius + precisionTickPx),
+                strokeWidth = strokePx,
+            )
+        }
+
         if (pulseKey > 0) {
             drawCircle(
                 color = Color.White.copy(alpha = 0.45f),
-                radius = ringPx,
+                radius = if (stable) precisionRingPx else normalRingPx,
                 center = centre,
                 style = Stroke(width = strokePx),
             )
