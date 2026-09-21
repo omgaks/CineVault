@@ -24,10 +24,9 @@ import kotlinx.coroutines.delay
 /**
  * Canonical CineVault surface for Halo.
  *
- * D4-16 wires the canonical target activation policy into live click delivery.
- * Android/Compose still owns the real target hit test; this layer only prevents
- * a qualified Halo click from being dispatched when the current root surface
- * is unavailable/outside or when drag owns the gesture.
+ * D4-18 confirms the real Android activation outcome before success feedback.
+ * Android/Compose still owns the real target hit test. A visual success pulse is
+ * emitted only when dispatchTouchEvent reports that the synthetic click was handled.
  */
 @Composable
 fun HaloCanonicalCineVaultSurface(
@@ -124,13 +123,25 @@ fun HaloCanonicalCineVaultSurface(
                             dragging = dragging,
                         )
 
-                        if (decision == HaloTargetActivationDecision.DISPATCH) {
-                            if (click.feedback.visualPulse) {
-                                pulseController.trigger(now)
-                                pulseProgress = 1f
-                                pulseGeneration += 1
+                        val dispatchHandled =
+                            if (decision == HaloTargetActivationDecision.DISPATCH) {
+                                targetDispatcher.dispatchClick(click.position)
+                            } else {
+                                null
                             }
-                            targetDispatcher.dispatchClick(click.position)
+
+                        val outcome = HaloTargetActivationOutcomeResolver.resolve(
+                            decision = decision,
+                            dispatchHandled = dispatchHandled,
+                        )
+
+                        if (
+                            outcome == HaloTargetActivationOutcome.HANDLED &&
+                            click.feedback.visualPulse
+                        ) {
+                            pulseController.trigger(now)
+                            pulseProgress = 1f
+                            pulseGeneration += 1
                         }
                     }
             }
