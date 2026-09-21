@@ -3,9 +3,10 @@ package com.sole.cinevault.glasses.halo
 /**
  * Central Halo interaction stream.
  *
- * D4-3 integrates the D4 target-stability engine without changing click/drag
- * ownership. Stability is descriptive UI state only: it never auto-clicks,
- * snaps, or steals an active gesture.
+ * D4-6 wires precision-aware click qualification into the canonical stream.
+ * The key rule is that precision is captured from the PRE-PRESS stable state.
+ * Pressing still clears visible stability immediately, and drag remains the
+ * highest-priority owner of the gesture.
  */
 class HaloInteractionCoordinator(
     private val motionEngine: HaloMotionEngine = HaloMotionEngine(),
@@ -14,6 +15,11 @@ class HaloInteractionCoordinator(
     private val stabilityEngine: HaloTargetStabilityEngine = HaloTargetStabilityEngine(),
 ) {
     private var lastPressed = false
+    private var lastStability = HaloTargetStability(
+        isStable = false,
+        dwellMillis = 0L,
+        distanceFromAnchor = 0f,
+    )
 
     fun update(
         sample: HaloPointerSample,
@@ -25,6 +31,9 @@ class HaloInteractionCoordinator(
             rawYFraction = sample.yFraction,
             deltaTimeMillis = deltaTimeMillis,
         )
+
+        val pressStarted = sample.pressed && !lastPressed
+        val precisionAtPressDown = pressStarted && lastStability.isStable
 
         val dragEvents = dragController.update(
             position = position,
@@ -45,16 +54,13 @@ class HaloInteractionCoordinator(
                 position = position,
                 pressed = sample.pressed,
                 eventTimeMillis = eventTimeMillis,
+                precisionStable = precisionAtPressDown,
             )
         }
 
         val stability = if (dragOwnsGesture) {
             stabilityEngine.reset(position)
-            HaloTargetStability(
-                isStable = false,
-                dwellMillis = 0L,
-                distanceFromAnchor = 0f,
-            )
+            inactiveStability()
         } else {
             stabilityEngine.update(
                 position = position,
@@ -62,6 +68,7 @@ class HaloInteractionCoordinator(
                 eventTimeMillis = eventTimeMillis,
             )
         }
+        lastStability = stability
 
         val moved = position.x != sample.xFraction ||
             position.y != sample.yFraction ||
@@ -99,8 +106,15 @@ class HaloInteractionCoordinator(
         clickController.cancel()
         dragController.cancel()
         stabilityEngine.reset(position)
+        lastStability = inactiveStability()
         lastPressed = false
     }
+
+    private fun inactiveStability() = HaloTargetStability(
+        isStable = false,
+        dwellMillis = 0L,
+        distanceFromAnchor = 0f,
+    )
 }
 
 data class HaloInteractionFrame(
