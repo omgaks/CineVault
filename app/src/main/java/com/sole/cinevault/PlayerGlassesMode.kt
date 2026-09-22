@@ -15,24 +15,34 @@ import androidx.media3.ui.PlayerView
 import com.sole.cinevault.glasses.ExternalDisplayInfo
 import com.sole.cinevault.glasses.ExternalDisplayLifecyclePolicy
 import com.sole.cinevault.glasses.ExternalDisplayLifecycleState
-import com.sole.cinevault.glasses.ExternalPresentationHandle
 import com.sole.cinevault.glasses.rememberExternalDisplayState
 import com.sole.cinevault.glasses.rememberExternalVideoPresentation
+import com.sole.cinevault.glasses.display.ExternalPlayerInteractionPort
+import com.sole.cinevault.glasses.display.LegacyExternalPlayerInteractionAdapter
 import kotlinx.coroutines.delay
 
 @Stable
 @UnstableApi
 class PlayerGlassesMode(
     val display: ExternalDisplayInfo,
-    val presentation: ExternalPresentationHandle?,
+    val presentation: ExternalPlayerInteractionPort?,
     val showConnectedHint: Boolean,
     val externalPlayerView: PlayerView?,
     val disableSession: () -> Unit,
 ) {
     val isConnected: Boolean get() = display.isConnected
-    val isActive: Boolean get() = externalPlayerView != null
+    val isActive: Boolean get() = presentation != null
 }
 
+/**
+ * D7-2:
+ * Player code now talks to [ExternalPlayerInteractionPort], not directly to
+ * ExternalPresentationHandle. The legacy presentation remains behind a
+ * temporary adapter until the shared CineVault renderer replaces it.
+ *
+ * This keeps the current build/behavior green while removing the live player's
+ * compile-time dependency on the legacy presentation API.
+ */
 @OptIn(UnstableApi::class)
 @Composable
 fun rememberPlayerGlassesMode(
@@ -84,7 +94,7 @@ fun rememberPlayerGlassesMode(
         }
     }
 
-    val presentation by rememberExternalVideoPresentation(
+    val legacyPresentation by rememberExternalVideoPresentation(
         player = player,
         externalDisplay = externalDisplay,
         title = title,
@@ -94,8 +104,16 @@ fun rememberPlayerGlassesMode(
         onBack = onBack,
     )
 
-    val externalPlayerView =
-        if (lifecycle.isSessionEnabled) presentation?.playerView else null
+    val presentation =
+        remember(legacyPresentation, lifecycle.isSessionEnabled) {
+            if (lifecycle.isSessionEnabled) {
+                legacyPresentation?.let(::LegacyExternalPlayerInteractionAdapter)
+            } else {
+                null
+            }
+        }
+
+    val externalPlayerView = presentation?.playerView
 
     LaunchedEffect(externalPlayerView, localPlayerView) {
         val localView = localPlayerView
