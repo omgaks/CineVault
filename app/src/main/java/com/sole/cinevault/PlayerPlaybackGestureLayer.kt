@@ -14,27 +14,20 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.media3.exoplayer.ExoPlayer
+import com.sole.cinevault.glasses.halo.HaloPlayerInputBridge
+import com.sole.cinevault.glasses.halo.HaloPlayerLiveBindings
 import com.sole.cinevault.glasses.halo.HaloPlayerLiveSessionFactory
 import com.sole.cinevault.glasses.halo.haloPlayerLiveDragGestures
 import com.sole.cinevault.glasses.halo.haloPlayerSupportGestures
 import com.sole.cinevault.library.VideoThumbnailHelper
 
 /**
- * D2-21: live Halo handover for external-display playback.
+ * D5-6: live D5 Halo integration for external-display playback.
  *
- * External display no longer uses glassesTouchpadGestures().
- * Single-finger drag ownership:
- *   - left/right vertical -> canonical brightness/volume
- *   - top 50% horizontal -> canonical seek
- *   - otherwise -> canonical Halo pointer
- *
- * Support surface:
- *   - single tap -> show / target click / hide
- *   - double tap -> play/pause
- *   - pinch/pan -> viewport transform
- *   - five-finger spread -> emergency return
- *
- * No glasses-only long press.
+ * Canonical Halo owns pointer movement and target activation.
+ * Existing playback gestures keep brightness, volume, seek and support gestures.
+ * Transient UI keeps priority over background hide/toggle behavior.
+ * Local phone/tablet playback remains unchanged.
  */
 @Composable
 internal fun PlayerPlaybackGestureLayer(
@@ -100,20 +93,30 @@ internal fun PlayerPlaybackGestureLayer(
     val currentShowControls by rememberUpdatedState(showControls)
     val currentTransientUi by rememberUpdatedState(transientUi)
 
+    val haloInputBridge =
+        HaloPlayerInputBridge(
+            externalDisplayActive = externalDisplayActive,
+            externalTargetSurfaceAvailable = externalDisplayActive,
+            transientUiVisible = transientUi.anyVisible,
+        )
+
+    val haloLiveBindings =
+        HaloPlayerLiveBindings(
+            bridge = haloInputBridge,
+            moveCanonicalPointer = externalMovePointer,
+            clickCanonicalTarget = externalClickPointer,
+        )
+
     val liveHaloSession =
         remember(currentVideoPath, isLandscape) {
             HaloPlayerLiveSessionFactory.create(
                 brightnessDrag = { deltaY ->
                     liveBrightnessPercent =
-                        adjustPlayerBrightnessPercent(
-                            liveBrightnessPercent,
-                            deltaY,
-                        )
+                        adjustPlayerBrightnessPercent(liveBrightnessPercent, deltaY)
                     onBrightnessPercentChanged(liveBrightnessPercent)
                     activity?.window?.attributes =
                         activity?.window?.attributes?.apply {
-                            screenBrightness =
-                                playerWindowBrightness(liveBrightnessPercent)
+                            screenBrightness = playerWindowBrightness(liveBrightnessPercent)
                         }
                     onShowBrightnessCircleChanged(true)
                     externalShowGestureHud(
@@ -164,9 +167,7 @@ internal fun PlayerPlaybackGestureLayer(
                     player.seekTo(livePreviewPosition)
                     onPositionChanged(livePreviewPosition)
                 },
-                userActivity = {
-                    externalShowControls()
-                },
+                userActivity = { externalShowControls() },
             )
         }
 
@@ -179,7 +180,7 @@ internal fun PlayerPlaybackGestureLayer(
                     durationMs = { playerSafeSeekDuration(player.duration) },
                     liveSession = liveHaloSession,
                     onCanonicalPointerMove = { delta ->
-                        externalMovePointer(delta.x, delta.y)
+                        haloLiveBindings.movePointer(delta.x, delta.y)
                     },
                     onGestureEnd = {
                         onDraggingSeekbarChanged(false)
@@ -195,9 +196,13 @@ internal fun PlayerPlaybackGestureLayer(
                     gestureKey = currentVideoPath to isLandscape,
                     view = view,
                     controlsVisible = externalControlsVisible,
-                    clickHaloTarget = externalClickPointer,
+                    clickHaloTarget = { haloLiveBindings.clickTarget() },
                     onShowControls = externalShowControls,
-                    onHideControls = externalHideControls,
+                    onHideControls = {
+                        if (haloLiveBindings.backgroundTapMayToggleControls()) {
+                            externalHideControls()
+                        }
+                    },
                     onDoubleTap = {
                         if (player.isPlaying) player.pause() else player.play()
                         externalShowGestureHud(
@@ -257,9 +262,7 @@ internal fun PlayerPlaybackGestureLayer(
                     }
                 },
                 onSeekBack = {
-                    player.seekTo(
-                        playerSeekBackPosition(player.currentPosition)
-                    )
+                    player.seekTo(playerSeekBackPosition(player.currentPosition))
                     onPositionChanged(player.currentPosition)
                 },
                 onSeekForward = {
@@ -277,20 +280,14 @@ internal fun PlayerPlaybackGestureLayer(
                     onShowTopBarChanged(true)
                 },
                 onDragSettled = onGestureEnd,
-                onEdgeSwipeNext = {
-                    playbackNavigationCoordinator.playNext()
-                },
+                onEdgeSwipeNext = { playbackNavigationCoordinator.playNext() },
                 onBrightnessDrag = { deltaY ->
                     liveBrightnessPercent =
-                        adjustPlayerBrightnessPercent(
-                            liveBrightnessPercent,
-                            deltaY,
-                        )
+                        adjustPlayerBrightnessPercent(liveBrightnessPercent, deltaY)
                     onBrightnessPercentChanged(liveBrightnessPercent)
                     activity?.window?.attributes =
                         activity?.window?.attributes?.apply {
-                            screenBrightness =
-                                playerWindowBrightness(liveBrightnessPercent)
+                            screenBrightness = playerWindowBrightness(liveBrightnessPercent)
                         }
                     onShowBrightnessCircleChanged(true)
                 },
