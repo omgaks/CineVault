@@ -9,13 +9,9 @@ import com.sole.cinevault.glasses.ExternalDisplayInfo
 /**
  * D7-3 — live owner for the shared external CineVault renderer.
  *
- * This activates the D1/D2 shared-renderer stack that already exists in the
- * repository. It does not create a player, subtitle tree, FFmpeg path, studio,
- * navigation stack, or glasses-specific feature UI.
- *
- * The only input is physical display state. The external window renders
- * CineVaultRoot() through CineVaultExternalComposeRenderer, and Halo remains
- * attached at HaloCanonicalCineVaultSurface inside that renderer.
+ * This activates the existing unified renderer/lifecycle stack. It creates no
+ * second player, subtitle tree, FFmpeg path, studio, navigation stack, or
+ * glasses-specific feature UI.
  */
 @Composable
 fun rememberSharedCineVaultExternalRuntime(
@@ -42,7 +38,7 @@ fun rememberSharedCineVaultExternalRuntime(
             enabled = enabled,
         )
 
-    val decision = runtime.apply(modeState)
+    runtime.apply(modeState)
 
     DisposableEffect(runtime) {
         onDispose {
@@ -50,11 +46,11 @@ fun rememberSharedCineVaultExternalRuntime(
         }
     }
 
+    val snapshot = runtime.snapshot
+
     return SharedCineVaultExternalRuntimeState(
-        active =
-            decision.command == GlassesDisplayCommand.SHOW_EXTERNAL_CINEVAULT ||
-                runtime.snapshot.attachedDisplayId != null,
-        displayId = runtime.snapshot.attachedDisplayId,
+        active = snapshot.externalCineVaultActive,
+        displayId = snapshot.externalDisplayId,
     )
 }
 
