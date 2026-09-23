@@ -16,9 +16,8 @@ import com.sole.cinevault.glasses.ExternalDisplayInfo
 import com.sole.cinevault.glasses.ExternalDisplayLifecyclePolicy
 import com.sole.cinevault.glasses.ExternalDisplayLifecycleState
 import com.sole.cinevault.glasses.rememberExternalDisplayState
-import com.sole.cinevault.glasses.rememberExternalVideoPresentation
 import com.sole.cinevault.glasses.display.ExternalPlayerInteractionPort
-import com.sole.cinevault.glasses.display.LegacyExternalPlayerInteractionAdapter
+import com.sole.cinevault.glasses.display.rememberSharedCineVaultExternalRuntime
 import kotlinx.coroutines.delay
 
 @Stable
@@ -28,20 +27,23 @@ class PlayerGlassesMode(
     val presentation: ExternalPlayerInteractionPort?,
     val showConnectedHint: Boolean,
     val externalPlayerView: PlayerView?,
+    val sharedExternalActive: Boolean,
     val disableSession: () -> Unit,
 ) {
     val isConnected: Boolean get() = display.isConnected
-    val isActive: Boolean get() = presentation != null
+    val isActive: Boolean get() = sharedExternalActive
 }
 
 /**
- * D7-2:
- * Player code now talks to [ExternalPlayerInteractionPort], not directly to
- * ExternalPresentationHandle. The legacy presentation remains behind a
- * temporary adapter until the shared CineVault renderer replaces it.
+ * D7-4 — One-CineVault crossover.
  *
- * This keeps the current build/behavior green while removing the live player's
- * compile-time dependency on the legacy presentation API.
+ * The shared CineVault renderer is now the authoritative external-display
+ * owner. The player stays bound to its normal CineVault PlayerView/session;
+ * there is no second external PlayerView and no legacy presentation handle.
+ *
+ * Legacy parameters are temporarily retained in the function signature so the
+ * current VideoPlayerScreen caller does not need a large unrelated replacement
+ * in this crossover slice. They no longer create external feature state.
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -94,55 +96,28 @@ fun rememberPlayerGlassesMode(
         }
     }
 
-    val legacyPresentation by rememberExternalVideoPresentation(
-        player = player,
-        externalDisplay = externalDisplay,
-        title = title,
-        ratingText = ratingText,
-        cinemaVoidEnabled = cinemaVoidEnabled,
-        initialSubtitleContentLocked = initialSubtitleContentLocked,
-        onBack = onBack,
-    )
+    val sharedExternal =
+        rememberSharedCineVaultExternalRuntime(
+            activity = activity,
+            externalDisplay = externalDisplay,
+            enabled = lifecycle.isSessionEnabled,
+        )
 
-    val presentation =
-        remember(legacyPresentation, lifecycle.isSessionEnabled) {
-            if (lifecycle.isSessionEnabled) {
-                legacyPresentation?.let(::LegacyExternalPlayerInteractionAdapter)
-            } else {
-                null
-            }
-        }
-
-    val externalPlayerView = presentation?.playerView
-
-    LaunchedEffect(externalPlayerView, localPlayerView) {
-        val localView = localPlayerView
-        val externalView = externalPlayerView
-
-        when {
-            externalView != null && externalView.player !== player -> {
-                PlayerView.switchTargetView(player, localView, externalView)
-                onBoundPlayerViewChanged(externalView)
-            }
-
-            externalView == null &&
-                localView != null &&
-                localView.player !== player -> {
-                PlayerView.switchTargetView(player, null, localView)
-                onBoundPlayerViewChanged(localView)
-            }
-
-            externalView == null && localView != null -> {
-                onBoundPlayerViewChanged(localView)
-            }
-        }
+    /*
+     * D7-4 deliberately keeps the SAME player target/session alive.
+     * The external renderer enters the canonical CineVault session instead of
+     * stealing the Player into a second glasses-only PlayerView.
+     */
+    LaunchedEffect(localPlayerView) {
+        localPlayerView?.let(onBoundPlayerViewChanged)
     }
 
     return PlayerGlassesMode(
         display = externalDisplay,
-        presentation = presentation,
+        presentation = null,
         showConnectedHint = showConnectedHint,
-        externalPlayerView = externalPlayerView,
+        externalPlayerView = null,
+        sharedExternalActive = sharedExternal.active,
         disableSession = {
             lifecycle =
                 ExternalDisplayLifecyclePolicy.disableCurrentSession(lifecycle)
