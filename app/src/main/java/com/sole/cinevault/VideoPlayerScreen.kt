@@ -712,53 +712,26 @@ fun VideoPlayerScreen(
     val subtitleSyncTools = subtitleRuntimeEffects.syncTools
     val isAssOrSsaFormat = subtitleRuntimeEffects.isAssOrSsaFormat
 
-    // ── Auto-Sync (Phase 1: speech-timing only) ──────────────────────────
-    // Runs entirely off-main-thread (audio decode + VAD are real CPU work,
-    // not something to do on the composition thread). Reads the CURRENTLY
-    // SELECTED audio track's language so analysis matches what's actually
-    // playing, not just track 0 — a subtitle can be right for the main
-    // audio and wrong for a commentary track.
-    // FIX: previously only checked "a primary subtitle exists" + "not
-    // SMB" — didn't verify the subtitle was actually SRT (the ONLY format
-    // AutoSyncEngine's cue parser understands; a .vtt/.ass primary would
-    // silently fail deep inside the engine instead of being caught here)
-    // or that the video itself is a genuinely readable local/content
-    // source rather than some other unplayable state.
-    // Slice 33: Auto-Sync eligibility is now a pure, unit-tested decision.
-    // The player derives the current subtitle name from its Uri and passes
-    // only plain values into the eligibility function.
-    val primarySubtitleForAutoSync = trackUi.primaryUri
-    val autoSyncAvailable = isPlayerAutoSyncAvailable(
-        primarySubtitleName = primarySubtitleForAutoSync
-            ?.lastPathSegment
-            ?: primarySubtitleForAutoSync?.toString(),
+    // D9-1: Auto-Sync availability + coordinator wiring now live in a
+    // responsibility-owned runtime instead of growing this screen further.
+    val autoSyncRuntime = rememberPlayerAutoSyncRuntime(
+        context = context,
+        scope = scope,
+        exoPlayer = exoPlayer,
+        currentVideoPath = currentVideo.path,
         isStreamMedia = isStreamMedia,
-        videoPath = currentVideo.path,
+        trackUi = trackUi,
+        coreUi = coreUi,
+        studioUi = studioUi,
+        driftUi = driftUi,
+        gestureUi = gestureUi,
+        autoSyncStatus = autoSyncStatus,
+        onAutoSyncStatusChanged = { autoSyncStatus = it },
+        onAutoSyncSpeechTimelineChanged = { autoSyncSpeechTimeline = it },
     )
+    val autoSyncAvailable = autoSyncRuntime.available
+    val autoSyncCoordinator = autoSyncRuntime.coordinator
 
-    // Auto-Sync behavior lives in AutoSyncCoordinator; UI call sites now
-    // invoke the coordinator directly with no local pass-through wrappers.
-    // Reads trackUi.primaryUri fresh via the lambda each time, not the
-    // primarySubtitleForAutoSync snapshot above (which is only for the
-    // availability check right above it) — matching exactly what the
-    // original runAutoSync() did.
-    val autoSyncCoordinator = remember(exoPlayer) {
-        AutoSyncCoordinator(
-            context = context,
-            scope = scope,
-            exoPlayer = exoPlayer,
-            getPrimarySubtitleUri = { trackUi.primaryUri },
-            getCurrentVideoPath = { currentVideo.path },
-            getAutoSyncStatus = { autoSyncStatus },
-            setAutoSyncStatus = { autoSyncStatus = it },
-            resetPreviewFrames = { gestureUi.previewFrames = emptyList(); gestureUi.previewBitmap = null },
-            incrementPreviewReloadKey = { gestureUi.previewReloadKey++ },
-            setSyncOffsetSeconds = { coreUi.syncOffset = it },
-            setDriftScale = { driftUi.scale = it },
-            incrementStudioMenuTouchKey = { studioUi.menuTouchKey++ },
-            setSpeechTimeline = { autoSyncSpeechTimeline = it }
-        )
-    }
     // Slice 68: Speech-to-Subs / translation presentation state and generated
     // subtitle refresh state now live together in one per-video AI state holder.
     val subtitleAiUi = remember(currentVideo.path) { PlayerSubtitleAiUiState() }
