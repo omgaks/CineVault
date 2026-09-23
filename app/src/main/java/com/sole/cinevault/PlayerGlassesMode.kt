@@ -16,7 +16,6 @@ import com.sole.cinevault.glasses.ExternalDisplayInfo
 import com.sole.cinevault.glasses.ExternalDisplayLifecyclePolicy
 import com.sole.cinevault.glasses.ExternalDisplayLifecycleState
 import com.sole.cinevault.glasses.rememberExternalDisplayState
-import com.sole.cinevault.glasses.display.ExternalPlayerInteractionPort
 import com.sole.cinevault.glasses.display.rememberSharedCineVaultExternalRuntime
 import kotlinx.coroutines.delay
 
@@ -24,9 +23,7 @@ import kotlinx.coroutines.delay
 @UnstableApi
 class PlayerGlassesMode(
     val display: ExternalDisplayInfo,
-    val presentation: ExternalPlayerInteractionPort?,
     val showConnectedHint: Boolean,
-    val externalPlayerView: PlayerView?,
     val sharedExternalActive: Boolean,
     val disableSession: () -> Unit,
 ) {
@@ -114,9 +111,7 @@ fun rememberPlayerGlassesMode(
 
     return PlayerGlassesMode(
         display = externalDisplay,
-        presentation = null,
         showConnectedHint = showConnectedHint,
-        externalPlayerView = null,
         sharedExternalActive = sharedExternal.active,
         disableSession = {
             lifecycle =

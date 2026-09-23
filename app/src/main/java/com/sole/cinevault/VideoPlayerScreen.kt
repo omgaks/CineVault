@@ -336,8 +336,6 @@ fun VideoPlayerScreen(
     )
     val externalDisplay = glasses.display
     val showGlassesConnectedHint = glasses.showConnectedHint
-    val externalPresentation = glasses.presentation
-    val externalPlayerView = glasses.externalPlayerView
 
     val canDownloadExternalSubtitles = currentMediaType.equals("movie", ignoreCase = true) || currentMediaType.equals("tv", ignoreCase = true) || currentMediaType.equals("restricted", ignoreCase = true)
     val isCurrentTvShow = currentMediaType.equals("tv", ignoreCase = true)
@@ -898,18 +896,16 @@ fun VideoPlayerScreen(
 
         PlayerVideoSurface(
             player = exoPlayer,
-            externalDisplayActive = externalPlayerView != null,
+            externalDisplayActive = glasses.isActive,
             isZoomMode = gestureUi.isZoomMode,
             videoScale = gestureUi.videoScale,
             videoOffsetX = gestureUi.videoOffsetX,
             videoOffsetY = gestureUi.videoOffsetY,
             onPlayerViewChanged = { pv ->
                 localPlayerView = pv
-                studioUi.playerView = externalPlayerView ?: pv
+                studioUi.playerView = pv
             },
-            onResizeModeChanged = { resizeMode ->
-                externalPresentation?.updateResizeMode(resizeMode)
-            }
+            onResizeModeChanged = { _ -> }
         )
 
         val transientUiSnapshot = PlayerTransientUiSnapshot(
@@ -937,15 +933,11 @@ fun VideoPlayerScreen(
         // use the tablet/phone's own rotation sensor, so these actions never
         // fire from moving the controller device.
         rememberHeadGestureDetector(
-            enabled = externalPlayerView != null,
+            enabled = glasses.isActive,
         ) { gesture ->
             when (gesture) {
                 HeadGesture.NOD -> {
                     if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
-                    externalPresentation?.showGestureHud(
-                        if (exoPlayer.isPlaying) "PLAY" else "PAUSE",
-                        if (exoPlayer.isPlaying) "Playing" else "Paused",
-                    )
                 }
 
                 HeadGesture.SHAKE -> {
@@ -955,7 +947,6 @@ fun VideoPlayerScreen(
                         val nextVisible = !chromeUi.showControls
                         chromeUi.showControls = nextVisible
                         chromeUi.showTopBar = nextVisible
-                        if (nextVisible) externalPresentation?.showControls()
                     }
                 }
             }
@@ -966,7 +957,7 @@ fun VideoPlayerScreen(
             activity = activity,
             player = exoPlayer,
             audioManager = audioManager,
-            externalDisplayActive = externalPlayerView != null,
+            externalDisplayActive = glasses.isActive,
             currentVideoPath = currentVideo.path,
             episodeList = episodeList,
             isLandscape = playerLayout.isLandscape,
@@ -1005,40 +996,16 @@ fun VideoPlayerScreen(
                 chromeUi.brightnessGestureKey++
                 chromeUi.volumeGestureKey++
             },
-            externalControlsVisible = {
-                externalPresentation?.controlsVisible?.value == true
-            },
-            externalShowTouchPulse = {
-                externalPresentation?.showTouchPulse()
-            },
-            externalClickPointer = {
-                externalPresentation?.clickPointer() ?: false
-            },
-            externalShowControls = {
-                externalPresentation?.showControls()
-            },
-            externalHideControls = {
-                externalPresentation?.hideControls()
-            },
-            externalShowGestureHud = { title, value, progress ->
-                if (progress == null) {
-                    externalPresentation?.showGestureHud(title, value)
-                } else {
-                    externalPresentation?.showGestureHud(title, value, progress)
-                }
-            },
-            externalUpdateSeekPreview = { bitmap, positionMs, visible ->
-                externalPresentation?.updateSeekPreview(bitmap, positionMs, visible)
-            },
-            externalMovePointer = { x, y ->
-                externalPresentation?.movePointer(x, y)
-            },
-            externalApplyViewportTransform = { zoom, panX, panY ->
-                externalPresentation?.applyViewportTransform(zoom, panX, panY)
-            },
-            externalEnterTabletStandby = {
-                externalPresentation?.enterTabletStandby()
-            },
+            externalControlsVisible = { false },
+            externalShowTouchPulse = {},
+            externalClickPointer = { false },
+            externalShowControls = {},
+            externalHideControls = {},
+            externalShowGestureHud = { _, _, _ -> },
+            externalUpdateSeekPreview = { _, _, _ -> },
+            externalMovePointer = { _, _ -> },
+            externalApplyViewportTransform = { _, _, _ -> },
+            externalEnterTabletStandby = {},
             disableGlassesSession = {
                 glasses.disableSession()
             },
@@ -1199,7 +1166,7 @@ fun VideoPlayerScreen(
             showSubtitleBehaviourWindow = showSubtitleBehaviourWindow,
             showSpeechSubtitlePanel = subtitleAiUi.showSpeechSubtitlePanel,
             showSubtitleTranslationPanel = subtitleAiUi.showSubtitleTranslationPanel,
-            externalDisplayActive = externalPlayerView != null,
+            externalDisplayActive = glasses.isActive,
             autoSubtitleStatus = autoSubtitleFetch.status,
             playbackSpeed = playbackSpeed,
             sleepTimerActive = sleepTimerActive,
@@ -1328,7 +1295,7 @@ fun VideoPlayerScreen(
             controlsLocked = chromeUi.controlsLocked,
             lockButtonVisibleWhileLocked = chromeUi.lockButtonVisibleWhileLocked,
             showControls = chromeUi.showControls,
-            externalDisplayActive = externalPlayerView != null,
+            externalDisplayActive = glasses.isActive,
             isLandscape = playerLayout.isLandscape,
             containerWidth = playerMaxWidth,
             containerHeight = playerMaxHeight,
