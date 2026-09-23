@@ -325,14 +325,8 @@ fun VideoPlayerScreen(
 
     var localPlayerView by remember { mutableStateOf<PlayerView?>(null) }
     val glasses = rememberPlayerGlassesMode(
-        player = exoPlayer,
-        title = if (currentMediaType.equals("stream", ignoreCase = true)) currentVideo.name else cleanVideoTitle(currentVideo.path),
-        ratingText = remember(currentVideo.path, episodeList) {
-            buildExternalRatingText(currentVideo.path, episodeList)
-        },
-        onBack = onBack,
         localPlayerView = localPlayerView,
-        onBoundPlayerViewChanged = { studioUi.playerView = it }
+        onBoundPlayerViewChanged = { studioUi.playerView = it },
     )
     val externalDisplay = glasses.display
     val showGlassesConnectedHint = glasses.showConnectedHint

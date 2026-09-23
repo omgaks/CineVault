@@ -9,7 +9,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import com.sole.cinevault.glasses.ExternalDisplayInfo
@@ -38,19 +37,13 @@ class PlayerGlassesMode(
  * owner. The player stays bound to its normal CineVault PlayerView/session;
  * there is no second external PlayerView and no legacy presentation handle.
  *
- * Legacy parameters are temporarily retained in the function signature so the
- * current VideoPlayerScreen caller does not need a large unrelated replacement
- * in this crossover slice. They no longer create external feature state.
+ * D8-4 removes the obsolete legacy-player/presentation inputs. This helper now
+ * accepts only state that it actually owns: the host PlayerView hand-back target
+ * and the callback used by the player studio runtime.
  */
 @OptIn(UnstableApi::class)
 @Composable
 fun rememberPlayerGlassesMode(
-    player: Player,
-    title: String,
-    ratingText: String?,
-    cinemaVoidEnabled: Boolean = false,
-    initialSubtitleContentLocked: Boolean = false,
-    onBack: () -> Unit,
     localPlayerView: PlayerView?,
     onBoundPlayerViewChanged: (PlayerView?) -> Unit,
 ): PlayerGlassesMode {
