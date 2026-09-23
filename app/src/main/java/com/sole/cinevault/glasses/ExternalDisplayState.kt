@@ -9,16 +9,13 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
-import androidx.media3.common.Player
 
 /**
- * D7-6 fix — external-display discovery separated from the deleted legacy
- * ExternalDisplayPresentation implementation.
+ * D8-1 — canonical external-display discovery.
  *
- * ExternalDisplayInfo and rememberExternalDisplayState are still shared
- * infrastructure used by MainActivity, PlayerGlassesMode, the display-mode
- * bridge, and the shared external runtime. They were previously declared
- * inside the legacy presentation file and therefore must survive its removal.
+ * D7 removed the legacy external presentation. D8 begins by making display
+ * discovery a clean standalone capability with no Player, PlayerView, or
+ * presentation compatibility API attached to it.
  */
 data class ExternalDisplayInfo(
     val isConnected: Boolean,
@@ -74,40 +71,4 @@ private fun currentExternalDisplay(context: Context): ExternalDisplayInfo {
         displayId = display?.displayId,
         displayName = display?.name,
     )
-}
-
-/**
- * Compatibility symbol for one stale import in PlayerVisualComponents.
- *
- * The legacy presentation itself is intentionally gone. Code search shows
- * this symbol is imported but not invoked. Keeping this no-op declaration
- * lets D7-6 remove the legacy renderer without forcing an unrelated rewrite
- * of the very large PlayerVisualComponents file in the same slice.
- *
- * Remove this compatibility symbol when that stale import is cleaned up.
- */
-@Deprecated(
-    message = "Legacy external presentation removed; use the shared CineVault external renderer.",
-)
-@Composable
-fun rememberExternalVideoPresentation(
-    player: Player,
-    externalDisplay: ExternalDisplayInfo,
-    title: String,
-    ratingText: String?,
-    onBack: () -> Unit,
-    cinemaVoidEnabled: Boolean = false,
-    initialSubtitleContentLocked: Boolean = false,
-): State<Nothing?> {
-    @Suppress("UNUSED_VARIABLE")
-    val compatibilityInputs = arrayOf(
-        player,
-        externalDisplay,
-        title,
-        ratingText,
-        onBack,
-        cinemaVoidEnabled,
-        initialSubtitleContentLocked,
-    )
-    return remember { mutableStateOf(null) }
 }
