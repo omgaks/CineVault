@@ -5,6 +5,7 @@ import android.app.Presentation
 import android.hardware.display.DisplayManager
 import android.os.Bundle
 import android.view.Display
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -94,9 +95,14 @@ private class CineVaultExternalPresentation(
 
             setContent {
                 CineVaultTheme {
-                    CineVaultSessionRoot {
-                        HaloCanonicalCineVaultSurface {
-                            CineVaultRoot()
+                    CompositionLocalProvider(
+                        LocalCineVaultRenderDestination provides
+                            CineVaultRenderDestination.EXTERNAL_DISPLAY
+                    ) {
+                        CineVaultSessionRoot {
+                            HaloCanonicalCineVaultSurface {
+                                CineVaultRoot()
+                            }
                         }
                     }
                 }
