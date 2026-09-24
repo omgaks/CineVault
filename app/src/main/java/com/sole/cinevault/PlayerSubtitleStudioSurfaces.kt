@@ -5,6 +5,8 @@ import com.sole.cinevault.ui.responsive.rememberCineWindowSizeInfo
 
 import android.content.Context
 import androidx.compose.runtime.Composable
+import com.sole.cinevault.glasses.display.CineVaultRenderDestination
+import com.sole.cinevault.glasses.display.LocalCineVaultRenderDestination
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -59,8 +61,13 @@ internal fun PlayerSubtitleStudioSurfaces(
     onPendingDualAiLanguageChanged: (String?) -> Unit,
     onDualSecondaryColorHexChanged: (String) -> Unit,
 ) {
+    val renderDestination = LocalCineVaultRenderDestination.current
     val blockedByPlayerMode =
-        CineVaultPlayerHolder.isInPipMode || externalDisplayActive
+        !shouldRenderSubtitleStudio(
+            isInPipMode = CineVaultPlayerHolder.isInPipMode,
+            externalDisplayActive = externalDisplayActive,
+            renderDestination = renderDestination,
+        )
 
     if (showSubtitleDock && !blockedByPlayerMode) {
         val density = LocalDensity.current
@@ -440,4 +447,25 @@ internal fun PlayerSubtitleStudioSurfaces(
             },
         )
     }
+}
+
+
+internal fun shouldRenderSubtitleStudio(
+    isInPipMode: Boolean,
+    externalDisplayActive: Boolean,
+    renderDestination: CineVaultRenderDestination,
+): Boolean {
+    if (isInPipMode) return false
+
+    // While glasses are active, the host/tablet is Cinema Void and must not
+    // render player popups. The external destination is the canonical
+    // CineVault UI and must keep the real Subtitle Studio available.
+    if (
+        externalDisplayActive &&
+        renderDestination == CineVaultRenderDestination.HOST_DISPLAY
+    ) {
+        return false
+    }
+
+    return true
 }
