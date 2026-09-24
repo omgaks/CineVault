@@ -1,6 +1,7 @@
 package com.sole.cinevault
 
 import com.sole.cinevault.glasses.gestures.HeadGesture
+import com.sole.cinevault.glasses.display.ExternalViewportSessionState
 import com.sole.cinevault.glasses.gestures.rememberHeadGestureDetector
 
 import com.sole.cinevault.audiofx.AudioFxController
@@ -935,7 +936,13 @@ fun VideoPlayerScreen(
             externalShowGestureHud = { _, _, _ -> },
             externalUpdateSeekPreview = { _, _, _ -> },
             externalMovePointer = { _, _ -> },
-            externalApplyViewportTransform = { _, _, _ -> },
+            externalApplyViewportTransform = { zoom, panX, panY ->
+                ExternalViewportSessionState.applyGesture(
+                    zoom = zoom,
+                    panX = panX,
+                    panY = panY,
+                )
+            },
             externalEnterTabletStandby = {},
             disableGlassesSession = {
                 glasses.disableSession()

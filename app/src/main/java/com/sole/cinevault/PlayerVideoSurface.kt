@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import com.sole.cinevault.glasses.display.CineVaultRenderDestination
 import com.sole.cinevault.glasses.display.LocalCineVaultRenderDestination
+import com.sole.cinevault.glasses.display.ExternalViewportSessionState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -41,16 +42,35 @@ internal fun PlayerVideoSurface(
             externalDisplayActive = externalDisplayActive,
             renderDestination = renderDestination,
         )
+    val externalViewport = ExternalViewportSessionState.transform
+    val surfaceScale =
+        if (renderDestination == CineVaultRenderDestination.EXTERNAL_DISPLAY) {
+            externalViewport.scale
+        } else {
+            videoScale
+        }
+    val surfaceOffsetX =
+        if (renderDestination == CineVaultRenderDestination.EXTERNAL_DISPLAY) {
+            externalViewport.panX
+        } else {
+            videoOffsetX
+        }
+    val surfaceOffsetY =
+        if (renderDestination == CineVaultRenderDestination.EXTERNAL_DISPLAY) {
+            externalViewport.panY
+        } else {
+            videoOffsetY
+        }
 
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer(
-                    scaleX = if (cinemaVoidHost) 1f else videoScale,
-                    scaleY = if (cinemaVoidHost) 1f else videoScale,
-                    translationX = if (cinemaVoidHost) 0f else videoOffsetX,
-                    translationY = if (cinemaVoidHost) 0f else videoOffsetY,
+                    scaleX = if (cinemaVoidHost) 1f else surfaceScale,
+                    scaleY = if (cinemaVoidHost) 1f else surfaceScale,
+                    translationX = if (cinemaVoidHost) 0f else surfaceOffsetX,
+                    translationY = if (cinemaVoidHost) 0f else surfaceOffsetY,
                     alpha = if (cinemaVoidHost) 0f else 1f,
                 ),
             factory = { context ->
