@@ -3,6 +3,8 @@ package com.sole.cinevault
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import com.sole.cinevault.glasses.display.CineVaultRenderDestination
+import com.sole.cinevault.glasses.display.LocalCineVaultRenderDestination
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -33,20 +35,27 @@ internal fun PlayerVideoSurface(
     onPlayerViewChanged: (PlayerView) -> Unit,
     onResizeModeChanged: (Int) -> Unit,
 ) {
+    val renderDestination = LocalCineVaultRenderDestination.current
+    val cinemaVoidHost =
+        shouldUseCinemaVoidPlayerSurface(
+            externalDisplayActive = externalDisplayActive,
+            renderDestination = renderDestination,
+        )
+
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer(
-                    scaleX = if (externalDisplayActive) 1f else videoScale,
-                    scaleY = if (externalDisplayActive) 1f else videoScale,
-                    translationX = if (externalDisplayActive) 0f else videoOffsetX,
-                    translationY = if (externalDisplayActive) 0f else videoOffsetY,
-                    alpha = if (externalDisplayActive) 0f else 1f,
+                    scaleX = if (cinemaVoidHost) 1f else videoScale,
+                    scaleY = if (cinemaVoidHost) 1f else videoScale,
+                    translationX = if (cinemaVoidHost) 0f else videoOffsetX,
+                    translationY = if (cinemaVoidHost) 0f else videoOffsetY,
+                    alpha = if (cinemaVoidHost) 0f else 1f,
                 ),
             factory = { context ->
                 PlayerView(context).apply {
-                    this.player = if (externalDisplayActive) null else player
+                    this.player = if (cinemaVoidHost) null else player
                     useController = false
                     setShutterBackgroundColor(android.graphics.Color.BLACK)
                     resizeMode = if (isZoomMode) {
@@ -59,9 +68,9 @@ internal fun PlayerVideoSurface(
                 }
             },
             update = { playerView ->
-                if (!externalDisplayActive && playerView.player !== player) {
+                if (!cinemaVoidHost && playerView.player !== player) {
                     playerView.player = player
-                } else if (externalDisplayActive && playerView.player != null) {
+                } else if (cinemaVoidHost && playerView.player != null) {
                     playerView.player = null
                 }
 
@@ -76,10 +85,18 @@ internal fun PlayerVideoSurface(
             },
         )
 
-        if (externalDisplayActive) {
+        if (cinemaVoidHost) {
             CinemaVoidControllerSurface(
                 modifier = Modifier.fillMaxSize(),
             )
         }
     }
 }
+
+
+internal fun shouldUseCinemaVoidPlayerSurface(
+    externalDisplayActive: Boolean,
+    renderDestination: CineVaultRenderDestination,
+): Boolean =
+    externalDisplayActive &&
+        renderDestination == CineVaultRenderDestination.HOST_DISPLAY
