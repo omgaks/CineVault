@@ -10,6 +10,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.sole.cinevault.subtitles.*
 import kotlinx.coroutines.CoroutineScope
+import com.sole.cinevault.glasses.display.CineVaultRenderDestination
+import com.sole.cinevault.glasses.display.ExternalViewportSessionState
+import com.sole.cinevault.glasses.display.LocalCineVaultRenderDestination
 
 /**
  * Slice 51: owns the subtitle runtime effect cluster that used to live inline
@@ -96,6 +99,14 @@ fun rememberPlayerSubtitleRuntimeEffects(
     val subtitleAppearanceCoordinator = remember {
         SubtitleAppearanceCoordinator()
     }
+    val renderDestination = LocalCineVaultRenderDestination.current
+    val externalViewportTransform = ExternalViewportSessionState.transform
+    val externalVisibleFrame =
+        if (renderDestination == CineVaultRenderDestination.EXTERNAL_DISPLAY) {
+            ExternalViewportSessionState.visibleFrame
+        } else {
+            null
+        }
 
     LaunchedEffect(
         studioUi.playerView,
@@ -107,6 +118,8 @@ fun rememberPlayerSubtitleRuntimeEffects(
         isAssOrSsaFormat,
         availableWidthDp,
         availableHeightDp,
+        renderDestination,
+        externalViewportTransform,
     ) {
         subtitleAppearanceCoordinator.apply(
             playerView = studioUi.playerView,
@@ -115,6 +128,7 @@ fun rememberPlayerSubtitleRuntimeEffects(
             isAssOrSsaFormat = isAssOrSsaFormat,
             availableWidthDp = availableWidthDp,
             availableHeightDp = availableHeightDp,
+            externalVisibleFrame = externalVisibleFrame,
         )
     }
 
