@@ -11,6 +11,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.sole.cinevault.glasses.display.CineVaultRenderDestination
+import com.sole.cinevault.glasses.display.LocalCineVaultRenderDestination
 import com.sole.cinevault.subtitles.*
 
 /**
@@ -45,12 +47,19 @@ fun BoxScope.PlayerSubtitleAiPanels(
     onShowTranslationPanel: () -> Unit,
     onHideTranslationPanel: () -> Unit,
 ) {
+    val renderDestination = LocalCineVaultRenderDestination.current
+    val subtitleAiSurfacesAvailable =
+        shouldRenderSubtitleAiSurfaces(
+            isInPipMode = isInPipMode,
+            externalDisplayActive = externalDisplayActive,
+            renderDestination = renderDestination,
+        )
+
     PlayerFloatingJobOverlay(
         visible =
             speechJobLabel != null &&
                 !showSpeechPanel &&
-                !isInPipMode &&
-                !externalDisplayActive,
+                subtitleAiSurfacesAvailable,
         containerWidth = containerWidth,
         containerHeight = containerHeight,
         label = speechJobLabel ?: "Speech",
@@ -62,8 +71,7 @@ fun BoxScope.PlayerSubtitleAiPanels(
         visible =
             translationJobLabel != null &&
                 !showTranslationPanel &&
-                !isInPipMode &&
-                !externalDisplayActive,
+                subtitleAiSurfacesAvailable,
         containerWidth = containerWidth,
         containerHeight = containerHeight,
         label = translationJobLabel ?: "Translate",
@@ -73,8 +81,7 @@ fun BoxScope.PlayerSubtitleAiPanels(
 
     if (
         showSpeechPanel &&
-        !isInPipMode &&
-        !externalDisplayActive
+        subtitleAiSurfacesAvailable
     ) {
         val panelWidth =
             (containerWidth * 0.46f)
@@ -117,8 +124,7 @@ fun BoxScope.PlayerSubtitleAiPanels(
 
     if (
         showTranslationPanel &&
-        !isInPipMode &&
-        !externalDisplayActive
+        subtitleAiSurfacesAvailable
     ) {
         val panelWidth =
             (containerWidth * 0.44f)
@@ -165,4 +171,26 @@ fun BoxScope.PlayerSubtitleAiPanels(
             }
         }
     }
+}
+
+
+internal fun shouldRenderSubtitleAiSurfaces(
+    isInPipMode: Boolean,
+    externalDisplayActive: Boolean,
+    renderDestination: CineVaultRenderDestination,
+): Boolean {
+    if (isInPipMode) return false
+
+    // The tablet becomes Cinema Void while an external display is active,
+    // so AI subtitle panels stay suppressed there. The external destination
+    // is the canonical CineVault render and must retain the real Speech and
+    // Translation surfaces.
+    if (
+        externalDisplayActive &&
+        renderDestination == CineVaultRenderDestination.HOST_DISPLAY
+    ) {
+        return false
+    }
+
+    return true
 }
