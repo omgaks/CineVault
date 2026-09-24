@@ -72,7 +72,7 @@ internal object ExternalViewportSessionState {
         val rawScale = (transform.scale * safeZoom).coerceIn(MIN_SCALE, MAX_SCALE)
         val nextScale = snapUsefulScale(rawScale)
 
-        setTransform(
+        publishTransform(
             clampTransform(
                 ExternalViewportTransform(
                     scale = nextScale,
@@ -84,10 +84,10 @@ internal object ExternalViewportSessionState {
     }
 
     fun reset() {
-        setTransform(ExternalViewportTransform())
+        publishTransform(ExternalViewportTransform())
     }
 
-    private fun setTransform(value: ExternalViewportTransform) {
+    private fun publishTransform(value: ExternalViewportTransform) {
         transform = value
         persistTransform?.invoke(value)
     }
