@@ -15,7 +15,7 @@ import com.sole.cinevault.glasses.display.ExternalVisibleFrame
  * subtitle state (Studio, Quick HUD, gestures, restored movie memory) remains
  * inside the visible-safe range.
  */
-class SubtitleAppearanceCoordinator {
+internal class SubtitleAppearanceCoordinator {
 
     fun apply(
         playerView: PlayerView?,
