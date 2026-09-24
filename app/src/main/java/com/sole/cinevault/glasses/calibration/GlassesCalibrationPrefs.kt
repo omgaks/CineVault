@@ -1,6 +1,7 @@
 package com.sole.cinevault
 
 import android.content.Context
+import com.sole.cinevault.glasses.calibration.GlassesCalibrationIdentity
 
 /**
  * Per-glasses-model calibration (Phase 7). Keyed by the external display's
@@ -30,17 +31,16 @@ fun bundledFontScale(displayName: String?): Float? {
 // No reported name at all → skip calibration rather than nag forever with
 // nothing to key a saved answer against.
 fun needsCalibration(context: Context, displayName: String?): Boolean {
-    if (displayName == null) return false
+    val key = GlassesCalibrationIdentity.preferenceKey(displayName) ?: return false
     if (bundledFontScale(displayName) != null) return false
     return !context.getSharedPreferences(CALIBRATION_PREFS, Context.MODE_PRIVATE)
-        .contains(calibratedKey(displayName))
+        .contains(key)
 }
 
 fun markCalibrated(context: Context, displayName: String) {
+    val key = GlassesCalibrationIdentity.preferenceKey(displayName) ?: return
     context.getSharedPreferences(CALIBRATION_PREFS, Context.MODE_PRIVATE)
         .edit()
-        .putBoolean(calibratedKey(displayName), true)
+        .putBoolean(key, true)
         .apply()
 }
-
-private fun calibratedKey(displayName: String) = "calibrated_$displayName"
