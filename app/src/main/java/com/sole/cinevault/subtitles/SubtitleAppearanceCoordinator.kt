@@ -5,6 +5,8 @@ import android.util.TypedValue
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import com.sole.cinevault.SubtitleAppearanceUiState
+import com.sole.cinevault.glasses.display.ExternalSubtitleFramePolicy
+import com.sole.cinevault.glasses.display.ExternalVisibleFrame
 
 /**
  * Owns applying CineVault subtitle appearance to Media3 SubtitleView.
@@ -22,6 +24,7 @@ class SubtitleAppearanceCoordinator {
         isAssOrSsaFormat: Boolean,
         availableWidthDp: Float,
         availableHeightDp: Float,
+        externalVisibleFrame: ExternalVisibleFrame? = null,
     ) {
         val subtitleView = playerView?.subtitleView ?: return
 
@@ -45,12 +48,19 @@ class SubtitleAppearanceCoordinator {
             renderedTextSizeSp,
         )
 
-        subtitleView.setBottomPaddingFraction(
-            SubtitlePositionPolicy.sanitize(
+        val renderedBottomPadding =
+            externalVisibleFrame?.let { visibleFrame ->
+                ExternalSubtitleFramePolicy.bottomPaddingForVisibleFrame(
+                    requestedBottomPadding = appearanceUi.bottomPadding,
+                    textSizeSp = appearanceUi.textSizeSp,
+                    visibleFrame = visibleFrame,
+                )
+            } ?: SubtitlePositionPolicy.sanitize(
                 bottomPadding = appearanceUi.bottomPadding,
                 textSizeSp = appearanceUi.textSizeSp,
-            ),
-        )
+            )
+
+        subtitleView.setBottomPaddingFraction(renderedBottomPadding)
 
         subtitleView.setStyle(
             CaptionStyleCompat(
