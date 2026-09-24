@@ -20,6 +20,15 @@ class GlassesCalibrationIdentityTest {
         )
     }
 
+
+    @Test
+    fun normalizedDisplayNameMatchesPreferenceIdentitySource() {
+        assertEquals(
+            "RayNeo Air",
+            GlassesCalibrationIdentity.normalizedDisplayName("  RayNeo Air  "),
+        )
+    }
+
     @Test
     fun modelNamesRemainDistinct() {
         assertEquals(
