@@ -853,7 +853,7 @@ fun VideoPlayerScreen(
             onResizeModeChanged = { _ -> }
         )
 
-        val transientUiSnapshot = PlayerTransientUiSnapshot(
+        val transientUiSnapshot = playerTransientUiSnapshot(
             audioSelector = chromeUi.showAudioSelector,
             audioFxDashboard = showAudioFxDashboard,
             subtitleSettings = coreUi.showSettings,
