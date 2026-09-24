@@ -11,6 +11,19 @@ internal data class ExternalViewportTransform(
     val panY: Float = 0f,
 )
 
+
+internal data class ExternalVisibleFrame(
+    val widthPx: Int = 0,
+    val heightPx: Int = 0,
+    val scale: Float = 1f,
+) {
+    val horizontalInsetFraction: Float
+        get() = ((1f - scale.coerceAtMost(1f)) / 2f).coerceAtLeast(0f)
+
+    val verticalInsetFraction: Float
+        get() = horizontalInsetFraction
+}
+
 internal object ExternalViewportSessionState {
     internal const val MIN_SCALE = 0.75f
     internal const val MAX_SCALE = 3f
@@ -25,6 +38,14 @@ internal object ExternalViewportSessionState {
 
     var transform by mutableStateOf(ExternalViewportTransform())
         private set
+
+    val visibleFrame: ExternalVisibleFrame
+        get() =
+            ExternalVisibleFrame(
+                widthPx = viewportWidthPx,
+                heightPx = viewportHeightPx,
+                scale = transform.scale,
+            )
 
     fun bindProfile(
         profileName: String?,
