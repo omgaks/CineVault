@@ -5,7 +5,16 @@ import android.app.Presentation
 import android.hardware.display.DisplayManager
 import android.os.Bundle
 import android.view.Display
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -18,6 +27,8 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.sole.cinevault.CineVaultRoot
+import com.sole.cinevault.GlassesCalibrationPrompt
+import com.sole.cinevault.needsCalibration
 import com.sole.cinevault.glasses.halo.HaloCanonicalCineVaultSurface
 import com.sole.cinevault.ui.theme.CineVaultTheme
 
@@ -116,8 +127,30 @@ private class CineVaultExternalPresentation(
                             CineVaultRenderDestination.EXTERNAL_DISPLAY
                     ) {
                         CineVaultSessionRoot {
-                            HaloCanonicalCineVaultSurface {
-                                CineVaultRoot()
+                            val configuration = LocalConfiguration.current
+                            var showCalibration by remember(display.name) {
+                                mutableStateOf(
+                                    needsCalibration(
+                                        context = context,
+                                        displayName = display.name,
+                                    )
+                                )
+                            }
+
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                HaloCanonicalCineVaultSurface {
+                                    CineVaultRoot()
+                                }
+
+                                GlassesCalibrationPrompt(
+                                    visible = showCalibration,
+                                    displayName = display.name,
+                                    isLandscape =
+                                        configuration.orientation ==
+                                            android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+                                    onDone = { showCalibration = false },
+                                    modifier = Modifier.align(Alignment.Center),
+                                )
                             }
                         }
                     }
