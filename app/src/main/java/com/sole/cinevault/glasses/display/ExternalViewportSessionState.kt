@@ -20,9 +20,39 @@ internal object ExternalViewportSessionState {
 
     private var viewportWidthPx: Int = 0
     private var viewportHeightPx: Int = 0
+    private var boundProfileName: String? = null
+    private var persistTransform: ((ExternalViewportTransform) -> Unit)? = null
 
     var transform by mutableStateOf(ExternalViewportTransform())
         private set
+
+    fun bindProfile(
+        profileName: String?,
+        restoredTransform: ExternalViewportTransform?,
+        onTransformChanged: ((ExternalViewportTransform) -> Unit)?,
+    ) {
+        if (profileName == null) {
+            boundProfileName = null
+            persistTransform = null
+            transform = ExternalViewportTransform()
+            return
+        }
+
+        if (boundProfileName == profileName) {
+            persistTransform = onTransformChanged
+            return
+        }
+
+        boundProfileName = profileName
+        persistTransform = onTransformChanged
+        transform = clampTransform(restoredTransform ?: ExternalViewportTransform())
+    }
+
+    fun unbindProfile(profileName: String?) {
+        if (profileName != null && boundProfileName != profileName) return
+        boundProfileName = null
+        persistTransform = null
+    }
 
     fun updateViewportSize(
         widthPx: Int,
@@ -42,7 +72,7 @@ internal object ExternalViewportSessionState {
         val rawScale = (transform.scale * safeZoom).coerceIn(MIN_SCALE, MAX_SCALE)
         val nextScale = snapUsefulScale(rawScale)
 
-        transform =
+        setTransform(
             clampTransform(
                 ExternalViewportTransform(
                     scale = nextScale,
@@ -50,10 +80,16 @@ internal object ExternalViewportSessionState {
                     panY = transform.panY + panY.takeIf(Float::isFinite).orZero(),
                 )
             )
+        )
     }
 
     fun reset() {
-        transform = ExternalViewportTransform()
+        setTransform(ExternalViewportTransform())
+    }
+
+    private fun setTransform(value: ExternalViewportTransform) {
+        transform = value
+        persistTransform?.invoke(value)
     }
 
     internal fun clampTransform(

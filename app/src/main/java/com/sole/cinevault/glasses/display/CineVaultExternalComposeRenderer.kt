@@ -88,6 +88,22 @@ private class CineVaultExternalPresentation(
 
         lifecycleRegistry.currentState = Lifecycle.State.CREATED
 
+        ExternalViewportSessionState.bindProfile(
+            profileName = display.name,
+            restoredTransform =
+                ExternalViewportProfilePrefs.load(
+                    context = context,
+                    displayName = display.name,
+                ),
+            onTransformChanged = { transform ->
+                ExternalViewportProfilePrefs.save(
+                    context = context,
+                    displayName = display.name,
+                    transform = transform,
+                )
+            },
+        )
+
         val composeView = ComposeView(context).apply {
             setViewTreeLifecycleOwner(this@CineVaultExternalPresentation)
             setViewTreeSavedStateRegistryOwner(this@CineVaultExternalPresentation)
@@ -123,6 +139,7 @@ private class CineVaultExternalPresentation(
     }
 
     override fun dismiss() {
+        ExternalViewportSessionState.unbindProfile(display.name)
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
         viewModelStore.clear()
         super.dismiss()
