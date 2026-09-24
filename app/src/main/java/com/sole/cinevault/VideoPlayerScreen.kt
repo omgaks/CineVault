@@ -323,20 +323,6 @@ fun VideoPlayerScreen(
     val isStreamMedia = currentMediaType.equals("stream", ignoreCase = true)
     val isRestrictedFolderMedia = folderIdFromRestrictedMarker(currentVideo.folderPath) != null
 
-    // Slice 24: the player exit/PiP decision now lives outside the giant
-    // composable. The same rule is preserved: if an explicit exit request
-    // happens while playing and PiP can be entered, keep playback visible
-    // there; otherwise fall back to the normal onBack navigation.
-    val playerExitCoordinator = remember(exoPlayer, activity) {
-        PlayerExitCoordinator(
-            context = context,
-            activity = activity,
-            exoPlayer = exoPlayer,
-            isPlaying = { isPlaying },
-            onBack = onBack,
-        )
-    }
-
     // Player slicing S3: transient-menu close wiring now lives in one small
     // runtime. The existing PlayerMenuCloseCoordinator remains the single
     // behavioural close contract; this screen only supplies state setters.
