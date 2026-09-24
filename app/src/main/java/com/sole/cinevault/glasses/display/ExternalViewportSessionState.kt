@@ -3,6 +3,7 @@ package com.sole.cinevault.glasses.display
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlin.math.abs
 
 internal data class ExternalViewportTransform(
     val scale: Float = 1f,
@@ -11,11 +12,26 @@ internal data class ExternalViewportTransform(
 )
 
 internal object ExternalViewportSessionState {
-    private const val MIN_SCALE = 0.75f
-    private const val MAX_SCALE = 3f
+    internal const val MIN_SCALE = 0.75f
+    internal const val MAX_SCALE = 3f
+
+    private const val PRESET_SNAP_TOLERANCE = 0.008f
+    private val usefulScalePresets = floatArrayOf(0.90f, 0.95f, 1.00f)
+
+    private var viewportWidthPx: Int = 0
+    private var viewportHeightPx: Int = 0
 
     var transform by mutableStateOf(ExternalViewportTransform())
         private set
+
+    fun updateViewportSize(
+        widthPx: Int,
+        heightPx: Int,
+    ) {
+        viewportWidthPx = widthPx.coerceAtLeast(0)
+        viewportHeightPx = heightPx.coerceAtLeast(0)
+        transform = clampTransform(transform)
+    }
 
     fun applyGesture(
         zoom: Float,
@@ -23,18 +39,74 @@ internal object ExternalViewportSessionState {
         panY: Float,
     ) {
         val safeZoom = zoom.takeIf { it.isFinite() && it > 0f } ?: 1f
-        val nextScale = (transform.scale * safeZoom).coerceIn(MIN_SCALE, MAX_SCALE)
+        val rawScale = (transform.scale * safeZoom).coerceIn(MIN_SCALE, MAX_SCALE)
+        val nextScale = snapUsefulScale(rawScale)
 
         transform =
-            ExternalViewportTransform(
-                scale = nextScale,
-                panX = transform.panX + panX.takeIf(Float::isFinite).orZero(),
-                panY = transform.panY + panY.takeIf(Float::isFinite).orZero(),
+            clampTransform(
+                ExternalViewportTransform(
+                    scale = nextScale,
+                    panX = transform.panX + panX.takeIf(Float::isFinite).orZero(),
+                    panY = transform.panY + panY.takeIf(Float::isFinite).orZero(),
+                )
             )
     }
 
     fun reset() {
         transform = ExternalViewportTransform()
+    }
+
+    internal fun clampTransform(
+        candidate: ExternalViewportTransform,
+    ): ExternalViewportTransform {
+        val safeScale =
+            candidate.scale
+                .takeIf { it.isFinite() }
+                ?.coerceIn(MIN_SCALE, MAX_SCALE)
+                ?: 1f
+
+        // A reduced viewport is intentionally centred. There is no hidden
+        // content to recover by panning when the whole movie is smaller than
+        // the available display.
+        if (safeScale <= 1f) {
+            return ExternalViewportTransform(scale = safeScale)
+        }
+
+        if (viewportWidthPx <= 0 || viewportHeightPx <= 0) {
+            return ExternalViewportTransform(
+                scale = safeScale,
+                panX = candidate.panX.takeIf(Float::isFinite).orZero(),
+                panY = candidate.panY.takeIf(Float::isFinite).orZero(),
+            )
+        }
+
+        // graphicsLayer scales around the surface centre. These bounds are the
+        // exact extra half-width/half-height created by the scale, so clamping
+        // here prevents panning the movie completely away from the display.
+        val maxPanX = viewportWidthPx * (safeScale - 1f) / 2f
+        val maxPanY = viewportHeightPx * (safeScale - 1f) / 2f
+
+        return ExternalViewportTransform(
+            scale = safeScale,
+            panX = candidate.panX.coerceIn(-maxPanX, maxPanX),
+            panY = candidate.panY.coerceIn(-maxPanY, maxPanY),
+        )
+    }
+
+    private fun snapUsefulScale(scale: Float): Float {
+        val preset =
+            usefulScalePresets.minByOrNull { candidate ->
+                abs(candidate - scale)
+            }
+
+        return if (
+            preset != null &&
+            abs(preset - scale) <= PRESET_SNAP_TOLERANCE
+        ) {
+            preset
+        } else {
+            scale
+        }
     }
 
     private fun Float?.orZero(): Float = this ?: 0f
