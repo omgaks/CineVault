@@ -12,7 +12,7 @@ import com.sole.cinevault.subtitles.SubtitleStudioNavigationCoordinator
  * screen-owned visibility setters used by VideoPlayerScreen.
  */
 @Composable
-fun rememberPlayerMenuCloseRuntime(
+internal fun rememberPlayerMenuCloseRuntime(
     chromeUi: PlayerChromeUiState,
     coreUi: SubtitleCoreUiState,
     driftUi: DriftCorrectionState,
