@@ -337,31 +337,22 @@ fun VideoPlayerScreen(
         )
     }
 
-    // Transient player menus share one close coordinator.
-    val playerMenuCloseCoordinator = remember {
-        PlayerMenuCloseCoordinator(
-            closeAudioSelector = { chromeUi.showAudioSelector = false },
-            closeAudioFxDashboard = { showAudioFxDashboard = false },
-            closeSettings = { coreUi.showSettings = false },
-            closeDriftDialog = { driftUi.showDialog = false },
-            closeDialogueSync = { coreUi.dialogueSyncArmed = false; coreUi.dialogueSyncReferenceMs = null },
-            closeSpeedMenu = { chromeUi.showSpeedMenu = false },
-            closeSleepMenu = { chromeUi.showSleepMenu = false },
-            closeSrtBrowser = { chromeUi.showSrtBrowser = false },
-            closeSubtitleDock = { showSubtitleDock = false },
-            closeSubtitleBloom = { showSubtitleBloom = false; studioCategory = null },
-            closeDualSubsWindow = { showDualSubsWindow = false },
-            closeSubtitleBehaviourWindow = { showSubtitleBehaviourWindow = false },
-            closeSubtitleSurfaces = {
-                subtitleStudioNavigation.closeSubtitleSurfaces(
-                    clearPendingImportCandidates = { searchUi.pendingImportCandidates = null },
-                    setShowFallback = { searchUi.showFallback = it },
-                    setShowEmbeddedBrowser = { searchUi.showEmbeddedBrowser = it },
-                    setShowDualSubsWindow = { showDualSubsWindow = it },
-                )
-            },
-        )
-    }
+    // Player slicing S3: transient-menu close wiring now lives in one small
+    // runtime. The existing PlayerMenuCloseCoordinator remains the single
+    // behavioural close contract; this screen only supplies state setters.
+    val playerMenuCloseCoordinator = rememberPlayerMenuCloseRuntime(
+        chromeUi = chromeUi,
+        coreUi = coreUi,
+        driftUi = driftUi,
+        searchUi = searchUi,
+        subtitleStudioNavigation = subtitleStudioNavigation,
+        onShowAudioFxDashboardChanged = { showAudioFxDashboard = it },
+        onShowSubtitleDockChanged = { showSubtitleDock = it },
+        onShowSubtitleBloomChanged = { showSubtitleBloom = it },
+        onStudioCategoryCleared = { studioCategory = null },
+        onShowDualSubsWindowChanged = { showDualSubsWindow = it },
+        onShowSubtitleBehaviourWindowChanged = { showSubtitleBehaviourWindow = it },
+    )
 
     var pendingSrtUri by remember { mutableStateOf<Uri?>(null) }
 
