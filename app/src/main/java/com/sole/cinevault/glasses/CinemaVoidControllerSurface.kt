@@ -15,6 +15,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import com.sole.cinevault.glasses.halo.HaloPointerMapper
+import com.sole.cinevault.glasses.halo.HaloRemoteInputSession
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -39,7 +43,31 @@ fun CinemaVoidControllerSurface(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(Color.Black)
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event =
+                            awaitPointerEvent(pass = PointerEventPass.Final)
+                        val change = event.changes.firstOrNull() ?: continue
+                        val liveSize = this@pointerInput.size
+                        if (liveSize.width <= 0 || liveSize.height <= 0) continue
+
+                        HaloRemoteInputSession.publish(
+                            sample =
+                                HaloPointerMapper.sample(
+                                    xPx = change.position.x,
+                                    yPx = change.position.y,
+                                    widthPx = liveSize.width,
+                                    heightPx = liveSize.height,
+                                    pressed = change.pressed,
+                                ),
+                            sourceWidthPx = liveSize.width,
+                            sourceHeightPx = liveSize.height,
+                        )
+                    }
+                }
+            },
     ) {
         val spec = CinemaVoidAdaptivePolicy.resolve(
             availableWidthDp = maxWidth.value.toInt(),
