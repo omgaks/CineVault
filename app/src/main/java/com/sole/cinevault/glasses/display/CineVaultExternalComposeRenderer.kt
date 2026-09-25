@@ -30,14 +30,14 @@ import com.sole.cinevault.CineVaultRoot
 import com.sole.cinevault.GlassesCalibrationPrompt
 import com.sole.cinevault.needsCalibration
 import com.sole.cinevault.glasses.halo.HaloCanonicalCineVaultSurface
+import com.sole.cinevault.glasses.halo.HaloRenderDestinationPolicy
 import com.sole.cinevault.ui.theme.CineVaultTheme
 
 /**
- * D2-8:
- * external rendering still enters the SAME canonical CineVault session/root,
- * now through the shared Halo integration boundary.
+ * External rendering enters the SAME canonical CineVault session/root.
  *
- * No glasses-only player/navigation/subtitle tree exists here.
+ * R1 hardens Halo ownership at the render-destination boundary: only this
+ * EXTERNAL_DISPLAY composition may enable the Halo cursor/receiver.
  */
 class CineVaultExternalComposeRenderer(
     private val activity: Activity,
@@ -48,13 +48,9 @@ class CineVaultExternalComposeRenderer(
 
     override fun attach(displayId: Int) {
         if (attachedDisplayId == displayId && presentation?.isShowing == true) return
-
         detach()
-
         val display = findDisplay(displayId) ?: return
-        presentation = CineVaultExternalPresentation(activity, display).also {
-            it.show()
-        }
+        presentation = CineVaultExternalPresentation(activity, display).also { it.show() }
         attachedDisplayId = displayId
     }
 
@@ -84,12 +80,8 @@ private class CineVaultExternalPresentation(
     private val lifecycleRegistry = LifecycleRegistry(this)
     private val savedStateController = SavedStateRegistryController.create(this)
 
-    override val lifecycle: Lifecycle
-        get() = lifecycleRegistry
-
-    override val savedStateRegistry
-        get() = savedStateController.savedStateRegistry
-
+    override val lifecycle: Lifecycle get() = lifecycleRegistry
+    override val savedStateRegistry get() = savedStateController.savedStateRegistry
     override val viewModelStore = ViewModelStore()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -137,8 +129,16 @@ private class CineVaultExternalPresentation(
                                 )
                             }
 
+                            val haloEnabled =
+                                HaloRenderDestinationPolicy.shouldOwnHalo(
+                                    CineVaultRenderDestination.EXTERNAL_DISPLAY
+                                )
+
                             Box(modifier = Modifier.fillMaxSize()) {
-                                HaloCanonicalCineVaultSurface(acceptRemoteInput = true) {
+                                HaloCanonicalCineVaultSurface(
+                                    enabled = haloEnabled,
+                                    acceptRemoteInput = haloEnabled,
+                                ) {
                                     CineVaultRoot()
                                 }
 
