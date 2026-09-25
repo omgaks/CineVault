@@ -6,8 +6,8 @@ import androidx.compose.runtime.Composable
 import com.sole.cinevault.glasses.display.CineVaultRenderDestination
 import com.sole.cinevault.glasses.display.LocalCineVaultRenderDestination
 import com.sole.cinevault.glasses.display.ExternalViewportSessionState
+import com.sole.cinevault.glasses.stereo.rememberStereoPlaybackRuntime
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.viewinterop.AndroidView
@@ -20,11 +20,10 @@ import com.sole.cinevault.glasses.CinemaVoidControllerSurface
 /**
  * Player surface shared by local playback and external-display playback.
  *
- * D3-2:
- * When an external display owns playback, the host PlayerView remains alive
- * only as the hand-back target while the visible host surface becomes Cinema
- * Void. Cinema Void is presentation-only here; all touch ownership remains in
- * PlayerPlaybackGestureLayer so Halo can operate across 100% of the window.
+ * D12-S3:
+ * The canonical Player is now observed by the stereo runtime. Detection and
+ * source/video-size changes are therefore live on the real playback session,
+ * but stereo rendering is intentionally deferred to the next D12 slice.
  */
 @Composable
 internal fun PlayerVideoSurface(
@@ -43,6 +42,18 @@ internal fun PlayerVideoSurface(
             externalDisplayActive = externalDisplayActive,
             renderDestination = renderDestination,
         )
+
+    // D12-S3: connect stereo state to the SAME canonical player. Keeping the
+    // snapshot here makes render-destination policy explicit and gives S4 one
+    // bounded handoff point for the actual eye-layout transform.
+    val stereoRuntime = rememberStereoPlaybackRuntime(
+        player = player,
+        externalDisplayDestination =
+            renderDestination == CineVaultRenderDestination.EXTERNAL_DISPLAY,
+    )
+    @Suppress("UNUSED_VARIABLE")
+    val resolvedStereoDecision = stereoRuntime.decision
+
     val externalViewport = ExternalViewportSessionState.transform
     val surfaceScale =
         if (renderDestination == CineVaultRenderDestination.EXTERNAL_DISPLAY) {
@@ -124,7 +135,6 @@ internal fun PlayerVideoSurface(
         }
     }
 }
-
 
 internal fun shouldUseCinemaVoidPlayerSurface(
     externalDisplayActive: Boolean,
