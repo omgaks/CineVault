@@ -138,7 +138,7 @@ private class CineVaultExternalPresentation(
                             }
 
                             Box(modifier = Modifier.fillMaxSize()) {
-                                HaloCanonicalCineVaultSurface {
+                                HaloCanonicalCineVaultSurface(acceptRemoteInput = true) {
                                     CineVaultRoot()
                                 }
 
