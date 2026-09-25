@@ -9,20 +9,6 @@ import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 
-/**
- * Slice 86: single host for Playback Resilience runtime signals/effects.
- *
- * The screen still owns the player and state holders. This host owns:
- * - actual decoder analytics
- * - dropped-frame recovery signal
- * - first-frame / black-video detection
- * - startup-stall detection
- * - proactive software fallback
- * - consuming a software fallback request and resuming playback
- *
- * Keeping these together prevents VideoPlayerScreen from growing one
- * LaunchedEffect per new recovery signal.
- */
 @Composable
 internal fun PlayerPlaybackRecoveryEffects(
     player: ExoPlayer,
@@ -66,8 +52,6 @@ internal fun PlayerPlaybackRecoveryEffects(
         },
     )
 
-    // Proactive path: exact stream has no fully-supported hardware decoder
-    // but does have a supported software-only decoder.
     LaunchedEffect(
         recoveryState.nativeVideoPlaybackReadiness,
         recoveryState.softwareFallbackAvailable,
@@ -89,8 +73,6 @@ internal fun PlayerPlaybackRecoveryEffects(
         }
     }
 
-    // Black-video path: playback position is advancing but no first frame
-    // appears within the health window.
     LaunchedEffect(
         isPlaying,
         recoveryState.firstVideoFrameRendered,
@@ -107,28 +89,21 @@ internal fun PlayerPlaybackRecoveryEffects(
             !recoveryState.softwareFallbackAvailable ||
             recoveryState.fallbackOccurred ||
             recoveryState.softwareFallbackRequested
-        ) {
-            return@LaunchedEffect
-        }
+        ) return@LaunchedEffect
 
         val windowStartPosition = player.currentPosition
         delay(8_000L)
-
-        val playbackProgressMs =
-            abs(player.currentPosition - windowStartPosition)
+        val playbackProgressMs = abs(player.currentPosition - windowStartPosition)
 
         if (
             shouldFallbackForMissingFirstVideoFrame(
                 isPlaying = isPlaying,
-                hasSelectedVideoTrack =
-                    recoveryState.videoDecoderCapabilityReport != null,
-                firstVideoFrameRendered =
-                    recoveryState.firstVideoFrameRendered,
+                hasSelectedVideoTrack = recoveryState.videoDecoderCapabilityReport != null,
+                firstVideoFrameRendered = recoveryState.firstVideoFrameRendered,
                 elapsedMs = 8_000L,
                 playbackProgressMs = playbackProgressMs,
                 engineMode = recoveryState.engineMode,
-                softwareFallbackAvailable =
-                    recoveryState.softwareFallbackAvailable,
+                softwareFallbackAvailable = recoveryState.softwareFallbackAvailable,
                 fallbackOccurred = recoveryState.fallbackOccurred,
             ) &&
             !recoveryState.softwareFallbackRequested
@@ -140,7 +115,6 @@ internal fun PlayerPlaybackRecoveryEffects(
         }
     }
 
-    // Startup-stall path: decoder/player never reaches healthy playback.
     LaunchedEffect(
         playbackHealth.isBuffering,
         recoveryState.startupPlaybackConfirmed,
@@ -155,26 +129,20 @@ internal fun PlayerPlaybackRecoveryEffects(
             !recoveryState.softwareFallbackAvailable ||
             recoveryState.fallbackOccurred ||
             recoveryState.softwareFallbackRequested
-        ) {
-            return@LaunchedEffect
-        }
+        ) return@LaunchedEffect
 
         val windowStartPosition = player.currentPosition
         delay(12_000L)
-
-        val playbackProgressMs =
-            abs(player.currentPosition - windowStartPosition)
+        val playbackProgressMs = abs(player.currentPosition - windowStartPosition)
 
         if (
             shouldFallbackForStartupStall(
                 isBuffering = playbackHealth.isBuffering,
-                startupPlaybackConfirmed =
-                    recoveryState.startupPlaybackConfirmed,
+                startupPlaybackConfirmed = recoveryState.startupPlaybackConfirmed,
                 elapsedMs = 12_000L,
                 playbackProgressMs = playbackProgressMs,
                 engineMode = recoveryState.engineMode,
-                softwareFallbackAvailable =
-                    recoveryState.softwareFallbackAvailable,
+                softwareFallbackAvailable = recoveryState.softwareFallbackAvailable,
                 fallbackOccurred = recoveryState.fallbackOccurred,
             ) &&
             !recoveryState.softwareFallbackRequested
@@ -186,12 +154,17 @@ internal fun PlayerPlaybackRecoveryEffects(
         }
     }
 
-    // Consume every recovery request through one guarded software transition.
+    // D14-S6: consume video rescue only through the unified runtime gate.
     LaunchedEffect(
         recoveryState.softwareFallbackRequested,
+        recoveryState.softwareFallbackAvailable,
+        recoveryState.engineMode,
         currentVideoPath,
     ) {
         if (!recoveryState.softwareFallbackRequested) {
+            return@LaunchedEffect
+        }
+        if (!PlaybackRescueRuntimeGate.shouldExecuteSoftwareVideo(recoveryState)) {
             return@LaunchedEffect
         }
 
@@ -201,8 +174,6 @@ internal fun PlayerPlaybackRecoveryEffects(
         decoderSelector.engineMode = PlaybackEngineMode.SOFTWARE
         recoveryState.activateSoftwareFallback()
 
-        // A software rescue starts a new decoder attempt. Do not carry the
-        // native decoder's transient retry/error UI into that attempt.
         playbackHealth.errorRetryCount = 0
         playbackHealth.playerErrorMessage = null
 
