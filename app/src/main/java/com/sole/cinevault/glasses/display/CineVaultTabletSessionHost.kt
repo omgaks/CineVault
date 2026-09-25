@@ -2,19 +2,17 @@ package com.sole.cinevault.glasses.display
 
 import androidx.compose.runtime.Composable
 import com.sole.cinevault.CineVaultRoot
-import com.sole.cinevault.glasses.halo.HaloCanonicalCineVaultSurface
 
 /**
- * D2-8: the tablet enters the canonical CineVault session through the same
- * transparent Halo integration boundary used by the external display.
+ * R1.1: the phone/tablet owns the canonical CineVault host UI only.
  *
- * CineVaultRoot remains the real UI. Halo is additive.
+ * Halo is external-display-only. The host must not wrap CineVaultRoot in
+ * HaloCanonicalCineVaultSurface, even when no glasses are connected.
+ * Cinema Void remote input remains handled by its player-specific host surface.
  */
 @Composable
 fun CineVaultTabletSessionHost() {
     CineVaultSessionRoot {
-        HaloCanonicalCineVaultSurface {
-            CineVaultRoot()
-        }
+        CineVaultRoot()
     }
 }
