@@ -220,6 +220,84 @@ class HaloPlayerSessionControllerTest {
         assertTrue(intent is HaloPlayerGestureIntent.Seek)
     }
 
+
+    @Test
+    fun activeDragCancelsWhenSurfaceGeometryChanges() {
+        val actions = RecordingActions()
+        val session = HaloPlayerSessionController(actions)
+
+        session.beginDrag(
+            startX = 400f,
+            startY = 300f,
+            surfaceWidthPx = 800,
+            surfaceHeightPx = 1200,
+            playbackPositionMs = 40_000L,
+            durationMs = 100_000L,
+        )
+
+        assertTrue(session.isActive())
+
+        val result =
+            session.updateDrag(
+                currentX = 900f,
+                currentY = 300f,
+                surfaceWidthPx = 1600,
+                surfaceHeightPx = 900,
+            )
+
+        assertNull(result)
+        assertFalse(session.isActive())
+        assertNull(session.activeZone())
+        assertEquals(-1L, actions.seekPositionMs)
+    }
+
+    @Test
+    fun resizedSurfaceCanStartFreshGestureAfterInvalidation() {
+        val actions = RecordingActions()
+        val session = HaloPlayerSessionController(actions)
+
+        session.beginDrag(
+            startX = 400f,
+            startY = 300f,
+            surfaceWidthPx = 800,
+            surfaceHeightPx = 1200,
+            playbackPositionMs = 40_000L,
+            durationMs = 100_000L,
+        )
+
+        session.updateDrag(
+            currentX = 900f,
+            currentY = 300f,
+            surfaceWidthPx = 1600,
+            surfaceHeightPx = 900,
+        )
+
+        assertFalse(session.isActive())
+
+        val zone =
+            session.beginDrag(
+                startX = 800f,
+                startY = 300f,
+                surfaceWidthPx = 1600,
+                surfaceHeightPx = 900,
+                playbackPositionMs = 40_000L,
+                durationMs = 100_000L,
+            )
+
+        assertEquals(HaloPlayerGestureZone.SEEK, zone)
+
+        val intent =
+            session.updateDrag(
+                currentX = 1120f,
+                currentY = 300f,
+                surfaceWidthPx = 1600,
+                surfaceHeightPx = 900,
+            )
+
+        assertTrue(intent is HaloPlayerGestureIntent.Seek)
+        assertEquals(60_000L, actions.seekPositionMs)
+    }
+
     @Test
     fun invalidSurfaceDoesNotStartSession() {
         val session = HaloPlayerSessionController(RecordingActions())
