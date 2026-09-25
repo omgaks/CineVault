@@ -2,6 +2,7 @@ package com.sole.cinevault
 
 import androidx.annotation.OptIn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -10,11 +11,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.sole.cinevault.glasses.ExternalDisplayInfo
 import com.sole.cinevault.glasses.ExternalDisplayLifecyclePolicy
 import com.sole.cinevault.glasses.ExternalDisplayLifecycleState
 import com.sole.cinevault.glasses.rememberExternalDisplayState
+import com.sole.cinevault.glasses.audio.CineAudioRouteController
 import com.sole.cinevault.glasses.display.rememberSharedCineVaultExternalRuntime
 import kotlinx.coroutines.delay
 
@@ -31,15 +34,14 @@ class PlayerGlassesMode(
 }
 
 /**
- * D7-4 — One-CineVault crossover.
+ * D13-S3 — canonical audio routing follows the shared glasses lifecycle.
  *
- * The shared CineVault renderer is now the authoritative external-display
- * owner. The player stays bound to its normal CineVault PlayerView/session;
- * there is no second external PlayerView and no legacy presentation handle.
+ * The existing host PlayerView already points at CineVault's one ExoPlayer.
+ * We deliberately obtain that same player here instead of creating or passing
+ * a second playback object.
  *
- * D8-4 removes the obsolete legacy-player/presentation inputs. This helper now
- * accepts only state that it actually owns: the host PlayerView hand-back target
- * and the callback used by the player studio runtime.
+ * active external session -> apply glasses routing policy
+ * inactive/disconnected/disposed -> return routing ownership to Android
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -100,6 +102,25 @@ fun rememberPlayerGlassesMode(
      */
     LaunchedEffect(localPlayerView) {
         localPlayerView?.let(onBoundPlayerViewChanged)
+    }
+
+    // D13-S3: route the exact canonical ExoPlayer already bound to PlayerView.
+    val canonicalPlayer = localPlayerView?.player as? ExoPlayer
+    val audioRouteController =
+        remember(context, canonicalPlayer) {
+            canonicalPlayer?.let { CineAudioRouteController(context, it) }
+        }
+
+    LaunchedEffect(audioRouteController, sharedExternal.active) {
+        audioRouteController?.apply(
+            glassesSessionActive = sharedExternal.active,
+        )
+    }
+
+    DisposableEffect(audioRouteController) {
+        onDispose {
+            audioRouteController?.releaseToSystem()
+        }
     }
 
     return PlayerGlassesMode(
