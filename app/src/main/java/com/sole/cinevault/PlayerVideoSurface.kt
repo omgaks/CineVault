@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import com.sole.cinevault.glasses.display.CineVaultRenderDestination
 import com.sole.cinevault.glasses.display.LocalCineVaultRenderDestination
 import com.sole.cinevault.glasses.display.ExternalViewportSessionState
+import com.sole.cinevault.glasses.stereo.ExternalStereoRenderPlanner
 import com.sole.cinevault.glasses.stereo.rememberStereoPlaybackRuntime
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -20,10 +21,10 @@ import com.sole.cinevault.glasses.CinemaVoidControllerSurface
 /**
  * Player surface shared by local playback and external-display playback.
  *
- * D12-S3:
+ * D12-S4:
  * The canonical Player is now observed by the stereo runtime. Detection and
  * source/video-size changes are therefore live on the real playback session,
- * but stereo rendering is intentionally deferred to the next D12 slice.
+ * SBS now uses the native full-frame external-display path; ordinary 2D is unchanged.
  */
 @Composable
 internal fun PlayerVideoSurface(
@@ -43,7 +44,7 @@ internal fun PlayerVideoSurface(
             renderDestination = renderDestination,
         )
 
-    // D12-S3: connect stereo state to the SAME canonical player. Keeping the
+    // D12-S4: connect stereo state to the SAME canonical player. Keeping the
     // snapshot here makes render-destination policy explicit and gives S4 one
     // bounded handoff point for the actual eye-layout transform.
     val stereoRuntime = rememberStereoPlaybackRuntime(
@@ -51,8 +52,11 @@ internal fun PlayerVideoSurface(
         externalDisplayDestination =
             renderDestination == CineVaultRenderDestination.EXTERNAL_DISPLAY,
     )
-    @Suppress("UNUSED_VARIABLE")
-    val resolvedStereoDecision = stereoRuntime.decision
+    val stereoRenderPlan = ExternalStereoRenderPlanner.plan(
+        decision = stereoRuntime.decision,
+        externalDisplayDestination =
+            renderDestination == CineVaultRenderDestination.EXTERNAL_DISPLAY,
+    )
 
     val externalViewport = ExternalViewportSessionState.transform
     val surfaceScale =
@@ -72,6 +76,22 @@ internal fun PlayerVideoSurface(
             externalViewport.panY
         } else {
             videoOffsetY
+        }
+
+    val resolvedResizeMode =
+        if (
+            renderDestination == CineVaultRenderDestination.EXTERNAL_DISPLAY &&
+            stereoRenderPlan.mode ==
+                com.sole.cinevault.glasses.stereo.StereoPlaybackMode.SIDE_BY_SIDE &&
+            stereoRenderPlan.supportedByNativeSbsOutput
+        ) {
+            // RayNeo native 3D consumes one full-width SBS frame. FILL expands
+            // half-SBS sources across that frame while full-SBS remains full.
+            AspectRatioFrameLayout.RESIZE_MODE_FILL
+        } else if (isZoomMode) {
+            AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+        } else {
+            AspectRatioFrameLayout.RESIZE_MODE_FIT
         }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -101,11 +121,7 @@ internal fun PlayerVideoSurface(
                     this.player = if (cinemaVoidHost) null else player
                     useController = false
                     setShutterBackgroundColor(android.graphics.Color.BLACK)
-                    resizeMode = if (isZoomMode) {
-                        AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                    } else {
-                        AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    }
+                    resizeMode = resolvedResizeMode
                     subtitleView?.setViewType(SubtitleView.VIEW_TYPE_CANVAS)
                     onPlayerViewChanged(this)
                 }
@@ -117,11 +133,7 @@ internal fun PlayerVideoSurface(
                     playerView.player = null
                 }
 
-                playerView.resizeMode = if (isZoomMode) {
-                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                } else {
-                    AspectRatioFrameLayout.RESIZE_MODE_FIT
-                }
+                playerView.resizeMode = resolvedResizeMode
 
                 onResizeModeChanged(playerView.resizeMode)
                 onPlayerViewChanged(playerView)
