@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
@@ -32,6 +33,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun HaloCanonicalCineVaultSurface(
     enabled: Boolean = true,
+    acceptRemoteInput: Boolean = false,
     onActivity: (HaloActivityEvent) -> Unit = {},
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
@@ -70,8 +72,78 @@ fun HaloCanonicalCineVaultSurface(
         }
     }
 
-    DisposableEffect(enabled, dragDispatcher) {
+    val processSample: (HaloPointerSample) -> Unit = { sample ->
+        if (!syntheticGuard.isDispatching() &&
+            !targetDispatcher.isDispatchingSyntheticClick()
+        ) {
+            val now = SystemClock.uptimeMillis()
+            val frame = coordinator.update(
+                sample = sample,
+                eventTimeMillis = now,
+                deltaTimeMillis = clock.deltaMillis(now),
+            )
+
+            haloPosition = frame.position
+            haloStable = frame.stability.isStable
+
+            val currentAwareness = HaloTargetAwarenessResolver.resolve(
+                position = frame.position,
+                widthPx = rootView.width,
+                heightPx = rootView.height,
+                focusConfidence = frame.focusConfidence,
+            )
+            awareness = currentAwareness
+
+            frame.activity?.let(onActivity)
+            frame.dragEvents.forEach(dragDispatcher::dispatch)
+
+            val dragging = frame.dragEvents.isNotEmpty()
+
+            frame.clickEvents
+                .firstOrNull { it.type == HaloClickEventType.CLICK }
+                ?.let { click ->
+                    val decision = HaloTargetActivationPolicy.decide(
+                        awareness = currentAwareness,
+                        clickQualified = true,
+                        dragging = dragging,
+                    )
+
+                    val dispatchHandled =
+                        if (decision == HaloTargetActivationDecision.DISPATCH) {
+                            targetDispatcher.dispatchClick(click.position)
+                        } else {
+                            null
+                        }
+
+                    val outcome = HaloTargetActivationOutcomeResolver.resolve(
+                        decision = decision,
+                        dispatchHandled = dispatchHandled,
+                    )
+
+                    val feedback = HaloActivationFeedbackPolicy.resolve(
+                        outcome = outcome,
+                        visualPulseRequested = click.feedback.visualPulse,
+                    )
+
+                    if (feedback.showSuccessPulse) {
+                        pulseController.trigger(now)
+                        pulseProgress = 1f
+                        pulseGeneration += 1
+                    }
+                }
+        }
+    }
+
+    DisposableEffect(enabled, acceptRemoteInput, dragDispatcher) {
+        if (enabled && acceptRemoteInput) {
+            HaloRemoteInputSession.setReceiver(processSample)
+        }
+
         onDispose {
+            if (acceptRemoteInput) {
+                HaloRemoteInputSession.setReceiver(null)
+                HaloRemoteInputSession.clearTargetViewport()
+            }
             dragDispatcher.cancel()
             coordinator.reset()
             clock.reset()
@@ -87,68 +159,18 @@ fun HaloCanonicalCineVaultSurface(
 
     HaloInputSurface(
         enabled = enabled,
-        modifier = modifier.fillMaxSize(),
-        onSample = { sample ->
-            if (!syntheticGuard.isDispatching() &&
-                !targetDispatcher.isDispatchingSyntheticClick()
-            ) {
-                val now = SystemClock.uptimeMillis()
-                val frame = coordinator.update(
-                    sample = sample,
-                    eventTimeMillis = now,
-                    deltaTimeMillis = clock.deltaMillis(now),
-                )
-
-                haloPosition = frame.position
-                haloStable = frame.stability.isStable
-
-                val currentAwareness = HaloTargetAwarenessResolver.resolve(
-                    position = frame.position,
-                    widthPx = rootView.width,
-                    heightPx = rootView.height,
-                    focusConfidence = frame.focusConfidence,
-                )
-                awareness = currentAwareness
-
-                frame.activity?.let(onActivity)
-                frame.dragEvents.forEach(dragDispatcher::dispatch)
-
-                val dragging = frame.dragEvents.isNotEmpty()
-
-                frame.clickEvents
-                    .firstOrNull { it.type == HaloClickEventType.CLICK }
-                    ?.let { click ->
-                        val decision = HaloTargetActivationPolicy.decide(
-                            awareness = currentAwareness,
-                            clickQualified = true,
-                            dragging = dragging,
+        modifier =
+            modifier
+                .fillMaxSize()
+                .onSizeChanged { size ->
+                    if (acceptRemoteInput) {
+                        HaloRemoteInputSession.updateTargetViewport(
+                            widthPx = size.width,
+                            heightPx = size.height,
                         )
-
-                        val dispatchHandled =
-                            if (decision == HaloTargetActivationDecision.DISPATCH) {
-                                targetDispatcher.dispatchClick(click.position)
-                            } else {
-                                null
-                            }
-
-                        val outcome = HaloTargetActivationOutcomeResolver.resolve(
-                            decision = decision,
-                            dispatchHandled = dispatchHandled,
-                        )
-
-                        val feedback = HaloActivationFeedbackPolicy.resolve(
-                            outcome = outcome,
-                            visualPulseRequested = click.feedback.visualPulse,
-                        )
-
-                        if (feedback.showSuccessPulse) {
-                            pulseController.trigger(now)
-                            pulseProgress = 1f
-                            pulseGeneration += 1
-                        }
                     }
-            }
-        },
+                },
+        onSample = processSample,
     ) {
         Box(Modifier.fillMaxSize()) {
             content()
