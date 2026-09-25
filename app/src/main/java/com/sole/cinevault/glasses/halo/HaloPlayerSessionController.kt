@@ -18,6 +18,8 @@ class HaloPlayerSessionController(
     private val bridge = HaloPlayerActionBridge(actions)
 
     private var active = false
+    private var activeSurfaceWidthPx = 0
+    private var activeSurfaceHeightPx = 0
 
     fun beginDrag(
         startX: Float,
@@ -33,6 +35,9 @@ class HaloPlayerSessionController(
         }
 
         active = true
+        activeSurfaceWidthPx = surfaceWidthPx
+        activeSurfaceHeightPx = surfaceHeightPx
+
         return bridge.begin(
             start = HaloVector(
                 x = normalize(startX, surfaceWidthPx),
@@ -52,6 +57,14 @@ class HaloPlayerSessionController(
     ): HaloPlayerGestureIntent? {
         if (!active || surfaceWidthPx <= 0 || surfaceHeightPx <= 0) return null
 
+        if (
+            surfaceWidthPx != activeSurfaceWidthPx ||
+            surfaceHeightPx != activeSurfaceHeightPx
+        ) {
+            cancel()
+            return null
+        }
+
         return bridge.update(
             HaloVector(
                 x = normalize(currentX, surfaceWidthPx),
@@ -63,7 +76,7 @@ class HaloPlayerSessionController(
     fun endDrag() {
         if (!active) return
         bridge.end()
-        active = false
+        clearActiveGeometry()
     }
 
     /**
@@ -72,13 +85,19 @@ class HaloPlayerSessionController(
      */
     fun cancel() {
         bridge.cancel()
-        active = false
+        clearActiveGeometry()
     }
 
     fun isActive(): Boolean = active
 
     fun activeZone(): HaloPlayerGestureZone? =
         if (active) bridge.activeZone() else null
+
+    private fun clearActiveGeometry() {
+        active = false
+        activeSurfaceWidthPx = 0
+        activeSurfaceHeightPx = 0
+    }
 
     private fun normalize(valuePx: Float, extentPx: Int): Float =
         (valuePx / extentPx.toFloat()).coerceIn(0f, 1f)
