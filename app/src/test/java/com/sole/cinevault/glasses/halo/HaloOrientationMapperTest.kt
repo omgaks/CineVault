@@ -14,11 +14,11 @@ class HaloOrientationMapperTest {
     )
 
     @Test
-    fun sameLandscapeOrientationPreservesMapping() {
+    fun landscapeToLandscapePreservesNormalisedPositionAcrossAspectRatios() {
         val point = HaloOrientationMapper.map(
             sample = sample(0.25f, 0.75f),
-            sourceWidthPx = 1600,
-            sourceHeightPx = 900,
+            sourceWidthPx = 1280,
+            sourceHeightPx = 800,
             targetViewport = HaloViewport(1920, 1080),
         )
 
@@ -27,11 +27,11 @@ class HaloOrientationMapperTest {
     }
 
     @Test
-    fun portraitTouchSurfaceRotatesIntoLandscapeDisplay() {
+    fun portraitControllerRotatesIntoLandscapeExternalDisplay() {
         val point = HaloOrientationMapper.map(
             sample = sample(0.25f, 0.75f),
-            sourceWidthPx = 900,
-            sourceHeightPx = 1600,
+            sourceWidthPx = 800,
+            sourceHeightPx = 1200,
             targetViewport = HaloViewport(1920, 1080),
         )
 
@@ -40,11 +40,11 @@ class HaloOrientationMapperTest {
     }
 
     @Test
-    fun landscapeTouchSurfaceRotatesIntoPortraitDisplay() {
+    fun landscapeControllerRotatesIntoPortraitExternalDisplay() {
         val point = HaloOrientationMapper.map(
             sample = sample(0.25f, 0.75f),
-            sourceWidthPx = 1600,
-            sourceHeightPx = 900,
+            sourceWidthPx = 1200,
+            sourceHeightPx = 800,
             targetViewport = HaloViewport(1080, 1920),
         )
 
@@ -53,23 +53,58 @@ class HaloOrientationMapperTest {
     }
 
     @Test
-    fun orientationIsDerivedFromAvailableGeometry() {
-        assertEquals(
-            HaloOrientation.PORTRAIT,
-            HaloOrientation.fromSize(800, 1200),
+    fun compactPortraitControllerMapsToWideExternalDisplay() {
+        val point = HaloOrientationMapper.map(
+            sample = sample(0.10f, 0.90f),
+            sourceWidthPx = 390,
+            sourceHeightPx = 844,
+            targetViewport = HaloViewport(2560, 1080),
         )
-        assertEquals(
-            HaloOrientation.LANDSCAPE,
-            HaloOrientation.fromSize(1200, 800),
-        )
-        assertEquals(
-            HaloOrientation.LANDSCAPE,
-            HaloOrientation.fromSize(1000, 1000),
-        )
+
+        assertEquals(2304f, point.xPx, 0.001f)
+        assertEquals(972f, point.yPx, 0.001f)
     }
 
     @Test
-    fun rotatedMappingStillHonoursContentBounds() {
+    fun mediumLandscapeControllerMapsToWideExternalDisplay() {
+        val point = HaloOrientationMapper.map(
+            sample = sample(0.40f, 0.60f),
+            sourceWidthPx = 700,
+            sourceHeightPx = 500,
+            targetViewport = HaloViewport(2560, 1080),
+        )
+
+        assertEquals(1024f, point.xPx, 0.001f)
+        assertEquals(648f, point.yPx, 0.001f)
+    }
+
+    @Test
+    fun squareFreeformSurfaceUsesStableLandscapeSemantics() {
+        assertEquals(
+            HaloOrientation.LANDSCAPE,
+            HaloOrientation.fromSize(600, 600),
+        )
+
+        val point = HaloOrientationMapper.map(
+            sample = sample(0.30f, 0.70f),
+            sourceWidthPx = 600,
+            sourceHeightPx = 600,
+            targetViewport = HaloViewport(1920, 1080),
+        )
+
+        assertEquals(576f, point.xPx, 0.001f)
+        assertEquals(756f, point.yPx, 0.001f)
+    }
+
+    @Test
+    fun orientationIsDerivedOnlyFromCurrentAvailableGeometry() {
+        assertEquals(HaloOrientation.PORTRAIT, HaloOrientation.fromSize(480, 900))
+        assertEquals(HaloOrientation.LANDSCAPE, HaloOrientation.fromSize(900, 480))
+        assertEquals(HaloOrientation.LANDSCAPE, HaloOrientation.fromSize(700, 700))
+    }
+
+    @Test
+    fun rotatedMappingStillHonoursExternalContentBounds() {
         val viewport = HaloViewport(
             widthPx = 1920,
             heightPx = 1080,
@@ -83,8 +118,8 @@ class HaloOrientationMapperTest {
 
         val point = HaloOrientationMapper.map(
             sample = sample(0.5f, 0.5f),
-            sourceWidthPx = 900,
-            sourceHeightPx = 1600,
+            sourceWidthPx = 800,
+            sourceHeightPx = 1200,
             targetViewport = viewport,
         )
 
