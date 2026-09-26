@@ -1,6 +1,10 @@
 package com.sole.cinevault
 
 import com.sole.cinevault.library.*
+import com.sole.cinevault.tvmode.TelevisionModeDetector
+import com.sole.cinevault.tvmode.TvHomeScreen
+import com.sole.cinevault.tvmode.TvShelf
+import com.sole.cinevault.tvmode.TvShelfItem
 import com.sole.cinevault.glasses.rememberExternalDisplayState
 import com.sole.cinevault.glasses.tutorial.GlassesFirstRunTutorial
 import com.sole.cinevault.glasses.tutorial.GlassesGestureTutorialScreen
@@ -387,6 +391,7 @@ private fun sanitizeLibraryVideos(items: List<VideoWithMetadata>): List<VideoWit
 @Composable
 fun CineVaultApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val isTelevision = remember(context) { TelevisionModeDetector.isRunningOnTelevision(context) }
     // Needed now that loadLibraryCache/saveLibraryCache/clearLibraryCache
     // are suspend (see PlaybackMemory.kt) — several call sites below are
     // plain callback lambdas (onClick, onSecretChanged), not coroutines
@@ -736,21 +741,86 @@ fun CineVaultApp() {
                             onRestrictedFolderClick = { folder -> push(Destination.RestrictedFolderPage(folder.id, folder.displayName, folder.lastPlayedVideoPath)) }
                         )
 
-                        else -> HomeScreen(
-                            videos = homeVisibleVideos,
-                            onScanRequest = { switchTab(1) },
-                            onItemClick = { item -> push(Destination.Detail(item)) },
-                            onPlayClick = { item -> push(Destination.Player(item.video, item.type, libraryVideos)) },
-                            // Same lambda as LocalVideoLibraryScreen's own
-                            // onVideosLoaded above — Home's big Scan Library
-                            // button needs this too, so a scan started from
-                            // Home actually populates libraryVideos instead
-                            // of just navigating to an empty Library screen.
-                            onVideosLoaded = { loadedVideos ->
-                                libraryVideos = sanitizeLibraryVideos(loadedVideos)
-                                scope.launch { saveLibraryCache(context = context, videos = sanitizeLibraryVideos(loadedVideos)) }
-                            }
-                        )
+                        else -> if (isTelevision) {
+                            val continueWatching = loadWatchHistoryItems(context, homeVisibleVideos)
+                            val movies = homeVisibleVideos.filter { it.type == "movie" }
+                            val tvGroups = groupTvShows(homeVisibleVideos)
+
+                            TvHomeScreen(
+                                shelves = listOfNotNull(
+                                    if (continueWatching.isNotEmpty()) {
+                                        TvShelf(
+                                            title = "Continue Watching",
+                                            items = continueWatching.take(20).map { item ->
+                                                TvShelfItem(
+                                                    id = "continue:${item.video.path}",
+                                                    title = item.title,
+                                                    posterUrl = item.posterUrl,
+                                                    onClick = {
+                                                        push(
+                                                            Destination.Player(
+                                                                item.video,
+                                                                item.type,
+                                                                homeVisibleVideos,
+                                                            )
+                                                        )
+                                                    },
+                                                )
+                                            },
+                                        )
+                                    } else null,
+                                    if (movies.isNotEmpty()) {
+                                        TvShelf(
+                                            title = "Movies",
+                                            items = movies.map { item ->
+                                                TvShelfItem(
+                                                    id = "movie:${item.video.path}",
+                                                    title = item.title,
+                                                    posterUrl = item.posterUrl,
+                                                    onClick = { push(Destination.Detail(item)) },
+                                                )
+                                            },
+                                        )
+                                    } else null,
+                                    if (tvGroups.isNotEmpty()) {
+                                        TvShelf(
+                                            title = "TV Shows",
+                                            items = tvGroups.map { group ->
+                                                TvShelfItem(
+                                                    id = "tvgroup:${group.showName}",
+                                                    title = group.showName,
+                                                    posterUrl = group.posterUrl,
+                                                    onClick = { push(Destination.TvShow(group)) },
+                                                )
+                                            },
+                                        )
+                                    } else null,
+                                ),
+                                backdropUrl = (
+                                    continueWatching.firstOrNull()
+                                        ?: homeVisibleVideos.firstOrNull()
+                                    )?.backdropUrl,
+                                onScanRequest = { switchTab(1) },
+                            )
+                        } else {
+                            HomeScreen(
+                                videos = homeVisibleVideos,
+                                onScanRequest = { switchTab(1) },
+                                onItemClick = { item -> push(Destination.Detail(item)) },
+                                onPlayClick = { item ->
+                                    push(Destination.Player(item.video, item.type, libraryVideos))
+                                },
+                                onVideosLoaded = { loadedVideos ->
+                                    libraryVideos = sanitizeLibraryVideos(loadedVideos)
+                                    scope.launch {
+                                        saveLibraryCache(
+                                            context = context,
+                                            videos = sanitizeLibraryVideos(loadedVideos),
+                                        )
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
             }
