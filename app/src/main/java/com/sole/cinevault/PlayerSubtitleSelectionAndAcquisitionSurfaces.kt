@@ -77,6 +77,7 @@ internal fun BoxScope.PlayerSubtitleSelectionAndAcquisitionSurfaces(
     onShowSubtitleBloomChanged: (Boolean) -> Unit,
     onStudioCategoryChanged: (StudioCategory?) -> Unit,
     onLaunchSrtPicker: (Array<String>) -> Unit,
+    isTelevision: Boolean = false,
 ) {
     val srtFiles = rememberAvailableLocalSubtitleFiles(
         videoPath = videoPath,
@@ -583,5 +584,6 @@ internal fun BoxScope.PlayerSubtitleSelectionAndAcquisitionSurfaces(
         onAppearanceUserInteraction = {
             studioUi.menuTouchKey++
         },
+        isTelevision = isTelevision,
     )
 }

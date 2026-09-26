@@ -287,6 +287,7 @@ fun BoxScope.SubtitleSyncAndAppearancePopups(
     onBackFromAppearanceStudio: () -> Unit,
     onDismissAppearanceStudio: () -> Unit,
     onAppearanceUserInteraction: () -> Unit,
+    isTelevision: Boolean = false,
 ) {
     AnimatedVisibility(
         visible = dialogueSyncArmed,
@@ -348,7 +349,8 @@ fun BoxScope.SubtitleSyncAndAppearancePopups(
                 bottomPadding = appearanceBottomPaddingFraction,
                 onBottomPaddingChange = onAppearanceBottomPaddingChange,
                 onBack = onBackFromAppearanceStudio,
-                onDismiss = onDismissAppearanceStudio
+                onDismiss = onDismissAppearanceStudio,
+                isTelevision = isTelevision
             )
         }
     }
