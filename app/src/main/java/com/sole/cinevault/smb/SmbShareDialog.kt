@@ -14,11 +14,23 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sole.cinevault.tvmode.TelevisionModeDetector
+import com.sole.cinevault.tvmode.TvFocusableSlot
 
 @Composable
 fun SmbShareDialog(
@@ -35,6 +47,26 @@ fun SmbShareDialog(
     var domain by remember { mutableStateOf(existing?.domain ?: "") }
 
     val canSave = host.isNotBlank() && shareName.isNotBlank()
+
+    // Phase 16 of TV support: seven stacked text fields plus a button row.
+    // Up/Down is handled at the whole scrolling Column's root — safe even
+    // with text fields present, since these are single-line fields with no
+    // vertical cursor concept to protect (same reasoning as every prior
+    // phase's Up/Down-at-root decision). Left/Right is scoped to just the
+    // Cancel/Save button Row specifically, so it never interferes with
+    // cursor movement while any field has focus — same split used since
+    // phase 10. The first field (Name) claims initial focus so typing can
+    // start immediately.
+    val context = LocalContext.current
+    val isTelevision = remember { TelevisionModeDetector.isRunningOnTelevision(context) }
+    val focusManager = LocalFocusManager.current
+    val firstFieldFocusRequester = remember { FocusRequester() }
+
+    if (isTelevision) {
+        LaunchedEffect(Unit) {
+            firstFieldFocusRequester.requestFocus()
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -53,6 +85,26 @@ fun SmbShareDialog(
                 )
                 .padding(20.dp)
                 .verticalScroll(rememberScrollState())
+                .then(
+                    if (isTelevision) {
+                        Modifier.onKeyEvent { keyEvent ->
+                            if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
+                            when (keyEvent.key) {
+                                Key.DirectionUp -> {
+                                    focusManager.moveFocus(FocusDirection.Up)
+                                    true
+                                }
+                                Key.DirectionDown -> {
+                                    focusManager.moveFocus(FocusDirection.Down)
+                                    true
+                                }
+                                else -> false
+                            }
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
             Text(
                 text = if (existing != null) "Edit Network Share" else "Add Network Share",
@@ -68,7 +120,7 @@ fun SmbShareDialog(
             )
             Spacer(modifier = Modifier.height(16.dp))
 
-            LabeledField(label = "Name (optional label)", value = displayName, onValueChange = { displayName = it }, placeholder = "e.g. Home NAS")
+            LabeledField(label = "Name (optional label)", value = displayName, onValueChange = { displayName = it }, placeholder = "e.g. Home NAS", focusRequester = firstFieldFocusRequester)
             Spacer(modifier = Modifier.height(10.dp))
             LabeledField(label = "Host", value = host, onValueChange = { host = it }, placeholder = "192.168.1.50 or nas.local")
             Spacer(modifier = Modifier.height(10.dp))
@@ -83,34 +135,61 @@ fun SmbShareDialog(
             LabeledField(label = "Domain (rarely needed)", value = domain, onValueChange = { domain = it }, placeholder = "e.g. WORKGROUP")
 
             Spacer(modifier = Modifier.height(18.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.12f), contentColor = Color.White)
-                ) {
-                    Text("Cancel")
+            val onSaveClick = {
+                onSave(
+                    SmbShare(
+                        id = existing?.id ?: java.util.UUID.randomUUID().toString(),
+                        displayName = displayName.trim().ifBlank { "$host/$shareName" },
+                        host = host.trim(),
+                        shareName = shareName.trim(),
+                        subPath = subPath.trim(),
+                        username = username.trim(),
+                        password = password,
+                        domain = domain.trim()
+                    )
+                )
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.then(
+                    if (isTelevision) {
+                        Modifier.onKeyEvent { keyEvent ->
+                            if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
+                            when (keyEvent.key) {
+                                Key.DirectionLeft -> {
+                                    focusManager.moveFocus(FocusDirection.Left)
+                                    true
+                                }
+                                Key.DirectionRight -> {
+                                    focusManager.moveFocus(FocusDirection.Right)
+                                    true
+                                }
+                                else -> false
+                            }
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
+            ) {
+                TvFocusableSlot(isTelevision = isTelevision, modifier = Modifier.weight(1f), shape = RoundedCornerShape(50), onActivate = onDismiss) {
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.12f), contentColor = Color.White)
+                    ) {
+                        Text("Cancel")
+                    }
                 }
-                Button(
-                    onClick = {
-                        onSave(
-                            SmbShare(
-                                id = existing?.id ?: java.util.UUID.randomUUID().toString(),
-                                displayName = displayName.trim().ifBlank { "$host/$shareName" },
-                                host = host.trim(),
-                                shareName = shareName.trim(),
-                                subPath = subPath.trim(),
-                                username = username.trim(),
-                                password = password,
-                                domain = domain.trim()
-                            )
-                        )
-                    },
-                    enabled = canSave,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD36A), contentColor = Color.Black)
-                ) {
-                    Text("SAVE", fontWeight = FontWeight.Black)
+                TvFocusableSlot(isTelevision = isTelevision && canSave, modifier = Modifier.weight(1f), shape = RoundedCornerShape(50), onActivate = onSaveClick) {
+                    Button(
+                        onClick = onSaveClick,
+                        enabled = canSave,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFD36A), contentColor = Color.Black)
+                    ) {
+                        Text("SAVE", fontWeight = FontWeight.Black)
+                    }
                 }
             }
         }
@@ -123,7 +202,8 @@ private fun LabeledField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
-    isPassword: Boolean = false
+    isPassword: Boolean = false,
+    focusRequester: FocusRequester? = null
 ) {
     Column {
         Text(text = label, color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
@@ -132,7 +212,7 @@ private fun LabeledField(
             value = value,
             onValueChange = onValueChange,
             placeholder = { if (placeholder.isNotBlank()) Text(placeholder, color = Color.Gray.copy(alpha = 0.6f)) },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().let { base -> if (focusRequester != null) base.focusRequester(focusRequester) else base },
             singleLine = true,
             visualTransformation = if (isPassword) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
             colors = OutlinedTextFieldDefaults.colors(
