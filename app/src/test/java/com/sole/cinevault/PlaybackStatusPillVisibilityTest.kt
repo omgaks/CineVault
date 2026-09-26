@@ -23,7 +23,7 @@ class PlaybackStatusPillVisibilityTest {
         decoderMode = decoderMode,
         activeDecoderKind = activeDecoderKind,
         compatibilityRisk = VideoCompatibilityRisk.LOW,
-        decoderRecommendation = VideoDecoderRecommendation.HARDWARE,
+        decoderRecommendation = VideoDecoderRecommendation.PREFER_HARDWARE,
         fallbackOccurred = fallbackOccurred,
         fallbackReason = null,
         activeAudioDecoderKind = activeAudioDecoderKind,
