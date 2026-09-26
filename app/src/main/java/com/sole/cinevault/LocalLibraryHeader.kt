@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Refresh
@@ -21,12 +23,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.library.*
+import com.sole.cinevault.tvmode.TvFocusableSlot
 import com.sole.cinevault.ui.theme.*
 
 @Composable
@@ -44,29 +54,77 @@ internal fun LocalLibraryHeader(
     scanStatus: String,
     onRefresh: () -> Unit,
     onScan: () -> Unit,
-    context: Context
+    context: Context,
+    isTelevision: Boolean = false
 ) {
+    val focusManager = LocalFocusManager.current
+
     Column {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.then(
+                if (isTelevision) {
+                    Modifier.onKeyEvent { keyEvent ->
+                        if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
+                        when (keyEvent.key) {
+                            Key.DirectionLeft -> {
+                                focusManager.moveFocus(FocusDirection.Left)
+                                true
+                            }
+                            Key.DirectionRight -> {
+                                focusManager.moveFocus(FocusDirection.Right)
+                                true
+                            }
+                            else -> false
+                        }
+                    }
+                } else {
+                    Modifier
+                }
+            )
+        ) {
             items(items = categories) { category ->
-                FilterChip(
-                    selected = selectedCategory == category,
-                    onClick = { onCategorySelected(category) },
-                    label = { Text(category) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = AmberGlow.copy(alpha = 0.18f),
-                        selectedLabelColor = AmberCore,
-                        containerColor = Color.Transparent,
-                        labelColor = TextMuted
+                TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(50), onActivate = { onCategorySelected(category) }) {
+                    FilterChip(
+                        selected = selectedCategory == category,
+                        onClick = { onCategorySelected(category) },
+                        label = { Text(category) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = AmberGlow.copy(alpha = 0.18f),
+                            selectedLabelColor = AmberCore,
+                            containerColor = Color.Transparent,
+                            labelColor = TextMuted
+                        )
                     )
-                )
+                }
             }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (isTelevision) {
+                        Modifier.onKeyEvent { keyEvent ->
+                            if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
+                            when (keyEvent.key) {
+                                Key.DirectionLeft -> {
+                                    focusManager.moveFocus(FocusDirection.Left)
+                                    true
+                                }
+                                Key.DirectionRight -> {
+                                    focusManager.moveFocus(FocusDirection.Right)
+                                    true
+                                }
+                                else -> false
+                            }
+                        }
+                    } else {
+                        Modifier
+                    }
+                ),
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.Top
         ) {
@@ -85,13 +143,15 @@ internal fun LocalLibraryHeader(
             }
 
             Box {
-                LibraryToolIconButton(
-                    icon = Icons.Filled.SwapVert,
-                    tint = Color(0xFF56CCF2),
-                    contentDescription = "Sort by: ${sortOption.label}",
-                    label = "Sort",
-                    onClick = { onSortMenuExpandedChange(true) }
-                )
+                TvFocusableSlot(isTelevision = isTelevision, shape = CircleShape, onActivate = { onSortMenuExpandedChange(true) }) {
+                    LibraryToolIconButton(
+                        icon = Icons.Filled.SwapVert,
+                        tint = Color(0xFF56CCF2),
+                        contentDescription = "Sort by: ${sortOption.label}",
+                        label = "Sort",
+                        onClick = { onSortMenuExpandedChange(true) }
+                    )
+                }
 
                 DropdownMenu(
                     expanded = sortMenuExpanded,
@@ -118,35 +178,41 @@ internal fun LocalLibraryHeader(
 
             Spacer(modifier = Modifier.width(10.dp))
 
-            LibraryToolIconButton(
-                icon = if (isGridMode) Icons.Filled.ViewAgenda else Icons.Filled.GridView,
-                tint = Color(0xFFBB86FC),
-                contentDescription = if (isGridMode) "Switch to List" else "Switch to Grid",
-                label = if (isGridMode) "List" else "Grid",
-                onClick = onToggleGridMode
-            )
+            TvFocusableSlot(isTelevision = isTelevision, shape = CircleShape, onActivate = onToggleGridMode) {
+                LibraryToolIconButton(
+                    icon = if (isGridMode) Icons.Filled.ViewAgenda else Icons.Filled.GridView,
+                    tint = Color(0xFFBB86FC),
+                    contentDescription = if (isGridMode) "Switch to List" else "Switch to Grid",
+                    label = if (isGridMode) "List" else "Grid",
+                    onClick = onToggleGridMode
+                )
+            }
 
             Spacer(modifier = Modifier.width(10.dp))
 
-            LibraryToolIconButton(
-                icon = Icons.Filled.Refresh,
-                tint = Color(0xFF6FCF97),
-                contentDescription = "Refresh / Clear Cache",
-                label = "Refresh",
-                enabled = !isScanning,
-                onClick = onRefresh
-            )
+            TvFocusableSlot(isTelevision = isTelevision && !isScanning, shape = CircleShape, onActivate = onRefresh) {
+                LibraryToolIconButton(
+                    icon = Icons.Filled.Refresh,
+                    tint = Color(0xFF6FCF97),
+                    contentDescription = "Refresh / Clear Cache",
+                    label = "Refresh",
+                    enabled = !isScanning,
+                    onClick = onRefresh
+                )
+            }
 
             Spacer(modifier = Modifier.width(10.dp))
 
-            LibraryToolIconButton(
-                icon = Icons.Filled.TrackChanges,
-                tint = AmberCore,
-                contentDescription = "Scan Device Videos",
-                label = "Scan",
-                enabled = !isScanning,
-                onClick = onScan
-            )
+            TvFocusableSlot(isTelevision = isTelevision && !isScanning, shape = CircleShape, onActivate = onScan) {
+                LibraryToolIconButton(
+                    icon = Icons.Filled.TrackChanges,
+                    tint = AmberCore,
+                    contentDescription = "Scan Device Videos",
+                    label = "Scan",
+                    enabled = !isScanning,
+                    onClick = onScan
+                )
+            }
         }
 
         val lastScanCache by produceState<CachedLibrary?>(initialValue = null, context) {

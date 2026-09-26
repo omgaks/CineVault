@@ -8,11 +8,20 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sole.cinevault.tvmode.TvFocusableSlot
 import com.sole.cinevault.ui.theme.TextBright
 
 private data class CollectionShelfEntry(
@@ -27,7 +36,8 @@ internal fun LazyGridScope.LocalLibraryCollectionsShelf(
     selectedCategory: String,
     visibleSortedVideos: List<VideoWithMetadata>,
     onNativeCollectionClick: (Int, String) -> Unit,
-    onCuratedCollectionClick: (String) -> Unit
+    onCuratedCollectionClick: (String) -> Unit,
+    isTelevision: Boolean = false
 ) {
     if (selectedCategory != "All") return
 
@@ -86,21 +96,48 @@ internal fun LazyGridScope.LocalLibraryCollectionsShelf(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(items = collectionShelf, key = { it.key }) { entry ->
-                    CollectionShelfCard(
-                        title = entry.displayName,
-                        backdropUrl = entry.backdropUrl,
-                        onClick = {
-                            if (entry.isCurated) {
-                                onCuratedCollectionClick(entry.displayName)
-                            } else {
-                                entry.collectionId?.let {
-                                    onNativeCollectionClick(it, entry.displayName)
+            val focusManager = LocalFocusManager.current
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.then(
+                    if (isTelevision) {
+                        Modifier.onKeyEvent { keyEvent ->
+                            if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
+                            when (keyEvent.key) {
+                                Key.DirectionLeft -> {
+                                    focusManager.moveFocus(FocusDirection.Left)
+                                    true
                                 }
+                                Key.DirectionRight -> {
+                                    focusManager.moveFocus(FocusDirection.Right)
+                                    true
+                                }
+                                else -> false
                             }
                         }
-                    )
+                    } else {
+                        Modifier
+                    }
+                )
+            ) {
+                items(items = collectionShelf, key = { it.key }) { entry ->
+                    val onActivate = {
+                        if (entry.isCurated) {
+                            onCuratedCollectionClick(entry.displayName)
+                        } else {
+                            entry.collectionId?.let {
+                                onNativeCollectionClick(it, entry.displayName)
+                            }
+                            Unit
+                        }
+                    }
+                    TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(10.dp), onActivate = onActivate) {
+                        CollectionShelfCard(
+                            title = entry.displayName,
+                            backdropUrl = entry.backdropUrl,
+                            onClick = onActivate
+                        )
+                    }
                 }
             }
 

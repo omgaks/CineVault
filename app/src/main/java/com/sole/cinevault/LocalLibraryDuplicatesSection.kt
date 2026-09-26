@@ -16,13 +16,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.library.DuplicateGroup
 import com.sole.cinevault.library.formatFileSize
+import com.sole.cinevault.tvmode.TvFocusableSlot
 import com.sole.cinevault.ui.theme.*
 import java.io.File
 
 internal fun LazyGridScope.LocalLibraryDuplicatesSection(
     selectedCategory: String,
     duplicateGroups: List<DuplicateGroup>,
-    onDeleteCopy: (VideoWithMetadata) -> Unit
+    onDeleteCopy: (VideoWithMetadata) -> Unit,
+    isTelevision: Boolean = false
 ) {
     if (selectedCategory != "Duplicates") return
 
@@ -107,17 +109,20 @@ internal fun LazyGridScope.LocalLibraryDuplicatesSection(
 
                         Spacer(modifier = Modifier.width(8.dp))
 
-                        Text(
-                            text = "Delete",
-                            color = Color(0xFFFF8080),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF2A0A0A))
-                                .clickable { onDeleteCopy(copy) }
-                                .padding(horizontal = 12.dp, vertical = 7.dp)
-                        )
+                        val onDeleteClick = { onDeleteCopy(copy) }
+                        TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(8.dp), onActivate = onDeleteClick) {
+                            Text(
+                                text = "Delete",
+                                color = Color(0xFFFF8080),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF2A0A0A))
+                                    .clickable(onClick = onDeleteClick)
+                                    .padding(horizontal = 12.dp, vertical = 7.dp)
+                            )
+                        }
                     }
                 }
             }

@@ -68,6 +68,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sole.cinevault.tvmode.TelevisionModeDetector
+import com.sole.cinevault.tvmode.TvFocusableSlot
 import com.sole.cinevault.ui.theme.*
 
 // ── Hero card with a slow-breathing amber halo around the logo ─────────────
@@ -251,29 +253,50 @@ internal fun AddFolderGlowPill(onClick: () -> Unit) {
 @Composable
 internal fun FolderNamePill(name: String, accent: Color, onLongPress: () -> Unit) {
     val glowAlpha = rememberPlayButtonStyleGlow()
-    Column(
-        modifier = Modifier
-            .width(84.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(GlassSurfaceStrong)
-            .background(Brush.radialGradient(colors = listOf(accent.copy(alpha = glowAlpha * 0.45f), Color.Transparent), radius = 170f))
-            .border(
-                width = 1.3.dp,
-                brush = Brush.verticalGradient(listOf(accent.copy(alpha = 0.75f + 0.2f * glowAlpha), accent.copy(alpha = 0.30f))),
-                shape = RoundedCornerShape(18.dp)
-            )
-            .combinedClickable(onClick = {}, onLongClick = onLongPress)
-            .padding(vertical = 14.dp, horizontal = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(imageVector = settingsFolderIconFor(name), contentDescription = null, tint = accent, modifier = Modifier.size(26.dp))
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(text = name, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+    // Phase 13 of TV support: onClick is already a real no-op here (see
+    // combinedClickable below) — removal only ever happens via long-press.
+    // There's no D-pad equivalent to "hold" in the same sense, so on TV
+    // OK/Enter maps directly to the same onLongPress action rather than
+    // leaving this pill with nothing D-pad can do at all. Safe to change
+    // here directly (not wrapped from outside like most of this project)
+    // since this composable has exactly one call site (SettingsScreen.kt).
+    val context = LocalContext.current
+    val isTelevision = remember { TelevisionModeDetector.isRunningOnTelevision(context) }
+
+    TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(18.dp), onActivate = onLongPress) {
+        Column(
+            modifier = Modifier
+                .width(84.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(GlassSurfaceStrong)
+                .background(Brush.radialGradient(colors = listOf(accent.copy(alpha = glowAlpha * 0.45f), Color.Transparent), radius = 170f))
+                .border(
+                    width = 1.3.dp,
+                    brush = Brush.verticalGradient(listOf(accent.copy(alpha = 0.75f + 0.2f * glowAlpha), accent.copy(alpha = 0.30f))),
+                    shape = RoundedCornerShape(18.dp)
+                )
+                .combinedClickable(onClick = {}, onLongClick = onLongPress)
+                .padding(vertical = 14.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(imageVector = settingsFolderIconFor(name), contentDescription = null, tint = accent, modifier = Modifier.size(26.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = name, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        }
     }
 }
 
 @Composable
 internal fun SmbShareRow(share: SmbShare, onEdit: () -> Unit, onDelete: () -> Unit) {
+    // Phase 13 of TV support: Edit and Delete are two genuinely independent
+    // actions laid out INSIDE this composable (not as call-site siblings),
+    // so unlike SrtBrowserPopup's pick/delete split (phase 8) they can't be
+    // wrapped from outside without restructuring the call site. Safe to fix
+    // here directly instead — this composable has exactly one call site
+    // (SettingsScreen.kt).
+    val context = LocalContext.current
+    val isTelevision = remember { TelevisionModeDetector.isRunningOnTelevision(context) }
+
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp)
             .clip(RoundedCornerShape(16.dp)).background(SpaceDeep.copy(alpha = 0.60f))
@@ -286,11 +309,15 @@ internal fun SmbShareRow(share: SmbShare, onEdit: () -> Unit, onDelete: () -> Un
             Text(text = share.displayName, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(text = "${share.host}/${share.shareName}", color = TextMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
-            Icon(imageVector = Icons.Rounded.Edit, contentDescription = "Edit", tint = TextMuted, modifier = Modifier.size(16.dp))
+        TvFocusableSlot(isTelevision = isTelevision, shape = CircleShape, onActivate = onEdit) {
+            IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+                Icon(imageVector = Icons.Rounded.Edit, contentDescription = "Edit", tint = TextMuted, modifier = Modifier.size(16.dp))
+            }
         }
-        IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-            Icon(imageVector = Icons.Rounded.Delete, contentDescription = "Remove", tint = Color(0xFFFF5252), modifier = Modifier.size(16.dp))
+        TvFocusableSlot(isTelevision = isTelevision, shape = CircleShape, onActivate = onDelete) {
+            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                Icon(imageVector = Icons.Rounded.Delete, contentDescription = "Remove", tint = Color(0xFFFF5252), modifier = Modifier.size(16.dp))
+            }
         }
     }
 }

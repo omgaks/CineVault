@@ -93,8 +93,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -102,6 +109,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.sole.cinevault.tvmode.TelevisionModeDetector
 import com.sole.cinevault.ui.theme.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -455,6 +463,17 @@ fun LocalVideoLibraryScreen(
         enabled = selectedCategory == "Secret" && secretUnlocked
     )
 
+    // Phase 14 of TV support: Library is composed of ~8 separate section
+    // files, all LazyGridScope extensions feeding this ONE shared grid — so
+    // the key handling only needs to be set up once, here, rather than per
+    // section. This phase covers the header (category chips, sort/grid/
+    // refresh/scan tools) and the main video items grid specifically —
+    // Collections/TV & Folders/Genres/Folders/Duplicates/Secret shelves are
+    // deliberately left for their own follow-up phases rather than
+    // attempting all ~1,000 lines across those files in one pass.
+    val isTelevision = remember { TelevisionModeDetector.isRunningOnTelevision(context) }
+    val focusManager = LocalFocusManager.current
+
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(SpaceBlack)) {
         // ── Adaptive grid columns ─────────────────────────────────────────
         // Was a hardcoded GridCells.Fixed(3) regardless of device or
@@ -473,7 +492,37 @@ fun LocalVideoLibraryScreen(
         LazyVerticalGrid(
             state = gridState,
             columns = GridCells.Fixed(gridColumns),
-            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp)
+                .then(
+                    if (isTelevision) {
+                        Modifier.onKeyEvent { keyEvent ->
+                            if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
+                            when (keyEvent.key) {
+                                Key.DirectionUp -> {
+                                    focusManager.moveFocus(FocusDirection.Up)
+                                    true
+                                }
+                                Key.DirectionDown -> {
+                                    focusManager.moveFocus(FocusDirection.Down)
+                                    true
+                                }
+                                Key.DirectionLeft -> {
+                                    focusManager.moveFocus(FocusDirection.Left)
+                                    true
+                                }
+                                Key.DirectionRight -> {
+                                    focusManager.moveFocus(FocusDirection.Right)
+                                    true
+                                }
+                                else -> false
+                            }
+                        }
+                    } else {
+                        Modifier
+                    }
+                ),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
             contentPadding = PaddingValues(top = 16.dp, bottom = 28.dp)
@@ -499,7 +548,8 @@ fun LocalVideoLibraryScreen(
                         LibraryScanController.status = "Cache cleared. Scan again."
                     },
                     onScan = { permissionLauncher.launch(permission) },
-                    context = context
+                    context = context,
+                    isTelevision = isTelevision
                 )
             }
 
@@ -563,7 +613,8 @@ fun LocalVideoLibraryScreen(
                 tvGroupsEmpty = tvGroups.isEmpty(),
                 secretUnlocked = secretUnlocked,
                 allVideosEmpty = videos.isEmpty(),
-                onScan = { permissionLauncher.launch(permission) }
+                onScan = { permissionLauncher.launch(permission) },
+                isTelevision = isTelevision
             )
 
             LocalLibrarySecretFoldersShelf(
@@ -582,7 +633,8 @@ fun LocalVideoLibraryScreen(
                 isGridMode = isGridMode,
                 onItemClick = onItemClick,
                 onPlayClick = onPlayClick,
-                onItemLongPress = { openContextSheet(it) }
+                onItemLongPress = { openContextSheet(it) },
+                isTelevision = isTelevision
             )
         }
 

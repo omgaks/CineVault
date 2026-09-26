@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -17,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sole.cinevault.tvmode.TvFocusableSlot
 import com.sole.cinevault.ui.theme.*
 import java.io.File
 
@@ -52,7 +54,8 @@ internal fun LazyGridScope.LocalLibraryFoldersSection(
     onItemClick: (VideoWithMetadata) -> Unit,
     onPlayClick: (VideoWithMetadata) -> Unit,
     onItemLongPress: (VideoWithMetadata) -> Unit,
-    onFolderLongPress: (String, List<String>) -> Unit
+    onFolderLongPress: (String, List<String>) -> Unit,
+    isTelevision: Boolean = false
 ) {
     if (selectedCategory != "Folders") return
 
@@ -84,21 +87,23 @@ internal fun LazyGridScope.LocalLibraryFoldersSection(
     videoFolders.forEach { folder ->
         item(span = { GridItemSpan(maxLineSpan) }) {
             val isExpanded = expandedFolders.contains(folder.folderPath)
+            val onToggleExpand = {
+                onExpandedFoldersChange(
+                    if (isExpanded) {
+                        expandedFolders - folder.folderPath
+                    } else {
+                        expandedFolders + folder.folderPath
+                    }
+                )
+            }
 
+            TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(14.dp), onActivate = onToggleExpand) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .glassPanel(cornerRadius = 14.dp)
                     .combinedClickable(
-                        onClick = {
-                            onExpandedFoldersChange(
-                                if (isExpanded) {
-                                    expandedFolders - folder.folderPath
-                                } else {
-                                    expandedFolders + folder.folderPath
-                                }
-                            )
-                        },
+                        onClick = onToggleExpand,
                         onLongClick = {
                             onFolderLongPress(
                                 folder.folderName,
@@ -144,6 +149,7 @@ internal fun LazyGridScope.LocalLibraryFoldersSection(
                     modifier = Modifier.size(20.dp)
                 )
             }
+            }
         }
 
         if (expandedFolders.contains(folder.folderPath)) {
@@ -152,12 +158,14 @@ internal fun LazyGridScope.LocalLibraryFoldersSection(
                     items = folder.videos,
                     key = { it.video.path }
                 ) { item ->
-                    LibraryGridCard(
-                        item = item,
-                        onClick = { onItemClick(item) },
-                        onPlayClick = onPlayClick,
-                        onLongPress = { onItemLongPress(it) }
-                    )
+                    TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(10.dp), onActivate = { onItemClick(item) }) {
+                        LibraryGridCard(
+                            item = item,
+                            onClick = { onItemClick(item) },
+                            onPlayClick = onPlayClick,
+                            onLongPress = { onItemLongPress(it) }
+                        )
+                    }
                 }
 
                 val remainder = folder.videos.size % gridColumns
@@ -174,11 +182,13 @@ internal fun LazyGridScope.LocalLibraryFoldersSection(
                     key = { it.video.path },
                     span = { GridItemSpan(maxLineSpan) }
                 ) { item ->
-                    LibraryCard(
-                        item = item,
-                        onClick = { onItemClick(item) },
-                        onLongPress = { onItemLongPress(it) }
-                    )
+                    TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(10.dp), onActivate = { onItemClick(item) }) {
+                        LibraryCard(
+                            item = item,
+                            onClick = { onItemClick(item) },
+                            onLongPress = { onItemLongPress(it) }
+                        )
+                    }
                 }
             }
         }

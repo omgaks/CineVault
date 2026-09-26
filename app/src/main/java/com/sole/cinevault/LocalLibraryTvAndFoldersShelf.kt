@@ -8,8 +8,16 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -17,6 +25,7 @@ import com.sole.cinevault.library.RestrictedFolder
 import com.sole.cinevault.library.TvGroup
 import com.sole.cinevault.library.folderIdFromRestrictedMarker
 import com.sole.cinevault.library.loadRestrictedFolders
+import com.sole.cinevault.tvmode.TvFocusableSlot
 import com.sole.cinevault.ui.theme.TextBright
 import com.sole.cinevault.ui.theme.TextMuted
 
@@ -34,7 +43,8 @@ internal fun LazyGridScope.LocalLibraryTvAndFoldersShelf(
     onTvGroupClick: (TvGroup) -> Unit,
     onTvGroupLongClick: (TvGroup) -> Unit,
     onRestrictedFolderClick: (RestrictedFolder) -> Unit,
-    onRestrictedFolderLongClick: (String, List<String>) -> Unit
+    onRestrictedFolderLongClick: (String, List<String>) -> Unit,
+    isTelevision: Boolean = false
 ) {
     if (selectedCategory !in listOf("All", "TV Shows", "Folders", "Downloads")) return
 
@@ -75,7 +85,30 @@ internal fun LazyGridScope.LocalLibraryTvAndFoldersShelf(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            val focusManager = LocalFocusManager.current
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.then(
+                    if (isTelevision) {
+                        Modifier.onKeyEvent { keyEvent ->
+                            if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
+                            when (keyEvent.key) {
+                                Key.DirectionLeft -> {
+                                    focusManager.moveFocus(FocusDirection.Left)
+                                    true
+                                }
+                                Key.DirectionRight -> {
+                                    focusManager.moveFocus(FocusDirection.Right)
+                                    true
+                                }
+                                else -> false
+                            }
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
+            ) {
                 items(
                     items = combinedShelf,
                     key = { entry ->
@@ -87,30 +120,32 @@ internal fun LazyGridScope.LocalLibraryTvAndFoldersShelf(
                     }
                 ) { entry ->
                     when (entry) {
-                        is TvGroup -> Column(
-                            modifier = Modifier
-                                .width(145.dp)
-                                .combinedClickable(
-                                    onClick = { onTvGroupClick(entry) },
-                                    onLongClick = { onTvGroupLongClick(entry) }
+                        is TvGroup -> TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(10.dp), onActivate = { onTvGroupClick(entry) }) {
+                            Column(
+                                modifier = Modifier
+                                    .width(145.dp)
+                                    .combinedClickable(
+                                        onClick = { onTvGroupClick(entry) },
+                                        onLongClick = { onTvGroupLongClick(entry) }
+                                    )
+                            ) {
+                                PosterBox(
+                                    posterUrl = entry.posterUrl,
+                                    modifier = Modifier.fillMaxWidth().height(210.dp)
                                 )
-                        ) {
-                            PosterBox(
-                                posterUrl = entry.posterUrl,
-                                modifier = Modifier.fillMaxWidth().height(210.dp)
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = entry.showName,
-                                color = TextBright,
-                                maxLines = 1,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "${entry.episodes.size} Episodes",
-                                color = TextMuted,
-                                fontSize = 12.sp
-                            )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = entry.showName,
+                                    color = TextBright,
+                                    maxLines = 1,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "${entry.episodes.size} Episodes",
+                                    color = TextMuted,
+                                    fontSize = 12.sp
+                                )
+                            }
                         }
 
                         is RestrictedShelfEntry -> {
@@ -118,18 +153,20 @@ internal fun LazyGridScope.LocalLibraryTvAndFoldersShelf(
                                 ?.takeIf { path -> entry.items.any { it.video.path == path } }
                                 ?: entry.items.firstOrNull()?.video?.path
 
-                            RestrictedFolderShelfCard(
-                                title = entry.folder.displayName,
-                                count = entry.items.size,
-                                thumbnailVideoPath = thumbnailSourcePath,
-                                onClick = { onRestrictedFolderClick(entry.folder) },
-                                onLongClick = {
-                                    onRestrictedFolderLongClick(
-                                        entry.folder.displayName,
-                                        entry.items.map { it.video.path }
-                                    )
-                                }
-                            )
+                            TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(10.dp), onActivate = { onRestrictedFolderClick(entry.folder) }) {
+                                RestrictedFolderShelfCard(
+                                    title = entry.folder.displayName,
+                                    count = entry.items.size,
+                                    thumbnailVideoPath = thumbnailSourcePath,
+                                    onClick = { onRestrictedFolderClick(entry.folder) },
+                                    onLongClick = {
+                                        onRestrictedFolderLongClick(
+                                            entry.folder.displayName,
+                                            entry.items.map { it.video.path }
+                                        )
+                                    }
+                                )
+                            }
                         }
                     }
                 }

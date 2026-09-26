@@ -55,10 +55,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -67,6 +75,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sole.cinevault.tvmode.TelevisionModeDetector
+import com.sole.cinevault.tvmode.TvFocusableSlot
 import com.sole.cinevault.ui.theme.*
 
 internal val AshSignatureFont = FontFamily(
@@ -118,8 +128,7 @@ fun SettingsScreen(
     // FIX: previously took no argument, so the URL typed into the Stream
     // dialog was captured then silently discarded — Play did nothing.
     // Now the URL is actually passed through to whoever handles playback.
-    onOpenStreamUrl: (String) -> Unit,
-    onOpenGlassesGestureTutorial: () -> Unit
+    onOpenStreamUrl: (String) -> Unit
 ) {
     val context = LocalContext.current
     var showStreamDialog by remember { mutableStateOf(false) }
@@ -160,12 +169,51 @@ fun SettingsScreen(
     }
     BackHandler(enabled = folderPendingRemoval != null) { folderPendingRemoval = null }
 
+    // Phase 13 of TV support: Settings is the most heterogeneous screen
+    // covered so far — toggle switches, icon-button rows, long-press-only
+    // pills, and modal dialogs all in one scroll. Scope for this phase:
+    // the main scrollable body plus the two dialogs fully defined in THIS
+    // file (crash log viewer, folder removal confirm). StreamUrlDialog.kt
+    // and smb/SmbShareDialog.kt are separate files not yet opened or
+    // verified — deliberately left for their own pass rather than edited
+    // blind here.
+    val isTelevision = remember { TelevisionModeDetector.isRunningOnTelevision(context) }
+    val focusManager = LocalFocusManager.current
+
     Box(modifier = Modifier.fillMaxSize().background(SpaceBlack)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(20.dp)
+                .then(
+                    if (isTelevision) {
+                        Modifier.onKeyEvent { keyEvent ->
+                            if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
+                            when (keyEvent.key) {
+                                Key.DirectionUp -> {
+                                    focusManager.moveFocus(FocusDirection.Up)
+                                    true
+                                }
+                                Key.DirectionDown -> {
+                                    focusManager.moveFocus(FocusDirection.Down)
+                                    true
+                                }
+                                Key.DirectionLeft -> {
+                                    focusManager.moveFocus(FocusDirection.Left)
+                                    true
+                                }
+                                Key.DirectionRight -> {
+                                    focusManager.moveFocus(FocusDirection.Right)
+                                    true
+                                }
+                                else -> false
+                            }
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
             // Header text removed — "Settings" was redundant with the
             // bottom-nav tab already showing which screen this is.
@@ -176,8 +224,10 @@ fun SettingsScreen(
 
             // Network Shares (SMB) — scans a NAS/PC share into the same library
             GlassSectionCard(title = "Network Shares", subtitle = "Scan videos from a NAS or PC share (SMB) into your library.", icon = Icons.Rounded.Dns, accent = AccentNetwork) {
-                GlowButton(text = "Add Network Share", icon = Icons.Rounded.Dns, accent = AccentNetwork) {
-                    editingShare = null; showSmbDialog = true
+                TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(50), onActivate = { editingShare = null; showSmbDialog = true }) {
+                    GlowButton(text = "Add Network Share", icon = Icons.Rounded.Dns, accent = AccentNetwork) {
+                        editingShare = null; showSmbDialog = true
+                    }
                 }
                 Spacer(modifier = Modifier.height(14.dp))
                 if (smbShares.isEmpty()) {
@@ -202,29 +252,11 @@ fun SettingsScreen(
 
             // Stream Player — opens the stream dialog right here instead of redirecting
             GlassSectionCard(title = "Stream Player", subtitle = "Play direct online video links.", icon = Icons.Rounded.Language, accent = AccentStream) {
-                GlassActionRow(icon = Icons.Rounded.Language, iconTint = AccentStream, title = "Stream URL", subtitle = "Play MP4 / M3U8 / WEBM links instantly", action = "OPEN") { showStreamDialog = true }
+                TvFocusableSlot(isTelevision = isTelevision, onActivate = { showStreamDialog = true }) {
+                    GlassActionRow(icon = Icons.Rounded.Language, iconTint = AccentStream, title = "Stream URL", subtitle = "Play MP4 / M3U8 / WEBM links instantly", action = "OPEN") { showStreamDialog = true }
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(text = "For direct video links only. Torrent/magnet links are not supported.", color = TextFaint, fontSize = 12.sp, lineHeight = 17.sp)
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // G6B-3: Glasses help/practice entry. The tutorial itself uses
-            // the same head-gesture detector as playback and clearly falls
-            // back to touchpad guidance when no external sensor is exposed.
-            GlassSectionCard(
-                title = "Glasses Mode",
-                subtitle = "Learn the controls and practice supported head gestures.",
-                icon = Icons.Filled.Info,
-                accent = AccentAbout
-            ) {
-                GlassActionRow(
-                    icon = Icons.Filled.Info,
-                    iconTint = AccentAbout,
-                    title = "Glasses controls & gesture practice",
-                    subtitle = "Touchpad, emergency return, nod and shake",
-                    action = "OPEN"
-                ) { onOpenGlassesGestureTutorial() }
             }
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -240,7 +272,9 @@ fun SettingsScreen(
             // reading direction as every other chip/pill row in the app
             // (categories, genres, tech badges).
             GlassSectionCard(title = "Select Folder", subtitle = "Kept out of Home & Continue Watching. Visible in Library and Search only.", icon = Icons.Rounded.Folder, accent = AccentSupport) {
-                AddFolderGlowPill { restrictedFolderPicker.launch(null) }
+                TvFocusableSlot(isTelevision = isTelevision, shape = CircleShape, onActivate = { restrictedFolderPicker.launch(null) }) {
+                    AddFolderGlowPill { restrictedFolderPicker.launch(null) }
+                }
                 Spacer(modifier = Modifier.height(16.dp))
                 if (restrictedFolders.isEmpty()) {
                     Text(text = "No folder added yet.", color = TextMuted, fontSize = 14.sp)
@@ -250,6 +284,9 @@ fun SettingsScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         restrictedFolders.forEachIndexed { index, folder ->
+                            // FolderNamePill handles its own TV focus/activation
+                            // internally now (SettingsVisualComponents.kt) — no
+                            // outer wrap needed here, unlike most of this project.
                             FolderNamePill(
                                 name = folder.displayName,
                                 accent = FolderPillPalette[index % FolderPillPalette.size],
@@ -283,14 +320,23 @@ fun SettingsScreen(
                         )
                     }
                     Spacer(modifier = Modifier.width(12.dp))
-                    Switch(
-                        checked = metadataFetchEnabled,
-                        onCheckedChange = {
-                            metadataFetchEnabled = it
-                            saveMetadataFetchEnabled(context, it)
-                        },
-                        colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
-                    )
+                    TvFocusableSlot(
+                        isTelevision = isTelevision,
+                        shape = RoundedCornerShape(50),
+                        onActivate = {
+                            metadataFetchEnabled = !metadataFetchEnabled
+                            saveMetadataFetchEnabled(context, metadataFetchEnabled)
+                        }
+                    ) {
+                        Switch(
+                            checked = metadataFetchEnabled,
+                            onCheckedChange = {
+                                metadataFetchEnabled = it
+                                saveMetadataFetchEnabled(context, it)
+                            },
+                            colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
+                        )
+                    }
                 }
             }
 
@@ -298,8 +344,9 @@ fun SettingsScreen(
 
             // Support
             GlassSectionCard(title = "Support CineVault", subtitle = "A small thank you keeps the vault alive.", icon = Icons.Filled.Favorite, accent = AccentSupport) {
-                GlassActionRow(icon = Icons.Filled.Favorite, iconTint = AccentSupport, title = "Buy me a coffee", subtitle = "Optional support / donate button", action = "\u2665") {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.buymeacoffee.com/")))
+                val onCoffeeClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.buymeacoffee.com/"))) }
+                TvFocusableSlot(isTelevision = isTelevision, onActivate = onCoffeeClick) {
+                    GlassActionRow(icon = Icons.Filled.Favorite, iconTint = AccentSupport, title = "Buy me a coffee", subtitle = "Optional support / donate button", action = "\u2665", onClick = onCoffeeClick)
                 }
             }
 
@@ -319,11 +366,13 @@ fun SettingsScreen(
                     color = TextMuted, fontSize = 13.sp, lineHeight = 19.sp
                 )
                 Spacer(modifier = Modifier.height(14.dp))
-                GlassActionRow(
-                    icon = Icons.Filled.Info, iconTint = AccentAbout,
-                    title = "View Crash Log", subtitle = "For diagnosing crashes — screenshot and share",
-                    action = "OPEN"
-                ) { showCrashLog = true }
+                TvFocusableSlot(isTelevision = isTelevision, onActivate = { showCrashLog = true }) {
+                    GlassActionRow(
+                        icon = Icons.Filled.Info, iconTint = AccentAbout,
+                        title = "View Crash Log", subtitle = "For diagnosing crashes — screenshot and share",
+                        action = "OPEN"
+                    ) { showCrashLog = true }
+                }
             }
 
             Spacer(modifier = Modifier.height(30.dp))
@@ -363,6 +412,12 @@ fun SettingsScreen(
         // pieces if it's long; Clear empties the file for a fresh start.
         if (showCrashLog) {
             val logText = remember(showCrashLog) { readCrashLog(context) }
+            val closeLogFocusRequester = remember { FocusRequester() }
+            if (isTelevision) {
+                LaunchedEffect(showCrashLog) {
+                    closeLogFocusRequester.requestFocus()
+                }
+            }
             Box(
                 modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.70f)).clickable { showCrashLog = false },
                 contentAlignment = Alignment.Center
@@ -393,23 +448,54 @@ fun SettingsScreen(
                     // ClipboardManager, independent of whether in-app text
                     // selection works at all. Placed first/leftmost since
                     // it's the action this dialog gets opened for most.
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = "Copy", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
-                            modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore).clickable {
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                clipboard.setPrimaryClip(ClipData.newPlainText("CineVault Crash Log", logText.ifBlank { "No crashes logged yet." }))
-                                Toast.makeText(context, "Crash log copied", Toast.LENGTH_SHORT).show()
-                            }.padding(horizontal = 16.dp, vertical = 9.dp)
+                    val onCopyClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("CineVault Crash Log", logText.ifBlank { "No crashes logged yet." }))
+                        Toast.makeText(context, "Crash log copied", Toast.LENGTH_SHORT).show()
+                    }
+                    val onCloseLogClick = { showCrashLog = false }
+                    val onClearLogClick = { clearCrashLog(context); showCrashLog = false }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.then(
+                            if (isTelevision) {
+                                Modifier.onKeyEvent { keyEvent ->
+                                    if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
+                                    when (keyEvent.key) {
+                                        Key.DirectionLeft -> {
+                                            focusManager.moveFocus(FocusDirection.Left)
+                                            true
+                                        }
+                                        Key.DirectionRight -> {
+                                            focusManager.moveFocus(FocusDirection.Right)
+                                            true
+                                        }
+                                        else -> false
+                                    }
+                                }
+                            } else {
+                                Modifier
+                            }
                         )
-                        Text(
-                            text = "Close", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                            modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable { showCrashLog = false }.padding(horizontal = 16.dp, vertical = 9.dp)
-                        )
-                        Text(
-                            text = "Clear Log", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
-                            modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFFFF5252)).clickable { clearCrashLog(context); showCrashLog = false }.padding(horizontal = 16.dp, vertical = 9.dp)
-                        )
+                    ) {
+                        TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(50), onActivate = onCopyClick) {
+                            Text(
+                                text = "Copy", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
+                                modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore).clickable(onClick = onCopyClick).padding(horizontal = 16.dp, vertical = 9.dp)
+                            )
+                        }
+                        TvFocusableSlot(isTelevision = isTelevision, focusRequester = closeLogFocusRequester, shape = RoundedCornerShape(50), onActivate = onCloseLogClick) {
+                            Text(
+                                text = "Close", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable(onClick = onCloseLogClick).padding(horizontal = 16.dp, vertical = 9.dp)
+                            )
+                        }
+                        TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(50), onActivate = onClearLogClick) {
+                            Text(
+                                text = "Clear Log", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
+                                modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFFFF5252)).clickable(onClick = onClearLogClick).padding(horizontal = 16.dp, vertical = 9.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -419,6 +505,12 @@ fun SettingsScreen(
         // Long-press a pill instead; this is the "are you sure" step for it.
         val target = folderPendingRemoval
         if (target != null) {
+            val cancelFocusRequester = remember { FocusRequester() }
+            if (isTelevision) {
+                LaunchedEffect(target.id) {
+                    cancelFocusRequester.requestFocus()
+                }
+            }
             Box(
                 modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f)).clickable { folderPendingRemoval = null },
                 contentAlignment = Alignment.Center
@@ -437,19 +529,47 @@ fun SettingsScreen(
                         color = TextMuted, fontSize = 13.sp, lineHeight = 18.sp
                     )
                     Spacer(modifier = Modifier.height(18.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = "Cancel", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                            modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable { folderPendingRemoval = null }.padding(horizontal = 16.dp, vertical = 9.dp)
+                    val onCancelClick = { folderPendingRemoval = null }
+                    val onRemoveClick = {
+                        removeRestrictedFolder(context, target.id)
+                        restrictedFolders = loadRestrictedFolders(context)
+                        folderPendingRemoval = null
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.then(
+                            if (isTelevision) {
+                                Modifier.onKeyEvent { keyEvent ->
+                                    if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
+                                    when (keyEvent.key) {
+                                        Key.DirectionLeft -> {
+                                            focusManager.moveFocus(FocusDirection.Left)
+                                            true
+                                        }
+                                        Key.DirectionRight -> {
+                                            focusManager.moveFocus(FocusDirection.Right)
+                                            true
+                                        }
+                                        else -> false
+                                    }
+                                }
+                            } else {
+                                Modifier
+                            }
                         )
-                        Text(
-                            text = "Remove", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
-                            modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFFFF5252)).clickable {
-                                removeRestrictedFolder(context, target.id)
-                                restrictedFolders = loadRestrictedFolders(context)
-                                folderPendingRemoval = null
-                            }.padding(horizontal = 16.dp, vertical = 9.dp)
-                        )
+                    ) {
+                        TvFocusableSlot(isTelevision = isTelevision, focusRequester = cancelFocusRequester, shape = RoundedCornerShape(50), onActivate = onCancelClick) {
+                            Text(
+                                text = "Cancel", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable(onClick = onCancelClick).padding(horizontal = 16.dp, vertical = 9.dp)
+                            )
+                        }
+                        TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(50), onActivate = onRemoveClick) {
+                            Text(
+                                text = "Remove", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
+                                modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFFFF5252)).clickable(onClick = onRemoveClick).padding(horizontal = 16.dp, vertical = 9.dp)
+                            )
+                        }
                     }
                 }
             }

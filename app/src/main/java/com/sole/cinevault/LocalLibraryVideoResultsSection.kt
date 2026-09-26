@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sole.cinevault.tvmode.TvFocusableSlot
 import com.sole.cinevault.ui.theme.*
 
 internal fun LazyGridScope.LocalLibraryEmptyStateSection(
@@ -27,7 +28,8 @@ internal fun LazyGridScope.LocalLibraryEmptyStateSection(
     tvGroupsEmpty: Boolean,
     secretUnlocked: Boolean,
     allVideosEmpty: Boolean,
-    onScan: () -> Unit
+    onScan: () -> Unit,
+    isTelevision: Boolean = false
 ) {
     val shouldShowEmptyState =
         selectedCategory != "Folders" &&
@@ -46,17 +48,19 @@ internal fun LazyGridScope.LocalLibraryEmptyStateSection(
                     subtitle = "Scan your device or add a network share to get started."
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = "Scan Device Videos",
-                            color = Color.Black,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(AmberGlow.copy(alpha = 0.90f))
-                                .clickable(onClick = onScan)
-                                .padding(horizontal = 18.dp, vertical = 10.dp)
-                        )
+                        TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(50), onActivate = onScan) {
+                            Text(
+                                text = "Scan Device Videos",
+                                color = Color.Black,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(AmberGlow.copy(alpha = 0.90f))
+                                    .clickable(onClick = onScan)
+                                    .padding(horizontal = 18.dp, vertical = 10.dp)
+                            )
+                        }
                     }
                 }
             } else {
@@ -80,7 +84,8 @@ internal fun LazyGridScope.LocalLibraryVideoItemsSection(
     isGridMode: Boolean,
     onItemClick: (VideoWithMetadata) -> Unit,
     onPlayClick: (VideoWithMetadata) -> Unit,
-    onItemLongPress: (VideoWithMetadata) -> Unit
+    onItemLongPress: (VideoWithMetadata) -> Unit,
+    isTelevision: Boolean = false
 ) {
     if (filteredVideos.isEmpty() || selectedCategory == "Folders") return
 
@@ -100,17 +105,28 @@ internal fun LazyGridScope.LocalLibraryVideoItemsSection(
         )
     }
 
+    // LibraryGridCard/LibraryCard (Screens.kt) are used in several other
+    // screens (Home, Media Intelligence) and aren't touched here — wrapped
+    // from outside, same pattern as every widely-shared component in this
+    // project. Their onActivate is the card's main onClick (open Detail);
+    // the nested QuickPlayButton shortcut and long-press context menu are
+    // real, acknowledged gaps — not reachable via D-pad in this phase, since
+    // both are laid out inside these shared composables, not as call-site
+    // siblings, and restructuring components used in four other files was
+    // judged too risky for this pass.
     if (isGridMode) {
         items(
             items = filteredVideos,
             key = { it.video.path }
         ) { item ->
-            LibraryGridCard(
-                item = item,
-                onClick = { onItemClick(item) },
-                onPlayClick = onPlayClick,
-                onLongPress = { onItemLongPress(it) }
-            )
+            TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(10.dp), onActivate = { onItemClick(item) }) {
+                LibraryGridCard(
+                    item = item,
+                    onClick = { onItemClick(item) },
+                    onPlayClick = onPlayClick,
+                    onLongPress = { onItemLongPress(it) }
+                )
+            }
         }
     } else {
         items(
@@ -118,11 +134,13 @@ internal fun LazyGridScope.LocalLibraryVideoItemsSection(
             key = { it.video.path },
             span = { GridItemSpan(maxLineSpan) }
         ) { item ->
-            LibraryCard(
-                item = item,
-                onClick = { onItemClick(item) },
-                onLongPress = { onItemLongPress(it) }
-            )
+            TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(10.dp), onActivate = { onItemClick(item) }) {
+                LibraryCard(
+                    item = item,
+                    onClick = { onItemClick(item) },
+                    onLongPress = { onItemLongPress(it) }
+                )
+            }
         }
     }
 }

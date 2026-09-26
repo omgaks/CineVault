@@ -11,11 +11,19 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.library.RestrictedFolder
+import com.sole.cinevault.tvmode.TvFocusableSlot
 import com.sole.cinevault.ui.theme.*
 
 internal data class SecretFolderGroup(
@@ -26,7 +34,8 @@ internal data class SecretFolderGroup(
 internal fun LazyGridScope.LocalLibrarySecretLockedSection(
     selectedCategory: String,
     secretUnlocked: Boolean,
-    onUnlock: () -> Unit
+    onUnlock: () -> Unit,
+    isTelevision: Boolean = false
 ) {
     if (selectedCategory != "Secret" || secretUnlocked) return
 
@@ -47,18 +56,20 @@ internal fun LazyGridScope.LocalLibrarySecretLockedSection(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Button(
-                    onClick = onUnlock,
-                    shape = RoundedCornerShape(40.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = AmberGlow.copy(alpha = 0.90f),
-                        contentColor = Color.Black
-                    )
-                ) {
-                    Text(
-                        text = "Unlock Secret Folder",
-                        fontWeight = FontWeight.Bold
-                    )
+                TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(40.dp), onActivate = onUnlock) {
+                    Button(
+                        onClick = onUnlock,
+                        shape = RoundedCornerShape(40.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = AmberGlow.copy(alpha = 0.90f),
+                            contentColor = Color.Black
+                        )
+                    ) {
+                        Text(
+                            text = "Unlock Secret Folder",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
@@ -70,7 +81,8 @@ internal fun LazyGridScope.LocalLibrarySecretFoldersShelf(
     secretUnlocked: Boolean,
     groups: List<SecretFolderGroup>,
     onRestrictedFolderClick: (RestrictedFolder) -> Unit,
-    onRestrictedFolderLongClick: (String, List<String>) -> Unit
+    onRestrictedFolderLongClick: (String, List<String>) -> Unit,
+    isTelevision: Boolean = false
 ) {
     if (
         selectedCategory != "Secret" ||
@@ -91,7 +103,30 @@ internal fun LazyGridScope.LocalLibrarySecretFoldersShelf(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            val focusManager = LocalFocusManager.current
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.then(
+                    if (isTelevision) {
+                        Modifier.onKeyEvent { keyEvent ->
+                            if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
+                            when (keyEvent.key) {
+                                Key.DirectionLeft -> {
+                                    focusManager.moveFocus(FocusDirection.Left)
+                                    true
+                                }
+                                Key.DirectionRight -> {
+                                    focusManager.moveFocus(FocusDirection.Right)
+                                    true
+                                }
+                                else -> false
+                            }
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
+            ) {
                 items(
                     items = groups,
                     key = { "secretfolder:${it.folder.id}" }
@@ -102,20 +137,21 @@ internal fun LazyGridScope.LocalLibrarySecretFoldersShelf(
                         }
                         ?: group.items.firstOrNull()?.video?.path
 
-                    RestrictedFolderShelfCard(
-                        title = group.folder.displayName,
-                        count = group.items.size,
-                        thumbnailVideoPath = thumbnailSourcePath,
-                        onClick = {
-                            onRestrictedFolderClick(group.folder)
-                        },
-                        onLongClick = {
-                            onRestrictedFolderLongClick(
-                                group.folder.displayName,
-                                group.items.map { it.video.path }
-                            )
-                        }
-                    )
+                    val onActivate = { onRestrictedFolderClick(group.folder) }
+                    TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(10.dp), onActivate = onActivate) {
+                        RestrictedFolderShelfCard(
+                            title = group.folder.displayName,
+                            count = group.items.size,
+                            thumbnailVideoPath = thumbnailSourcePath,
+                            onClick = onActivate,
+                            onLongClick = {
+                                onRestrictedFolderLongClick(
+                                    group.folder.displayName,
+                                    group.items.map { it.video.path }
+                                )
+                            }
+                        )
+                    }
                 }
             }
 
