@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Placeholder TV launcher banner (shown on the Android TV / Google TV home
+    screen grid). Functional today — reuses the existing wordmark logo over a
+    Space Glass gradient — but Google's own guidance wants a purpose-built
+    320x180dp raster asset per density bucket for a crisp result on a real
+    TV screen. Treat this as "it works and looks reasonably on-brand," not
+    as the final artwork to ship a TV Play Store listing with.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="linear"
+                android:angle="315"
+                android:startColor="#FF0A0C12"
+                android:endColor="#FF05060A" />
+        </shape>
+    </item>
+    <item
+        android:gravity="center"
+        android:width="220dp"
+        android:height="62dp">
+        <bitmap
+            android:src="@drawable/cinevault_main_logo"
+            android:gravity="center" />
+    </item>
+</layer-list>
