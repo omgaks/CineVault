@@ -47,7 +47,7 @@ class SmbNetworkSource(
                     name = item.video.name,
                     posterUrl = item.posterUrl,
                     overview = item.overview,
-                    rating = item.rating,
+                    rating = item.rating?.toFloat(),
                 )
             }
             is SmbScanResult.Failure -> emptyList()
