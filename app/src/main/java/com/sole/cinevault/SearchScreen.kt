@@ -34,6 +34,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -74,9 +75,18 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -85,6 +95,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.sole.cinevault.tvmode.TelevisionModeDetector
+import com.sole.cinevault.tvmode.TvFocusableSlot
 import com.sole.cinevault.ui.theme.*
 
 // Best-effort year extraction straight from the filename — same pattern
@@ -133,11 +145,48 @@ fun SearchScreen(
         }
     }
 
+    // Phase 12 of TV support: same split as phase 10's search sheet — Up/Down
+    // is safe to handle at the root (a single-line text field has no
+    // vertical cursor concept to protect), but Left/Right is scoped
+    // specifically to the results grid so it never interferes with cursor
+    // movement while the search query field has focus. The grid itself is
+    // a sibling subtree to the text field, not a parent of it, so a key
+    // press while typing never reaches the grid's Left/Right handler.
+    val isTelevision = remember { TelevisionModeDetector.isRunningOnTelevision(context) }
+    val focusManager = LocalFocusManager.current
+    val firstResultFocusRequester = remember { FocusRequester() }
+
+    if (isTelevision && filteredVideos.isNotEmpty()) {
+        LaunchedEffect(query) {
+            firstResultFocusRequester.requestFocus()
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(SpaceBlack)
             .padding(16.dp)
+            .then(
+                if (isTelevision) {
+                    Modifier.onKeyEvent { keyEvent ->
+                        if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
+                        when (keyEvent.key) {
+                            Key.DirectionUp -> {
+                                focusManager.moveFocus(FocusDirection.Up)
+                                true
+                            }
+                            Key.DirectionDown -> {
+                                focusManager.moveFocus(FocusDirection.Down)
+                                true
+                            }
+                            else -> false
+                        }
+                    }
+                } else {
+                    Modifier
+                }
+            )
     ) {
         OutlinedTextField(
             value = query,
@@ -170,10 +219,37 @@ fun SearchScreen(
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.then(
+                    if (isTelevision) {
+                        Modifier.onKeyEvent { keyEvent ->
+                            if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
+                            when (keyEvent.key) {
+                                Key.DirectionLeft -> {
+                                    focusManager.moveFocus(FocusDirection.Left)
+                                    true
+                                }
+                                Key.DirectionRight -> {
+                                    focusManager.moveFocus(FocusDirection.Right)
+                                    true
+                                }
+                                else -> false
+                            }
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
             ) {
-                items(filteredVideos) { videoItem ->
-                    SearchPosterCard(item = videoItem, onClick = { onVideoClick(videoItem) })
+                itemsIndexed(filteredVideos) { index, videoItem ->
+                    TvFocusableSlot(
+                        isTelevision = isTelevision,
+                        focusRequester = if (index == 0) firstResultFocusRequester else null,
+                        shape = RoundedCornerShape(10.dp),
+                        onActivate = { onVideoClick(videoItem) }
+                    ) {
+                        SearchPosterCard(item = videoItem, onClick = { onVideoClick(videoItem) })
+                    }
                 }
             }
         }

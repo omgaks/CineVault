@@ -53,8 +53,16 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.border
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,6 +71,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.sole.cinevault.tvmode.TelevisionModeDetector
+import com.sole.cinevault.tvmode.TvFocusableSlot
 import com.sole.cinevault.ui.theme.*
 
 // Persists Detail screen scroll position per movie across navigation —
@@ -103,6 +113,26 @@ fun DetailScreen(
     val savedPosition = remember { loadPlaybackPosition(context, item.video.path) }
     val hasResumePosition = savedPosition > 15_000L
     val trailerSearchUrl = remember(item.title) { "https://www.youtube.com/results?search_query=${Uri.encode("${item.title} official trailer")}" }
+
+    // Phase 5 of TV support: the Play/Resume button (and its neighbors —
+    // Trailer, Fix Match, Metadata Studio) are now a real D-pad focus group,
+    // reusing the exact TvFocusableSlot built for the player's transport row
+    // (phase 4) rather than a second, screen-specific implementation. This
+    // closes the gap phase 2 left open: TV Home's Movies/TV Shows shelves
+    // push here, and before this phase there was nothing focusable on this
+    // screen at all — a real dead end for a remote, not just an unpolished
+    // one. Genre chips, director/collection links, and the cast row are
+    // deliberately NOT covered by this phase — see this screen's TV support
+    // status further down for why.
+    val isTelevision = remember { TelevisionModeDetector.isRunningOnTelevision(context) }
+    val focusManager = LocalFocusManager.current
+    val playFocusRequester = remember { FocusRequester() }
+
+    if (isTelevision) {
+        LaunchedEffect(item.video.path) {
+            playFocusRequester.requestFocus()
+        }
+    }
 
     // "Fix Match" — manual re-match flow for items TMDB matched incorrectly
     // or not at all (e.g. "Akira 30th Anniversary" before the filename
@@ -279,9 +309,35 @@ fun DetailScreen(
                 // else you own in that genre.
                 if (item.genres.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        modifier = Modifier
+                            .horizontalScroll(rememberScrollState())
+                            .then(
+                                if (isTelevision) {
+                                    Modifier.onKeyEvent { keyEvent ->
+                                        if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
+                                        when (keyEvent.key) {
+                                            Key.DirectionLeft -> {
+                                                focusManager.moveFocus(FocusDirection.Left)
+                                                true
+                                            }
+                                            Key.DirectionRight -> {
+                                                focusManager.moveFocus(FocusDirection.Right)
+                                                true
+                                            }
+                                            else -> false
+                                        }
+                                    }
+                                } else {
+                                    Modifier
+                                }
+                            )
+                    ) {
                         item.genres.forEach { genre ->
-                            GenreChip(text = genre, onClick = { onGenreClick(genre) })
+                            TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(50), onActivate = { onGenreClick(genre) }) {
+                                GenreChip(text = genre, onClick = { onGenreClick(genre) })
+                            }
                         }
                     }
                 }
@@ -291,30 +347,58 @@ fun DetailScreen(
                 // curated one (e.g. MCU) at once, so both render if present.
                 if (!item.director.isNullOrBlank() || item.collectionName != null || item.curatedCollections.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(10.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.then(
+                            if (isTelevision) {
+                                Modifier.onKeyEvent { keyEvent ->
+                                    if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
+                                    when (keyEvent.key) {
+                                        Key.DirectionUp -> {
+                                            focusManager.moveFocus(FocusDirection.Up)
+                                            true
+                                        }
+                                        Key.DirectionDown -> {
+                                            focusManager.moveFocus(FocusDirection.Down)
+                                            true
+                                        }
+                                        else -> false
+                                    }
+                                }
+                            } else {
+                                Modifier
+                            }
+                        )
+                    ) {
                         val director = item.director
                         if (!director.isNullOrBlank()) {
-                            Text(
-                                text = "Directed by $director",
-                                color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.clickable { onDirectorClick(director) }
-                            )
+                            TvFocusableSlot(isTelevision = isTelevision, onActivate = { onDirectorClick(director) }) {
+                                Text(
+                                    text = "Directed by $director",
+                                    color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clickable { onDirectorClick(director) }
+                                )
+                            }
                         }
                         val collectionId = item.collectionId
                         val collectionName = item.collectionName
                         if (collectionId != null && collectionName != null) {
-                            Text(
-                                text = "Part of the $collectionName",
-                                color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.clickable { onNativeCollectionClick(collectionId, collectionName) }
-                            )
+                            TvFocusableSlot(isTelevision = isTelevision, onActivate = { onNativeCollectionClick(collectionId, collectionName) }) {
+                                Text(
+                                    text = "Part of the $collectionName",
+                                    color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clickable { onNativeCollectionClick(collectionId, collectionName) }
+                                )
+                            }
                         }
                         item.curatedCollections.forEach { curated ->
-                            Text(
-                                text = "Part of the $curated",
-                                color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.clickable { onCuratedCollectionClick(curated) }
-                            )
+                            TvFocusableSlot(isTelevision = isTelevision, onActivate = { onCuratedCollectionClick(curated) }) {
+                                Text(
+                                    text = "Part of the $curated",
+                                    color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clickable { onCuratedCollectionClick(curated) }
+                                )
+                            }
                         }
                     }
                 }
@@ -322,7 +406,37 @@ fun DetailScreen(
                 Spacer(modifier = Modifier.height(18.dp))
 
                 // Action buttons — Resume shrunk down so it no longer competes visually with Play
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .horizontalScroll(rememberScrollState())
+                        .then(
+                            if (isTelevision) {
+                                Modifier.onKeyEvent { keyEvent ->
+                                    if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
+                                    when (keyEvent.key) {
+                                        Key.DirectionLeft -> {
+                                            focusManager.moveFocus(FocusDirection.Left)
+                                            true
+                                        }
+                                        Key.DirectionRight -> {
+                                            focusManager.moveFocus(FocusDirection.Right)
+                                            true
+                                        }
+                                        else -> false
+                                    }
+                                }
+                            } else {
+                                Modifier
+                            }
+                        )
+                ) {
+                    TvFocusableSlot(
+                        isTelevision = isTelevision,
+                        focusRequester = playFocusRequester,
+                        shape = RoundedCornerShape(40.dp),
+                        onActivate = onPlay
+                    ) {
                     Button(
                         onClick = onPlay, shape = RoundedCornerShape(40.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = AmberGlow, contentColor = Color.Black),
@@ -339,10 +453,13 @@ fun DetailScreen(
                             fontSize = if (hasResumePosition) 12.5.sp else 14.sp
                         )
                     }
+                    }
                     // Trailer — custom clapperboard mark instead of a generic library
                     // icon, with the same strong breathing amber glow as the rating pills
                     val trailerGlow = rememberPillGlowAlpha()
-                    Button(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trailerSearchUrl))) },
+                    val onTrailerClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trailerSearchUrl))) }
+                    TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(40.dp), onActivate = onTrailerClick) {
+                    Button(onClick = onTrailerClick,
                         shape = RoundedCornerShape(40.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = GlassSurface, contentColor = TextBright),
                         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 9.dp),
@@ -351,11 +468,14 @@ fun DetailScreen(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Trailer", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
                     }
+                    }
                     // Fix Match — opens RematchDialog to manually correct a
                     // wrong or missing TMDB match (e.g. special-edition
                     // filenames that slipped past the automatic cleaner).
                     val rematchGlow = rememberPillGlowAlpha()
-                    Button(onClick = { showRematch = true },
+                    val onFixMatchClick = { showRematch = true }
+                    TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(40.dp), onActivate = onFixMatchClick) {
+                    Button(onClick = onFixMatchClick,
                         shape = RoundedCornerShape(40.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = GlassSurface, contentColor = TextBright),
                         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 9.dp),
@@ -364,9 +484,12 @@ fun DetailScreen(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Fix Match", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
                     }
+                    }
                     val metadataStudioGlow = rememberPillGlowAlpha()
+                    val onMetadataStudioClick = { showMetadataStudio = true }
+                    TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(40.dp), onActivate = onMetadataStudioClick) {
                     Button(
-                        onClick = { showMetadataStudio = true },
+                        onClick = onMetadataStudioClick,
                         shape = RoundedCornerShape(40.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = GlassSurface,
@@ -388,6 +511,7 @@ fun DetailScreen(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Metadata Studio", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
                     }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -405,7 +529,51 @@ fun DetailScreen(
                 when {
                     castLoading && castList.isEmpty() -> CastRowShimmer()
                     castList.isEmpty() -> Text(text = "Cast info not available.", color = TextFaint, fontSize = 14.sp)
-                    else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) { items(castList) { cast -> CastCard(cast = cast, movieName = item.title, onActorClick = onActorClick) } }
+                    else -> LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        modifier = Modifier.then(
+                            if (isTelevision) {
+                                Modifier.onKeyEvent { keyEvent ->
+                                    if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
+                                    when (keyEvent.key) {
+                                        Key.DirectionLeft -> {
+                                            focusManager.moveFocus(FocusDirection.Left)
+                                            true
+                                        }
+                                        Key.DirectionRight -> {
+                                            focusManager.moveFocus(FocusDirection.Right)
+                                            true
+                                        }
+                                        else -> false
+                                    }
+                                }
+                            } else {
+                                Modifier
+                            }
+                        )
+                    ) {
+                        items(castList) { cast ->
+                            // Same fallback CastCard's own onCardClick uses
+                            // internally (DetailScreenVisualComponents.kt) —
+                            // duplicated here rather than restructured,
+                            // since CastCard doesn't accept a modifier param
+                            // and is used elsewhere; this keeps that file
+                            // completely untouched.
+                            val actorId = cast.id
+                            val castName = cast.name
+                            val onActivateCastCard = {
+                                if (actorId != null && !castName.isNullOrBlank()) {
+                                    onActorClick(actorId, castName, cast.profile_path)
+                                } else {
+                                    val safeName = castName ?: "Unknown"
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=${Uri.encode("$safeName ${item.title}")}")))
+                                }
+                            }
+                            TvFocusableSlot(isTelevision = isTelevision, shape = CircleShape, onActivate = onActivateCastCard) {
+                                CastCard(cast = cast, movieName = item.title, onActorClick = onActorClick)
+                            }
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(28.dp))
@@ -417,8 +585,15 @@ fun DetailScreen(
         }
 
         // Back button — glass circle
-        Box(modifier = Modifier.align(Alignment.TopStart).padding(14.dp).size(42.dp).clip(CircleShape).background(GlassSurfaceStrong).clickable { onBack() }, contentAlignment = Alignment.Center) {
-            Icon(imageVector = Icons.Rounded.ArrowBack, contentDescription = "Back", tint = TextBright, modifier = Modifier.size(22.dp))
+        TvFocusableSlot(
+            isTelevision = isTelevision,
+            modifier = Modifier.align(Alignment.TopStart),
+            shape = CircleShape,
+            onActivate = onBack
+        ) {
+            Box(modifier = Modifier.padding(14.dp).size(42.dp).clip(CircleShape).background(GlassSurfaceStrong).clickable { onBack() }, contentAlignment = Alignment.Center) {
+                Icon(imageVector = Icons.Rounded.ArrowBack, contentDescription = "Back", tint = TextBright, modifier = Modifier.size(22.dp))
+            }
         }
 
         if (showMetadataStudio) {
