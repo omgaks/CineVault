@@ -6,8 +6,17 @@ import android.app.NotificationManager
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.media3.common.MediaItem
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.SettableFuture
+import com.sole.cinevault.library.loadLibraryCache
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 /*
  * CineVaultPlaybackService.kt
@@ -65,11 +74,37 @@ import androidx.media3.session.MediaSessionService
  * Pad 7 specifically, check Settings > Apps > CineVault > Battery saver /
  * Autostart first — that's a device-level restriction, not something the
  * app can fully control from code.
+ *
+ * VOICE SEARCH (onAddMediaItems below):
+ * Resolves "Hey Google, play [title] on CineVault" — and equivalent
+ * requests from any MediaController, not Assistant specifically — against
+ * the on-disk library cache (library/PlaybackMemory.kt), reusing the same
+ * substring-match approach as SearchScreen.kt's own in-app search.
+ * MediaItem.requestMetadata.searchQuery is the documented Media3 mechanism
+ * for this (developer.android.com/media/media3/session/control-playback);
+ * a plain MediaSession (not MediaLibraryService, which is what this app
+ * uses) is expected to resolve search queries here rather than in
+ * onSearch()/onGetSearchResult(), which are MediaLibraryService-only.
+ *
+ * A REAL, STRUCTURAL LIMITATION, STATED PLAINLY: this only works while a
+ * session already exists — i.e. while something is ALREADY playing and the
+ * service is alive to receive the request (see refreshSession() below:
+ * with no current player, the session releases itself and the service
+ * stops entirely). "Play a different movie while one is already playing"
+ * genuinely works through this. A cold voice launch — the app not running,
+ * nothing playing, saying "play X" from scratch — does NOT reach this
+ * service at all, because there is no session for Assistant to connect to
+ * yet. Fixing that would mean giving this service the ability to create
+ * and own its own ExoPlayer independent of VideoPlayerScreen.kt, which is
+ * a genuine architectural decision (this service was deliberately built
+ * to never do that — see the class doc above) rather than something to
+ * change unilaterally inside a voice-search addition.
  */
 class CineVaultPlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
     private var wrappedPlayerFor: androidx.media3.exoplayer.ExoPlayer? = null
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     companion object {
         private const val PLAYBACK_CHANNEL_ID = "cinevault_playback_channel"
@@ -136,8 +171,77 @@ class CineVaultPlaybackService : MediaSessionService() {
             // Wrapped so hardware media-button next/previous route to the
             // app's own episode-switching logic — see
             // CineVaultForwardingPlayer.kt for why this is necessary.
-            mediaSession = MediaSession.Builder(this, CineVaultForwardingPlayer(player)).build()
+            mediaSession = MediaSession.Builder(this, CineVaultForwardingPlayer(player))
+                .setCallback(VoiceSearchCallback())
+                .build()
             wrappedPlayerFor = player
+        }
+    }
+
+    // Resolves MediaItem.requestMetadata.searchQuery (set by Assistant/any
+    // MediaController requesting playback by search text rather than a
+    // known ID) against the on-disk library cache. See the class doc above
+    // for what this can and can't reach.
+    private inner class VoiceSearchCallback : MediaSession.Callback {
+        override fun onAddMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: MutableList<MediaItem>
+        ): ListenableFuture<MutableList<MediaItem>> {
+            val future = SettableFuture.create<MutableList<MediaItem>>()
+            val query = mediaItems.firstOrNull { !it.requestMetadata.searchQuery.isNullOrBlank() }
+                ?.requestMetadata?.searchQuery
+
+            if (query == null) {
+                // No search query on any item — not a voice-search request,
+                // fall back to the default behavior (resolve by mediaId as
+                // normal) rather than intercepting every add-items call.
+                future.set(mediaItems)
+                return future
+            }
+
+            serviceScope.launch {
+                val cached = loadLibraryCache(this@CineVaultPlaybackService)
+                // Same substring approach as SearchScreen.kt's in-app search
+                // (title/filename/genre/director) — deliberately not fuzzy/
+                // typo-tolerant matching, same reasoning as that screen.
+                val match = cached?.videos?.firstOrNull { v ->
+                    v.title.contains(query, ignoreCase = true) ||
+                        v.video.name.contains(query, ignoreCase = true) ||
+                        v.genres.any { it.contains(query, ignoreCase = true) } ||
+                        v.director?.contains(query, ignoreCase = true) == true
+                }
+
+                val resolved = if (match != null) {
+                    // setUri(String) with the raw path, not Uri.fromFile() —
+                    // matches PlaybackNavigationCoordinator.kt's established
+                    // MediaItem construction exactly, so this resolves through
+                    // whatever data-source routing (including SMB paths) the
+                    // app already has, rather than risking a differently-
+                    // formatted URI that might not.
+                    mutableListOf(
+                        MediaItem.Builder()
+                            .setUri(match.video.path)
+                            .setMediaId(match.video.path)
+                            .setMediaMetadata(
+                                androidx.media3.common.MediaMetadata.Builder()
+                                    .setTitle(match.title)
+                                    .build()
+                            )
+                            .build()
+                    )
+                } else {
+                    // No match — return the original (unresolvable) items
+                    // rather than throwing; Media3/the calling controller
+                    // handles an item with no playable LocalConfiguration
+                    // as a failed request, which is the correct outcome
+                    // for "couldn't find that title" rather than a crash.
+                    mediaItems
+                }
+                future.set(resolved)
+            }
+
+            return future
         }
     }
 
@@ -162,6 +266,7 @@ class CineVaultPlaybackService : MediaSessionService() {
     override fun onDestroy() {
         mediaSession?.release()
         mediaSession = null
+        serviceScope.cancel()
         super.onDestroy()
     }
 }
