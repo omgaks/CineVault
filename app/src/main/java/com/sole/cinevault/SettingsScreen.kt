@@ -128,7 +128,8 @@ fun SettingsScreen(
     // FIX: previously took no argument, so the URL typed into the Stream
     // dialog was captured then silently discarded — Play did nothing.
     // Now the URL is actually passed through to whoever handles playback.
-    onOpenStreamUrl: (String) -> Unit
+    onOpenStreamUrl: (String) -> Unit,
+    onOpenGlassesGestureTutorial: () -> Unit
 ) {
     val context = LocalContext.current
     var showStreamDialog by remember { mutableStateOf(false) }
@@ -257,6 +258,26 @@ fun SettingsScreen(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(text = "For direct video links only. Torrent/magnet links are not supported.", color = TextFaint, fontSize = 12.sp, lineHeight = 17.sp)
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // G6B-3: Glasses help/practice entry. The tutorial itself uses
+            // the same head-gesture detector as playback and clearly falls
+            // back to touchpad guidance when no external sensor is exposed.
+            GlassSectionCard(
+                title = "Glasses Mode",
+                subtitle = "Learn the controls and practice supported head gestures.",
+                icon = Icons.Filled.Info,
+                accent = AccentAbout
+            ) {
+                GlassActionRow(
+                    icon = Icons.Filled.Info,
+                    iconTint = AccentAbout,
+                    title = "Glasses controls & gesture practice",
+                    subtitle = "Touchpad, emergency return, nod and shake",
+                    action = "OPEN"
+                ) { onOpenGlassesGestureTutorial() }
             }
 
             Spacer(modifier = Modifier.height(18.dp))
