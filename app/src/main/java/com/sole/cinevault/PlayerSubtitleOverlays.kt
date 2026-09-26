@@ -349,8 +349,7 @@ fun BoxScope.SubtitleSyncAndAppearancePopups(
                 bottomPadding = appearanceBottomPaddingFraction,
                 onBottomPaddingChange = onAppearanceBottomPaddingChange,
                 onBack = onBackFromAppearanceStudio,
-                onDismiss = onDismissAppearanceStudio,
-                isTelevision = isTelevision
+                onDismiss = onDismissAppearanceStudio
             )
         }
     }
