@@ -5,25 +5,43 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaybackStatusPillVisibilityTest {
+
+    private fun snapshot(
+        decoderMode: PlaybackEngineMode = PlaybackEngineMode.HARDWARE,
+        activeDecoderKind: ActiveVideoDecoderKind = ActiveVideoDecoderKind.HARDWARE,
+        fallbackOccurred: Boolean = false,
+        activeAudioDecoderKind: ActiveAudioDecoderKind = ActiveAudioDecoderKind.UNKNOWN,
+        audioFfmpegRescueOutcome: AudioFfmpegRescueOutcome =
+            AudioFfmpegRescueOutcome.NOT_ATTEMPTED,
+    ) = PlaybackDiagnosticsSnapshot(
+        mimeType = null,
+        codecString = null,
+        resolution = "Unknown",
+        frameRate = null,
+        dynamicRange = VideoDynamicRange.UNKNOWN,
+        decoderName = null,
+        decoderMode = decoderMode,
+        activeDecoderKind = activeDecoderKind,
+        compatibilityRisk = VideoCompatibilityRisk.LOW,
+        decoderRecommendation = VideoDecoderRecommendation.HARDWARE,
+        fallbackOccurred = fallbackOccurred,
+        fallbackReason = null,
+        activeAudioDecoderKind = activeAudioDecoderKind,
+        audioFfmpegRescueOutcome = audioFfmpegRescueOutcome,
+    )
+
     @Test
     fun nativeHardwarePlaybackIsNotAVisibleStatusPillState() {
-        assertFalse(
-            shouldShowPlaybackStatusPill(
-                PlaybackDiagnosticsSnapshot(
-                    activeDecoderKind = ActiveVideoDecoderKind.HARDWARE,
-                    decoderMode = PlaybackEngineMode.HARDWARE,
-                )
-            )
-        )
+        assertFalse(shouldShowPlaybackStatusPill(snapshot()))
     }
 
     @Test
     fun softwareVideoRescueShowsStatusPill() {
         assertTrue(
             shouldShowPlaybackStatusPill(
-                PlaybackDiagnosticsSnapshot(
-                    activeDecoderKind = ActiveVideoDecoderKind.SOFTWARE,
+                snapshot(
                     decoderMode = PlaybackEngineMode.SOFTWARE,
+                    activeDecoderKind = ActiveVideoDecoderKind.SOFTWARE,
                     fallbackOccurred = true,
                 )
             )
@@ -34,9 +52,7 @@ class PlaybackStatusPillVisibilityTest {
     fun confirmedFfmpegAudioShowsStatusPill() {
         assertTrue(
             shouldShowPlaybackStatusPill(
-                PlaybackDiagnosticsSnapshot(
-                    activeDecoderKind = ActiveVideoDecoderKind.HARDWARE,
-                    decoderMode = PlaybackEngineMode.HARDWARE,
+                snapshot(
                     activeAudioDecoderKind = ActiveAudioDecoderKind.FFMPEG,
                     audioFfmpegRescueOutcome = AudioFfmpegRescueOutcome.CONFIRMED,
                 )
@@ -48,9 +64,9 @@ class PlaybackStatusPillVisibilityTest {
     fun mixedRescueShowsStatusPill() {
         assertTrue(
             shouldShowPlaybackStatusPill(
-                PlaybackDiagnosticsSnapshot(
-                    activeDecoderKind = ActiveVideoDecoderKind.SOFTWARE,
+                snapshot(
                     decoderMode = PlaybackEngineMode.SOFTWARE,
+                    activeDecoderKind = ActiveVideoDecoderKind.SOFTWARE,
                     fallbackOccurred = true,
                     activeAudioDecoderKind = ActiveAudioDecoderKind.FFMPEG,
                     audioFfmpegRescueOutcome = AudioFfmpegRescueOutcome.CONFIRMED,
