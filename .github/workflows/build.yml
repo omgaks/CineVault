@@ -1,20 +1,29 @@
 name: Build & Release CineVault APK
+
+# Release builds are deliberate. Normal development pushes are validated by
+# test-coverage.yml and do not publish an APK or GitHub Release.
 on:
-  push:
-    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
+
       - name: Make gradlew executable
         run: chmod +x gradlew
+
       - name: Inject API keys from secrets
         run: |
           echo "TMDB_TOKEN=${{ secrets.TMDB_TOKEN }}" >> local.properties
@@ -23,25 +32,13 @@ jobs:
           echo "OPENSUB_API_KEY=${{ secrets.OPENSUB_API_KEY }}" >> local.properties
           echo "SUBDL_API_KEY=${{ secrets.SUBDL_API_KEY }}" >> local.properties
 
-      # FIX: previously nothing ran before assembleRelease except the key
-      # injection — no unit tests, no lint, no confirmation the resulting
-      # APK is actually signed with the intended key. Added below without
-      # removing anything that was already working.
-
       - name: Run unit tests
         run: ./gradlew test --no-daemon
 
-      # Lint is genuinely useful, but this app has never run it in CI
-      # before today — there's no way to know how many pre-existing
-      # findings would surface on the first run, and some of Android's
-      # own default lint severities fail the build outright. Rather than
-      # risk every future push suddenly blocking on a backlog nobody's
-      # triaged yet, this runs and uploads the report but doesn't fail
-      # the workflow (continue-on-error). Once the existing findings are
-      # reviewed, remove continue-on-error to make it a real gate.
-      - name: Run lint (informational — see step comment)
+      - name: Run lint (informational)
         continue-on-error: true
         run: ./gradlew lintRelease --no-daemon
+
       - name: Upload lint report
         if: always()
         uses: actions/upload-artifact@v4
@@ -50,14 +47,6 @@ jobs:
           path: app/build/reports/lint-results-release.html
           if-no-files-found: ignore
 
-      # FIX: was `if: ${{ env.KEYSTORE_BASE64 != '' }}` — checking an env
-      # var that's only ever defined inside THIS SAME step's own env
-      # block below, which a step's if: condition is evaluated before,
-      # not after. That comparison was very likely never seeing the real
-      # secret's value at all, regardless of whether it happened to still
-      # work in practice. Replaced with a check against the secret itself
-      # via a dedicated prior step, which is the correct way to do a
-      # conditional-on-secret-presence in Actions.
       - name: Check keystore secret present
         id: keystore_check
         run: |
@@ -66,6 +55,7 @@ jobs:
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
           fi
+
       - name: Decode signing keystore
         if: steps.keystore_check.outputs.present == 'true'
         env:
@@ -88,33 +78,13 @@ jobs:
           echo "name=${VERSION_NAME}" >> $GITHUB_OUTPUT
           echo "code=${VERSION_CODE}" >> $GITHUB_OUTPUT
           echo "date=${BUILD_DATE}" >> $GITHUB_OUTPUT
-          # FIX: was "v${VERSION_NAME}-b${VERSION_CODE}" alone — with
-          # versionName/versionCode unchanged across many pushes in a row
-          # (a normal thing during a run of small fixes, not itself a
-          # mistake), every one of those builds targeted the exact same
-          # release tag and tried to overwrite the exact same asset file.
-          # That's precisely the scenario softprops/action-gh-release has
-          # documented sporadic "Not Found" failures under. Appending the
-          # run number (always unique, auto-incrementing, provided by
-          # GitHub itself) means every push gets its own fresh release
-          # instead of repeatedly colliding on the same one.
           echo "tag=v${VERSION_NAME}-b${VERSION_CODE}-r${{ github.run_number }}" >> $GITHUB_OUTPUT
+
       - name: Find and rename APK
         run: |
           APK=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
           mv "$APK" app/build/outputs/apk/release/CineVault-${{ steps.version.outputs.name }}.apk
 
-      # FIX: nothing previously confirmed the APK that's about to be
-      # published is actually signed at all, let alone signed with the
-      # intended release key rather than falling back to unsigned (which
-      # build.gradle.kts's own signingConfig block does silently if
-      # cinevault-release.jks doesn't exist — see its own "falls back
-      # gracefully when building locally without a keystore" comment,
-      # which is exactly the right behavior for local dev but not
-      # something that should ever reach a published release unnoticed).
-      # jarsigner comes from the JDK already set up above — no extra SDK
-      # tooling needed. Fails the workflow if the APK isn't verifiably
-      # signed, before a release is ever created from it.
       - name: Verify APK is signed
         run: |
           APK_PATH="app/build/outputs/apk/release/CineVault-${{ steps.version.outputs.name }}.apk"
@@ -127,12 +97,12 @@ jobs:
           name: "CineVault ${{ steps.version.outputs.name }}"
           body: |
             ## CineVault ${{ steps.version.outputs.name }}
-            
+
             **Build:** ${{ steps.version.outputs.code }} | **Date:** ${{ steps.version.outputs.date }}
-            
+
             ### What's New
-            - Latest updates from main branch
-            
+            - Manually approved release from the current main branch
+
             ---
             *Install: Download the APK below, transfer to your Android device, and install.*
           files: app/build/outputs/apk/release/CineVault-${{ steps.version.outputs.name }}.apk
