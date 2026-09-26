@@ -42,6 +42,7 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
         panelRequested = panelRequested,
         fallbackOccurred = snapshot.fallbackOccurred,
     )
+    val showStatusPill = shouldShowPlaybackStatusPill(snapshot)
 
     BackHandler(enabled = visibility.showPanel) {
         surface = when (surface) {
@@ -53,7 +54,7 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
     }
 
     AnimatedVisibility(
-        visible = controlsVisible && !visibility.showPanel,
+        visible = controlsVisible && !visibility.showPanel && showStatusPill,
         enter = fadeIn(),
         exit = fadeOut(),
         modifier = Modifier
@@ -69,9 +70,6 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
         )
     }
 
-    // Full-player dismiss layer. It is emitted before the panel so the panel
-    // remains interactive above it, while any empty area outside closes the
-    // current Playback Info surface.
     if (visibility.showPanel) {
         Box(
             modifier = Modifier
