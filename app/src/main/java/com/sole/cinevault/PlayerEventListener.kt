@@ -125,6 +125,48 @@ internal fun PlayerEventListener(
                 val positionAtError = player.currentPosition.coerceAtLeast(0L)
                 val attribution = attributePlaybackFailure(error)
 
+                // D15-R1: a bad/unsupported subtitle must not take the movie down
+                // with it. Media3 reports subtitle decoder failures as renderer
+                // errors too; recover only the TEXT renderer, keep video/audio,
+                // and return the Tracks UI to an honest OFF state.
+                if (shouldRecoverByDisablingSubtitles(attribution)) {
+                    val resumePlayback = player.playWhenReady || player.isPlaying
+
+                    coreUi.subtitlesEnabled = false
+                    trackUi.selectedKey = "off"
+                    trackUi.selectedLabel = ""
+                    trackUi.selectedSource = ""
+
+                    trackSelector.parameters = trackSelector
+                        .buildUponParameters()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                        .build()
+
+                    onFailureDiagnostic(
+                        buildPlaybackFailureDiagnostic(
+                            attribution = attribution,
+                            recovery = PlaybackRecoveryDecision(
+                                action = PlaybackRecoveryAction.RETRY_CURRENT,
+                                nextRetryCount = errorRetryCount,
+                            ),
+                        )
+                    )
+
+                    onPlayerErrorMessageChanged(
+                        "This subtitle track couldn't be played. Subtitles were turned off."
+                    )
+
+                    // ExoPlayer is in STATE_IDLE after a playback error. prepare()
+                    // recovers the existing media item; no media-item rebuild and
+                    // therefore no deliberate video-surface replacement.
+                    player.prepare()
+                    player.seekTo(positionAtError)
+                    player.playWhenReady = resumePlayback
+                    if (resumePlayback) player.play()
+                    onShowControls()
+                    return
+                }
+
                 if (
                     attribution.isAudioRendererFailure &&
                     onAudioFailure(
