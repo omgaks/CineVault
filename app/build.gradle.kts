@@ -105,6 +105,7 @@ dependencies {
 
     // D16-R2-S10B: permission-free system QR scanner for CineVault Nearby invites.
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+    implementation("com.google.zxing:core:3.5.3") // D16-R2-S10D host-side Nearby invite QR
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
     implementation("io.coil-kt:coil-gif:2.7.0")
