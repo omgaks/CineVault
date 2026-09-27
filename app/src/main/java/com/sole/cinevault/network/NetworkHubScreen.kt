@@ -19,7 +19,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.ui.theme.AmberCore
@@ -40,7 +39,7 @@ fun NetworkHubScreen(
     onAddWebSource: () -> Unit,
     onShareLibrary: () -> Unit,
     onSourceClick: (String) -> Unit = {},
-    onDiscoveredDeviceClick: (String) -> Unit = {},
+    onDiscoveredDeviceClick: (DiscoveredNetworkDevice) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -64,14 +63,21 @@ fun NetworkHubScreen(
             wide -> 40.dp
             else -> 20.dp
         }
+
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                .padding(horizontal = horizontalPadding, vertical = 20.dp)
+            Modifier.fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = horizontalPadding, vertical = 20.dp),
         ) {
             NetworkHubHeader(onBack)
             Spacer(Modifier.height(22.dp))
+
             if (wide) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.Top) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
                     Column(Modifier.weight(1f)) {
                         QuickActions(
                             runtimeState.isDiscovering,
@@ -93,7 +99,12 @@ fun NetworkHubScreen(
                     }
                 }
             } else {
-                QuickActions(runtimeState.isDiscovering, { runtime.findDevices(); onFindDevices() }, onScanQr, onShareLibrary)
+                QuickActions(
+                    runtimeState.isDiscovering,
+                    { runtime.findDevices(); onFindDevices() },
+                    onScanQr,
+                    onShareLibrary,
+                )
                 Spacer(Modifier.height(18.dp))
                 SavedSources(savedSources, onSourceClick)
                 Spacer(Modifier.height(18.dp))
@@ -130,15 +141,15 @@ private fun AddSourceInfoDialog(kind: AddSourceKind, onDismiss: () -> Unit) {
     when (kind) {
         AddSourceKind.FILE_SHARE -> {
             title = "File Share"
-            body = "SMB, WebDAV and SFTP engines are ready. Saved SMB shares remain available from Settings; secure WebDAV/SFTP source persistence is wired in the next source-management surface."
+            body = "SMB, WebDAV and SFTP are available. CineVault keeps credentials separate from saved source details."
         }
         AddSourceKind.MEDIA_SERVER -> {
             title = "Media Server"
-            body = "Jellyfin, Emby and DLNA engines are ready. Find Devices discovers DLNA automatically; Jellyfin and Emby require an explicit server address and sign-in."
+            body = "Jellyfin and Emby can be signed in directly. DLNA devices are discovered automatically with Find Devices."
         }
         AddSourceKind.WEB -> {
             title = "Web / Playlist"
-            body = "HTTP Directory and M3U engines are ready. Add only sources you trust; CineVault does not auto-connect to discovered addresses."
+            body = "HTTP Directory and M3U sources are available. CineVault never auto-connects to an unknown address."
         }
     }
     AlertDialog(
@@ -169,46 +180,75 @@ private fun QuickActions(
     onScanQr: () -> Unit,
     onShareLibrary: () -> Unit,
 ) = HubSection("Connect") {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        HubAction(if (discovering) "Finding…" else "Find Devices", Icons.Rounded.Search, onFindDevices, !discovering)
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        HubAction(
+            if (discovering) "Finding…" else "Find Devices",
+            Icons.Rounded.Search,
+            onFindDevices,
+            !discovering,
+        )
         HubAction("Scan QR", Icons.Rounded.QrCodeScanner, onScanQr)
         HubAction("Share My Library", Icons.Rounded.FolderShared, onShareLibrary)
     }
 }
 
 @Composable
-private fun SavedSources(sources: List<NetworkHubSourceSummary>, onClick: (String) -> Unit) =
-    HubSection("Your Sources") {
-        if (sources.isEmpty()) EmptyHint("No network sources added yet.")
-        else sources.forEach { source ->
-            HubRow(Icons.Rounded.Storage, source.name, "${source.typeLabel} • ${source.statusLabel}") { onClick(source.id) }
-            Spacer(Modifier.height(8.dp))
-        }
-    }
-
-@Composable
-private fun NearbyDevices(devices: List<DiscoveredNetworkDevice>, onClick: (String) -> Unit) =
-    HubSection("Nearby") {
-        if (devices.isEmpty()) EmptyHint("Nothing discovered yet. Find Devices only looks; it never connects automatically.")
-        else sanitizeDiscoveredDevices(devices).forEach { device ->
+private fun SavedSources(
+    sources: List<NetworkHubSourceSummary>,
+    onClick: (String) -> Unit,
+) = HubSection("Your Sources") {
+    if (sources.isEmpty()) {
+        EmptyHint("No network sources added yet.")
+    } else {
+        sources.forEach { source ->
             HubRow(
-                if (device.kind == NetworkDiscoveryKind.CINEVAULT) Icons.Rounded.Devices else Icons.Rounded.Wifi,
-                device.displayName,
-                discoveryLabel(device.kind),
-            ) { onClick(device.id) }
+                Icons.Rounded.Storage,
+                source.name,
+                "${source.typeLabel} • ${source.statusLabel}",
+            ) { onClick(source.id) }
             Spacer(Modifier.height(8.dp))
         }
     }
+}
 
 @Composable
-private fun AddManually(onFileShare: () -> Unit, onMediaServer: () -> Unit, onWebSource: () -> Unit) =
-    HubSection("Add Manually") {
-        HubRow(Icons.Rounded.Storage, "File Shares", "SMB • WebDAV • SFTP", onFileShare)
-        Spacer(Modifier.height(8.dp))
-        HubRow(Icons.Rounded.Devices, "Media Servers", "Jellyfin • Emby • DLNA", onMediaServer)
-        Spacer(Modifier.height(8.dp))
-        HubRow(Icons.Rounded.Add, "Web / Playlist", "HTTP directory • M3U", onWebSource)
+private fun NearbyDevices(
+    devices: List<DiscoveredNetworkDevice>,
+    onClick: (DiscoveredNetworkDevice) -> Unit,
+) = HubSection("Nearby") {
+    if (devices.isEmpty()) {
+        EmptyHint("Nothing discovered yet. Find Devices only looks; it never connects automatically.")
+    } else {
+        sanitizeDiscoveredDevices(devices).forEach { device ->
+            HubRow(
+                icon = when (device.kind) {
+                    NetworkDiscoveryKind.CINEVAULT -> Icons.Rounded.Devices
+                    NetworkDiscoveryKind.DLNA -> Icons.Rounded.LiveTv
+                    else -> Icons.Rounded.Wifi
+                },
+                title = device.displayName,
+                subtitle = discoveryLabel(device.kind),
+            ) { onClick(device) }
+            Spacer(Modifier.height(8.dp))
+        }
     }
+}
+
+@Composable
+private fun AddManually(
+    onFileShare: () -> Unit,
+    onMediaServer: () -> Unit,
+    onWebSource: () -> Unit,
+) = HubSection("Add Manually") {
+    HubRow(Icons.Rounded.Storage, "File Shares", "SMB • WebDAV • SFTP", onFileShare)
+    Spacer(Modifier.height(8.dp))
+    HubRow(Icons.Rounded.Devices, "Media Servers", "Jellyfin • Emby • DLNA", onMediaServer)
+    Spacer(Modifier.height(8.dp))
+    HubRow(Icons.Rounded.Add, "Web / Playlist", "HTTP directory • M3U", onWebSource)
+}
 
 @Composable
 private fun HubSection(title: String, content: @Composable () -> Unit) {
@@ -216,7 +256,7 @@ private fun HubSection(title: String, content: @Composable () -> Unit) {
         Modifier.fillMaxWidth()
             .background(Color(0xFF121317), RoundedCornerShape(22.dp))
             .border(1.dp, AmberCore.copy(alpha = 0.18f), RoundedCornerShape(22.dp))
-            .padding(16.dp)
+            .padding(16.dp),
     ) {
         Text(title, color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(12.dp))
@@ -225,7 +265,12 @@ private fun HubSection(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun HubAction(text: String, icon: ImageVector, onClick: () -> Unit, enabled: Boolean = true) {
+private fun HubAction(
+    text: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+) {
     Row(
         Modifier.background(AmberCore.copy(alpha = 0.10f), RoundedCornerShape(50))
             .border(1.dp, AmberCore.copy(alpha = 0.45f), RoundedCornerShape(50))
@@ -240,10 +285,17 @@ private fun HubAction(text: String, icon: ImageVector, onClick: () -> Unit, enab
 }
 
 @Composable
-private fun HubRow(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+private fun HubRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
     Row(
-        Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.035f), RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick).padding(13.dp),
+        Modifier.fillMaxWidth()
+            .background(Color.White.copy(alpha = 0.035f), RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, null, tint = AmberCore)
@@ -252,25 +304,34 @@ private fun HubRow(icon: ImageVector, title: String, subtitle: String, onClick: 
             Text(title, color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             Text(subtitle, color = TextMuted, fontSize = 12.sp)
         }
+        Icon(Icons.Rounded.ChevronRight, null, tint = AmberCore.copy(alpha = 0.72f))
     }
 }
 
 @Composable
-private fun HubIcon(icon: ImageVector, description: String, onClick: () -> Unit) {
+private fun HubIcon(
+    icon: ImageVector,
+    description: String,
+    onClick: () -> Unit,
+) {
     Box(
         Modifier.background(AmberCore.copy(alpha = 0.10f), RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick).padding(10.dp)
-    ) { Icon(icon, description, tint = AmberCore) }
+            .clickable(onClick = onClick)
+            .padding(10.dp),
+    ) {
+        Icon(icon, description, tint = AmberCore)
+    }
 }
 
-@Composable private fun EmptyHint(text: String) =
+@Composable
+private fun EmptyHint(text: String) =
     Text(text, color = TextFaint, fontSize = 12.sp, lineHeight = 17.sp)
 
 private fun discoveryLabel(kind: NetworkDiscoveryKind): String = when (kind) {
     NetworkDiscoveryKind.CINEVAULT -> "CineVault • Nearby"
     NetworkDiscoveryKind.JELLYFIN -> "Jellyfin"
     NetworkDiscoveryKind.EMBY -> "Emby"
-    NetworkDiscoveryKind.DLNA -> "DLNA / UPnP"
+    NetworkDiscoveryKind.DLNA -> "DLNA / UPnP • Tap to browse"
     NetworkDiscoveryKind.WEBDAV -> "WebDAV"
     NetworkDiscoveryKind.SMB -> "SMB"
     NetworkDiscoveryKind.UNKNOWN -> "Network device"
