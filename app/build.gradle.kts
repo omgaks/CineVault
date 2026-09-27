@@ -181,6 +181,7 @@ dependencies {
     // SMB network share scanning (NAS/PC shares) — pure Java, no NDK/native
     // build step needed, unlike the FFmpeg audio codec work planned later.
     implementation("eu.agno3.jcifs:jcifs-ng:2.1.10")
+    implementation("com.hierynomus:sshj:0.40.0")
 
     // Palette-based dynamic theming on the Detail screen — extracts a
     // dominant color from each title's poster/backdrop artwork. Small,
