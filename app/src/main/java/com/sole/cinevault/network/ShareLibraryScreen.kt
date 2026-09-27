@@ -159,7 +159,7 @@ fun ShareLibraryScreen(
 private fun CineVaultSharingState.qrOrNull(runtime: CineVaultNearbyRuntime): String? = runtime.qrPayload(this)
 
 @Composable
-private fun ShareCard(title:String, icon:androidx.compose.ui.graphics.vector.ImageVector, content:@Composable()->Unit) {
+private fun ShareCard(title:String, icon:androidx.compose.ui.graphics.vector.ImageVector, content: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth().background(Color(0xFF121317), RoundedCornerShape(22.dp))
         .border(1.dp, AmberCore.copy(alpha=.18f), RoundedCornerShape(22.dp)).padding(16.dp)) {
         Row(verticalAlignment=Alignment.CenterVertically) {
