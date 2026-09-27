@@ -3,6 +3,7 @@ package com.sole.cinevault.network
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -66,7 +67,7 @@ class MediaServerApi(
     suspend fun getItems(session: MediaServerSession): List<MediaServerItem> =
         withContext(Dispatchers.IO) {
             try {
-                val url = okhttp3.HttpUrl.get("$baseUrl/Users/${urlSegment(session.userId)}/Items")
+                val url = "$baseUrl/Users/${urlSegment(session.userId)}/Items".toHttpUrl()
                     .newBuilder()
                     .addQueryParameter("Recursive", "true")
                     .addQueryParameter("IncludeItemTypes", "Movie,Episode,Video")
@@ -98,7 +99,7 @@ class MediaServerApi(
             ?.let { ".$it" }
             .orEmpty()
 
-        return okhttp3.HttpUrl.get("$baseUrl/Videos/${urlSegment(item.id)}/stream$extension")
+        return "$baseUrl/Videos/${urlSegment(item.id)}/stream$extension".toHttpUrl()
             .newBuilder()
             .addQueryParameter("static", "true")
             .addQueryParameter("api_key", session.accessToken)
@@ -108,7 +109,7 @@ class MediaServerApi(
 
     fun imageUrl(item: MediaServerItem, session: MediaServerSession): String? {
         if (item.primaryImageTag.isNullOrBlank()) return null
-        return okhttp3.HttpUrl.get("$baseUrl/Items/${urlSegment(item.id)}/Images/Primary")
+        return "$baseUrl/Items/${urlSegment(item.id)}/Images/Primary".toHttpUrl()
             .newBuilder()
             .addQueryParameter("tag", item.primaryImageTag)
             .addQueryParameter("maxWidth", "600")
