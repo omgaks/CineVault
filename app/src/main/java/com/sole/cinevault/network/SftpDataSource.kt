@@ -33,7 +33,7 @@ class SftpDataSource(
 
         val ssh = SSHClient()
         try {
-            ssh.addHostKeyVerifier(PinnedSha256HostKeyVerifier(endpoint.hostKeySha256))
+            ssh.addHostKeyVerifier(endpoint.hostKeySha256)
             ssh.connect(endpoint.host, endpoint.port)
             ssh.authPassword(credential.username, credential.secret)
             val file = ssh.newSFTPClient().open(path)

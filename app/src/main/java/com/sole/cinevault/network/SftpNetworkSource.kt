@@ -4,9 +4,6 @@ import androidx.media3.datasource.DataSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.schmizz.sshj.SSHClient
-import net.schmizz.sshj.transport.verification.HostKeyVerifier
-import java.security.PublicKey
-import java.util.Base64
 
 class SftpNetworkSource(
     private val endpoint: SftpEndpoint,
@@ -58,22 +55,10 @@ class SftpNetworkSource(
         require(credential.username.isNotBlank()) { "SFTP username required" }
 
         return SSHClient().use { client ->
-            client.addHostKeyVerifier(PinnedSha256HostKeyVerifier(endpoint.hostKeySha256))
+            client.addHostKeyVerifier(endpoint.hostKeySha256)
             client.connect(endpoint.host, endpoint.port)
             client.authPassword(credential.username, credential.secret)
             block(client)
         }
     }
-}
-
-internal class PinnedSha256HostKeyVerifier(
-    private val expected: String,
-) : HostKeyVerifier {
-    override fun verify(hostname: String?, port: Int, key: PublicKey): Boolean =
-        sshSha256Fingerprint(key) == expected
-}
-
-internal fun sshSha256Fingerprint(key: PublicKey): String {
-    val digest = java.security.MessageDigest.getInstance("SHA-256").digest(key.encoded)
-    return "SHA256:" + Base64.getEncoder().withoutPadding().encodeToString(digest)
 }
