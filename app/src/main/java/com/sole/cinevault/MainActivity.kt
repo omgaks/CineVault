@@ -383,6 +383,7 @@ sealed class Destination {
     data class RestrictedFolderPage(val folderId: String, val folderName: String, val lastPlayedVideoPath: String? = null) : Destination()
     data object GlassesGestureTutorial : Destination()
     data object NetworkHub : Destination()
+    data class RemoteLibrary(val source: NetworkSource) : Destination()
     data object ShareLibrary : Destination()
 }
 
@@ -709,26 +710,28 @@ fun CineVaultApp() {
                 }
 
                 Destination.NetworkHub -> {
-                    val smbSources = loadSmbShares(context).map { share ->
-                        NetworkHubSourceSummary(
-                            id = "smb:${share.id}",
-                            name = share.displayName,
-                            typeLabel = "SMB",
-                            statusLabel = "Saved"
-                        )
-                    }
-                    NetworkHubScreen(
-                        savedSources = smbSources,
-                        discoveredDevices = emptyList(),
+                    NetworkHubIntegratedScreen(
                         onBack = { pop() },
-                        onFindDevices = { },
-                        onScanQr = { },
-                        onAddFileShare = { pop() },
-                        onAddMediaServer = { },
-                        onAddWebSource = { },
                         onShareLibrary = { push(Destination.ShareLibrary) },
-                        onSourceClick = { },
-                        onDiscoveredDeviceClick = { }
+                        onOpenSource = { source ->
+                            push(Destination.RemoteLibrary(source))
+                        },
+                    )
+                }
+
+                is Destination.RemoteLibrary -> {
+                    NetworkRemoteLibraryDestination(
+                        source = dest.source,
+                        onBack = { pop() },
+                        onPlayVideo = { video ->
+                            push(
+                                Destination.Player(
+                                    video = video,
+                                    mediaType = "movie",
+                                    episodeList = emptyList(),
+                                )
+                            )
+                        },
                     )
                 }
 
