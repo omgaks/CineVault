@@ -125,6 +125,7 @@ fun SettingsScreen(
     // removing it would also require an edit to MainActivity.kt's call site
     // for no real benefit.
     onOpenScanSources: () -> Unit,
+    onOpenNetworkHub: () -> Unit,
     // FIX: previously took no argument, so the URL typed into the Stream
     // dialog was captured then silently discarded — Play did nothing.
     // Now the URL is actually passed through to whoever handles playback.
@@ -223,29 +224,33 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // Network Shares (SMB) — scans a NAS/PC share into the same library
-            GlassSectionCard(title = "Network Shares", subtitle = "Scan videos from a NAS or PC share (SMB) into your library.", icon = Icons.Rounded.Dns, accent = AccentNetwork) {
-                TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(50), onActivate = { editingShare = null; showSmbDialog = true }) {
-                    GlowButton(text = "Add Network Share", icon = Icons.Rounded.Dns, accent = AccentNetwork) {
-                        editingShare = null; showSmbDialog = true
-                    }
+            // D16-S6: Network is now a first-class destination. Existing SMB
+            // configuration remains supported, but discovery, future protocols and
+            // privacy-first CineVault sharing now have one consistent home.
+            GlassSectionCard(
+                title = "Network",
+                subtitle = "Sources, nearby devices and private library sharing.",
+                icon = Icons.Rounded.Dns,
+                accent = AccentNetwork
+            ) {
+                TvFocusableSlot(isTelevision = isTelevision, onActivate = onOpenNetworkHub) {
+                    GlassActionRow(
+                        icon = Icons.Rounded.Dns,
+                        iconTint = AccentNetwork,
+                        title = "Open Network Hub",
+                        subtitle = "SMB, nearby devices, media servers, web sources & sharing",
+                        action = "OPEN",
+                        onClick = onOpenNetworkHub
+                    )
                 }
-                Spacer(modifier = Modifier.height(14.dp))
-                if (smbShares.isEmpty()) {
-                    Text(text = "No network shares added yet.", color = TextMuted, fontSize = 14.sp)
-                } else {
-                    smbShares.forEach { share ->
-                        SmbShareRow(
-                            share = share,
-                            onEdit = { editingShare = share; showSmbDialog = true },
-                            onDelete = {
-                                removeSmbShare(context, share.id)
-                                smbShares = loadSmbShares(context)
-                            }
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = "After adding a share, go to Library and rescan to pull its videos in.", color = TextFaint, fontSize = 12.sp, lineHeight = 17.sp)
+                if (smbShares.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "${smbShares.size} SMB share${if (smbShares.size == 1) "" else "s"} already saved.",
+                        color = TextFaint,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
+                    )
                 }
             }
 

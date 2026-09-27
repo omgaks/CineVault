@@ -1,6 +1,8 @@
 package com.sole.cinevault
 
 import com.sole.cinevault.library.*
+import com.sole.cinevault.network.*
+import com.sole.cinevault.smb.loadSmbShares
 import com.sole.cinevault.tvmode.TelevisionModeDetector
 import com.sole.cinevault.tvmode.TvHomeScreen
 import com.sole.cinevault.tvmode.TvShelf
@@ -380,6 +382,8 @@ sealed class Destination {
     data class CuratedCollectionPage(val collectionName: String) : Destination()
     data class RestrictedFolderPage(val folderId: String, val folderName: String, val lastPlayedVideoPath: String? = null) : Destination()
     data object GlassesGestureTutorial : Destination()
+    data object NetworkHub : Destination()
+    data object ShareLibrary : Destination()
 }
 
 private fun validLibraryVideoEntry(item: VideoWithMetadata): Boolean =
@@ -696,10 +700,43 @@ fun CineVaultApp() {
                     GlassesGestureTutorialScreen(onBack = { pop() })
                 }
 
+                Destination.ShareLibrary -> {
+                    ShareLibraryScreen(
+                        onBack = { pop() },
+                        hostDeviceId = "cinevault-local",
+                        hostDeviceName = "CineVault"
+                    )
+                }
+
+                Destination.NetworkHub -> {
+                    val smbSources = loadSmbShares(context).map { share ->
+                        NetworkHubSourceSummary(
+                            id = "smb:${share.id}",
+                            name = share.name,
+                            typeLabel = "SMB",
+                            statusLabel = "Saved"
+                        )
+                    }
+                    NetworkHubScreen(
+                        savedSources = smbSources,
+                        discoveredDevices = emptyList(),
+                        onBack = { pop() },
+                        onFindDevices = { },
+                        onScanQr = { },
+                        onAddFileShare = { pop() },
+                        onAddMediaServer = { },
+                        onAddWebSource = { },
+                        onShareLibrary = { push(Destination.ShareLibrary) },
+                        onSourceClick = { },
+                        onDiscoveredDeviceClick = { }
+                    )
+                }
+
                 is Destination.Tab -> {
                     when (dest.index) {
                         3 -> SettingsScreen(
                             onOpenScanSources = { switchTab(1) },
+                            onOpenNetworkHub = { push(Destination.NetworkHub) },
                             onOpenGlassesGestureTutorial = { push(Destination.GlassesGestureTutorial) },
                             // FIX: previously just switched to the Library tab and
                             // discarded the typed URL entirely — Play did nothing.
