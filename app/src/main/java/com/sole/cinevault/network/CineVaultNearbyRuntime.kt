@@ -65,7 +65,9 @@ class CineVaultNearbyRuntime(private val context: Context) {
 
     fun refresh(state: CineVaultSharingState): CineVaultSharingState {
         if (!state.running) return state
-        val request = server.pendingRequests().firstOrNull { it.inviteNonce == state.invite?.nonce }
+        val requests = server.pendingRequests()
+        val request = requests.firstOrNull { it.inviteNonce == state.invite?.nonce }
+            ?: requests.firstOrNull()
         return state.copy(pending = request)
     }
 
@@ -101,8 +103,7 @@ class CineVaultNearbyRuntime(private val context: Context) {
     }
 
     fun selectionForFolders(folderIds: Set<String>): ShareLibrarySelection =
-        if (folderIds.isEmpty()) ShareLibrarySelection(SharedLibraryScope.ENTIRE_LIBRARY)
-        else ShareLibrarySelection(SharedLibraryScope.SELECTED_FOLDERS, folderIds)
+        shareSelectionForFolders(folderIds)
 
     suspend fun availableFolders(): List<Pair<String, String>> = withContext(Dispatchers.IO) {
         loadLibraryCache(app)?.videos.orEmpty()
@@ -145,6 +146,9 @@ class CineVaultNearbyRuntime(private val context: Context) {
             }
     }
 }
+
+internal fun shareSelectionForFolders(folderIds: Set<String>): ShareLibrarySelection =
+    ShareLibrarySelection(SharedLibraryScope.SELECTED_FOLDERS, folderIds)
 
 fun createNearbyPairRequest(
     localDeviceId: String,

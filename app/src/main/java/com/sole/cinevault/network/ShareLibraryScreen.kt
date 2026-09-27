@@ -34,6 +34,8 @@ fun ShareLibraryScreen(
     pendingRequest: NearbyPairingRequest? = null,
     onSessionApproved: (NearbyPairingSession) -> Unit = {},
 ) {
+    // hostDeviceId / hostDeviceName / pendingRequest are retained temporarily for
+    // source compatibility with MainActivity. Nearby runtime is now authoritative.
     val context = LocalContext.current
     val runtime = remember(context) { CineVaultNearbyRuntime.get(context) }
     val scope = rememberCoroutineScope()
@@ -89,13 +91,21 @@ fun ShareLibraryScreen(
                         }
                         Spacer(Modifier.height(6.dp))
                     }
+                    if (selectedFolders.isEmpty()) {
+                        Text(
+                            "Select at least one folder before starting sharing.",
+                            color=AmberCore,
+                            fontSize=12.sp,
+                        )
+                    }
                 }
             }
 
             Spacer(Modifier.height(16.dp))
             ShareCard("Nearby sharing", Icons.Rounded.Devices) {
                 if (!state.running) {
-                    ShareButton("START SHARING") {
+                    val canStart = !selectedOnly || selectedFolders.isNotEmpty()
+                    ShareButton("START SHARING", enabled = canStart) {
                         scope.launch {
                             runCatching {
                                 val selection = if(selectedOnly)
@@ -106,7 +116,12 @@ fun ShareLibraryScreen(
                         }
                     }
                     Spacer(Modifier.height(8.dp))
-                    Text("No server or discovery advertisement runs until you start sharing.", color=TextFaint, fontSize=12.sp)
+                    Text(
+                        if (canStart) "No server or discovery advertisement runs until you start sharing."
+                        else "Choose one or more folders to enable sharing.",
+                        color=TextFaint,
+                        fontSize=12.sp,
+                    )
                 } else {
                     Text("VISIBLE NEARBY", color=Color(0xFF55D98B), fontSize=12.sp, fontWeight=FontWeight.Black)
                     Text(runtime.deviceName, color=TextBright, fontSize=15.sp, fontWeight=FontWeight.SemiBold)
@@ -134,7 +149,7 @@ fun ShareLibraryScreen(
                 }
             }
 
-            state.approved?.let { approved ->
+            state.approved?.let {
                 Spacer(Modifier.height(16.dp))
                 ShareCard("Connected securely", Icons.Rounded.Security) {
                     Text("Temporary Nearby session active", color=Color(0xFF55D98B), fontWeight=FontWeight.Bold)
@@ -180,7 +195,15 @@ private fun ShareChoice(title:String, subtitle:String, selected:Boolean, onClick
     }
 }
 @Composable
-private fun ShareButton(text:String,onClick:()->Unit) {
-    Text(text,color=Color.Black,fontSize=12.sp,fontWeight=FontWeight.Black,
-        modifier=Modifier.background(AmberCore,RoundedCornerShape(50)).clickable(onClick=onClick).padding(horizontal=15.dp,vertical=10.dp))
+private fun ShareButton(text:String, enabled:Boolean=true, onClick:()->Unit) {
+    Text(
+        text,
+        color=if(enabled) Color.Black else TextFaint,
+        fontSize=12.sp,
+        fontWeight=FontWeight.Black,
+        modifier=Modifier
+            .background(if(enabled) AmberCore else Color.White.copy(alpha=.08f), RoundedCornerShape(50))
+            .clickable(enabled=enabled,onClick=onClick)
+            .padding(horizontal=15.dp,vertical=10.dp)
+    )
 }
