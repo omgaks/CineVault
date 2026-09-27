@@ -1,5 +1,6 @@
 package com.sole.cinevault.network
 
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.security.MessageDigest
 
@@ -11,16 +12,20 @@ object CineVaultLanProtocol {
     const val LIBRARY_PATH = "/v1/library"
 
     fun pairRequestUrl(baseUrl: String): String =
-        baseUrl.toHttpUrl().newBuilder()
-            .addPathSegments(PAIR_REQUEST_PATH.removePrefix("/"))
-            .build()
-            .toString()
+        route(baseUrl, PAIR_REQUEST_PATH).toString()
+
+    fun pairApproveUrl(baseUrl: String): HttpUrl =
+        route(baseUrl, PAIR_APPROVE_PATH)
 
     fun healthUrl(baseUrl: String): String =
-        baseUrl.toHttpUrl().newBuilder()
-            .addPathSegments(HEALTH_PATH.removePrefix("/"))
-            .build()
-            .toString()
+        route(baseUrl, HEALTH_PATH).toString()
+
+    fun libraryUrl(baseUrl: String): String =
+        route(baseUrl, LIBRARY_PATH).toString()
+
+    fun resolve(baseUrl: String, path: String): String =
+        baseUrl.toHttpUrl().resolve(path)?.toString()
+            ?: error("Invalid CineVault Direct route")
 
     fun bearerHeader(session: NearbyPairingSession): String =
         "Bearer ${session.sessionToken}"
@@ -30,4 +35,9 @@ object CineVaultLanProtocol {
             .digest("${endpoint.deviceId}|${endpoint.host}|${endpoint.port}".toByteArray())
             .take(8)
             .joinToString(":") { "%02X".format(it) }
+
+    private fun route(baseUrl: String, path: String): HttpUrl =
+        baseUrl.toHttpUrl().newBuilder()
+            .addPathSegments(path.removePrefix("/"))
+            .build()
 }

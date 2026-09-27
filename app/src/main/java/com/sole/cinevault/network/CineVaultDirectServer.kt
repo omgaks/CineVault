@@ -1,27 +1,32 @@
 package com.sole.cinevault.network
 
+import com.google.gson.Gson
 import java.io.File
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Small LAN-only HTTP/1.1 server for CineVault Direct.
+ * LAN-only CineVault Direct server.
  *
- * It binds to an ephemeral local port, accepts only authenticated library/media
- * requests, supports byte ranges for seeking, and never exposes filesystem paths.
- * Pairing transport remains separate from media authorization.
+ * Discovery is never authorization. Pairing requests are held pending until
+ * the owner explicitly approves them. Only then is a temporary bearer session
+ * granted for catalogue/media routes.
  */
 class CineVaultDirectServer(
     private val authorization: CineVaultDirectAuthorization,
     private val mediaProvider: () -> List<CineVaultDirectMedia>,
     private val selectionProvider: () -> ShareLibrarySelection,
+    private val gson: Gson = Gson(),
 ) {
     private val running = AtomicBoolean(false)
     private val pool = Executors.newCachedThreadPool()
     private var socket: ServerSocket? = null
+    private val pending = ConcurrentHashMap<String, NearbyPairingRequest>()
+    private val approvals = ConcurrentHashMap<String, NearbyPairingSession>()
 
     @Synchronized
     fun start(port: Int = 0): Int {
@@ -42,11 +47,33 @@ class CineVaultDirectServer(
     fun stop() {
         running.set(false)
         authorization.revokeAll()
+        pending.clear()
+        approvals.clear()
         runCatching { socket?.close() }
         socket = null
     }
 
     fun isRunning(): Boolean = running.get()
+
+    fun pendingRequests(): List<NearbyPairingRequest> = pending.values.toList()
+
+    fun approve(
+        invite: NearbyPairingInvite,
+        request: NearbyPairingRequest,
+        policy: NearbyPairingPolicy,
+    ): NearbyPairingSession? {
+        val key = requestKey(request.remoteDeviceId, request.inviteNonce)
+        if (pending[key] == null) return null
+        val session = policy.approve(invite, request, userApproved = true) ?: return null
+        authorization.grant(session)
+        approvals[key] = session
+        pending.remove(key)
+        return session
+    }
+
+    fun deny(request: NearbyPairingRequest) {
+        pending.remove(requestKey(request.remoteDeviceId, request.inviteNonce))
+    }
 
     private fun handle(client: Socket) {
         client.soTimeout = 15_000
@@ -55,8 +82,8 @@ class CineVaultDirectServer(
         val parts = requestLine.split(' ')
         if (parts.size < 2) return respond(client, 400, "Bad Request")
         val method = parts[0].uppercase()
-        val path = parts[1].substringBefore('?')
-        if (method != "GET" && method != "HEAD") return respond(client, 405, "Method Not Allowed")
+        val rawTarget = parts[1]
+        val path = rawTarget.substringBefore('?')
 
         val headers = linkedMapOf<String, String>()
         while (true) {
@@ -66,9 +93,60 @@ class CineVaultDirectServer(
             if (colon > 0) headers[line.substring(0, colon).trim().lowercase()] = line.substring(colon + 1).trim()
         }
 
-        if (path == CineVaultLanProtocol.HEALTH_PATH) {
+        if (path == CineVaultLanProtocol.HEALTH_PATH && (method == "GET" || method == "HEAD")) {
             return respond(client, 200, """{"ok":true,"version":${CineVaultLanProtocol.VERSION}}""", "application/json", method == "HEAD")
         }
+
+        if (path == CineVaultLanProtocol.PAIR_REQUEST_PATH && method == "POST") {
+            val length = headers["content-length"]?.toIntOrNull()?.coerceIn(0, 16_384) ?: 0
+            val chars = CharArray(length)
+            var offset = 0
+            while (offset < length) {
+                val count = input.read(chars, offset, length - offset)
+                if (count <= 0) break
+                offset += count
+            }
+            val envelope = runCatching {
+                gson.fromJson(String(chars, 0, offset), CineVaultPairRequestEnvelope::class.java)
+            }.getOrNull() ?: return respond(client, 400, """{"state":"error","message":"Invalid pairing request."}""", "application/json")
+
+            val request = NearbyPairingRequest(
+                remoteDeviceId = envelope.remoteDeviceId.trim().take(128),
+                remoteDeviceName = envelope.remoteDeviceName.trim().take(80),
+                inviteNonce = envelope.inviteNonce.trim(),
+            )
+            if (!isSafeLanDeviceId(request.remoteDeviceId) ||
+                request.remoteDeviceName.isBlank() ||
+                request.inviteNonce.length !in 16..128
+            ) {
+                return respond(client, 400, """{"state":"error","message":"Invalid pairing request."}""", "application/json")
+            }
+            pending[requestKey(request.remoteDeviceId, request.inviteNonce)] = request
+            return respond(client, 202, """{"state":"pending"}""", "application/json")
+        }
+
+        if (path == CineVaultLanProtocol.PAIR_APPROVE_PATH && method == "GET") {
+            val query = parseQuery(rawTarget.substringAfter('?', ""))
+            val deviceId = query["deviceId"].orEmpty()
+            val nonce = query["nonce"].orEmpty()
+            val key = requestKey(deviceId, nonce)
+            val approved = approvals[key]
+            if (approved != null) {
+                approvals.remove(key)
+                return respond(
+                    client, 200,
+                    gson.toJson(CineVaultPairResponseEnvelope(
+                        state = "approved",
+                        sessionToken = approved.sessionToken,
+                        expiresAtEpochMs = approved.expiresAtEpochMs,
+                    )),
+                    "application/json",
+                )
+            }
+            return respond(client, 200, """{"state":"pending"}""", "application/json")
+        }
+
+        if (method != "GET" && method != "HEAD") return respond(client, 405, "Method Not Allowed")
 
         if (authorization.authorize(headers["authorization"]) == null) {
             return respond(client, 401, "Unauthorized")
@@ -77,8 +155,8 @@ class CineVaultDirectServer(
         when {
             path == CineVaultLanProtocol.LIBRARY_PATH ->
                 respond(client, 200, catalogueJson(), "application/json", method == "HEAD")
-
-            path.startsWith("/v1/media/") -> serveMediaRoute(client, path, headers["range"], method == "HEAD")
+            path.startsWith("/v1/media/") ->
+                serveMediaRoute(client, path, headers["range"], method == "HEAD")
             else -> respond(client, 404, "Not Found")
         }
     }
@@ -86,9 +164,7 @@ class CineVaultDirectServer(
     private fun allowedMedia(): List<CineVaultDirectMedia> {
         val media = mediaProvider()
         val allowed = filterShareableLibrary(
-            media.map {
-                ShareableLibraryItem(it.id, it.file.absolutePath, it.folderId, it.isVaultOrSecret)
-            },
+            media.map { ShareableLibraryItem(it.id, it.file.absolutePath, it.folderId, it.isVaultOrSecret) },
             selectionProvider(),
         ).mapTo(hashSetOf()) { it.id }
         return media.filter { it.id in allowed }
@@ -99,7 +175,6 @@ class CineVaultDirectServer(
         val segments = rest.split('/')
         val id = java.net.URLDecoder.decode(segments.firstOrNull().orEmpty(), Charsets.UTF_8.name())
         val media = allowedMedia().firstOrNull { it.id == id } ?: return respond(client, 404, "Not Found")
-
         when {
             segments.size == 1 -> serveFile(client, media.file, media.mimeType, rangeHeader, headOnly)
             segments.size == 2 && segments[1] == "artwork" -> {
@@ -120,31 +195,24 @@ class CineVaultDirectServer(
         if (!file.isFile) return respond(client, 404, "Not Found")
         val length = file.length()
         val requestedRange = parseHttpRange(rangeHeader, length)
-
         if (!rangeHeader.isNullOrBlank() && requestedRange == null) {
             val out = client.getOutputStream()
             writeHeaders(out, 416, "Range Not Satisfiable", mapOf(
-                "Content-Range" to "bytes */$length",
-                "Content-Length" to "0",
-                "Connection" to "close",
+                "Content-Range" to "bytes */$length", "Content-Length" to "0", "Connection" to "close",
             ))
             return
         }
-
         val range = requestedRange ?: HttpByteRange(0, maxOf(0, length - 1))
         val status = if (requestedRange != null) 206 else 200
-        val reason = if (status == 206) "Partial Content" else "OK"
         val out = client.getOutputStream()
         val extra = linkedMapOf(
-            "Content-Type" to mime,
-            "Accept-Ranges" to "bytes",
+            "Content-Type" to mime, "Accept-Ranges" to "bytes",
             "Content-Length" to if (length == 0L) "0" else range.length.toString(),
             "Connection" to "close",
         )
         if (status == 206) extra["Content-Range"] = contentRangeHeader(range, length)
-        writeHeaders(out, status, reason, extra)
+        writeHeaders(out, status, if (status == 206) "Partial Content" else "OK", extra)
         if (headOnly || length == 0L) return
-
         java.io.RandomAccessFile(file, "r").use { raf ->
             raf.seek(range.start)
             var remaining = range.length
@@ -159,32 +227,15 @@ class CineVaultDirectServer(
         out.flush()
     }
 
-    private fun catalogueJson(): String {
-        val catalogue = buildDirectCatalogue(allowedMedia(), ShareLibrarySelection(SharedLibraryScope.ENTIRE_LIBRARY))
-        return buildString {
-            append("""{"protocolVersion":${catalogue.protocolVersion},"items":[""")
-            catalogue.items.forEachIndexed { index, item ->
-                if (index > 0) append(',')
-                append("""{"id":"${json(item.id)}","title":"${json(item.title)}","sizeBytes":${item.sizeBytes},"mimeType":"${json(item.mimeType)}","streamPath":"${json(item.streamPath)}","subtitlePaths":[""")
-                item.subtitlePaths.forEachIndexed { subIndex, sub ->
-                    if (subIndex > 0) append(',')
-                    append("\"${json(sub)}\"")
-                }
-                append("]")
-                item.artworkPath?.let { append(""","artworkPath":"${json(it)}"""") }
-                append("}")
-            }
-            append("]}")
-        }
-    }
+    private fun catalogueJson(): String = gson.toJson(
+        buildDirectCatalogue(allowedMedia(), ShareLibrarySelection(SharedLibraryScope.ENTIRE_LIBRARY)),
+    )
 
     private fun respond(client: Socket, code: Int, body: String, type: String = "text/plain; charset=utf-8", headOnly: Boolean = false) {
         val bytes = body.toByteArray()
         val out = client.getOutputStream()
         writeHeaders(out, code, reason(code), mapOf(
-            "Content-Type" to type,
-            "Content-Length" to bytes.size.toString(),
-            "Connection" to "close",
+            "Content-Type" to type, "Content-Length" to bytes.size.toString(), "Connection" to "close",
         ))
         if (!headOnly) out.write(bytes)
         out.flush()
@@ -199,17 +250,23 @@ class CineVaultDirectServer(
         out.write(text.toByteArray(Charsets.ISO_8859_1))
     }
 
+    private fun parseQuery(raw: String): Map<String, String> =
+        raw.split('&').mapNotNull {
+            val i = it.indexOf('=')
+            if (i <= 0) null else
+                java.net.URLDecoder.decode(it.substring(0, i), Charsets.UTF_8.name()) to
+                    java.net.URLDecoder.decode(it.substring(i + 1), Charsets.UTF_8.name())
+        }.toMap()
+
+    private fun requestKey(deviceId: String, nonce: String) = "$deviceId|$nonce"
+
     private fun reason(code: Int) = when (code) {
-        200 -> "OK"; 206 -> "Partial Content"; 400 -> "Bad Request"; 401 -> "Unauthorized"
-        404 -> "Not Found"; 405 -> "Method Not Allowed"; else -> "Error"
+        200 -> "OK"; 202 -> "Accepted"; 206 -> "Partial Content"; 400 -> "Bad Request"
+        401 -> "Unauthorized"; 404 -> "Not Found"; 405 -> "Method Not Allowed"
+        else -> "Error"
     }
 
     private fun subtitleMime(file: File): String = when (file.extension.lowercase()) {
-        "vtt" -> "text/vtt"
-        "ass", "ssa" -> "text/x-ssa"
-        else -> "application/x-subrip"
+        "vtt" -> "text/vtt"; "ass", "ssa" -> "text/x-ssa"; else -> "application/x-subrip"
     }
-
-    private fun json(value: String): String =
-        value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")
 }
