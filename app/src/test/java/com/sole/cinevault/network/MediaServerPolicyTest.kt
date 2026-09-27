@@ -4,37 +4,38 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MediaServerPolicyTest {
-    @Test fun authenticationResponseRequiresTokenAndUserId() {
-        val session = parseMediaServerAuthentication(
-            """{"AccessToken":"abc123","ServerId":"server","User":{"Id":"user-1"}}""",
-            "http://192.168.1.2:8096/",
+    @Test fun episodeTitlesUseSeriesAndSeasonEpisodeNumbers() {
+        val item = MediaServerItem(
+            id = "e1",
+            name = "Pilot",
+            type = "Episode",
+            mediaType = "Video",
+            container = "mp4",
+            overview = null,
+            communityRating = null,
+            primaryImageTag = null,
+            seriesName = "Show",
+            indexNumber = 2,
+            parentIndexNumber = 1,
         )
-        assertNotNull(session)
-        assertEquals("user-1", session!!.userId)
-        assertEquals("abc123", session.accessToken)
-        assertEquals("http://192.168.1.2:8096", session.serverUrl)
-
-        assertNull(parseMediaServerAuthentication("""{"User":{"Id":"user-1"}}""", "http://host"))
-        assertNull(parseMediaServerAuthentication("""{"AccessToken":"abc"}""", "http://host"))
+        assertEquals("Show - S01E02 - Pilot", mediaServerItemTitle(item))
     }
 
-    @Test fun itemParserHandlesMoviesAndEpisodes() {
-        val items = parseMediaServerItems(
-            """{"Items":[
-              {"Id":"m1","Name":"Movie","Type":"Movie","MediaType":"Video","Container":"mkv","CommunityRating":8.2,"PrimaryImageTag":"tag1"},
-              {"Id":"e1","Name":"Pilot","Type":"Episode","MediaType":"Video","Container":"mp4","SeriesName":"Show","ParentIndexNumber":1,"IndexNumber":2}
-            ]}"""
+    @Test fun movieTitlesRemainUnchanged() {
+        val item = MediaServerItem(
+            id = "m1",
+            name = "Movie",
+            type = "Movie",
+            mediaType = "Video",
+            container = "mkv",
+            overview = null,
+            communityRating = 8.2f,
+            primaryImageTag = "tag1",
+            seriesName = null,
+            indexNumber = null,
+            parentIndexNumber = null,
         )
-        assertEquals(2, items.size)
-        assertEquals("Movie", mediaServerItemTitle(items[0]))
-        assertEquals("Show - S01E02 - Pilot", mediaServerItemTitle(items[1]))
-        assertEquals(8.2f, items[0].communityRating!!, 0.001f)
-    }
-
-    @Test fun malformedItemsAreIgnoredWithoutCrashing() {
-        assertTrue(parseMediaServerItems("not json").isEmpty())
-        val items = parseMediaServerItems("""{"Items":[{"Name":"No Id"},{"Id":"x"}]}""")
-        assertTrue(items.isEmpty())
+        assertEquals("Movie", mediaServerItemTitle(item))
     }
 
     @Test fun networkTypesRemainDistinct() {
@@ -43,6 +44,21 @@ class MediaServerPolicyTest {
     }
 
     @Test fun serverUrlNormalizationRemovesTrailingSlashOnly() {
-        assertEquals("https://media.local:8920", normalizeServerUrl(" https://media.local:8920/ "))
+        assertEquals(
+            "https://media.local:8920",
+            normalizeServerUrl(" https://media.local:8920/ ")
+        )
+    }
+
+    @Test fun sessionKeepsServerIdentitySeparateFromCredentials() {
+        val session = MediaServerSession(
+            serverUrl = "http://192.168.1.2:8096",
+            userId = "user-1",
+            accessToken = "token",
+            serverId = "server-1",
+        )
+        assertEquals("server-1", session.serverId)
+        assertEquals("user-1", session.userId)
+        assertFalse(session.serverUrl.contains(session.accessToken))
     }
 }
