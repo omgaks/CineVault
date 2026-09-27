@@ -20,7 +20,7 @@ class NetworkHubClosurePolicyTest {
         assertFalse(id.contains("192.168"))
     }
 
-    @Test fun discoverySanitizerRemovesCredentialBearingHints() {
+    @Test fun discoverySanitizerRedactsCredentialBearingHints() {
         val sanitized = sanitizeDiscoveredDevices(
             listOf(
                 DiscoveredNetworkDevice(
@@ -32,6 +32,8 @@ class NetworkHubClosurePolicyTest {
             )
         )
         assertEquals("Server", sanitized.single().displayName)
-        assertNull(sanitized.single().addressHint)
+        assertEquals("http://192.168.1.2/root.xml", sanitized.single().addressHint)
+        assertFalse(sanitized.single().addressHint.orEmpty().contains("user:pass"))
+        assertFalse(containsCredentialMaterial(sanitized.single().addressHint.orEmpty()))
     }
 }
