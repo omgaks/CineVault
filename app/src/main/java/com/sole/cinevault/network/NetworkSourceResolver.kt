@@ -33,7 +33,23 @@ class NetworkSourceResolver(context: Context) {
                     )
                 )
             }
-            else -> error("${saved.type} is not a manual source type")
+            NetworkType.JELLYFIN, NetworkType.EMBY -> {
+                val kind = if (saved.type == NetworkType.JELLYFIN) {
+                    MediaServerKind.JELLYFIN
+                } else {
+                    MediaServerKind.EMBY
+                }
+                val sessionProvider = {
+                    mediaServerSession(saved, credentials.load(saved.id))
+                }
+                MediaServerNetworkSource(
+                    displayName = saved.displayName,
+                    kind = kind,
+                    api = MediaServerApi(saved.address, kind),
+                    sessionProvider = sessionProvider,
+                )
+            }
+            else -> error("${saved.type} is not a persisted source type")
         }
     }
 }
@@ -46,6 +62,8 @@ internal fun suggestedSourceName(type: NetworkType, address: String): String {
         NetworkType.SFTP -> "SFTP • $host"
         NetworkType.HTTP_DIRECTORY -> "Web • $host"
         NetworkType.M3U -> "Playlist • $host"
+        NetworkType.JELLYFIN -> "Jellyfin • $host"
+        NetworkType.EMBY -> "Emby • $host"
         else -> host.ifBlank { type.name }
     }
 }
@@ -55,7 +73,8 @@ internal fun normalizedManualAddress(type: NetworkType, raw: String): String {
     require(value.isNotBlank()) { "Address is required" }
     require(!containsCredentialMaterial(value)) { "Put credentials in the secure sign-in fields" }
     return when (type) {
-        NetworkType.WEBDAV, NetworkType.HTTP_DIRECTORY, NetworkType.M3U ->
+        NetworkType.WEBDAV, NetworkType.HTTP_DIRECTORY, NetworkType.M3U,
+        NetworkType.JELLYFIN, NetworkType.EMBY ->
             if ("://" in value) value else "http://$value"
         NetworkType.SFTP -> if (value.startsWith("sftp://")) value else "sftp://$value"
         else -> value

@@ -40,8 +40,25 @@ class NetworkHubIntegration(context: Context) {
         else credentialStore.remove(source.id)
     }
 
+    /**
+     * Media-server access tokens are credentials, never source JSON.
+     * userId/token reuse the encrypted credential envelope so the existing
+     * privacy boundary stays intact without creating another secret store.
+     */
+    fun saveMediaServer(source: SavedNetworkSource, session: MediaServerSession) {
+        require(source.type == NetworkType.JELLYFIN || source.type == NetworkType.EMBY)
+        savedStore.save(source)
+        credentialStore.save(
+            source.id,
+            NetworkCredential(
+                username = session.userId,
+                secret = session.accessToken,
+            ),
+        )
+    }
+
     fun remove(sourceId: String) {
-        if (sourceId.startsWith("smb:")) return // SMB remains owned by the existing SMB store.
+        if (sourceId.startsWith("smb:")) return
         savedStore.remove(sourceId)
         credentialStore.remove(sourceId)
     }

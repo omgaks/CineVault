@@ -4,8 +4,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 
 /**
- * App-facing Network Hub. It owns the cakewalk setup flow while the visual
- * NetworkHubScreen remains protocol-agnostic.
+ * App-facing Network Hub.
+ *
+ * S10A closes the manual media-server setup gap while keeping discovery
+ * consent-driven. CineVault/DLNA discovered-device handoff and QR are closed
+ * in the following transport/discovery slice because they require the
+ * discovered endpoint itself, not only a source id.
  */
 @Composable
 fun NetworkHubIntegratedScreen(
@@ -17,9 +21,11 @@ fun NetworkHubIntegratedScreen(
     val integration = remember(context) { NetworkHubIntegration(context) }
     var refreshKey by remember { mutableIntStateOf(0) }
     val summaries = remember(refreshKey) { integration.summaries() }
+
     var showSetup by remember { mutableStateOf(false) }
     var setupType by remember { mutableStateOf(NetworkType.WEBDAV) }
     var setupAddress by remember { mutableStateOf("") }
+    var showMediaServerSetup by remember { mutableStateOf(false) }
 
     NetworkHubScreen(
         savedSources = summaries,
@@ -32,8 +38,7 @@ fun NetworkHubIntegratedScreen(
             showSetup = true
         },
         onAddMediaServer = {
-            // Jellyfin/Emby/DLNA retain their existing dedicated engines.
-            // Discovery is preferred; we do not fake them through WebDAV.
+            showMediaServerSetup = true
         },
         onAddWebSource = {
             setupType = NetworkType.HTTP_DIRECTORY
@@ -42,8 +47,7 @@ fun NetworkHubIntegratedScreen(
         },
         onShareLibrary = onShareLibrary,
         onSourceClick = { id -> integration.resolve(id)?.let(onOpenSource) },
-        onDiscoveredDeviceClick = { /* NetworkHubScreen runtime owns discovery;
-                                       connection remains consent-driven. */ },
+        onDiscoveredDeviceClick = { /* S10B receives the endpoint-aware handoff. */ },
     )
 
     if (showSetup) {
@@ -55,6 +59,18 @@ fun NetworkHubIntegratedScreen(
                 integration.save(source, credential)
                 refreshKey++
                 showSetup = false
+                integration.resolve(source.id)?.let(onOpenSource)
+            },
+        )
+    }
+
+    if (showMediaServerSetup) {
+        MediaServerSetupSheet(
+            onDismiss = { showMediaServerSetup = false },
+            onConnected = { source, session ->
+                integration.saveMediaServer(source, session)
+                refreshKey++
+                showMediaServerSetup = false
                 integration.resolve(source.id)?.let(onOpenSource)
             },
         )
