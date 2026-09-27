@@ -47,18 +47,18 @@ fun buildDirectCatalogue(
     return CineVaultDirectCatalogue(
         items = media.asSequence()
             .filter { it.id in allowedIds && it.file.isFile }
-            .map {
+            .map { mediaItem ->
                 CineVaultDirectCatalogueItem(
-                    id = it.id,
-                    title = it.title,
-                    sizeBytes = it.file.length(),
-                    mimeType = it.mimeType,
-                    streamPath = "/v1/media/${urlSegment(it.id)}",
-                    subtitlePaths = it.subtitleFiles.filter(File::isFile).mapIndexed { index, _ ->
-                        "/v1/media/${urlSegment(it.id)}/subtitle/$index"
+                    id = mediaItem.id,
+                    title = mediaItem.title,
+                    sizeBytes = mediaItem.file.length(),
+                    mimeType = mediaItem.mimeType,
+                    streamPath = "/v1/media/${urlSegment(mediaItem.id)}",
+                    subtitlePaths = mediaItem.subtitleFiles.filter(File::isFile).mapIndexed { index, _ ->
+                        "/v1/media/${urlSegment(mediaItem.id)}/subtitle/$index"
                     },
-                    artworkPath = it.posterFile?.takeIf(File::isFile)?.let {
-                        "/v1/media/${urlSegment(it.id)}/artwork"
+                    artworkPath = mediaItem.posterFile?.takeIf(File::isFile)?.let {
+                        "/v1/media/${urlSegment(mediaItem.id)}/artwork"
                     },
                 )
             }
