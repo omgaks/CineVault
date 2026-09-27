@@ -39,7 +39,7 @@ class DlnaPolicyTest {
             "http://192.168.1.20:8200/control",
             resolveDlnaUrl(
                 "http://192.168.1.20:8200/device/root.xml",
-                "../../control",
+                "/control",
             )
         )
     }
