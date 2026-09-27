@@ -13,25 +13,19 @@ import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Devices
 import androidx.compose.material.icons.rounded.FolderShared
 import androidx.compose.material.icons.rounded.Security
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.ui.theme.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
-/**
- * D16-S6 closure surface for CineVault-to-CineVault sharing.
- *
- * This UI deliberately does not fake LAN transport. S5 supplied the privacy
- * policy; S6 exposes that policy as an explicit user-controlled flow. Real
- * discovery/transport can feed requests into this surface later without
- * weakening approval, expiry or vault-exclusion rules.
- */
 @Composable
 fun ShareLibraryScreen(
     onBack: () -> Unit,
@@ -40,143 +34,153 @@ fun ShareLibraryScreen(
     pendingRequest: NearbyPairingRequest? = null,
     onSessionApproved: (NearbyPairingSession) -> Unit = {},
 ) {
-    BackHandler(onBack = onBack)
-    val policy = remember { NearbyPairingPolicy() }
-    var invite by remember { mutableStateOf<NearbyPairingInvite?>(null) }
-    var session by remember { mutableStateOf<NearbyPairingSession?>(null) }
-    var shareScope by remember { mutableStateOf(SharedLibraryScope.ENTIRE_LIBRARY) }
+    val context = LocalContext.current
+    val runtime = remember(context) { CineVaultNearbyRuntime.get(context) }
+    val scope = rememberCoroutineScope()
+    var state by remember { mutableStateOf(CineVaultSharingState()) }
+    var folders by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var selectedFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedOnly by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) { folders = runtime.availableFolders() }
+    LaunchedEffect(state.running) {
+        while (state.running) {
+            state = runtime.refresh(state)
+            delay(650)
+        }
+    }
+
+    fun stopAndBack() {
+        if (state.running) state = runtime.stopSharing()
+        onBack()
+    }
+    BackHandler(onBack = ::stopAndBack)
+    DisposableEffect(Unit) { onDispose { runtime.stopSharing() } }
 
     Box(Modifier.fillMaxSize().background(SpaceBlack)) {
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)
-        ) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Rounded.ArrowBack, "Back", tint = AmberCore,
-                    modifier = Modifier
-                        .background(AmberCore.copy(alpha = .10f), RoundedCornerShape(14.dp))
-                        .clickable(onClick = onBack).padding(10.dp)
-                )
+                Icon(Icons.Rounded.ArrowBack, "Back", tint = AmberCore,
+                    modifier = Modifier.background(AmberCore.copy(alpha=.10f), RoundedCornerShape(14.dp))
+                        .clickable(onClick=::stopAndBack).padding(10.dp))
                 Spacer(Modifier.width(14.dp))
                 Column {
-                    Text("Share My Library", color = TextBright, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                    Text("Private, temporary access. Nothing connects automatically.", color = TextMuted, fontSize = 12.sp)
+                    Text("Share My Library", color=TextBright, fontSize=25.sp, fontWeight=FontWeight.Bold)
+                    Text("Private nearby sharing • approval required", color=TextMuted, fontSize=12.sp)
                 }
             }
 
             Spacer(Modifier.height(22.dp))
             ShareCard("What can be shared", Icons.Rounded.FolderShared) {
-                ShareChoice(
-                    "Entire library",
-                    "Secret/Vault content is always excluded.",
-                    shareScope == SharedLibraryScope.ENTIRE_LIBRARY
-                ) { shareScope = SharedLibraryScope.ENTIRE_LIBRARY }
+                ShareChoice("Entire library", "Vault / Restricted content is always excluded.", !selectedOnly) {
+                    selectedOnly=false; selectedFolders=emptySet()
+                }
                 Spacer(Modifier.height(8.dp))
-                ShareChoice(
-                    "Selected folders",
-                    "Only folders you explicitly approve.",
-                    shareScope == SharedLibraryScope.SELECTED_FOLDERS
-                ) { shareScope = SharedLibraryScope.SELECTED_FOLDERS }
+                ShareChoice("Selected folders", "Choose exactly which normal folders are visible.", selectedOnly) {
+                    selectedOnly=true
+                }
+                if (selectedOnly) {
+                    Spacer(Modifier.height(10.dp))
+                    folders.forEach { (id,name) ->
+                        val chosen=id in selectedFolders
+                        ShareChoice(name, if(chosen) "Included" else "Not shared", chosen) {
+                            selectedFolders = if(chosen) selectedFolders-id else selectedFolders+id
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
+                }
             }
 
             Spacer(Modifier.height(16.dp))
-            ShareCard("Pair a device", Icons.Rounded.Devices) {
-                val currentInvite = invite
-                if (currentInvite == null) {
-                    ShareButton("START PAIRING") {
-                        invite = policy.createInvite(hostDeviceId, hostDeviceName)
-                        session = null
+            ShareCard("Nearby sharing", Icons.Rounded.Devices) {
+                if (!state.running) {
+                    ShareButton("START SHARING") {
+                        scope.launch {
+                            runCatching {
+                                val selection = if(selectedOnly)
+                                    runtime.selectionForFolders(selectedFolders)
+                                else ShareLibrarySelection(SharedLibraryScope.ENTIRE_LIBRARY)
+                                runtime.startSharing(selection)
+                            }.onSuccess { state=it }.onFailure { error=it.message ?: "Could not start Nearby sharing." }
+                        }
                     }
                     Spacer(Modifier.height(8.dp))
-                    Text("Pairing invitations expire automatically.", color = TextFaint, fontSize = 12.sp)
+                    Text("No server or discovery advertisement runs until you start sharing.", color=TextFaint, fontSize=12.sp)
                 } else {
-                    Text("CineVault is ready for an approved device.", color = TextBright, fontSize = 14.sp)
-                    Spacer(Modifier.height(6.dp))
-                    Text("Invite expires in about 2 minutes.", color = TextMuted, fontSize = 12.sp)
-
-                    val request = pendingRequest
-                    if (request != null) {
+                    Text("VISIBLE NEARBY", color=Color(0xFF55D98B), fontSize=12.sp, fontWeight=FontWeight.Black)
+                    Text(runtime.deviceName, color=TextBright, fontSize=15.sp, fontWeight=FontWeight.SemiBold)
+                    Text("Another CineVault can simply use Find Devices — no address typing.", color=TextMuted, fontSize=12.sp)
+                    state.qrOrNull(runtime)?.let {
                         Spacer(Modifier.height(14.dp))
-                        Text(request.remoteDeviceName, color = TextBright, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                        Text("This device is asking to pair. Discovery alone does not grant access.", color = TextMuted, fontSize = 12.sp)
-                        Spacer(Modifier.height(12.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            ShareButton("APPROVE") {
-                                val approved = policy.approve(currentInvite, request, userApproved = true)
-                                if (approved != null) {
-                                    session = approved
-                                    onSessionApproved(approved)
-                                }
-                            }
-                            ShareButton("DENY") { invite = null; session = null }
+                        Box(Modifier.fillMaxWidth(), contentAlignment=Alignment.Center) { CineVaultInviteQr(it) }
+                        Spacer(Modifier.height(7.dp))
+                        Text("Or scan this code from CineVault → Network → Scan QR.", color=TextFaint, fontSize=11.sp)
+                    }
+                }
+
+                state.pending?.let { request ->
+                    Spacer(Modifier.height(16.dp))
+                    Text("${request.remoteDeviceName} wants access", color=TextBright, fontSize=16.sp, fontWeight=FontWeight.Bold)
+                    Text("Nothing is shared until you approve.", color=TextMuted, fontSize=12.sp)
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                        ShareButton("APPROVE") {
+                            state=runtime.approve(state)
+                            state.approved?.let(onSessionApproved)
                         }
-                    } else {
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            "Waiting for a device request. No library data is exposed while waiting.",
-                            color = TextFaint, fontSize = 12.sp
-                        )
+                        ShareButton("DENY") { state=runtime.deny(state) }
                     }
                 }
             }
 
-            val active = session
-            if (active != null) {
+            state.approved?.let { approved ->
                 Spacer(Modifier.height(16.dp))
-                ShareCard("Paired securely", Icons.Rounded.Security) {
-                    Text("Temporary session approved.", color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(5.dp))
-                    Text("Device: ${active.remoteDeviceId}", color = TextMuted, fontSize = 12.sp)
-                    Text("Session expires automatically; Vault content remains excluded.", color = TextFaint, fontSize = 12.sp)
-                    Spacer(Modifier.height(12.dp))
-                    ShareButton("STOP SHARING") { session = null; invite = null }
+                ShareCard("Connected securely", Icons.Rounded.Security) {
+                    Text("Temporary Nearby session active", color=Color(0xFF55D98B), fontWeight=FontWeight.Bold)
+                    Text("Access expires automatically. Vault / Restricted content remains excluded.", color=TextMuted, fontSize=12.sp)
                 }
             }
-            Spacer(Modifier.height(28.dp))
+
+            if(state.running) {
+                Spacer(Modifier.height(16.dp))
+                ShareButton("STOP SHARING") { state=runtime.stopSharing() }
+            }
+            Spacer(Modifier.height(30.dp))
         }
+    }
+
+    error?.let { msg ->
+        AlertDialog(onDismissRequest={error=null}, confirmButton={ TextButton(onClick={error=null}){Text("OK")} },
+            title={Text("Nearby sharing")}, text={Text(msg)})
     }
 }
 
-@Composable
-private fun ShareCard(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, content: @Composable () -> Unit) {
-    Column(
-        Modifier.fillMaxWidth()
-            .background(Color(0xFF121317), RoundedCornerShape(22.dp))
-            .border(1.dp, AmberCore.copy(alpha = .18f), RoundedCornerShape(22.dp))
-            .padding(16.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = AmberCore)
-            Spacer(Modifier.width(9.dp))
-            Text(title, color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-        }
-        Spacer(Modifier.height(13.dp))
-        content()
-    }
-}
+private fun CineVaultSharingState.qrOrNull(runtime: CineVaultNearbyRuntime): String? = runtime.qrPayload(this)
 
 @Composable
-private fun ShareChoice(title: String, subtitle: String, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth()
-            .background(if (selected) AmberCore.copy(alpha = .10f) else Color.White.copy(alpha = .035f), RoundedCornerShape(16.dp))
-            .border(1.dp, if (selected) AmberCore.copy(alpha = .45f) else Color.Transparent, RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick).padding(13.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Text(subtitle, color = TextMuted, fontSize = 12.sp)
+private fun ShareCard(title:String, icon:androidx.compose.ui.graphics.vector.ImageVector, content:@Composable()->Unit) {
+    Column(Modifier.fillMaxWidth().background(Color(0xFF121317), RoundedCornerShape(22.dp))
+        .border(1.dp, AmberCore.copy(alpha=.18f), RoundedCornerShape(22.dp)).padding(16.dp)) {
+        Row(verticalAlignment=Alignment.CenterVertically) {
+            Icon(icon,null,tint=AmberCore); Spacer(Modifier.width(9.dp))
+            Text(title,color=TextBright,fontSize=16.sp,fontWeight=FontWeight.SemiBold)
         }
-        Text(if (selected) "SELECTED" else "SELECT", color = if (selected) AmberCore else TextFaint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(13.dp)); content()
     }
 }
-
 @Composable
-private fun ShareButton(text: String, onClick: () -> Unit) {
-    Text(
-        text, color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Black,
-        modifier = Modifier.background(AmberCore, RoundedCornerShape(50))
-            .clickable(onClick = onClick).padding(horizontal = 15.dp, vertical = 10.dp)
-    )
+private fun ShareChoice(title:String, subtitle:String, selected:Boolean, onClick:()->Unit) {
+    Row(Modifier.fillMaxWidth()
+        .background(if(selected) AmberCore.copy(alpha=.10f) else Color.White.copy(alpha=.035f), RoundedCornerShape(16.dp))
+        .border(1.dp,if(selected) AmberCore.copy(alpha=.45f) else Color.Transparent,RoundedCornerShape(16.dp))
+        .clickable(onClick=onClick).padding(13.dp), verticalAlignment=Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)){ Text(title,color=TextBright,fontSize=14.sp,fontWeight=FontWeight.SemiBold); Text(subtitle,color=TextMuted,fontSize=12.sp) }
+        Text(if(selected)"SELECTED" else "SELECT",color=if(selected)AmberCore else TextFaint,fontSize=10.sp,fontWeight=FontWeight.Bold)
+    }
+}
+@Composable
+private fun ShareButton(text:String,onClick:()->Unit) {
+    Text(text,color=Color.Black,fontSize=12.sp,fontWeight=FontWeight.Black,
+        modifier=Modifier.background(AmberCore,RoundedCornerShape(50)).clickable(onClick=onClick).padding(horizontal=15.dp,vertical=10.dp))
 }

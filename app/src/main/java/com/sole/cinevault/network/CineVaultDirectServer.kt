@@ -71,6 +71,28 @@ class CineVaultDirectServer(
         return session
     }
 
+    /**
+     * Discovery pairing still requires an explicit owner tap, but does not
+     * require the guest to know the host's QR nonce. The request's random
+     * nonce is the correlation key; approval creates the same short-lived
+     * bearer session used by QR pairing.
+     */
+    fun approveDiscovered(request: NearbyPairingRequest, ttlMs: Long = 60 * 60 * 1000L): NearbyPairingSession? {
+        val key = requestKey(request.remoteDeviceId, request.inviteNonce)
+        if (pending[key] == null) return null
+        val tokenBytes = ByteArray(32).also(java.security.SecureRandom()::nextBytes)
+        val token = tokenBytes.joinToString("") { "%02x".format(it) }
+        val session = NearbyPairingSession(
+            remoteDeviceId = request.remoteDeviceId,
+            sessionToken = token,
+            expiresAtEpochMs = System.currentTimeMillis() + ttlMs,
+        )
+        authorization.grant(session)
+        approvals[key] = session
+        pending.remove(key)
+        return session
+    }
+
     fun deny(request: NearbyPairingRequest) {
         pending.remove(requestKey(request.remoteDeviceId, request.inviteNonce))
     }
