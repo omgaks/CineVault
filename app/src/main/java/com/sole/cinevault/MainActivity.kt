@@ -712,7 +712,7 @@ fun CineVaultApp() {
                     val smbSources = loadSmbShares(context).map { share ->
                         NetworkHubSourceSummary(
                             id = "smb:${share.id}",
-                            name = share.name,
+                            name = share.displayName,
                             typeLabel = "SMB",
                             statusLabel = "Saved"
                         )
