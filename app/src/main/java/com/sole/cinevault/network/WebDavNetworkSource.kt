@@ -5,6 +5,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
@@ -72,10 +73,9 @@ class WebDavNetworkSource(
         }
 
     private companion object {
-        val XML_MEDIA_TYPE = "application/xml; charset=utf-8".toMediaTypeCompat()
+        val XML_MEDIA_TYPE = "application/xml; charset=utf-8".toMediaType()
         const val PROPFIND_BODY =
             """<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getcontentlength/><d:getlastmodified/></d:prop></d:propfind>"""
     }
 }
 
-private fun String.toMediaTypeCompat() = okhttp3.MediaType.Companion.toMediaType(this)
