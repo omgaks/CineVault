@@ -75,6 +75,30 @@ internal fun parsePairResponse(raw: String): CineVaultPairResponseEnvelope {
     )
 }
 
+/**
+ * Approval polling tolerates an empty/truncated LAN response instead of
+ * tearing down pairing and forcing the owner to approve the same peer again.
+ */
+internal fun parseApprovalPollResponse(raw: String): CineVaultPairResponseEnvelope {
+    if (raw.isBlank()) return CineVaultPairResponseEnvelope(state = "pending")
+
+    val parsed = parsePairResponse(raw)
+    if (parsed.state != "error") return parsed
+
+    val hasRecognisedState = runCatching {
+        JsonParser.parseString(raw)
+            .asJsonObject
+            .get("state")
+            ?.takeUnless { it.isJsonNull }
+            ?.asString
+            ?.trim()
+            ?.lowercase() in setOf("pending", "approved", "denied", "error")
+    }.getOrDefault(false)
+
+    return if (hasRecognisedState) parsed
+    else CineVaultPairResponseEnvelope(state = "pending")
+}
+
 class CineVaultDirectClient(
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
@@ -130,7 +154,7 @@ class CineVaultDirectClient(
                     message = text.ifBlank { "Approval check failed (${response.code})." },
                 )
             }
-            parsePairResponse(text)
+            parseApprovalPollResponse(text)
         }
     }
 
