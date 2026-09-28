@@ -1,43 +1,47 @@
 package com.sole.cinevault.network
 
-/**
- * App-level state for CineVault Connect.
- *
- * CONNECT-1 deliberately keeps transport details out of the UI.  Screens
- * observe this state; they do not own the server/discovery lifetime.
- */
 enum class CineVaultConnectPhase {
     OFF,
     AVAILABLE,
+    DISCOVERING,
+    REQUESTING_APPROVAL,
     APPROVAL_REQUIRED,
     APPROVED,
     CONNECTED,
     ERROR,
 }
 
+data class CineVaultRemoteConnection(
+    val device: DiscoveredNetworkDevice,
+    val endpoint: String,
+    val session: NearbyPairingSession,
+)
+
 data class CineVaultConnectState(
     val enabled: Boolean = false,
     val phase: CineVaultConnectPhase = CineVaultConnectPhase.OFF,
     val sharing: CineVaultSharingState = CineVaultSharingState(),
+    val discoveredPeers: List<DiscoveredNetworkDevice> = emptyList(),
+    val connectingPeer: DiscoveredNetworkDevice? = null,
+    val remoteConnection: CineVaultRemoteConnection? = null,
     val message: String? = null,
 )
 
-internal fun CineVaultConnectState.withSharing(
-    next: CineVaultSharingState,
-): CineVaultConnectState {
-    val phase = when {
-        !next.running -> CineVaultConnectPhase.OFF
+internal fun CineVaultConnectState.withSharing(next: CineVaultSharingState): CineVaultConnectState {
+    val nextPhase = when {
         next.pending != null -> CineVaultConnectPhase.APPROVAL_REQUIRED
+        phase in setOf(
+            CineVaultConnectPhase.DISCOVERING,
+            CineVaultConnectPhase.REQUESTING_APPROVAL,
+            CineVaultConnectPhase.CONNECTED,
+            CineVaultConnectPhase.ERROR,
+        ) -> phase
         next.approved != null -> CineVaultConnectPhase.APPROVED
-        else -> CineVaultConnectPhase.AVAILABLE
+        next.running -> CineVaultConnectPhase.AVAILABLE
+        else -> CineVaultConnectPhase.OFF
     }
-    return copy(
-        enabled = next.running,
-        phase = phase,
-        sharing = next,
-        message = null,
-    )
+    return copy(enabled = next.running || enabled, phase = nextPhase, sharing = next)
 }
 
 internal fun CineVaultConnectState.withError(message: String): CineVaultConnectState =
-    copy(phase = CineVaultConnectPhase.ERROR, message = message)
+    copy(phase = CineVaultConnectPhase.ERROR, connectingPeer = null, message = message)
