@@ -153,8 +153,7 @@ class CineVaultDirectServer(
             val nonce = query["nonce"].orEmpty()
             val key = requestKey(deviceId, nonce)
             val approved = approvals[key]
-            if (approved != null) {
-                approvals.remove(key)
+            if (approved != null && approved.expiresAtEpochMs > System.currentTimeMillis()) {
                 return respond(
                     client, 200,
                     gson.toJson(CineVaultPairResponseEnvelope(
@@ -165,6 +164,7 @@ class CineVaultDirectServer(
                     "application/json",
                 )
             }
+            if (approved != null) approvals.remove(key)
             return respond(client, 200, """{"state":"pending"}""", "application/json")
         }
 

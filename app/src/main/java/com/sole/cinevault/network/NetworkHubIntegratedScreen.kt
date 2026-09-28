@@ -49,9 +49,10 @@ fun NetworkHubIntegratedScreen(
                 if (initial.state == "error") error(initial.message ?: "Pairing request failed.")
 
                 var approved: CineVaultPairResponseEnvelope? = initial.takeIf { it.state == "approved" }
-                repeat(120) {
-                    if (approved != null) return@repeat
+                var attempts = 0
+                while (approved == null && attempts < 120) {
                     delay(750)
+                    attempts++
                     val result = directClient.pollApproval(endpoint, request.remoteDeviceId, request.inviteNonce)
                     when (result.state) {
                         "approved" -> approved = result

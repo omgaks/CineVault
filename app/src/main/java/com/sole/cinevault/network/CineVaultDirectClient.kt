@@ -3,6 +3,7 @@ package com.sole.cinevault.network
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import com.google.gson.Gson
+import com.google.gson.JsonParser
 import com.sole.cinevault.VideoWithMetadata
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -24,6 +25,55 @@ data class CineVaultPairResponseEnvelope(
     val expiresAtEpochMs: Long? = null,
     val message: String? = null,
 )
+
+internal fun parsePairResponse(raw: String): CineVaultPairResponseEnvelope {
+    val json = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull()
+        ?: return CineVaultPairResponseEnvelope(
+            state = "error",
+            message = "The sharing device returned an invalid pairing response.",
+        )
+
+    val state = json.get("state")
+        ?.takeUnless { it.isJsonNull }
+        ?.asString
+        ?.trim()
+        ?.lowercase()
+        ?.takeIf { it in setOf("pending", "approved", "denied", "error") }
+        ?: return CineVaultPairResponseEnvelope(
+            state = "error",
+            message = "The sharing device returned an incomplete pairing response.",
+        )
+
+    val token = json.get("sessionToken")
+        ?.takeUnless { it.isJsonNull }
+        ?.asString
+        ?.trim()
+        ?.takeIf { it.length >= 32 }
+    val expiry = json.get("expiresAtEpochMs")
+        ?.takeUnless { it.isJsonNull }
+        ?.runCatching { asLong }
+        ?.getOrNull()
+        ?.takeIf { it > 0L }
+    val message = json.get("message")
+        ?.takeUnless { it.isJsonNull }
+        ?.asString
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+
+    if (state == "approved" && (token == null || expiry == null)) {
+        return CineVaultPairResponseEnvelope(
+            state = "error",
+            message = "The approved session was incomplete. Please approve the connection again.",
+        )
+    }
+
+    return CineVaultPairResponseEnvelope(
+        state = state,
+        sessionToken = token,
+        expiresAtEpochMs = expiry,
+        message = message,
+    )
+}
 
 class CineVaultDirectClient(
     private val http: OkHttpClient = OkHttpClient.Builder()
@@ -57,7 +107,7 @@ class CineVaultDirectClient(
                     message = text.ifBlank { "Pairing request failed (${response.code})." },
                 )
             }
-            gson.fromJson(text, CineVaultPairResponseEnvelope::class.java)
+            parsePairResponse(text)
         }
     }
 
@@ -80,7 +130,7 @@ class CineVaultDirectClient(
                     message = text.ifBlank { "Approval check failed (${response.code})." },
                 )
             }
-            gson.fromJson(text, CineVaultPairResponseEnvelope::class.java)
+            parsePairResponse(text)
         }
     }
 
