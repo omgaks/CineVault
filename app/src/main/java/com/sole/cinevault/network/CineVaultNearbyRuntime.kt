@@ -6,6 +6,9 @@ import com.sole.cinevault.library.isRestrictedFolderItem
 import com.sole.cinevault.library.loadLibraryCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -34,6 +37,14 @@ class CineVaultNearbyRuntime(private val context: Context) {
     )
     private var mediaSnapshot: List<CineVaultDirectMedia> = emptyList()
 
+    private val _connectState = MutableStateFlow(CineVaultConnectState())
+    val connectState: StateFlow<CineVaultConnectState> = _connectState.asStateFlow()
+
+    private fun publish(sharing: CineVaultSharingState): CineVaultSharingState {
+        _connectState.value = _connectState.value.withSharing(sharing)
+        return sharing
+    }
+
     val deviceId: String by lazy {
         val prefs = app.getSharedPreferences("cinevault_nearby", Context.MODE_PRIVATE)
         prefs.getString("device_id", null)?.takeIf(::isSafeLanDeviceId)
@@ -56,19 +67,21 @@ class CineVaultNearbyRuntime(private val context: Context) {
             }
             advertiser.start(deviceId, deviceName, port)
             val invite = policy.createInvite(deviceId, deviceName)
-            CineVaultSharingState(
-                running = true,
-                endpoint = "http://$host:$port",
-                invite = invite,
+            publish(
+                CineVaultSharingState(
+                    running = true,
+                    endpoint = "http://$host:$port",
+                    invite = invite,
+                )
             )
         }
 
-    fun refresh(state: CineVaultSharingState): CineVaultSharingState {
-        if (!state.running) return state
+    fun refresh(state: CineVaultSharingState = _connectState.value.sharing): CineVaultSharingState {
+        if (!state.running) return publish(state)
         val requests = server.pendingRequests()
         val request = requests.firstOrNull { it.inviteNonce == state.invite?.nonce }
             ?: requests.firstOrNull()
-        return state.copy(pending = request)
+        return publish(state.copy(pending = request))
     }
 
     fun approve(state: CineVaultSharingState): CineVaultSharingState {
@@ -79,19 +92,19 @@ class CineVaultNearbyRuntime(private val context: Context) {
         } else {
             server.approveDiscovered(request)
         } ?: return state
-        return state.copy(pending = null, approved = session)
+        return publish(state.copy(pending = null, approved = session))
     }
 
     fun deny(state: CineVaultSharingState): CineVaultSharingState {
         state.pending?.let(server::deny)
-        return state.copy(pending = null)
+        return publish(state.copy(pending = null))
     }
 
     fun stopSharing(): CineVaultSharingState {
         advertiser.stop()
         server.stop()
         mediaSnapshot = emptyList()
-        return CineVaultSharingState()
+        return publish(CineVaultSharingState())
     }
 
     fun qrPayload(state: CineVaultSharingState): String? {
