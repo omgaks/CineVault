@@ -77,4 +77,22 @@ class CineVaultDirectTransportPolicyTest {
         assertEquals(9999999999999L, parsed.expiresAtEpochMs)
     }
 
+
+    @Test
+    fun approvalPollingKeepsWaitingAfterEmptyOrTruncatedLanResponse() {
+        assertEquals("pending", parseApprovalPollResponse("").state)
+        assertEquals("pending", parseApprovalPollResponse("{").state)
+        assertEquals("pending", parseApprovalPollResponse("""{"unexpected":"payload"}""").state)
+    }
+
+    @Test
+    fun approvalPollingDoesNotHideValidServerErrors() {
+        val parsed = parseApprovalPollResponse(
+            """{"state":"error","message":"Pairing request expired."}"""
+        )
+        assertEquals("error", parsed.state)
+        assertEquals("Pairing request expired.", parsed.message)
+    }
+
+
 }
