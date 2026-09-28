@@ -14,6 +14,22 @@ class CineVaultDirectTransportPolicyTest {
     }
 
     @Test
+    fun nearbyTransportIntentionallyUsesLanHttpEndpoint() {
+        val endpoint = CineVaultLanEndpoint(
+            deviceId = "device_12345678",
+            deviceName = "Living Room CineVault",
+            host = "192.168.8.76",
+            port = 49152,
+        )
+
+        assertEquals("http://192.168.8.76:49152", endpoint.baseUrl())
+        assertEquals(
+            "http://192.168.8.76:49152/v1/pair/request",
+            CineVaultLanProtocol.pairRequestUrl(endpoint.baseUrl()),
+        )
+    }
+
+    @Test
     fun directSourceUsesGatewayTypeAndOpaqueId() {
         val session = NearbyPairingSession(
             remoteDeviceId = "host_12345678",
