@@ -58,10 +58,10 @@ class CineVaultDirectTransportPolicyTest {
     }
     @Test
     fun pairingResponseParserRejectsNullOrIncompleteApprovedPayloads() {
-        val missingState = parsePairResponse("""{\"state\":null}""")
+        val missingState = parsePairResponse("""{"state":null}""")
         assertEquals("error", missingState.state)
 
-        val incompleteApproved = parsePairResponse("""{\"state\":\"approved\",\"sessionToken\":null}""")
+        val incompleteApproved = parsePairResponse("""{"state":"approved","sessionToken":null}""")
         assertEquals("error", incompleteApproved.state)
         assertNotNull(incompleteApproved.message)
     }
@@ -70,7 +70,7 @@ class CineVaultDirectTransportPolicyTest {
     fun pairingResponseParserAcceptsCompleteApprovedPayload() {
         val token = "c".repeat(64)
         val parsed = parsePairResponse(
-            """{\"state\":\"approved\",\"sessionToken\":\"$token\",\"expiresAtEpochMs\":9999999999999}"""
+            """{"state":"approved","sessionToken":"$token","expiresAtEpochMs":9999999999999}"""
         )
         assertEquals("approved", parsed.state)
         assertEquals(token, parsed.sessionToken)
