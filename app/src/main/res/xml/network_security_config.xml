@@ -1,25 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-   FIX: previously no networkSecurityConfig existed at all — meaning
-   cleartext (http://) traffic was governed only by Android's own
-   platform default (blocked since API 28, allowed on older devices),
-   never something this app explicitly decided and documented itself.
-   This makes that policy explicit rather than implicit.
+    CineVault network security policy.
 
-   Only affects the STANDARD Android networking stack — OkHttp (TMDB/
-   OMDB/OpenSubtitles/SubDL/IntroDB API calls), WebView (the subtitle website
-   fallback), HttpURLConnection. Does NOT affect SMB — SmbDataSource/
-   SmbVideoScanner talk to jcifs-ng directly over raw sockets, which is
-   a separate protocol implementation entirely outside Android's HTTP(S)
-   stack and this config's scope. SMB's own protection (message signing)
-   is unrelated and unaffected either way.
+    D16-R2-DEVICE1:
+    CineVault-to-CineVault Nearby Sharing intentionally uses an ephemeral
+    HTTP endpoint on the local LAN. Android 9+ blocks cleartext HTTP unless
+    the app explicitly opts in, which allowed discovery to succeed but
+    blocked the first pairing request on physical devices.
 
-   The manifest's http:// intent-filters (for "Open with CineVault" on
-   direct stream links) were already non-functional for actual playback
-   under Android's own default cleartext blocking on modern devices —
-   this doesn't change that behavior, just makes it an explicit,
-   intentional app policy instead of an implicit platform default.
+    Android Network Security Config cannot express a dynamic RFC1918/local-LAN
+    allow-list that covers arbitrary home/hotel/router subnets. Nearby hosts
+    are discovered at runtime and may use 10/8, 172.16/12, 192.168/16, or
+    other locally routed addresses. Cleartext is therefore permitted at the
+    Android HTTP-stack level so the runtime CineVault networking layer can
+    reach discovered LAN peers.
+
+    This does NOT put credentials in URLs or discovery records. CineVault
+    Nearby still uses its pairing/approval/session-token policy, and Vault /
+    Restricted content remains excluded by the sharing policy.
+
+    SMB is unaffected by this file because jcifs-ng uses its own socket
+    transport rather than Android's HTTP stack.
 -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false" />
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>
