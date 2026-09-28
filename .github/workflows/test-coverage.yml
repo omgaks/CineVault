@@ -38,7 +38,12 @@ jobs:
           bash gradlew test --no-daemon
           bash gradlew jacocoTestReport --no-daemon
 
-      - name: Upload test and coverage reports
+      # New code must not introduce new lint issues.
+      # Existing issues are frozen in app/lint-baseline.xml.
+      - name: Run Android lint gate
+        run: bash gradlew lintRelease --no-daemon
+
+      - name: Upload test, coverage, and lint reports
         if: always()
         uses: actions/upload-artifact@v6
         with:
@@ -46,5 +51,7 @@ jobs:
           path: |
             app/build/reports/tests/
             app/build/reports/jacoco/
+            app/build/reports/lint-results-release.html
+            app/build/reports/lint-results-release.xml
           if-no-files-found: warn
           retention-days: 14

@@ -35,8 +35,10 @@ jobs:
       - name: Run unit tests
         run: ./gradlew test --no-daemon
 
-      - name: Run lint (informational)
-        continue-on-error: true
+      # New code must not introduce new lint issues.
+      # Existing issues are frozen in app/lint-baseline.xml.
+      - name: Run lint
+        continue-on-error: false
         run: ./gradlew lintRelease --no-daemon
 
       - name: Upload lint report
