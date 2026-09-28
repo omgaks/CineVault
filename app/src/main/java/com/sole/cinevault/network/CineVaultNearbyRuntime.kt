@@ -168,7 +168,7 @@ class CineVaultNearbyRuntime(private val context: Context) {
                 val source = CineVaultDirectNetworkSource(device.displayName, endpoint, session)
                 when (val test = source.testConnection()) {
                     NetworkConnectionResult.Connected -> Unit
-                    is NetworkConnectionResult.Failed -> error(test.message)
+                    is NetworkConnectionResult.Failed -> error(test.userMessage)
                     else -> error("CineVault Nearby connection could not be verified.")
                 }
                 update {
@@ -218,8 +218,11 @@ class CineVaultNearbyRuntime(private val context: Context) {
         loadLibraryCache(app)?.videos.orEmpty().mapNotNull { item ->
             val file = File(item.video.path)
             if (!file.isFile) null else CineVaultDirectMedia(
-                stableNetworkSourceId(NetworkType.CINEVAULT_GATEWAY, file.absolutePath),
-                item.title.ifBlank { item.video.name }, file, item.video.folderPath, isRestrictedFolderItem(item),
+                id = stableNetworkSourceId(NetworkType.CINEVAULT_GATEWAY, file.absolutePath),
+                title = item.title.ifBlank { item.video.name },
+                file = file,
+                folderId = item.video.folderPath,
+                isVaultOrSecret = isRestrictedFolderItem(item),
             )
         }
 
