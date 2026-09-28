@@ -79,6 +79,12 @@ android {
     androidResources {
         noCompress += "onnx"
     }
+
+    lint {
+        baseline = file("lint-baseline.xml")
+        abortOnError = true
+        checkReleaseBuilds = true
+    }
 }
 
 dependencies {
@@ -164,7 +170,7 @@ val jacocoTestReport by tasks.registering(JacocoReport::class) {
 
     val coverageExclusions = listOf(
         "**/R.class",
-        "**/R\$*.class",
+        "**/R$*.class",
         "**/BuildConfig.*",
         "**/Manifest*.*",
         "**/*Test*.*",
