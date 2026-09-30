@@ -28,6 +28,7 @@ class CineVaultNearbyRuntime(context: Context) {
     private val advertiser = CineVaultLanAdvertiser(app)
     private val discovery = CineVaultLanDiscoveryProvider(app)
     private val directClient = CineVaultDirectClient()
+    private val reconnectStore = CineVaultReconnectStore(app)
     private var selection = ShareLibrarySelection(SharedLibraryScope.ENTIRE_LIBRARY)
     private val server = CineVaultDirectServer(
         authorization = authorization,
@@ -52,6 +53,9 @@ class CineVaultNearbyRuntime(context: Context) {
 
     val deviceName: String
         get() = "CineVault • " + (Build.MODEL?.trim()?.takeIf(String::isNotBlank) ?: "Android")
+
+    val rememberedPeer: RememberedCineVaultPeer?
+        get() = reconnectStore.load()
 
     private fun update(block: (CineVaultConnectState) -> CineVaultConnectState) {
         _connectState.value = block(_connectState.value)
@@ -147,6 +151,19 @@ class CineVaultNearbyRuntime(context: Context) {
         }
     }
 
+    fun reconnectLastPeer(onConnected: (NetworkSource) -> Unit = {}) {
+        val remembered = reconnectStore.load()
+        if (remembered == null) {
+            update { it.withError("No previous CineVault device is remembered.") }
+            return
+        }
+        connectToPeer(remembered.asDiscoveredDevice(), onConnected = onConnected)
+    }
+
+    fun forgetLastPeer() {
+        reconnectStore.clear()
+    }
+
     fun connectToPeer(
         device: DiscoveredNetworkDevice,
         qr: CineVaultQrPayload? = null,
@@ -194,12 +211,14 @@ class CineVaultNearbyRuntime(context: Context) {
                     is NetworkConnectionResult.Failed -> error(test.userMessage)
                     else -> error("CineVault Nearby connection could not be verified.")
                 }
+                val connection = CineVaultRemoteConnection(device, endpoint, session)
+                reconnectStore.remember(connection)
                 update {
                     it.copy(
                         enabled = true,
                         phase = CineVaultConnectPhase.CONNECTED,
                         connectingPeer = null,
-                        remoteConnection = CineVaultRemoteConnection(device, endpoint, session),
+                        remoteConnection = connection,
                         message = null,
                     )
                 }
