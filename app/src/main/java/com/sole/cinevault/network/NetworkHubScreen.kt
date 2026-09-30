@@ -199,7 +199,7 @@ private fun CineVaultConnectCard(
                 state.isProviding ->
                     "Your CineVault is visible nearby. You can keep sharing while connecting to another CineVault."
                 state.isBusy -> "Looking for CineVault devices on your local network."
-                else -> "Share your library or discover another CineVault from one place.",
+                else -> "Share your library or discover another CineVault from one place."
             },
             color = TextMuted,
             fontSize = 13.sp,
