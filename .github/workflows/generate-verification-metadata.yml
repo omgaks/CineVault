@@ -1,0 +1,41 @@
+name: Generate Gradle Verification Metadata
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    name: Generate dependency verification metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Generate SHA-256 verification metadata
+        run: |
+          bash gradlew --write-verification-metadata sha256 help test lintRelease assembleDebug --no-daemon
+
+      - name: Confirm verification metadata exists
+        run: test -s gradle/verification-metadata.xml
+
+      - name: Upload verification metadata
+        uses: actions/upload-artifact@v6
+        with:
+          name: gradle-verification-metadata-${{ github.run_number }}
+          path: gradle/verification-metadata.xml
+          if-no-files-found: error
+          retention-days: 14
