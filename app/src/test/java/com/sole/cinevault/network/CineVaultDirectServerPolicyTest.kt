@@ -64,4 +64,43 @@ class CineVaultDirectServerPolicyTest {
             movie.delete(); tv.delete()
         }
     }
+    @Test fun approvalCanReturnOnOriginalPairingConnection() {
+        val auth = CineVaultDirectAuthorization()
+        val server = CineVaultDirectServer(
+            authorization = auth,
+            mediaProvider = { emptyList() },
+            selectionProvider = { ShareLibrarySelection(SharedLibraryScope.ENTIRE_LIBRARY) },
+        )
+        val port = server.start()
+        val request = NearbyPairingRequest("cv_test_peer", "Test peer", "0123456789abcdef")
+        val result = java.util.concurrent.atomic.AtomicReference<String>()
+        val worker = Thread {
+            val connection = java.net.URL("http://127.0.0.1:$port/v1/pair/request")
+                .openConnection() as java.net.HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json")
+            val body = """{"remoteDeviceId":"${request.remoteDeviceId}","remoteDeviceName":"${request.remoteDeviceName}","inviteNonce":"${request.inviteNonce}"}"""
+            connection.outputStream.use { it.write(body.toByteArray()) }
+            result.set(connection.inputStream.bufferedReader().use { it.readText() })
+            connection.disconnect()
+        }
+        try {
+            worker.start()
+            val deadline = System.currentTimeMillis() + 3_000L
+            while (server.pendingRequests().isEmpty() && System.currentTimeMillis() < deadline) {
+                Thread.sleep(20L)
+            }
+            assertEquals(request, server.pendingRequests().single())
+            assertNotNull(server.approveDiscovered(request))
+            worker.join(3_000L)
+            assertFalse("pairing response should complete after approval", worker.isAlive)
+            assertTrue(result.get().orEmpty().contains("\"state\":\"approved\""))
+            assertTrue(result.get().orEmpty().contains("sessionToken"))
+        } finally {
+            server.stop()
+            worker.join(1_000L)
+        }
+    }
+
 }
