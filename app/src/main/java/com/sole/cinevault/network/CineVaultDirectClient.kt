@@ -102,7 +102,7 @@ internal fun parseApprovalPollResponse(raw: String): CineVaultPairResponseEnvelo
 class CineVaultDirectClient(
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(12, TimeUnit.SECONDS)
+        .readTimeout(100, TimeUnit.SECONDS)
         .build(),
     private val gson: Gson = Gson(),
 ) {

@@ -143,7 +143,38 @@ class CineVaultDirectServer(
             ) {
                 return respond(client, 400, """{"state":"error","message":"Invalid pairing request."}""", "application/json")
             }
-            pending[requestKey(request.remoteDeviceId, request.inviteNonce)] = request
+            val key = requestKey(request.remoteDeviceId, request.inviteNonce)
+            pending[key] = request
+
+            // Keep the original pairing socket alive while the owner decides. On some
+            // Android/Wi-Fi combinations the first client -> host connection succeeds,
+            // but immediate follow-up polling connections are temporarily filtered or
+            // delayed. Returning the approval on this already-established socket makes
+            // the physical-device handshake reliable; polling remains as a fallback.
+            val deadline = System.currentTimeMillis() + 90_000L
+            while (running.get() && System.currentTimeMillis() < deadline) {
+                approvals[key]?.takeIf { it.expiresAtEpochMs > System.currentTimeMillis() }?.let { approved ->
+                    return respond(
+                        client,
+                        200,
+                        gson.toJson(CineVaultPairResponseEnvelope(
+                            state = "approved",
+                            sessionToken = approved.sessionToken,
+                            expiresAtEpochMs = approved.expiresAtEpochMs,
+                        )),
+                        "application/json",
+                    )
+                }
+                if (pending[key] == null && approvals[key] == null) {
+                    return respond(client, 200, """{"state":"denied"}""", "application/json")
+                }
+                try {
+                    Thread.sleep(200L)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                }
+            }
             return respond(client, 202, """{"state":"pending"}""", "application/json")
         }
 

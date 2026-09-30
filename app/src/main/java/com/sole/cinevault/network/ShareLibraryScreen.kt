@@ -46,8 +46,11 @@ fun ShareLibraryScreen(
 
     LaunchedEffect(Unit) { folders = runtime.availableFolders() }
     LaunchedEffect(state.running) {
-        while (state.running) {
-            runtime.refresh(state)
+        while (runtime.connectState.value.sharing.running) {
+            // Always refresh from the runtime's latest sharing state. Capturing `state`
+            // here can publish an older snapshot after APPROVE and visually roll the
+            // host back to "waiting" even though the server already granted access.
+            runtime.refresh()
             delay(650)
         }
     }
