@@ -2,6 +2,7 @@ package com.sole.cinevault.network
 
 import org.junit.Assert.*
 import org.junit.Test
+import com.google.gson.JsonParser
 import java.io.File
 
 class CineVaultDirectServerPolicyTest {
@@ -95,8 +96,18 @@ class CineVaultDirectServerPolicyTest {
             assertNotNull(server.approveDiscovered(request))
             worker.join(3_000L)
             assertFalse("pairing response should complete after approval", worker.isAlive)
-            assertTrue(result.get().orEmpty().contains("\"state\":\"approved\""))
-            assertTrue(result.get().orEmpty().contains("sessionToken"))
+            val raw = result.get().orEmpty()
+            val json = JsonParser.parseString(raw).asJsonObject
+            assertEquals("approved", json["state"].asString)
+            assertTrue(json["sessionToken"].asString.length >= 32)
+            assertTrue(json["expiresAtEpochMs"].asLong > System.currentTimeMillis())
+
+            // Regression: the exact host response must be accepted by the
+            // same parser used on the receiving Android device.
+            val parsed = parsePairResponse(raw)
+            assertEquals("approved", parsed.state)
+            assertNotNull(parsed.sessionToken)
+            assertNotNull(parsed.expiresAtEpochMs)
         } finally {
             server.stop()
             worker.join(1_000L)
