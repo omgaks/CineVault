@@ -21,7 +21,7 @@ data class CineVaultSharingState(
     val approved: NearbyPairingSession? = null,
 )
 
-class CineVaultNearbyRuntime(private val context: Context) {
+class CineVaultNearbyRuntime(context: Context) {
     private val app = context.applicationContext
     private val authorization = CineVaultDirectAuthorization()
     private val policy = NearbyPairingPolicy()
@@ -64,16 +64,24 @@ class CineVaultNearbyRuntime(private val context: Context) {
 
     suspend fun startSharing(newSelection: ShareLibrarySelection): CineVaultSharingState =
         withContext(Dispatchers.IO) {
-            selection = newSelection
-            mediaSnapshot = loadShareableMedia()
-            val port = server.start()
-            val host = localIpv4Address() ?: run {
+            runCatching {
+                selection = newSelection
+                mediaSnapshot = loadShareableMedia()
+                val port = server.start()
+                val host = localIpv4Address() ?: run {
+                    server.stop()
+                    error("CineVault could not determine this device's Wi-Fi address.")
+                }
+                advertiser.start(deviceId, deviceName, port)
+                val invite = policy.createInvite(deviceId, deviceName)
+                publish(CineVaultSharingState(true, "http://$host:$port", invite))
+            }.getOrElse { failure ->
+                advertiser.stop()
                 server.stop()
-                error("CineVault could not determine this device's Wi-Fi address.")
+                mediaSnapshot = emptyList()
+                update { it.withError(failure.message ?: "Could not start CineVault sharing.") }
+                throw failure
             }
-            advertiser.start(deviceId, deviceName, port)
-            val invite = policy.createInvite(deviceId, deviceName)
-            publish(CineVaultSharingState(true, "http://$host:$port", invite))
         }
 
     fun refresh(state: CineVaultSharingState = _connectState.value.sharing): CineVaultSharingState {
@@ -107,16 +115,31 @@ class CineVaultNearbyRuntime(private val context: Context) {
     fun findCineVaultPeers() {
         discoveryJob?.cancel()
         discoveryJob = engineScope.launch {
-            update { it.copy(phase = CineVaultConnectPhase.DISCOVERING, message = null) }
+            update {
+                it.copy(
+                    enabled = true,
+                    phase = CineVaultConnectPhase.DISCOVERING,
+                    discoveredPeers = emptyList(),
+                    message = null,
+                )
+            }
             val peers = runCatching { discovery.discover() }
                 .getOrElse {
                     update { state -> state.withError("Nearby discovery failed. ${it.message.orEmpty()}".trim()) }
                     return@launch
                 }
                 .filter { it.kind == NetworkDiscoveryKind.CINEVAULT && it.id != deviceId }
-            update {
-                it.copy(
-                    phase = if (it.sharing.running) CineVaultConnectPhase.AVAILABLE else CineVaultConnectPhase.OFF,
+
+            update { current ->
+                current.copy(
+                    enabled = current.sharing.running || current.remoteConnection != null,
+                    phase = when {
+                        current.remoteConnection != null -> CineVaultConnectPhase.CONNECTED
+                        current.sharing.pending != null -> CineVaultConnectPhase.APPROVAL_REQUIRED
+                        current.sharing.approved != null -> CineVaultConnectPhase.APPROVED
+                        current.sharing.running -> CineVaultConnectPhase.AVAILABLE
+                        else -> CineVaultConnectPhase.OFF
+                    },
                     discoveredPeers = sanitizeDiscoveredDevices(peers),
                     message = null,
                 )
@@ -187,16 +210,26 @@ class CineVaultNearbyRuntime(private val context: Context) {
         }
     }
 
-    fun clearConnectMessage() = update {
-        val phase = when {
-            it.remoteConnection != null -> CineVaultConnectPhase.CONNECTED
-            it.sharing.pending != null -> CineVaultConnectPhase.APPROVAL_REQUIRED
-            it.sharing.approved != null -> CineVaultConnectPhase.APPROVED
-            it.sharing.running -> CineVaultConnectPhase.AVAILABLE
-            else -> CineVaultConnectPhase.OFF
+    fun disconnectPeer() {
+        pairingJob?.cancel()
+        pairingJob = null
+        update { current ->
+            current.copy(
+                enabled = current.sharing.running,
+                phase = when {
+                    current.sharing.pending != null -> CineVaultConnectPhase.APPROVAL_REQUIRED
+                    current.sharing.approved != null -> CineVaultConnectPhase.APPROVED
+                    current.sharing.running -> CineVaultConnectPhase.AVAILABLE
+                    else -> CineVaultConnectPhase.OFF
+                },
+                connectingPeer = null,
+                remoteConnection = null,
+                message = null,
+            )
         }
-        it.copy(phase = phase, message = null)
     }
+
+    fun clearConnectMessage() = update { it.afterMessageDismissed() }
 
     fun qrPayload(state: CineVaultSharingState): String? {
         val invite = state.invite ?: return null
@@ -236,7 +269,7 @@ class CineVaultNearbyRuntime(private val context: Context) {
         @Volatile private var instance: CineVaultNearbyRuntime? = null
         fun get(context: Context): CineVaultNearbyRuntime =
             instance ?: synchronized(this) {
-                instance ?: CineVaultNearbyRuntime(context).also { instance = it }
+                instance ?: CineVaultNearbyRuntime(context.applicationContext).also { instance = it }
             }
     }
 }
