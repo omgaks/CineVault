@@ -157,11 +157,7 @@ class CineVaultDirectServer(
                     return respond(
                         client,
                         200,
-                        gson.toJson(CineVaultPairResponseEnvelope(
-                            state = "approved",
-                            sessionToken = approved.sessionToken,
-                            expiresAtEpochMs = approved.expiresAtEpochMs,
-                        )),
+                        approvedResponseJson(approved),
                         "application/json",
                     )
                 }
@@ -187,11 +183,7 @@ class CineVaultDirectServer(
             if (approved != null && approved.expiresAtEpochMs > System.currentTimeMillis()) {
                 return respond(
                     client, 200,
-                    gson.toJson(CineVaultPairResponseEnvelope(
-                        state = "approved",
-                        sessionToken = approved.sessionToken,
-                        expiresAtEpochMs = approved.expiresAtEpochMs,
-                    )),
+                    approvedResponseJson(approved),
                     "application/json",
                 )
             }
@@ -213,6 +205,13 @@ class CineVaultDirectServer(
             else -> respond(client, 404, "Not Found")
         }
     }
+
+    /**
+     * Stable pairing wire contract. Keep these field names explicit so the
+     * receiving client always gets the complete approval envelope.
+     */
+    private fun approvedResponseJson(session: NearbyPairingSession): String =
+        """{"state":"approved","sessionToken":"${session.sessionToken}","expiresAtEpochMs":${session.expiresAtEpochMs}}"""
 
     private fun allowedMedia(): List<CineVaultDirectMedia> {
         val media = mediaProvider()
@@ -285,7 +284,7 @@ class CineVaultDirectServer(
     )
 
     private fun respond(client: Socket, code: Int, body: String, type: String = "text/plain; charset=utf-8", headOnly: Boolean = false) {
-        val bytes = body.toByteArray()
+        val bytes = body.toByteArray(Charsets.UTF_8)
         val out = client.getOutputStream()
         writeHeaders(out, code, reason(code), mapOf(
             "Content-Type" to type, "Content-Length" to bytes.size.toString(), "Connection" to "close",
