@@ -2,8 +2,8 @@ package com.sole.cinevault.network
 
 import android.content.Context
 import android.content.Intent
-import androidx.core.content.ContextCompat
 import android.os.Build
+import androidx.core.content.ContextCompat
 import com.sole.cinevault.library.isRestrictedFolderItem
 import com.sole.cinevault.library.loadLibraryCache
 import kotlinx.coroutines.*
@@ -41,6 +41,7 @@ class CineVaultNearbyRuntime(context: Context) {
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var discoveryJob: Job? = null
     private var pairingJob: Job? = null
+    private var hostApprovalJob: Job? = null
 
     private val _connectState = MutableStateFlow(CineVaultConnectState())
     val connectState: StateFlow<CineVaultConnectState> = _connectState.asStateFlow()
@@ -81,6 +82,11 @@ class CineVaultNearbyRuntime(context: Context) {
                 advertiser.start(deviceId, deviceName, port)
                 val invite = policy.createInvite(deviceId, deviceName)
                 val sharing = publish(CineVaultSharingState(true, "http://$host:$port", invite))
+
+                // Device 1 must notice a genuine new/reconnect request without requiring
+                // the user to reopen Share Library or touch the Sharing On control.
+                startHostApprovalWatcher()
+
                 // The host is now serving real media bytes. Keep that ownership outside
                 // MainActivity so Home/Recents/WhatsApp/calls do not tear down the LAN
                 // endpoint while a second CineVault is watching.
@@ -90,6 +96,7 @@ class CineVaultNearbyRuntime(context: Context) {
                 )
                 sharing
             }.getOrElse { failure ->
+                stopHostApprovalWatcher()
                 advertiser.stop()
                 server.stop()
                 mediaSnapshot = emptyList()
@@ -97,6 +104,31 @@ class CineVaultNearbyRuntime(context: Context) {
                 throw failure
             }
         }
+
+    private fun startHostApprovalWatcher() {
+        hostApprovalJob?.cancel()
+        hostApprovalJob = engineScope.launch {
+            while (isActive) {
+                val current = _connectState.value.sharing
+                if (!current.running || !server.isRunning()) break
+
+                val requests = runCatching { server.pendingRequests() }.getOrDefault(emptyList())
+                val request = requests.firstOrNull { it.inviteNonce == current.invite?.nonce }
+                    ?: requests.firstOrNull()
+
+                if (request != current.pending) {
+                    publish(current.copy(pending = request))
+                }
+
+                delay(HOST_APPROVAL_POLL_MS)
+            }
+        }
+    }
+
+    private fun stopHostApprovalWatcher() {
+        hostApprovalJob?.cancel()
+        hostApprovalJob = null
+    }
 
     fun refresh(state: CineVaultSharingState = _connectState.value.sharing): CineVaultSharingState {
         if (!state.running) return publish(state)
@@ -120,6 +152,7 @@ class CineVaultNearbyRuntime(context: Context) {
     }
 
     fun stopSharing(): CineVaultSharingState {
+        stopHostApprovalWatcher()
         advertiser.stop()
         server.stop()
         mediaSnapshot = emptyList()
@@ -301,6 +334,8 @@ class CineVaultNearbyRuntime(context: Context) {
             .firstOrNull { !it.isLoopbackAddress && it.isSiteLocalAddress }?.hostAddress
 
     companion object {
+        private const val HOST_APPROVAL_POLL_MS = 400L
+
         @Volatile private var instance: CineVaultNearbyRuntime? = null
         fun get(context: Context): CineVaultNearbyRuntime =
             instance ?: synchronized(this) {
