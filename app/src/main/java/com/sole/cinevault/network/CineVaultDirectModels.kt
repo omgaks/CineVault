@@ -1,5 +1,6 @@
 package com.sole.cinevault.network
 
+import com.google.gson.annotations.SerializedName
 import java.io.File
 
 data class CineVaultDirectMedia(
@@ -14,18 +15,18 @@ data class CineVaultDirectMedia(
 )
 
 data class CineVaultDirectCatalogueItem(
-    val id: String,
-    val title: String,
-    val sizeBytes: Long,
-    val mimeType: String,
-    val streamPath: String,
-    val subtitlePaths: List<String>,
-    val artworkPath: String?,
+    @SerializedName("id") val id: String,
+    @SerializedName("title") val title: String,
+    @SerializedName("sizeBytes") val sizeBytes: Long,
+    @SerializedName("mimeType") val mimeType: String,
+    @SerializedName("streamPath") val streamPath: String,
+    @SerializedName("subtitlePaths") val subtitlePaths: List<String>,
+    @SerializedName("artworkPath") val artworkPath: String?,
 )
 
 data class CineVaultDirectCatalogue(
-    val protocolVersion: Int = CineVaultLanProtocol.VERSION,
-    val items: List<CineVaultDirectCatalogueItem>,
+    @SerializedName("protocolVersion") val protocolVersion: Int = CineVaultLanProtocol.VERSION,
+    @SerializedName("items") val items: List<CineVaultDirectCatalogueItem>,
 )
 
 fun buildDirectCatalogue(

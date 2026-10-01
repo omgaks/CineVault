@@ -99,6 +99,73 @@ internal fun parseApprovalPollResponse(raw: String): CineVaultPairResponseEnvelo
     else CineVaultPairResponseEnvelope(state = "pending")
 }
 
+
+internal fun parseDirectCatalogue(raw: String): CineVaultDirectCatalogue {
+    if (raw.isBlank()) return CineVaultDirectCatalogue(items = emptyList())
+
+    val root = runCatching { JsonParser.parseString(raw) }.getOrNull()
+        ?: error("CineVault Nearby returned an invalid library response.")
+    if (!root.isJsonObject) error("CineVault Nearby returned an incompatible library response.")
+
+    val obj = root.asJsonObject
+    val version = obj.get("protocolVersion")
+        ?.takeUnless { it.isJsonNull }
+        ?.runCatching { asInt }
+        ?.getOrNull()
+        ?: CineVaultLanProtocol.VERSION
+
+    val itemsElement = obj.get("items") ?: return CineVaultDirectCatalogue(
+        protocolVersion = version,
+        items = emptyList(),
+    )
+    if (!itemsElement.isJsonArray) {
+        error("CineVault Nearby returned an incompatible library response.")
+    }
+
+    val items = itemsElement.asJsonArray.mapNotNull { element ->
+        val item = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
+        val id = item.stringValue("id") ?: return@mapNotNull null
+        val title = item.stringValue("title") ?: return@mapNotNull null
+        val streamPath = item.stringValue("streamPath") ?: return@mapNotNull null
+        val sizeBytes = item.get("sizeBytes")
+            ?.takeUnless { it.isJsonNull }
+            ?.runCatching { asLong }
+            ?.getOrNull()
+            ?: 0L
+        val mimeType = item.stringValue("mimeType") ?: "video/*"
+        val subtitlePaths = item.get("subtitlePaths")
+            ?.takeIf { it.isJsonArray }
+            ?.asJsonArray
+            ?.mapNotNull { value ->
+                value.takeUnless { it.isJsonNull }
+                    ?.runCatching { asString.trim() }
+                    ?.getOrNull()
+                    ?.takeIf { it.isNotBlank() }
+            }
+            ?: emptyList()
+        val artworkPath = item.stringValue("artworkPath")
+
+        CineVaultDirectCatalogueItem(
+            id = id,
+            title = title,
+            sizeBytes = sizeBytes,
+            mimeType = mimeType,
+            streamPath = streamPath,
+            subtitlePaths = subtitlePaths,
+            artworkPath = artworkPath,
+        )
+    }
+
+    return CineVaultDirectCatalogue(protocolVersion = version, items = items)
+}
+
+private fun com.google.gson.JsonObject.stringValue(name: String): String? =
+    get(name)
+        ?.takeUnless { it.isJsonNull }
+        ?.runCatching { asString.trim() }
+        ?.getOrNull()
+        ?.takeIf { it.isNotBlank() }
+
 class CineVaultDirectClient(
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
@@ -203,10 +270,8 @@ class CineVaultDirectNetworkSource(
 
         http.newCall(request).execute().use { response ->
             if (!response.isSuccessful) error("CineVault Nearby returned ${response.code}")
-            val catalogue = gson.fromJson(
-                response.body?.charStream(),
-                CineVaultDirectCatalogue::class.java,
-            ) ?: return@withContext emptyList()
+            val raw = response.body?.string().orEmpty()
+            val catalogue = parseDirectCatalogue(raw)
 
             catalogue.items.map { item ->
                 NetworkVideo(
