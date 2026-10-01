@@ -727,7 +727,13 @@ fun CineVaultApp() {
                             push(
                                 Destination.Player(
                                     video = video,
-                                    mediaType = "movie",
+                                    // Remote-library entries expose playable network URIs.
+                                    // Mark HTTP(S) items as stream media so the player does not
+                                    // run the local File.exists() guard before Media3 can open them.
+                                    mediaType = if (
+                                        video.path.startsWith("http://", ignoreCase = true) ||
+                                        video.path.startsWith("https://", ignoreCase = true)
+                                    ) "stream" else "movie",
                                     episodeList = emptyList(),
                                 )
                             )
