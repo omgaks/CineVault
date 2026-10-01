@@ -403,6 +403,12 @@ fun CineVaultApp() {
     // themselves.
     val scope = rememberCoroutineScope()
 
+    // CONNECT UX: observe the application-scoped Nearby runtime at the app root.
+    // This keeps the Network Library shortcut alive across normal navigation.
+    val nearbyRuntime = remember(context) { CineVaultNearbyRuntime.get(context) }
+    val nearbyConnectState by nearbyRuntime.connectState.collectAsState()
+    val remoteConnection = nearbyConnectState.remoteConnection
+
     // G6B-3: app-wide first-run glasses onboarding. This watches the same
     // external-display state as playback, but does not alter player behavior.
     val glassesDisplay by rememberExternalDisplayState()
@@ -870,6 +876,20 @@ fun CineVaultApp() {
                     }
                 }
             }
+
+            NetworkLibraryRootOverlay(
+                connection = remoteConnection,
+                isPlayerActive = isPlayerActive,
+                isRemoteLibraryActive = current is Destination.RemoteLibrary,
+                onOpenLibrary = { connection ->
+                    val source = CineVaultDirectNetworkSource(
+                        displayName = connection.device.displayName,
+                        endpoint = connection.endpoint,
+                        session = connection.session,
+                    )
+                    push(Destination.RemoteLibrary(source))
+                },
+            )
         }
     }
 
