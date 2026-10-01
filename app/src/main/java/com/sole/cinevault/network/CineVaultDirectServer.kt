@@ -3,6 +3,7 @@ package com.sole.cinevault.network
 import com.google.gson.Gson
 import java.io.File
 import java.net.InetAddress
+import java.net.SocketException
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
@@ -37,7 +38,23 @@ class CineVaultDirectServer(
         pool.execute {
             while (running.get()) {
                 val client = runCatching { server.accept() }.getOrNull() ?: break
-                pool.execute { client.use(::handle) }
+                pool.execute {
+                    try {
+                        client.use(::handle)
+                    } catch (_: SocketException) {
+                        // A receiver can close its range request at any time (seek, stop,
+                        // app switch, Wi-Fi hand-off). That is a client disconnect, not a
+                        // CineVault process crash. The server remains available for the
+                        // next request / reconnect.
+                    } catch (_: java.io.EOFException) {
+                        // Same rule for a peer disappearing while a request is in flight.
+                    } catch (_: java.io.InterruptedIOException) {
+                        // Per-client timeout/disconnect: keep the host server alive.
+                    } catch (_: java.io.IOException) {
+                        // Transport failure is isolated to this client socket. Never let
+                        // an executor worker exception take down Nearby sharing.
+                    }
+                }
             }
         }
         return server.localPort

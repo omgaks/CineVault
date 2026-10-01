@@ -1,6 +1,8 @@
 package com.sole.cinevault.network
 
 import android.content.Context
+import android.content.Intent
+import androidx.core.content.ContextCompat
 import android.os.Build
 import com.sole.cinevault.library.isRestrictedFolderItem
 import com.sole.cinevault.library.loadLibraryCache
@@ -78,7 +80,15 @@ class CineVaultNearbyRuntime(context: Context) {
                 }
                 advertiser.start(deviceId, deviceName, port)
                 val invite = policy.createInvite(deviceId, deviceName)
-                publish(CineVaultSharingState(true, "http://$host:$port", invite))
+                val sharing = publish(CineVaultSharingState(true, "http://$host:$port", invite))
+                // The host is now serving real media bytes. Keep that ownership outside
+                // MainActivity so Home/Recents/WhatsApp/calls do not tear down the LAN
+                // endpoint while a second CineVault is watching.
+                ContextCompat.startForegroundService(
+                    app,
+                    Intent(app, CineVaultNearbySharingService::class.java),
+                )
+                sharing
             }.getOrElse { failure ->
                 advertiser.stop()
                 server.stop()
@@ -113,8 +123,13 @@ class CineVaultNearbyRuntime(context: Context) {
         advertiser.stop()
         server.stop()
         mediaSnapshot = emptyList()
-        return publish(CineVaultSharingState())
+        val stopped = publish(CineVaultSharingState())
+        app.stopService(Intent(app, CineVaultNearbySharingService::class.java))
+        return stopped
     }
+
+    /** Used by the foreground owner without exposing the server itself. */
+    fun isSharingActive(): Boolean = server.isRunning() && _connectState.value.sharing.running
 
     fun findCineVaultPeers() {
         discoveryJob?.cancel()
