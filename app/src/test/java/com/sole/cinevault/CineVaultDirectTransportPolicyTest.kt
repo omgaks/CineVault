@@ -95,4 +95,38 @@ class CineVaultDirectTransportPolicyTest {
     }
 
 
+
+    @Test
+    fun directCatalogueParserReadsRealWireShapeWithoutReflectionCasting() {
+        val parsed = parseDirectCatalogue(
+            """{"protocolVersion":1,"items":[{"id":"movie-1","title":"Movie One","sizeBytes":12345,"mimeType":"video/mp4","streamPath":"/v1/media/movie-1","subtitlePaths":["/v1/media/movie-1/subtitle/0"],"artworkPath":"/v1/media/movie-1/artwork"}]}"""
+        )
+        assertEquals(1, parsed.items.size)
+        assertEquals("movie-1", parsed.items.single().id)
+        assertEquals("Movie One", parsed.items.single().title)
+        assertEquals(12345L, parsed.items.single().sizeBytes)
+        assertEquals("/v1/media/movie-1", parsed.items.single().streamPath)
+    }
+
+    @Test
+    fun directCatalogueParserAcceptsEmptyLibrary() {
+        val parsed = parseDirectCatalogue("""{"protocolVersion":1,"items":[]}""")
+        assertTrue(parsed.items.isEmpty())
+    }
+
+    @Test
+    fun directCatalogueParserRejectsWrongTopLevelShapeWithFriendlyProtocolError() {
+        val failure = runCatching { parseDirectCatalogue("[]") }.exceptionOrNull()
+        assertNotNull(failure)
+        assertTrue(failure!!.message.orEmpty().contains("incompatible library response"))
+    }
+
+    @Test
+    fun directCatalogueParserSkipsMalformedItemsInsteadOfClassCasting() {
+        val parsed = parseDirectCatalogue(
+            """{"protocolVersion":1,"items":[{"unexpected":true},{"id":"ok","title":"Playable","streamPath":"/v1/media/ok"}]}"""
+        )
+        assertEquals(listOf("ok"), parsed.items.map { it.id })
+    }
+
 }
