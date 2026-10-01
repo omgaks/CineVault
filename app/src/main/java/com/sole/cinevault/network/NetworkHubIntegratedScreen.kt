@@ -30,6 +30,12 @@ fun NetworkHubIntegratedScreen(
     var localMessage by remember { mutableStateOf<String?>(null) }
 
     fun handleDevice(device: DiscoveredNetworkDevice, qr: CineVaultQrPayload? = null) {
+        val active = connectState.remoteConnection
+        if (active != null && active.device.id == device.id) {
+            onOpenSource(CineVaultDirectNetworkSource(active.device.displayName, active.endpoint, active.session))
+            return
+        }
+
         when (val action = discoveredDeviceAction(device)) {
             is DiscoveredDeviceAction.OpenDlna -> onOpenSource(action.source)
             is DiscoveredDeviceAction.PrefillManual -> when (action.type) {
@@ -54,7 +60,9 @@ fun NetworkHubIntegratedScreen(
     NetworkHubScreen(
         savedSources = summaries,
         discoveredDevices = connectState.discoveredPeers,
-        connectState = connectState,
+        connectState = if (connectState.remoteConnection != null) {
+            connectState.copy(connectingPeer = null)
+        } else connectState,
         onBack = onBack,
         onFindDevices = nearby::findCineVaultPeers,
         onDisconnectPeer = nearby::disconnectPeer,
