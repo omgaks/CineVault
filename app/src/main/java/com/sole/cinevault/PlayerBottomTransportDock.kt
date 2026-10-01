@@ -101,25 +101,9 @@ internal fun BoxScope.PlayerBottomTransportDock(
             verticalAlignment = Alignment.CenterVertically
         ) {
             BackIconButton(size = smallButton, onClick = onBack)
-
-            GlassTransportButton(
-                icon = Icons.Rounded.Replay10,
-                size = smallButton,
-                onClick = onReplay10
-            )
-
-            FrostedPlayButton(
-                isPlaying = isPlaying,
-                isEnded = isVideoEnded,
-                size = playButton,
-                onClick = onPlayPause
-            )
-
-            GlassTransportButton(
-                icon = Icons.Rounded.Forward10,
-                size = smallButton,
-                onClick = onForward10
-            )
+            GlassTransportButton(icon = Icons.Rounded.Replay10, size = smallButton, onClick = onReplay10)
+            FrostedPlayButton(isPlaying = isPlaying, isEnded = isVideoEnded, size = playButton, onClick = onPlayPause)
+            GlassTransportButton(icon = Icons.Rounded.Forward10, size = smallButton, onClick = onForward10)
 
             if (showPrevNextButtons) {
                 IconCircle(
@@ -156,40 +140,41 @@ internal fun BoxScope.PlayerBottomTransportDock(
                 onClick = onAudioFxClick,
             )
 
-            if (!isStreamMedia) {
-                Box(
-                    modifier = Modifier
-                        .size(smallButton)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(GlassSurface)
-                        .background(
-                            Brush.verticalGradient(
-                                0f to GlassHighlight,
-                                0.4f to Color.Transparent,
-                                1f to Color.Transparent
-                            )
+            // Stream playback uses the same player subtitle state. Keep the
+            // subtitle entry point available; local-file-only operations retain
+            // their own stream guards elsewhere.
+            Box(
+                modifier = Modifier
+                    .size(smallButton)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(GlassSurface)
+                    .background(
+                        Brush.verticalGradient(
+                            0f to GlassHighlight,
+                            0.4f to Color.Transparent,
+                            1f to Color.Transparent
                         )
-                        .border(
-                            1.dp,
-                            Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)),
-                            RoundedCornerShape(20.dp)
-                        )
-                        .onGloballyPositioned {
-                            onSubtitleCenterMeasured(it.positionInRoot().x + it.size.width / 2f)
-                        }
-                        .combinedClickable(
-                            onClick = onSubtitleClick,
-                            onLongClick = onSubtitleLongClick
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Subtitles,
-                        contentDescription = null,
-                        tint = if (showSubtitleActive) AmberCore else TextBright,
-                        modifier = Modifier.size(smallButton * 0.44f)
                     )
-                }
+                    .border(
+                        1.dp,
+                        Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)),
+                        RoundedCornerShape(20.dp)
+                    )
+                    .onGloballyPositioned {
+                        onSubtitleCenterMeasured(it.positionInRoot().x + it.size.width / 2f)
+                    }
+                    .combinedClickable(
+                        onClick = onSubtitleClick,
+                        onLongClick = onSubtitleLongClick
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Subtitles,
+                    contentDescription = if (isStreamMedia) "Network subtitle controls" else "Subtitle controls",
+                    tint = if (showSubtitleActive) AmberCore else TextBright,
+                    modifier = Modifier.size(smallButton * 0.44f)
+                )
             }
         }
     }
