@@ -64,6 +64,16 @@
 -keep class com.sole.cinevault.metadata.TmdbExtraDetails { *; }
 -keep class com.sole.cinevault.library.CachedLibrary { *; }
 
+# ── CineVault Nearby wire models ────────────────────────────────────────
+# These classes cross the LAN JSON boundary. Keep their generic signatures
+# and members stable in release builds so R8 cannot turn a catalogue item
+# into an obfuscated runtime cast failure. @SerializedName on the models
+# additionally freezes the actual wire keys across app versions.
+-keep class com.sole.cinevault.network.CineVaultDirectCatalogue { *; }
+-keep class com.sole.cinevault.network.CineVaultDirectCatalogueItem { *; }
+-keep class com.sole.cinevault.network.CineVaultPairRequestEnvelope { *; }
+-keep class com.sole.cinevault.network.CineVaultPairResponseEnvelope { *; }
+
 # ── Retrofit ─────────────────────────────────────────────────────────────
 # Retrofit and OkHttp both ship their own consumer ProGuard rules bundled
 # in their AARs, applied automatically by R8 — these are a light
