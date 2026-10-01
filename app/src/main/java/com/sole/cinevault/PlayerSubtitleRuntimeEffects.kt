@@ -164,7 +164,13 @@ fun rememberPlayerSubtitleRuntimeEffects(
         subtitleSyncRenderCoordinator.applyIfNeeded()
     }
 
-    val subtitleSyncTools = remember(exoPlayer, dualSecondaryColorHex) {
+    // This coordinator owns per-video cache/hash lookup and writes a merged
+    // subtitle for the active title. Recreate it when the video changes so no
+    // episode/movie can inherit a stale path captured by the previous runtime.
+    val dualRuntimeIdentity = remember(currentVideoPath, dualSecondaryColorHex) {
+        subtitleRuntimeIdentity(currentVideoPath, dualSecondaryColorHex)
+    }
+    val subtitleSyncTools = remember(exoPlayer, dualRuntimeIdentity) {
         SubtitleSyncToolsCoordinator(
             context = context,
             scope = scope,

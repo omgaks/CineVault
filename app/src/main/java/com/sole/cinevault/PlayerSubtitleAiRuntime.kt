@@ -73,6 +73,10 @@ fun rememberPlayerSubtitleAiRuntime(
     val latestGeneratedFilesLoaded by rememberUpdatedState(onGeneratedSubtitleFilesLoaded)
     val latestTranslationSuccessChanged by rememberUpdatedState(onTranslationSuccessLanguageChanged)
     val latestPlayCurrentVideoWithSubtitle by rememberUpdatedState(playCurrentVideoWithSubtitle)
+    // Dual subtitle rendering can be recreated when the active video or its
+    // secondary styling changes. Keep AI translation completion routed to the
+    // latest sync-tools instance instead of the one captured on first compose.
+    val latestSubtitleSyncTools by rememberUpdatedState(subtitleSyncTools)
 
     val generatedSubtitleLibraryCoordinator = remember {
         GeneratedSubtitleLibraryCoordinator(
@@ -139,7 +143,7 @@ fun rememberPlayerSubtitleAiRuntime(
                 latestPendingDualChanged(null)
             },
             applyDualSecondary = { uri ->
-                subtitleSyncTools.applyDualSecondaryUri(uri, "AI")
+                latestSubtitleSyncTools.applyDualSecondaryUri(uri, "AI")
             },
             applyPrimaryTranslation = { file, language ->
                 generatedSubtitleOrchestrator.apply(
