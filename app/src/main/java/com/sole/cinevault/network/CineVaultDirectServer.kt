@@ -193,7 +193,12 @@ class CineVaultDirectServer(
 
         if (method != "GET" && method != "HEAD") return respond(client, 405, "Method Not Allowed")
 
-        if (authorization.authorize(headers["authorization"]) == null) {
+        val query = parseQuery(rawTarget.substringAfter('?', ""))
+        val authorizedSession = authorization.authorize(headers["authorization"])
+            ?: query["token"]
+                ?.takeIf { it.length >= 32 }
+                ?.let { authorization.authorize("Bearer $it") }
+        if (authorizedSession == null) {
             return respond(client, 401, "Unauthorized")
         }
 

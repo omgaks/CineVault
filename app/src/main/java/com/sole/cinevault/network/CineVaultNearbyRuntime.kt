@@ -274,6 +274,7 @@ class CineVaultNearbyRuntime(context: Context) {
                 title = item.title.ifBlank { item.video.name },
                 file = file,
                 folderId = item.video.folderPath,
+                posterRemoteUrl = item.posterUrl,
                 isVaultOrSecret = isRestrictedFolderItem(item),
             )
         }

@@ -10,6 +10,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
@@ -144,6 +145,7 @@ internal fun parseDirectCatalogue(raw: String): CineVaultDirectCatalogue {
             }
             ?: emptyList()
         val artworkPath = item.stringValue("artworkPath")
+        val posterRemoteUrl = item.stringValue("posterRemoteUrl")
 
         CineVaultDirectCatalogueItem(
             id = id,
@@ -153,6 +155,7 @@ internal fun parseDirectCatalogue(raw: String): CineVaultDirectCatalogue {
             streamPath = streamPath,
             subtitlePaths = subtitlePaths,
             artworkPath = artworkPath,
+            posterRemoteUrl = posterRemoteUrl,
         )
     }
 
@@ -274,11 +277,26 @@ class CineVaultDirectNetworkSource(
             val catalogue = parseDirectCatalogue(raw)
 
             catalogue.items.map { item ->
+                val streamUrl = CineVaultLanProtocol.resolve(endpoint, item.streamPath)
+                    .toHttpUrl()
+                    .newBuilder()
+                    .addQueryParameter("token", session.sessionToken)
+                    .build()
+                    .toString()
+                val artworkUrl = item.artworkPath?.let { path ->
+                    CineVaultLanProtocol.resolve(endpoint, path)
+                        .toHttpUrl()
+                        .newBuilder()
+                        .addQueryParameter("token", session.sessionToken)
+                        .build()
+                        .toString()
+                }
+
                 NetworkVideo(
-                    path = CineVaultLanProtocol.resolve(endpoint, item.streamPath),
+                    path = streamUrl,
                     name = item.title,
                     size = item.sizeBytes,
-                    posterUrl = item.artworkPath?.let { CineVaultLanProtocol.resolve(endpoint, it) },
+                    posterUrl = artworkUrl ?: item.posterRemoteUrl,
                 )
             }
         }

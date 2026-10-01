@@ -11,6 +11,7 @@ data class CineVaultDirectMedia(
     val mimeType: String = "video/*",
     val subtitleFiles: List<File> = emptyList(),
     val posterFile: File? = null,
+    val posterRemoteUrl: String? = null,
     val isVaultOrSecret: Boolean = false,
 )
 
@@ -22,6 +23,7 @@ data class CineVaultDirectCatalogueItem(
     @SerializedName("streamPath") val streamPath: String,
     @SerializedName("subtitlePaths") val subtitlePaths: List<String>,
     @SerializedName("artworkPath") val artworkPath: String?,
+    @SerializedName("posterRemoteUrl") val posterRemoteUrl: String? = null,
 )
 
 data class CineVaultDirectCatalogue(
@@ -61,6 +63,7 @@ fun buildDirectCatalogue(
                     artworkPath = mediaItem.posterFile?.takeIf(File::isFile)?.let {
                         "/v1/media/${urlSegment(mediaItem.id)}/artwork"
                     },
+                    posterRemoteUrl = mediaItem.posterRemoteUrl,
                 )
             }
             .toList(),
