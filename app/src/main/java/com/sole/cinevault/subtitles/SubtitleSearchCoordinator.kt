@@ -87,7 +87,12 @@ class SubtitleSearchCoordinator(
             val merged = subDlList + openSubsList
             when {
                 merged.isNotEmpty() -> { searchUi.searchResults = merged; searchUi.searchStatus = "" }
-                openSubsResult is SubtitleSearchListResult.HttpError -> { searchUi.searchResults = emptyList(); searchUi.searchStatus = "Search error: ${openSubsResult.detail}" }
+                openSubsResult is SubtitleSearchListResult.HttpError && subDlResult is SubtitleSearchListResult.HttpError -> {
+                    searchUi.searchResults = emptyList()
+                    searchUi.searchStatus = "Subtitle providers unavailable: OpenSubtitles ${openSubsResult.detail}; SubDL ${subDlResult.detail}"
+                }
+                openSubsResult is SubtitleSearchListResult.HttpError -> { searchUi.searchResults = emptyList(); searchUi.searchStatus = "OpenSubtitles failed (${openSubsResult.detail}); SubDL found no results" }
+                subDlResult is SubtitleSearchListResult.HttpError -> { searchUi.searchResults = emptyList(); searchUi.searchStatus = "SubDL failed (${subDlResult.detail}); OpenSubtitles found no results" }
                 else -> { searchUi.searchResults = emptyList(); searchUi.searchStatus = "No subtitles found for this search" }
             }
         }
@@ -114,7 +119,7 @@ class SubtitleSearchCoordinator(
                         trackUi.selectedLabel = SubtitleLanguageRegistry.displayName(result.language)
                         trackUi.selectedSource = result.provider
                         if (coreUi.behaviorPrefs.rememberLastSelectedLanguage && result.language.isNotBlank()) {
-                            coreUi.behaviorPrefs = promoteLanguageToFront(coreUi.behaviorPrefs, result.language.take(2).lowercase())
+                            coreUi.behaviorPrefs = promoteLanguageToFront(coreUi.behaviorPrefs, SubtitleLanguageRegistry.normalize(result.language) ?: result.language.lowercase())
                             saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
                         }
                         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
@@ -179,7 +184,7 @@ class SubtitleSearchCoordinator(
                     choice.language.isNotBlank() && choice.language != "und") {
                     coreUi.behaviorPrefs = promoteLanguageToFront(
                         coreUi.behaviorPrefs,
-                        choice.language.take(2).lowercase()
+                        SubtitleLanguageRegistry.normalize(choice.language) ?: choice.language.lowercase()
                     )
                     saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
                 }
@@ -201,7 +206,7 @@ class SubtitleSearchCoordinator(
                 }
                 trackUi.selectedKey = choice.key
                 trackUi.selectedLabel = SubtitleLanguageRegistry.displayName(choice.language)
-                trackUi.selectedSource = "OpenSubtitles"
+                trackUi.selectedSource = OpenSubtitlesClient.providerForCachedFile(choice.file)
             }
             is SubtitleTrackChoice.Local -> setPendingSrtUri(Uri.fromFile(choice.file))
             is SubtitleTrackChoice.Generated -> setPendingSrtUri(choice.file.uri)

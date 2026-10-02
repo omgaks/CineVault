@@ -45,7 +45,7 @@ internal data class SrtBlock(val index: String, val timing: String, val lines: L
 // timestamp — CineVault's own subtitle positioning is handled separately
 // via SubtitleAppearance, so this text has no use here and isn't
 // guaranteed safe for a strict SRT parser to see.
-private val TIMING_LINE_REGEX = Regex("(\\d{2}:\\d{2}:\\d{2})[,.](\\d{3})\\s*-->\\s*(\\d{2}:\\d{2}:\\d{2})[,.](\\d{3})")
+private val TIMING_LINE_REGEX = Regex("(\\d{1,2}:\\d{2}:\\d{2})[,.](\\d{3})\\s*-->\\s*(\\d{1,2}:\\d{2}:\\d{2})[,.](\\d{3})")
 internal fun normalizeTimingLine(timing: String): String {
     val match = TIMING_LINE_REGEX.find(timing) ?: return timing
     val (startTime, startMs, endTime, endMs) = match.destructured

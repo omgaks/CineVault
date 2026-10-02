@@ -43,7 +43,7 @@ object SubtitleWebDownloadClient {
 
         while (true) {
             if (!SubtitleWebPolicy.isAllowed(current)) {
-                return@withContext WebSubtitleDownloadResult.Failed("For your safety, CineVault blocked a download from an unapproved website.")
+                return@withContext WebSubtitleDownloadResult.Failed("CineVault blocked this subtitle redirect because ${current.host ?: "the destination"} is not an approved subtitle host.")
             }
 
             val connection = (URL(current.toString()).openConnection() as HttpURLConnection).apply {
@@ -81,7 +81,7 @@ object SubtitleWebDownloadClient {
 
                 if (status !in 200..299) {
                     return@withContext WebSubtitleDownloadResult.Failed(when(status) {
-                        401, 403 -> "OpenSubtitles requires you to sign in or approve this download."
+                        401, 403 -> "This subtitle website requires you to sign in or approve the download."
                         404 -> "This subtitle download is no longer available."
                         429 -> "The website is temporarily limiting downloads. Please try again later."
                         else -> "The website rejected this download (HTTP $status)."

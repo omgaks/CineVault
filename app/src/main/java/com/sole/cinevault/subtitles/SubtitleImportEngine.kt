@@ -162,7 +162,7 @@ object SubtitleImportEngine {
         }
 
         val lower = displayName.lowercase(Locale.ROOT)
-        return ImportedSubtitle(uri = Uri.fromFile(finalFile), displayName = displayName, format = format, language = detectLanguage(lower) ?: preferredLanguage, hearingImpaired = containsAny(lower, "sdh", "hearing.impaired", "hearing_impaired", "hi."))
+        return ImportedSubtitle(uri = Uri.fromFile(finalFile), displayName = displayName, format = format, language = detectLanguage(lower) ?: preferredLanguage, hearingImpaired = containsAny(lower, "sdh", "hearing.impaired", "hearing_impaired", "hearing-impaired", "cc"))
     }
 
     private fun detectTextSubtitle(bytes: ByteArray): DetectedSubtitle? {

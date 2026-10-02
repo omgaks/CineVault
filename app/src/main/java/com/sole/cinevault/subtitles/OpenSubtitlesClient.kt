@@ -500,6 +500,11 @@ object OpenSubtitlesClient {
         return attempts.toList()
     }
 
+    fun providerForCachedFile(file: File): String {
+        val parts = file.nameWithoutExtension.split('.')
+        return parts.getOrNull(2)?.let { providerFromSlug(it) } ?: "OpenSubtitles"
+    }
+
     fun cleanMovieNamePublic(videoPath: String): String = cleanMovieName(videoPath)
 
     private fun cleanMovieName(videoPath: String): String {
@@ -515,7 +520,7 @@ object OpenSubtitlesClient {
 
         name = name.replace(
             Regex(
-                "\\b(2160p|1080p|720p|480p|4k|uhd|hdr|dv|dolby|vision|bluray|blu ray|brrip|webdl|web dl|webrip|web rip|hdrip|x264|x265|h264|h265|hevc|10bit|aac|aac5|ddp|dts|atmos|5 1|7 1|yts|rarbg|eztv|tgx|repack|proper|extended|remux|multi|dual|audio|hindi|english|eng|ita|amzn|nf|web|mkv|mp4|avi)\\b",
+                "\\b(2160p|1080p|720p|480p|4k|uhd|hdr|dv|dolby|bluray|blu ray|brrip|webdl|web dl|webrip|web rip|hdrip|x264|x265|h264|h265|hevc|10bit|aac|aac5|ddp|dts|atmos|5 1|7 1|yts|rarbg|eztv|tgx|repack|extended|remux|multi|audio|hindi|english|eng|ita|amzn|nf|web|mkv|mp4|avi)\\b",
                 RegexOption.IGNORE_CASE
             ),
             " "
@@ -524,7 +529,7 @@ object OpenSubtitlesClient {
         name = name.replace(Regex("\\s+"), " ").trim()
 
         val yearMatch = Regex("\\b(19|20)\\d{2}\\b").find(name)
-        if (yearMatch != null) {
+        if (yearMatch != null && yearMatch.range.first > 0) {
             name = name.substring(0, yearMatch.range.last + 1)
         }
 
@@ -539,7 +544,7 @@ object OpenSubtitlesClient {
 
     private fun searchFileId(searchName: String, language: String = "en"): SearchAttemptResult {
         if (searchName.isBlank()) return SearchAttemptResult.NoResults
-
+        return try {
         val query = URLEncoder.encode(searchName, "UTF-8")
         val searchUrl =
             "$BASE_URL/subtitles?query=$query&languages=$language&order_by=download_count&order_direction=desc"
@@ -579,7 +584,11 @@ object OpenSubtitlesClient {
             }
         }
 
-        return SearchAttemptResult.NoResults
+        SearchAttemptResult.NoResults
+        } catch (e: Exception) {
+            Log.w(TAG, "Search request failed for \"$searchName\": ${e.message}")
+            SearchAttemptResult.HttpError(0, e.message ?: e.javaClass.simpleName)
+        }
     }
 
     private sealed class DownloadLinkResult {
@@ -620,13 +629,15 @@ object OpenSubtitlesClient {
 
             val json = JSONObject(body)
             val remaining = json.optInt("remaining", -1)
+            val link = json.optString("link", "")
+            // A returned link is valid even when this request consumed the last
+            // daily slot and `remaining` is now zero.
+            if (link.isNotBlank()) return DownloadLinkResult.Found(link)
             if (remaining == 0) {
                 Log.w(TAG, "OpenSubtitles daily download quota is exhausted (remaining=0).")
                 return DownloadLinkResult.QuotaExhausted
             }
-
-            val link = json.optString("link", "")
-            return if (link.isNotBlank()) DownloadLinkResult.Found(link) else DownloadLinkResult.EmptyLink
+            return DownloadLinkResult.EmptyLink
         }
     }
 

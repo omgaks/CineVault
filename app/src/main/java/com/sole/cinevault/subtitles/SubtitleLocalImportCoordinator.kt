@@ -6,6 +6,8 @@ import android.net.Uri
 import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Slice 26: owns the local subtitle picker handoff after Android returns a Uri.
@@ -37,7 +39,8 @@ class SubtitleLocalImportCoordinator(
         }
 
         scope.launch {
-            val result = context.contentResolver.openInputStream(uri)?.use { stream ->
+            val result = try {
+                withContext(Dispatchers.IO) { context.contentResolver.openInputStream(uri) }?.use { stream ->
                 SubtitleImportEngine.import(
                     context = context,
                     input = stream,
@@ -45,9 +48,10 @@ class SubtitleLocalImportCoordinator(
                     releaseHint = getCurrentVideoPath(),
                     preferredLanguage = getPreferredLanguage(),
                 )
-            } ?: SubtitleImportResult.Failure(
-                "CineVault couldn't open that file."
-            )
+                } ?: SubtitleImportResult.Failure("CineVault couldn't open that file.")
+            } catch (e: Exception) {
+                SubtitleImportResult.Failure("CineVault couldn't read that subtitle: ${e.message ?: e.javaClass.simpleName}")
+            }
 
             when (result) {
                 is SubtitleImportResult.Success -> {
