@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.media3.common.C
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.sole.cinevault.SubtitleAcquisitionUiState
 import com.sole.cinevault.SubtitleCoreUiState
@@ -17,6 +18,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@UnstableApi
 class SubtitleSearchCoordinator(
     private val context: Context,
     private val scope: CoroutineScope,
