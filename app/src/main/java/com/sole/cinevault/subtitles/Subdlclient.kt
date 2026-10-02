@@ -165,8 +165,16 @@ object SubDlClient {
                     preferredLanguage = language,
                 )) {
                     is SubtitleImportResult.Success -> {
-                        Log.d(TAG, "SubDL subtitle imported: ${imported.selected.uri}")
-                        SubtitleDownloadResult.Success(imported.selected.uri, language, provider = "SubDL")
+                        val importedFile = imported.selected.uri.path?.let(::java.io.File)
+                            ?: return@withContext SubtitleDownloadResult.UnexpectedError("Imported SubDL subtitle has no file path")
+                        val cacheFile = OpenSubtitlesClient.subtitleCacheFile(
+                            context, videoPath, language, provider = "SubDL"
+                        )
+                        importedFile.copyTo(cacheFile, overwrite = true)
+                        Log.d(TAG, "SubDL subtitle cached: $cacheFile")
+                        SubtitleDownloadResult.Success(
+                            android.net.Uri.fromFile(cacheFile), language, provider = "SubDL"
+                        )
                     }
                     is SubtitleImportResult.Failure ->
                         SubtitleDownloadResult.UnexpectedError(imported.userMessage)

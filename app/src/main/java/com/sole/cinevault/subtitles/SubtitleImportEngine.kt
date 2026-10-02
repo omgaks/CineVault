@@ -167,15 +167,11 @@ object SubtitleImportEngine {
         }
 
         val lower = displayName.lowercase(Locale.ROOT)
-        return ImportedSubtitle(uri = Uri.fromFile(finalFile), displayName = displayName, format = format, language = detectLanguage(lower) ?: preferredLanguage, hearingImpaired = containsAny(lower, "sdh", "hearing.impaired", "hearing_impaired", "hearing-impaired", "cc"))
+        return ImportedSubtitle(uri = Uri.fromFile(finalFile), displayName = displayName, format = format, language = detectLanguage(lower) ?: preferredLanguage, hearingImpaired = containsAny(lower, "sdh", "hearing.impaired", "hearing_impaired", "hearing-impaired") || Regex("(?:^|[._\\- ])cc(?:$|[._\\- ])").containsMatchIn(lower))
     }
 
     private fun detectTextSubtitle(bytes: ByteArray): DetectedSubtitle? {
         if (bytes.isEmpty()) return null
-        val hasUtf16Bom = bytes.size >= 2 && ((bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte()) || (bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte()))
-        if (!hasUtf16Bom && bytes.any {
-            it == 0.toByte()
-        }) return null
         val decoded = decodeText(bytes).trimStart('\uFEFF', ' ', '\r', '\n', '\t')
         if (decoded.isBlank() || looksLikeHtml(decoded)) return null
 

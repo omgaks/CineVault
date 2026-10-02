@@ -38,6 +38,17 @@ class SubtitleSearchCoordinator(
     private fun isCurrentVideo(expectedPath: String): Boolean =
         getCurrentVideoPath() == expectedPath
 
+    private fun prepareExplicitExternalSelection(language: String?) {
+        val normalized = SubtitleLanguageRegistry.normalize(language ?: "")
+        val builder = trackSelector.buildUponParameters()
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .setIgnoredTextSelectionFlags(0)
+            .setSelectUndeterminedTextLanguage(true)
+        if (!normalized.isNullOrBlank()) builder.setPreferredTextLanguage(normalized)
+        trackSelector.parameters = builder.build()
+    }
+
     fun applyImportedWebsiteSubtitle(imported: ImportedSubtitle) {
         scope.launch {
             val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
@@ -47,8 +58,7 @@ class SubtitleSearchCoordinator(
                 } else null
             } ?: imported.uri
             coreUi.subtitlesEnabled = true
-            trackSelector.parameters = trackSelector.buildUponParameters()
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
+            prepareExplicitExternalSelection(imported.language)
             trackUi.primaryUri = cleanedUri
             trackUi.primaryLanguage = imported.language
             trackUi.selectedKey = "downloaded"
@@ -116,7 +126,7 @@ class SubtitleSearchCoordinator(
                 is SubtitleDownloadResult.Success -> {
                     if (alsoPlay) {
                         coreUi.subtitlesEnabled = true
-                        trackSelector.parameters = trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
+                        prepareExplicitExternalSelection(result.language)
                         trackUi.selectedKey = "downloaded"
                         trackUi.selectedLabel = SubtitleLanguageRegistry.displayName(result.language)
                         trackUi.selectedSource = result.provider
@@ -222,10 +232,7 @@ class SubtitleSearchCoordinator(
             }
             is SubtitleTrackChoice.Downloaded -> {
                 coreUi.subtitlesEnabled = true
-                trackSelector.parameters = trackSelector.buildUponParameters()
-                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                    .build()
+                prepareExplicitExternalSelection(choice.language)
                 val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
                 scope.launch {
                     val cleaned = withContext(Dispatchers.IO) {
