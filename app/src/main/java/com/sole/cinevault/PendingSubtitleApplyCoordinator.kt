@@ -12,14 +12,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/**
- * Slice 29: owns application of a local subtitle Uri that has already been
- * selected/imported by the UI.
- *
- * Cleaning, format labelling, language detection, track-state updates,
- * playback handoff and temporary status feedback all used to live directly
- * inside VideoPlayerScreen's pendingSrtUri LaunchedEffect.
- */
+/** Owns application of a local/generated subtitle Uri selected by the UI. */
 class PendingSubtitleApplyCoordinator(
     private val context: Context,
     private val coreUi: SubtitleCoreUiState,
@@ -37,13 +30,13 @@ class PendingSubtitleApplyCoordinator(
         enableTextTracks()
 
         val pickedFormat = detectSubtitleFormat(uri)
-        val formatLabel =
-            if (pickedFormat == SubtitleFormat.SRT || pickedFormat == SubtitleFormat.UNKNOWN) {
-                "Subtitle"
-            } else {
-                pickedFormat.label.substringBefore(" (")
-            }
-
+        if (pickedFormat == SubtitleFormat.UNKNOWN) {
+            autoSubtitleFetch.status = "Unsupported subtitle format"
+            Toast.makeText(context, "Unsupported subtitle format", Toast.LENGTH_LONG).show()
+            clearPendingUri()
+            return
+        }
+        val formatLabel = if (pickedFormat == SubtitleFormat.SRT) "Subtitle" else pickedFormat.label.substringBefore(" (")
         autoSubtitleFetch.status = "$formatLabel loaded"
 
         val cleanedUri = withContext(Dispatchers.IO) {
@@ -51,27 +44,23 @@ class PendingSubtitleApplyCoordinator(
         } ?: uri
 
         trackUi.primaryUri = cleanedUri
-
         val pickedFile = uri.path?.let(::File)
-        trackUi.primaryLanguage = pickedFile?.name?.let { name ->
-            parseSubtitleFilename(name).first
-        }
+        trackUi.primaryLanguage = pickedFile?.name?.let { name -> parseSubtitleFilename(name).first }
+
+        // Set identity before the handoff so the MediaItem is built with the
+        // selected language and UI never temporarily falls back to Embedded.
+        val generated = uri.path?.contains("generated-subtitles") == true ||
+            pickedFile?.name?.contains("translated", ignoreCase = true) == true
+        trackUi.selectedKey = if (generated) "generated:${pickedFile?.name ?: uri}" else "local:${pickedFile?.absolutePath ?: uri}"
+        trackUi.selectedLabel = pickedFile?.name ?: "Subtitle file"
+        trackUi.selectedSource = if (generated) "Generated" else "Local file"
 
         playSubtitle(cleanedUri, resumeAt)
-
-        trackUi.selectedKey = "local:${pickedFile?.absolutePath ?: uri}"
-        trackUi.selectedLabel = pickedFile?.name ?: "Subtitle file"
-        trackUi.selectedSource = "Local file"
 
         coreUi.showSettings = false
         trackUi.showSelector = false
         showControls()
-
-        Toast.makeText(
-            context,
-            "$formatLabel file loaded",
-            Toast.LENGTH_SHORT,
-        ).show()
+        Toast.makeText(context, "$formatLabel file loaded", Toast.LENGTH_SHORT).show()
 
         delay(playerSubtitleStatusClearDelayMs())
         autoSubtitleFetch.status = ""
