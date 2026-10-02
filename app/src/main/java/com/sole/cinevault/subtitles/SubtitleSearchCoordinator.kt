@@ -18,7 +18,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-@UnstableApi
 class SubtitleSearchCoordinator(
     private val context: Context,
     private val scope: CoroutineScope,
@@ -141,6 +140,7 @@ class SubtitleSearchCoordinator(
         }
     }
 
+    @OptIn(UnstableApi::class)
     fun selectSubtitleTrack(choice: SubtitleTrackChoice) {
         studioUi.menuTouchKey++
         when (choice) {
