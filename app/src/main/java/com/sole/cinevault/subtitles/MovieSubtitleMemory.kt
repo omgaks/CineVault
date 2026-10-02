@@ -20,14 +20,6 @@ data class MovieSubtitleMemory(
     val dualSecondarySource: String,
     val dualSecondaryColorHex: String,
     val syncOffsetSeconds: Float,
-    val textSizeSp: Float,
-    val bottomPadding: Float,
-    val presetName: String,
-    val foregroundColor: Int,
-    val edgeType: Int,
-    val edgeColor: Int,
-    val backgroundColor: Int,
-    val preserveOriginalStyling: Boolean,
 )
 
 private const val MOVIE_SUBTITLE_PREFS = "cinevault_movie_subtitle_memory"
@@ -56,14 +48,6 @@ fun loadMovieSubtitleMemory(context: Context, videoPath: String): MovieSubtitleM
         dualSecondarySource = prefs.getString("$key.dualSecondarySource", "") ?: "",
         dualSecondaryColorHex = prefs.getString("$key.dualSecondaryColorHex", "#00E5FF") ?: "#00E5FF",
         syncOffsetSeconds = prefs.getFloat("$key.syncOffsetSeconds", 0f),
-        textSizeSp = prefs.getFloat("$key.textSizeSp", 18f),
-        bottomPadding = prefs.getFloat("$key.bottomPadding", 0.02f),
-        presetName = prefs.getString("$key.presetName", "CineVault") ?: "CineVault",
-        foregroundColor = prefs.getInt("$key.foregroundColor", 0xFFFFF3D6.toInt()),
-        edgeType = prefs.getInt("$key.edgeType", 1),
-        edgeColor = prefs.getInt("$key.edgeColor", 0xFF000000.toInt()),
-        backgroundColor = prefs.getInt("$key.backgroundColor", 0x00000000),
-        preserveOriginalStyling = prefs.getBoolean("$key.preserveOriginalStyling", false),
     )
 }
 
@@ -84,14 +68,6 @@ fun saveMovieSubtitleMemory(context: Context, videoPath: String, memory: MovieSu
         putString("$key.dualSecondarySource", memory.dualSecondarySource)
         putString("$key.dualSecondaryColorHex", memory.dualSecondaryColorHex)
         putFloat("$key.syncOffsetSeconds", memory.syncOffsetSeconds)
-        putFloat("$key.textSizeSp", memory.textSizeSp)
-        putFloat("$key.bottomPadding", memory.bottomPadding)
-        putString("$key.presetName", memory.presetName)
-        putInt("$key.foregroundColor", memory.foregroundColor)
-        putInt("$key.edgeType", memory.edgeType)
-        putInt("$key.edgeColor", memory.edgeColor)
-        putInt("$key.backgroundColor", memory.backgroundColor)
-        putBoolean("$key.preserveOriginalStyling", memory.preserveOriginalStyling)
     }
 }
 

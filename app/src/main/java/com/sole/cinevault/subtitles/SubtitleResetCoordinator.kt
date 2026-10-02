@@ -49,7 +49,7 @@ class SubtitleResetCoordinator(
             defaults.edgeColor,
             defaults.backgroundColor,
         )
-        appearanceUi.preserveOriginalStyling = false
+        appearanceUi.preserveOriginalStyling = defaults.preserveOriginalStyling
 
         coreUi.syncOffset = 0f
         trackUi.appliedOffsetMs = 0L

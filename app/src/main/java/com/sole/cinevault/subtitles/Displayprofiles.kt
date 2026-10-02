@@ -33,7 +33,8 @@ data class SubtitleProfileSettings(
     val foregroundColor: Int,
     val edgeType: Int,
     val edgeColor: Int,
-    val backgroundColor: Int
+    val backgroundColor: Int,
+    val preserveOriginalStyling: Boolean
 )
 
 // Sensible starting point per profile, used the first time a given
@@ -50,7 +51,8 @@ fun defaultSubtitleProfileSettings(type: DisplayProfileType, isLandscape: Boolea
             foregroundColor = cineVaultForeground,
             edgeType = CaptionStyleCompat.EDGE_TYPE_OUTLINE,
             edgeColor = AndroidColor.BLACK,
-            backgroundColor = AndroidColor.TRANSPARENT
+            backgroundColor = AndroidColor.TRANSPARENT,
+            preserveOriginalStyling = false
         )
         DisplayProfileType.TV -> SubtitleProfileSettings(
             fontSizeSp = 26f,
@@ -59,7 +61,8 @@ fun defaultSubtitleProfileSettings(type: DisplayProfileType, isLandscape: Boolea
             foregroundColor = cineVaultForeground,
             edgeType = CaptionStyleCompat.EDGE_TYPE_OUTLINE,
             edgeColor = AndroidColor.BLACK,
-            backgroundColor = AndroidColor.TRANSPARENT
+            backgroundColor = AndroidColor.TRANSPARENT,
+            preserveOriginalStyling = false
         )
         DisplayProfileType.TABLET -> SubtitleProfileSettings(
             fontSizeSp = if (isLandscape) 18f else 16f,
@@ -68,7 +71,8 @@ fun defaultSubtitleProfileSettings(type: DisplayProfileType, isLandscape: Boolea
             foregroundColor = cineVaultForeground,
             edgeType = CaptionStyleCompat.EDGE_TYPE_OUTLINE,
             edgeColor = AndroidColor.BLACK,
-            backgroundColor = AndroidColor.TRANSPARENT
+            backgroundColor = AndroidColor.TRANSPARENT,
+            preserveOriginalStyling = false
         )
         DisplayProfileType.PHONE -> SubtitleProfileSettings(
             fontSizeSp = if (isLandscape) 16f else 14f,
@@ -77,7 +81,8 @@ fun defaultSubtitleProfileSettings(type: DisplayProfileType, isLandscape: Boolea
             foregroundColor = cineVaultForeground,
             edgeType = CaptionStyleCompat.EDGE_TYPE_OUTLINE,
             edgeColor = AndroidColor.BLACK,
-            backgroundColor = AndroidColor.TRANSPARENT
+            backgroundColor = AndroidColor.TRANSPARENT,
+            preserveOriginalStyling = false
         )
     }
 }
@@ -99,7 +104,8 @@ fun loadSubtitleProfileSettings(context: Context, type: DisplayProfileType, isLa
         foregroundColor = prefs.getInt("$id.foreground", defaults.foregroundColor),
         edgeType = prefs.getInt("$id.edgeType", defaults.edgeType),
         edgeColor = prefs.getInt("$id.edgeColor", defaults.edgeColor),
-        backgroundColor = prefs.getInt("$id.background", defaults.backgroundColor)
+        backgroundColor = prefs.getInt("$id.background", defaults.backgroundColor),
+        preserveOriginalStyling = prefs.getBoolean("$id.preserveOriginalStyling", defaults.preserveOriginalStyling)
     )
 }
 
@@ -113,6 +119,7 @@ fun saveSubtitleProfileSettings(context: Context, type: DisplayProfileType, isLa
         putInt("$id.edgeType", settings.edgeType)
         putInt("$id.edgeColor", settings.edgeColor)
         putInt("$id.background", settings.backgroundColor)
+        putBoolean("$id.preserveOriginalStyling", settings.preserveOriginalStyling)
     }
 }
 
@@ -120,7 +127,7 @@ fun saveSubtitleProfileSettings(context: Context, type: DisplayProfileType, isLa
 fun clearSubtitleProfileSettings(context: Context, type: DisplayProfileType, isLandscape: Boolean) {
     val id = displayProfileId(type, isLandscape)
     context.getSharedPreferences(PROFILE_PREFS_NAME, Context.MODE_PRIVATE).edit {
-        listOf("fontSize", "bottomPadding", "presetName", "foreground", "edgeType", "edgeColor", "background")
+        listOf("fontSize", "bottomPadding", "presetName", "foreground", "edgeType", "edgeColor", "background", "preserveOriginalStyling")
             .forEach { remove("$id.$it") }
     }
 }
