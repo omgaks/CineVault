@@ -9,6 +9,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.net.URLEncoder
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 // ── SubDL — second subtitle provider ─────────────────────────────────────
@@ -165,7 +166,7 @@ object SubDlClient {
                     preferredLanguage = language,
                 )) {
                     is SubtitleImportResult.Success -> {
-                        val importedFile = imported.selected.uri.path?.let(::java.io.File)
+                        val importedFile = imported.selected.uri.path?.let(::File)
                             ?: return@withContext SubtitleDownloadResult.UnexpectedError("Imported SubDL subtitle has no file path")
                         val cacheFile = OpenSubtitlesClient.subtitleCacheFile(
                             context, videoPath, language, provider = "SubDL"
