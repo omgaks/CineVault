@@ -140,7 +140,7 @@ class SubtitleSearchCoordinator(
         }
     }
 
-    @OptIn(UnstableApi::class)
+    @UnstableApi
     fun selectSubtitleTrack(choice: SubtitleTrackChoice) {
         studioUi.menuTouchKey++
         when (choice) {
