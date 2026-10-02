@@ -35,7 +35,8 @@ class SubtitleDeletionCoordinator(
     private val setPendingConsentFile: (File?) -> Unit,
     private val setPendingDeleteConfirmFile: (File?) -> Unit,
     private val onDeleteRequested: (File) -> Unit = {},
-    private val onDeleteUndone: (File) -> Unit = {}
+    private val onDeleteUndone: (File) -> Unit = {},
+    private val onDeleteCommitted: (File) -> Unit = {}
 ) {
     private fun finalizeSubtitleDeletion(file: File) {
         setPendingConsentFile(file)
@@ -43,7 +44,10 @@ class SubtitleDeletionCoordinator(
             context = context,
             file = file,
             onNeedsConsent = { intentSender -> deleteConsentLauncher.launch(IntentSenderRequest.Builder(intentSender).build()) },
-            onDeleted = { setPendingConsentFile(null) },
+            onDeleted = {
+                setPendingConsentFile(null)
+                onDeleteCommitted(file)
+            },
             onFailed = { e ->
                 pendingDeletePaths.remove(file.absolutePath)
                 setPendingConsentFile(null)

@@ -71,6 +71,21 @@ fun saveMovieSubtitleMemory(context: Context, videoPath: String, memory: MovieSu
     }
 }
 
+fun clearRememberedSubtitleReference(context: Context, videoPath: String) {
+    val prefs = context.getSharedPreferences(MOVIE_SUBTITLE_PREFS, Context.MODE_PRIVATE)
+    val key = movieSubtitleKey(videoPath)
+    if (!prefs.getBoolean("$key.saved", false)) return
+    prefs.edit {
+        putBoolean("$key.subtitlesEnabled", false)
+        remove("$key.primaryUri")
+        remove("$key.primaryLanguage")
+        putString("$key.selectedKey", "off")
+        putString("$key.selectedLabel", "")
+        putString("$key.selectedSource", "")
+        putBoolean("$key.dualEnabled", false)
+    }
+}
+
 fun canRestoreMovieSubtitleUri(context: Context, uriText: String?): Boolean {
     if (uriText.isNullOrBlank()) return false
     return try {

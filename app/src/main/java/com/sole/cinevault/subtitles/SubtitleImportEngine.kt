@@ -46,24 +46,29 @@ object SubtitleImportEngine {
     // (e.g. mid-write) rather than failing the whole pass.
     fun cleanOldCache(context: Context, maxAgeDays: Int = 7) {
         val cutoffMs = System.currentTimeMillis() - (maxAgeDays * 24L * 60L * 60L * 1000L)
-        val dir = File(context.cacheDir, "web_subtitles")
-        val files = dir.listFiles() ?: return
-        for (file in files) {
+        val legacyDir = File(context.cacheDir, "web_subtitles")
+        legacyDir.listFiles().orEmpty().forEach { file ->
             try {
-                if (file.isFile && file.lastModified() < cutoffMs) file.delete()
-            } catch (_: Exception) {
-                // Best-effort cleanup — one stubborn file shouldn't block
-                // the rest of the pass, and this is disposable cache data
-                // either way (Android can reclaim cacheDir on its own if
-                // storage gets tight).
-            }
+                // Only abandoned partial payloads are disposable. Completed imports
+                // may still be referenced by older movie-memory rows, so do not age
+                // them out underneath the player. New imports are persisted in filesDir.
+                if (file.isFile && file.name.endsWith(".partial") && file.lastModified() < cutoffMs) file.delete()
+            } catch (_: Exception) { }
+        }
+
+        // Derived sync/clean/dual files are reproducible and safe to prune.
+        context.cacheDir.listFiles().orEmpty().forEach { file ->
+            val transient = file.name.startsWith("cinevault_synced_") ||
+                file.name.startsWith("cleaned_") ||
+                file.name.startsWith("dual_")
+            try {
+                if (file.isFile && transient && file.lastModified() < cutoffMs) file.delete()
+            } catch (_: Exception) { }
         }
     }
 
     suspend fun import(context: Context, input: InputStream, suggestedName: String?, releaseHint: String, preferredLanguage: String = "en"): SubtitleImportResult = withContext(Dispatchers.IO) {
-        val workDir = File(context.cacheDir, "web_subtitles").apply {
-            mkdirs()
-        }
+        val workDir = File(context.cacheDir, "web_subtitles").apply { mkdirs() }
         val payload = File(workDir, "${UUID.randomUUID()}.partial")
 
         try {
@@ -148,7 +153,7 @@ object SubtitleImportEngine {
     }
 
     private fun persistValidated(context: Context, bytes: ByteArray, displayName: String, format: SubtitleFormat, preferredLanguage: String): ImportedSubtitle {
-        val directory = File(context.cacheDir, "web_subtitles").apply {
+        val directory = File(context.filesDir, "imported_subtitles").apply {
             mkdirs()
         }
         val extension = displayName.substringAfterLast('.', "srt")
@@ -158,7 +163,7 @@ object SubtitleImportEngine {
             it.write(bytes)
         }
         check(partial.renameTo(finalFile)) {
-            "Could not finalize subtitle cache file"
+            "Could not finalize imported subtitle file"
         }
 
         val lower = displayName.lowercase(Locale.ROOT)

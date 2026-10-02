@@ -26,6 +26,15 @@ object GeneratedSubtitleStore {
     fun directory(context: Context): File =
         File(context.filesDir, DIR_NAME).apply { mkdirs() }
 
+    fun cleanOldGenerated(context: Context, maxAgeDays: Int = 90) {
+        val cutoffMs = System.currentTimeMillis() - (maxAgeDays * 24L * 60L * 60L * 1000L)
+        directory(context).listFiles().orEmpty().forEach { file ->
+            try {
+                if (file.isFile && file.lastModified() < cutoffMs) file.delete()
+            } catch (_: Exception) { }
+        }
+    }
+
     fun videoBaseName(videoPath: String): String =
         videoPath
             .substringAfterLast('/')
