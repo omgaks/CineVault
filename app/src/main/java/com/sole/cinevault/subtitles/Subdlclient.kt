@@ -2,7 +2,6 @@ package com.sole.cinevault.subtitles
 
 import com.sole.cinevault.BuildConfig
 import android.content.Context
-import android.net.Uri
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -11,7 +10,6 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
-import java.util.zip.ZipInputStream
 
 // ── SubDL — second subtitle provider ─────────────────────────────────────
 // Verified against SubDL's own published API docs (subdl.com/api-doc)
@@ -155,14 +153,24 @@ object SubDlClient {
                     return@withContext SubtitleDownloadResult.DownloadHttpError(0, "Empty response from SubDL")
                 }
 
-                val srtText = extractSubtitleText(bytes)
-                    ?: return@withContext SubtitleDownloadResult.UnexpectedError("Couldn't find a subtitle file in the SubDL download")
-
-                val targetFile = OpenSubtitlesClient.subtitleCacheFile(context, videoPath, language, provider = "SubDL")
-                targetFile.parentFile?.mkdirs()
-                targetFile.writeText(srtText, Charsets.UTF_8)
-                Log.d(TAG, "SubDL subtitle saved: ${targetFile.absolutePath}")
-                SubtitleDownloadResult.Success(Uri.fromFile(targetFile), language, provider = "SubDL")
+                // Route provider payloads through the same bounded archive,
+                // charset, format and candidate-ranking engine used by local/
+                // website imports. This avoids first-entry-wins ZIP handling and
+                // prevents ASS/VTT content from being mislabeled as SRT.
+                when (val imported = SubtitleImportEngine.import(
+                    context = context,
+                    input = bytes.inputStream(),
+                    suggestedName = downloadUrl.substringAfterLast('/').substringBefore('?'),
+                    releaseHint = videoPath.substringAfterLast('/').substringAfterLast('\\'),
+                    preferredLanguage = language,
+                )) {
+                    is SubtitleImportResult.Success -> {
+                        Log.d(TAG, "SubDL subtitle imported: ${imported.selected.uri}")
+                        SubtitleDownloadResult.Success(imported.selected.uri, language, provider = "SubDL")
+                    }
+                    is SubtitleImportResult.Failure ->
+                        SubtitleDownloadResult.UnexpectedError(imported.userMessage)
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "SubDL download error: ${e.message}", e)
@@ -170,33 +178,4 @@ object SubDlClient {
         }
     }
 
-    // Detects a ZIP by its magic bytes (PK\x03\x04) rather than trusting
-    // the URL's file extension — extracts the first .srt/.vtt/.ass/.ssa
-    // entry found. Falls back to treating the response as raw text
-    // directly when it isn't a ZIP at all, since SubDL's unpack=1 file
-    // URLs aren't documented clearly enough to assume either way.
-    private fun extractSubtitleText(bytes: ByteArray): String? {
-        val isZip = bytes.size >= 4 &&
-            bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte() &&
-            bytes[2] == 0x03.toByte() && bytes[3] == 0x04.toByte()
-
-        if (!isZip) return bytes.toString(Charsets.UTF_8)
-
-        return try {
-            ZipInputStream(bytes.inputStream()).use { zis ->
-                var entry = zis.nextEntry
-                while (entry != null) {
-                    val name = entry.name.lowercase()
-                    if (!entry.isDirectory && (name.endsWith(".srt") || name.endsWith(".vtt") || name.endsWith(".ass") || name.endsWith(".ssa"))) {
-                        return@use zis.readBytes().toString(Charsets.UTF_8)
-                    }
-                    entry = zis.nextEntry
-                }
-                null
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "SubDL zip extraction failed: ${e.message}", e)
-            null
-        }
-    }
 }

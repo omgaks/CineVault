@@ -237,11 +237,13 @@ class SubtitleSyncToolsCoordinator(
                 return@launch
             }
 
-            val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+            // Keep originalUri/primaryUri as the true unshifted primary. The merged
+            // file is only the render base while Dual Subs is enabled; timing is
+            // then reapplied to that base by SubtitleSyncRenderCoordinator.
+            trackUi.renderBaseUri = merged
+            trackUi.appliedOffsetMs = Long.MIN_VALUE
+            driftUi.appliedScale = Float.NaN
             coreUi.subtitlesEnabled = true
-            playSubtitle(merged, resumeAt, false)
-            trackUi.originalUri = merged
-            trackUi.appliedOffsetMs = (coreUi.syncOffset * 1000f).toLong()
             dualUi.secondarySourceLabel = sourceLabel
             dualUi.statusText =
                 "Dual subtitles: ${if (trackUi.primaryLanguage != null) SubtitleLanguageRegistry.displayName(trackUi.primaryLanguage) else "Primary"} + ${SubtitleLanguageRegistry.displayName(dualUi.secondaryLanguage)}"
@@ -259,9 +261,11 @@ class SubtitleSyncToolsCoordinator(
         val primary = trackUi.primaryUri ?: return
         val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
         coreUi.subtitlesEnabled = true
+        trackUi.renderBaseUri = null
         trackUi.originalUri = primary
-        trackUi.appliedOffsetMs = 0L
-        playSubtitle(primary, resumeAt, true)
+        trackUi.appliedOffsetMs = Long.MIN_VALUE
+        driftUi.appliedScale = Float.NaN
+        playSubtitle(primary, resumeAt, false)
     }
 
 }

@@ -18,7 +18,8 @@ import android.net.Uri
 
 fun readTextFromUri(context: Context, uri: Uri): String? {
     return try {
-        context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+        SubtitleTextDecoder.decode(bytes)
     } catch (e: Exception) {
         null
     }

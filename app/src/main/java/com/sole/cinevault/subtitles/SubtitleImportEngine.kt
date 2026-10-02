@@ -8,7 +8,6 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
-import java.nio.charset.Charset
 import java.util.Locale
 import java.util.UUID
 import java.util.zip.ZipInputStream
@@ -189,19 +188,7 @@ object SubtitleImportEngine {
         }
     }
 
-    private fun decodeText(bytes: ByteArray): String {
-        val charset = when {
-            bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte() -> Charsets.UTF_8
-            bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte() -> Charsets.UTF_16LE
-            bytes.size >= 2 && bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte() -> Charsets.UTF_16BE
-            else -> Charsets.UTF_8
-        }
-        return runCatching {
-            bytes.toString(charset)
-        }.getOrElse {
-            bytes.toString(Charset.forName("windows-1252"))
-        }
-    }
+    private fun decodeText(bytes: ByteArray): String = SubtitleTextDecoder.decode(bytes)
 
     private fun candidateScore(fileName: String, releaseHint: String, preferredLanguage: String): Int {
         val fileTokens = tokens(fileName)
