@@ -325,11 +325,14 @@ fun PlayerVideoSessionInitializationEffect(
         ) {
             autoSubtitleFetch.attemptedForPath = video.path
 
-            scope.launch {
+            // Stay inside this video-keyed LaunchedEffect. Navigation cancels
+            // this work automatically, preventing an old video's auto-fetch
+            // from applying to the next session.
+            run {
                 delay(playerSubtitleAutoFetchStartDelayMs())
 
                 if (autoSubtitleFetch.downloadInProgress) {
-                    return@launch
+                    return@run
                 }
 
                 autoSubtitleFetch.downloadInProgress = true

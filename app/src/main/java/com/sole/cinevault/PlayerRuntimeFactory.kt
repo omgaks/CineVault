@@ -36,7 +36,6 @@ internal fun rememberPlayerRuntime(
     // tied only to things that genuinely require a new player.
     val runtime = remember(
         context,
-        preferredLanguage,
         currentVideoPath,
         audioRendererPreference,
     ) {
@@ -56,6 +55,18 @@ internal fun rememberPlayerRuntime(
                     )
                 }
         }
+    }
+
+    // Preferred subtitle language is selection policy, not player identity.
+    // Apply it live so choosing/promoting an embedded subtitle can never
+    // dispose and recreate ExoPlayer mid-playback.
+    LaunchedEffect(runtime.trackSelector, preferredLanguage) {
+        runtime.trackSelector.parameters =
+            runtime.trackSelector.buildUponParameters()
+                .setPreferredAudioLanguage(preferredLanguage)
+                .setPreferredTextLanguage(preferredLanguage)
+                .setSelectUndeterminedTextLanguage(true)
+                .build()
     }
 
     // Apply the embedded-subtitle preference live to the existing selector.

@@ -109,7 +109,8 @@ fun BoxScope.PlayerSubtitleAiPanels(
                         onDownloadModel = speechCoordinator::downloadModel,
                         onDeleteModel = speechCoordinator::deleteModel,
                         onGenerate = {
-                            onHideSpeechPanel()
+                            // Keep the panel visible while generation runs so the
+                            // existing Stop action remains reachable.
                             speechCoordinator.generateSubtitles()
                         },
                         onStop = {
