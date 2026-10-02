@@ -72,7 +72,7 @@ class PlaybackNavigationCoordinator(
                 }
             }
 
-            val mediaItem = buildPlaybackMediaItem(currentVideo.path, subtitleUri)
+            val mediaItem = buildPlaybackMediaItem(currentVideo.path, subtitleUri, trackUi.primaryLanguage)
             val resumeAt = resumePosition.coerceAtLeast(0L)
 
             if (exoPlayer.mediaItemCount > 0) {

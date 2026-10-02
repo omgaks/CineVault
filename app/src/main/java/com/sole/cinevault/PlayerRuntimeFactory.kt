@@ -69,17 +69,9 @@ internal fun rememberPlayerRuntime(
                 .build()
     }
 
-    // Apply the embedded-subtitle preference live to the existing selector.
-    // This changes text-track eligibility without interrupting playback.
-    LaunchedEffect(runtime.trackSelector, autoEnableEmbeddedSubtitles) {
-        runtime.trackSelector.parameters =
-            runtime.trackSelector.buildUponParameters()
-                .setTrackTypeDisabled(
-                    C.TRACK_TYPE_TEXT,
-                    !autoEnableEmbeddedSubtitles,
-                )
-                .build()
-    }
+    // autoEnableEmbeddedSubtitles is an AUTO-SELECTION policy only. Do not
+    // disable TRACK_TYPE_TEXT here: external/downloaded subtitles also use the
+    // text renderer and would disappear when this preference is off.
 
     return runtime
 }
@@ -97,10 +89,7 @@ internal fun createPlayerRuntime(
             .setPreferredAudioLanguage(preferredLanguage)
             .setPreferredTextLanguage(preferredLanguage)
             .setSelectUndeterminedTextLanguage(true)
-            .setTrackTypeDisabled(
-                C.TRACK_TYPE_TEXT,
-                !autoEnableEmbeddedSubtitles
-            )
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
             .build()
     }
 

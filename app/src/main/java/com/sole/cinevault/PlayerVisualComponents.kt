@@ -192,7 +192,7 @@ internal fun findNearbySrtFiles(videoPath: String): List<java.io.File> {
 // whole matched substring from scratch using comma, so a dot-decimal
 // input file gets normalized to spec-correct comma on its first shift,
 // which is a strict improvement, not a behavior change to guard against.
-private val SRT_TIME_REGEX = Regex("(\\d{2}):(\\d{2}):(\\d{2})[,.](\\d{3})")
+private val SRT_TIME_REGEX = Regex("(\\d{1,2}):(\\d{2}):(\\d{2})[,.](\\d{3})")
 
 // FIX/FEATURE: Auto-Sync progress and results previously only rendered
 // inside Subtitle Studio's Timing tab — meaning closing or navigating

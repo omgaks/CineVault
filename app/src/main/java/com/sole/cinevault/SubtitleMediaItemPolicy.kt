@@ -1,7 +1,6 @@
 package com.sole.cinevault
 
 import android.net.Uri
-import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import com.sole.cinevault.subtitles.detectSubtitleFormat
@@ -14,6 +13,7 @@ import com.sole.cinevault.subtitles.detectSubtitleFormat
 internal fun buildPlaybackMediaItem(
     videoUri: String,
     subtitleUri: Uri?,
+    subtitleLanguage: String? = null,
 ): MediaItem {
     val builder = MediaItem.Builder().setUri(videoUri)
     if (subtitleUri != null) {
@@ -23,8 +23,7 @@ internal fun buildPlaybackMediaItem(
             listOf(
                 MediaItem.SubtitleConfiguration.Builder(subtitleUri)
                     .setMimeType(subtitleMimeType)
-                    .setLanguage("en")
-                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                    .setLanguage(subtitleLanguage)
                     .build()
             )
         )
