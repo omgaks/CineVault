@@ -60,18 +60,30 @@ internal fun rememberPlayerRuntime(
     // Preferred subtitle language is selection policy, not player identity.
     // Apply it live so choosing/promoting an embedded subtitle can never
     // dispose and recreate ExoPlayer mid-playback.
-    LaunchedEffect(runtime.trackSelector, preferredLanguage) {
-        runtime.trackSelector.parameters =
-            runtime.trackSelector.buildUponParameters()
-                .setPreferredAudioLanguage(preferredLanguage)
+    LaunchedEffect(runtime.trackSelector, preferredLanguage, autoEnableEmbeddedSubtitles) {
+        val builder = runtime.trackSelector.buildUponParameters()
+            .setPreferredAudioLanguage(preferredLanguage)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+
+        if (autoEnableEmbeddedSubtitles) {
+            builder
                 .setPreferredTextLanguage(preferredLanguage)
                 .setSelectUndeterminedTextLanguage(true)
-                .build()
-    }
+                .setIgnoredTextSelectionFlags(0)
+        } else {
+            // Keep the text renderer available for a manually selected
+            // embedded/downloaded/generated subtitle, but remove the signals
+            // that cause Media3 to auto-pick an embedded text track.
+            builder
+                .setPreferredTextLanguage(null)
+                .setSelectUndeterminedTextLanguage(false)
+                .setIgnoredTextSelectionFlags(
+                    C.SELECTION_FLAG_DEFAULT or C.SELECTION_FLAG_FORCED
+                )
+        }
 
-    // autoEnableEmbeddedSubtitles is an AUTO-SELECTION policy only. Do not
-    // disable TRACK_TYPE_TEXT here: external/downloaded subtitles also use the
-    // text renderer and would disappear when this preference is off.
+        runtime.trackSelector.parameters = builder.build()
+    }
 
     return runtime
 }
