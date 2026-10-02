@@ -197,6 +197,11 @@ class SubtitleTranslationCoordinator(
                             return@launch
                         }
 
+                        if (getCurrentVideoPath() != videoPath) {
+                            setStatus(SubtitleTranslationStatus.Idle)
+                            return@launch
+                        }
+
                         setStatus(
                             SubtitleTranslationStatus.Ready(
                                 uri = generated.uri,

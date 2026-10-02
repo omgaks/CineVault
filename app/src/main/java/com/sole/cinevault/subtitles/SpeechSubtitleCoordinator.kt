@@ -169,6 +169,11 @@ class SpeechSubtitleCoordinator(
                             return@launch
                         }
 
+                        if (getCurrentVideoPath() != videoPath) {
+                            setStatus(SpeechSubtitleStatus.Idle)
+                            return@launch
+                        }
+
                         val cueCount = generated.cueCount.coerceAtLeast(result.cueCount)
                         setStatus(
                             SpeechSubtitleStatus.Ready(

@@ -31,6 +31,11 @@ class SubtitleSearchCoordinator(
     private val setPendingSrtUri: (Uri) -> Unit,
     private val playSubtitle: (subtitleUri: Uri?, resumePosition: Long, isOriginalSubtitle: Boolean) -> Unit
 ) {
+    private var searchGeneration = 0L
+
+    private fun isCurrentVideo(expectedPath: String): Boolean =
+        getCurrentVideoPath() == expectedPath
+
     fun applyImportedWebsiteSubtitle(imported: ImportedSubtitle) {
         scope.launch {
             val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
@@ -57,10 +62,12 @@ class SubtitleSearchCoordinator(
     }
 
     fun performSubtitleSearch(query: String, seasonText: String, episodeText: String, language: String = coreUi.behaviorPrefs.preferredLanguages.firstOrNull() ?: "en") {
+        val expectedPath = getCurrentVideoPath()
+        val generation = ++searchGeneration
         searchUi.searchLoading = true
         searchUi.searchStatus = ""
         scope.launch {
-            val openSubsDeferred = scope.async {
+            val openSubsDeferred = async {
                 OpenSubtitlesClient.searchSubtitlesDetailed(
                     query = query, season = seasonText.toIntOrNull(),
                     episode = episodeText.toIntOrNull(), language = language,
@@ -68,11 +75,12 @@ class SubtitleSearchCoordinator(
                     preferSdh = coreUi.behaviorPrefs.preferSdh
                 )
             }
-            val subDlDeferred = scope.async {
+            val subDlDeferred = async {
                 SubDlClient.search(query, seasonText.toIntOrNull(), episodeText.toIntOrNull(), language)
             }
             val openSubsResult = openSubsDeferred.await()
             val subDlResult = subDlDeferred.await()
+            if (generation != searchGeneration || !isCurrentVideo(expectedPath)) return@launch
             searchUi.searchLoading = false
             val openSubsList = (openSubsResult as? SubtitleSearchListResult.Success)?.results.orEmpty()
             val subDlList = (subDlResult as? SubtitleSearchListResult.Success)?.results.orEmpty()
@@ -86,11 +94,16 @@ class SubtitleSearchCoordinator(
     }
 
     fun applySearchResult(result: SubtitleSearchResult, alsoPlay: Boolean) {
+        val expectedPath = getCurrentVideoPath()
         scope.launch {
             val downloadResult = if (result.provider == "SubDL" && result.subDlDownloadPath != null) {
-                SubDlClient.downloadSubtitle(context, getCurrentVideoPath(), result.subDlDownloadPath, result.language)
+                SubDlClient.downloadSubtitle(context, expectedPath, result.subDlDownloadPath, result.language)
             } else {
-                OpenSubtitlesClient.downloadSubtitleByFileId(context, getCurrentVideoPath(), result.fileId, result.language, result.provider)
+                OpenSubtitlesClient.downloadSubtitleByFileId(context, expectedPath, result.fileId, result.language, result.provider)
+            }
+            if (!isCurrentVideo(expectedPath)) {
+                Toast.makeText(context, "Subtitle download ignored: video changed", Toast.LENGTH_SHORT).show()
+                return@launch
             }
             when (downloadResult) {
                 is SubtitleDownloadResult.Success -> {

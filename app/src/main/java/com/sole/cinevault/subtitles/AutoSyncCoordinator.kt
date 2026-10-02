@@ -57,6 +57,7 @@ class AutoSyncCoordinator(
         // window as tightly as possible.
         if (getAutoSyncStatus() is AutoSyncStatus.Analyzing) return
         val primary = getPrimarySubtitleUri()
+        val expectedVideoPath = getCurrentVideoPath()
         if (primary == null) {
             Toast.makeText(context, "Auto-Sync needs a downloaded or local subtitle loaded first", Toast.LENGTH_LONG).show()
             return
@@ -85,10 +86,15 @@ class AutoSyncCoordinator(
             val videoDurationMs = exoPlayer.duration.coerceAtLeast(0L)
             val result = try {
                 withContext(Dispatchers.Default) {
-                    AutoSyncEngine.run(context, getCurrentVideoPath(), videoDurationMs, audioLang, srtText)
+                    AutoSyncEngine.run(context, expectedVideoPath, videoDurationMs, audioLang, srtText)
                 }
             } catch (oom: OutOfMemoryError) {
                 AutoSyncStatus.Failed("Not enough available memory for Auto-Sync right now. Close other apps and try again.")
+            }
+            if (getCurrentVideoPath() != expectedVideoPath || getPrimarySubtitleUri() != primary) {
+                setAutoSyncStatus(AutoSyncStatus.Failed("Auto-Sync cancelled: video or subtitle changed"))
+                incrementPreviewReloadKey()
+                return@launch
             }
             setAutoSyncStatus(result)
             // Full-runtime speech timeline for the Delay slider's waveform
@@ -99,7 +105,7 @@ class AutoSyncCoordinator(
             // track, it never affects the actual sync result above.
             try {
                 val timeline = withContext(Dispatchers.Default) {
-                    AutoSyncEngine.buildFullSpeechTimeline(context, getCurrentVideoPath(), videoDurationMs, audioLang)
+                    AutoSyncEngine.buildFullSpeechTimeline(context, expectedVideoPath, videoDurationMs, audioLang)
                 }
                 setSpeechTimeline(timeline)
             } catch (e: OutOfMemoryError) {
@@ -115,6 +121,11 @@ class AutoSyncCoordinator(
     }
 
     fun applyAutoSyncResult(result: SubtitleSyncResult) {
+        // A result is only actionable while the coordinator is still exposing
+        // that result for the current session. Navigation resets this state.
+        if (getAutoSyncStatus() !is AutoSyncStatus.Success &&
+            getAutoSyncStatus() !is AutoSyncStatus.LowConfidence
+        ) return
         setSyncOffsetSeconds((result.initialOffsetMs / 1000f).coerceIn(-10f, 10f))
         setDriftScale(result.timeScale.toFloat())
         setAutoSyncStatus(AutoSyncStatus.Idle)
