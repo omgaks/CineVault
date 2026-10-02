@@ -78,7 +78,6 @@ internal fun rememberPlayerSubtitleFileRuntime(
             onDeleteRequested = { file ->
                 val isActive =
                     trackUi.selectedKey == "local:${file.absolutePath}" ||
-                        trackUi.selectedKey == "downloaded" ||
                         trackUi.originalUri?.path == file.absolutePath ||
                         trackUi.primaryUri?.path == file.absolutePath
 
@@ -118,6 +117,12 @@ internal fun rememberPlayerSubtitleFileRuntime(
                     )
                 }
                 detachedSubtitleForUndoState.value = null
+            },
+            onDeleteCommitted = { file ->
+                if (detachedSubtitleForUndoState.value?.absolutePath == file.absolutePath) {
+                    clearRememberedSubtitleReference(context, latestVideoPath.value)
+                    detachedSubtitleForUndoState.value = null
+                }
             },
         )
     }

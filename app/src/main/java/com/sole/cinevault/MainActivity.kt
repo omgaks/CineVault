@@ -84,6 +84,7 @@ class MainActivity : FragmentActivity() {
         // to finish, which is fine for a disposable-cache cleanup pass.
         lifecycleScope.launch(Dispatchers.IO) {
             SubtitleImportEngine.cleanOldCache(applicationContext)
+            GeneratedSubtitleStore.cleanOldGenerated(applicationContext)
         }
 
         // Required for the lock-screen/media notification (CineVaultPlaybackService.kt)

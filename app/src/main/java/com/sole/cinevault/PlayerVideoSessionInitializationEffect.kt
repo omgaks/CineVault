@@ -3,6 +3,7 @@ package com.sole.cinevault
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import com.sole.cinevault.library.VideoFile
@@ -165,10 +166,19 @@ fun PlayerVideoSessionInitializationEffect(
             )
         }
 
-        val rememberedPrimaryUri = savedSubtitleMemory
-            ?.primaryUri
+        val savedPrimaryUriText = savedSubtitleMemory?.primaryUri
+        val rememberedPrimaryUri = savedPrimaryUriText
             ?.takeIf { canRestoreMovieSubtitleUri(context, it) }
             ?.let(Uri::parse)
+
+        if (!savedPrimaryUriText.isNullOrBlank() && rememberedPrimaryUri == null) {
+            clearRememberedSubtitleReference(context, video.path)
+            Toast.makeText(
+                context,
+                "Saved subtitle is no longer available — CineVault cleared the old reference.",
+                Toast.LENGTH_LONG,
+            ).show()
+        }
 
         val restoredRememberedPrimary = rememberedPrimaryUri != null
 
