@@ -142,6 +142,34 @@ class SubtitleSearchCoordinator(
     fun selectSubtitleTrack(choice: SubtitleTrackChoice) {
         studioUi.menuTouchKey++
         when (choice) {
+            is SubtitleTrackChoice.On -> {
+                val textGroups = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+                val firstAvailable = textGroups.firstOrNull { it.length > 0 }
+
+                coreUi.subtitlesEnabled = true
+                val builder = trackSelector.buildUponParameters()
+                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+
+                if (firstAvailable != null) {
+                    builder.setOverrideForType(
+                        TrackSelectionOverride(firstAvailable.mediaTrackGroup, listOf(0))
+                    )
+                    val format = firstAvailable.getTrackFormat(0)
+                    trackUi.selectedKey = "embedded:0:0"
+                    trackUi.selectedLabel = SubtitleLanguageRegistry.displayName(format.language)
+                    trackUi.selectedSource = "Embedded"
+                } else {
+                    // No embedded text track is currently exposed. Leave the
+                    // renderer enabled so a downloaded/local/generated track
+                    // can be selected immediately.
+                    trackUi.selectedKey = choice.key
+                    trackUi.selectedLabel = ""
+                    trackUi.selectedSource = ""
+                }
+
+                trackSelector.parameters = builder.build()
+            }
             is SubtitleTrackChoice.Off -> {
                 coreUi.subtitlesEnabled = false
                 trackSelector.parameters = trackSelector.buildUponParameters()

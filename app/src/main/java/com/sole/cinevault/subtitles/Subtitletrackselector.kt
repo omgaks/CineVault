@@ -17,10 +17,6 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,16 +30,8 @@ import androidx.compose.ui.unit.sp
 import com.sole.cinevault.ui.theme.*
 import java.io.File
 
-// ── Track Selector data model ──────────────────────────────────────────
-// One flat, ordered representation of every subtitle choice available for
-// the current video, grouped by SOURCE (Off / Embedded / Downloaded /
-// Local) rather than by language — matches the spec: sources are the top
-// division, language/format/SDH/forced are per-row detail underneath.
-//
-// `key` is the single source of truth for "is this row selected" — built
-// the same way in VideoPlayerScreen.kt wherever a track gets applied, so
-// selection state can't silently drift between the two files.
 sealed class SubtitleTrackChoice(val key: String) {
+    object On : SubtitleTrackChoice("on")
     object Off : SubtitleTrackChoice("off")
     data class Embedded(
         val groupIndex: Int,
@@ -54,13 +42,10 @@ sealed class SubtitleTrackChoice(val key: String) {
     ) : SubtitleTrackChoice("embedded:$groupIndex:$trackIndexInGroup")
     data class Downloaded(val file: File, val language: String) : SubtitleTrackChoice("downloaded")
     data class Local(val file: File) : SubtitleTrackChoice("local:${file.absolutePath}")
-    // AI-generated (Speech to subs) or AI-translated files. `isTranslated`
-    // drives the row's source label — GeneratedSubtitleStore's own
-    // fileName convention ("...-translated-<code>-<ts>.srt" vs
-    // "...-ai-<lang>-<ts>.srt") is the one place that distinction already
-    // exists, so it's read from there rather than re-derived some other
-    // way that could drift out of sync with it.
-    data class Generated(val file: GeneratedSubtitleFile, val isTranslated: Boolean) : SubtitleTrackChoice("generated:${file.fileName}")
+    data class Generated(
+        val file: GeneratedSubtitleFile,
+        val isTranslated: Boolean
+    ) : SubtitleTrackChoice("generated:${file.fileName}")
 }
 
 @Composable
@@ -78,12 +63,10 @@ fun SubtitleTrackSelectorSheet(
     onOpenFilePicker: () -> Unit,
     onBack: (() -> Unit)? = null,
     onDismiss: () -> Unit,
-    // Tracks and Manage share the same visual shell but NOT the same
-    // content anymore. Tracks selects/loads. Manage only shows files that
-    // CineVault can actually delete or inspect.
     initialManageMode: Boolean = false
 ) {
     val manageMode = initialManageMode
+    val subtitlesAreOff = selectedKey == SubtitleTrackChoice.Off.key
 
     Column(
         modifier = Modifier
@@ -96,8 +79,6 @@ fun SubtitleTrackSelectorSheet(
             .border(1.dp, AmberCore.copy(alpha = 0.20f), RoundedCornerShape(20.dp))
             .padding(13.dp)
     ) {
-        // Two-row chrome prevents the title from collapsing vertically on
-        // tablet/compact landscape when Back + Manage + Close all need space.
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -137,9 +118,7 @@ fun SubtitleTrackSelectorSheet(
         }
 
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 7.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
@@ -165,17 +144,18 @@ fun SubtitleTrackSelectorSheet(
         }
 
         val activeTrackLabel = when {
-            selectedKey == SubtitleTrackChoice.Off.key -> "Subtitles off"
+            subtitlesAreOff -> "Subtitles off"
             downloadedTrack != null && selectedKey == downloadedTrack.key ->
-                "${friendlyLanguageDisplay(downloadedTrack.language)} · OpenSubtitles"
+                "${friendlyLanguageDisplay(downloadedTrack.language)} · Downloaded"
             else -> localFiles.firstOrNull { selectedKey == "local:${it.absolutePath}" }
-                    ?.let { "${it.nameWithoutExtension} · Local" }
+                ?.let { "${it.nameWithoutExtension} · Local" }
                 ?: generatedFiles.firstOrNull { selectedKey == "generated:${it.fileName}" }
                     ?.let { "${it.label} · Generated" }
                 ?: embeddedTracks.firstOrNull { selectedKey == it.key }
                     ?.let { "${friendlyLanguageDisplay(it.language)} · Embedded" }
-                ?: "No subtitle selected"
+                ?: if (selectedKey == SubtitleTrackChoice.On.key) "Subtitles on" else "No subtitle selected"
         }
+
         Text(
             text = "ACTIVE  ·  $activeTrackLabel",
             color = TextBright,
@@ -191,27 +171,39 @@ fun SubtitleTrackSelectorSheet(
                 .border(1.dp, AmberCore.copy(alpha = 0.14f), RoundedCornerShape(10.dp))
                 .padding(horizontal = 10.dp, vertical = 7.dp)
         )
+
         Spacer(modifier = Modifier.height(8.dp))
         HorizontalDivider(color = GlassBorderBottom)
         Spacer(modifier = Modifier.height(6.dp))
 
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
+            modifier = Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())
         ) {
-
             if (!manageMode) {
-                TrackSectionLabel("Off")
-                TrackRow(
-                    icon = Icons.Default.SubtitlesOff,
-                    title = "Subtitles Off",
-                    subtitle = null,
-                    badges = emptyList(),
-                    selected = selectedKey == SubtitleTrackChoice.Off.key,
-                    onClick = { onSelect(SubtitleTrackChoice.Off) }
-                )
+                TrackSectionLabel("Subtitle state")
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        TrackRow(
+                            icon = Icons.Default.Check,
+                            title = "Subtitles On",
+                            subtitle = null,
+                            badges = emptyList(),
+                            selected = !subtitlesAreOff,
+                            onClick = { onSelect(SubtitleTrackChoice.On) }
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(modifier = Modifier.weight(1f)) {
+                        TrackRow(
+                            icon = Icons.Default.SubtitlesOff,
+                            title = "Subtitles Off",
+                            subtitle = null,
+                            badges = emptyList(),
+                            selected = subtitlesAreOff,
+                            onClick = { onSelect(SubtitleTrackChoice.Off) }
+                        )
+                    }
+                }
 
                 if (embeddedTracks.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(10.dp))
@@ -238,7 +230,7 @@ fun SubtitleTrackSelectorSheet(
                     TrackRow(
                         icon = null,
                         title = friendlyLanguageDisplay(downloadedTrack.language),
-                        subtitle = "OpenSubtitles",
+                        subtitle = "Downloaded",
                         badges = emptyList(),
                         selected = selectedKey == downloadedTrack.key,
                         onClick = { onSelect(downloadedTrack) }
@@ -294,14 +286,12 @@ fun SubtitleTrackSelectorSheet(
                     onClick = onOpenFilePicker
                 )
             } else {
-                // Manage deliberately excludes Off + embedded tracks because
-                // neither corresponds to a CineVault-owned file that can be deleted.
                 if (downloadedTrack != null) {
                     TrackSectionLabel("Downloaded")
                     TrackRow(
                         icon = null,
                         title = friendlyLanguageDisplay(downloadedTrack.language),
-                        subtitle = "OpenSubtitles file",
+                        subtitle = "Downloaded subtitle",
                         badges = emptyList(),
                         selected = selectedKey == downloadedTrack.key,
                         onClick = {},
@@ -384,53 +374,80 @@ private fun TrackRow(
             .clip(shape)
             .background(if (selected) AmberGlow.copy(alpha = 0.16f) else Color.Transparent)
             .then(
-                if (selected) Modifier.border(1.dp, Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.85f), AmberDeep.copy(alpha = 0.35f))), shape)
-                else Modifier
+                if (selected) Modifier.border(
+                    1.dp,
+                    Brush.verticalGradient(
+                        listOf(AmberGlow.copy(alpha = 0.85f), AmberDeep.copy(alpha = 0.35f))
+                    ),
+                    shape
+                ) else Modifier
             )
             .clickable { onClick() }
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (icon != null) {
-            Icon(imageVector = icon, contentDescription = null, tint = if (selected) AmberCore else TextMuted, modifier = Modifier.size(15.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected) AmberCore else TextMuted,
+                modifier = Modifier.size(15.dp)
+            )
             Spacer(modifier = Modifier.width(9.dp))
         }
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = title, color = if (selected) AmberCore else TextBright, fontSize = 12.5.sp,
+                    text = title,
+                    color = if (selected) AmberCore else TextBright,
+                    fontSize = 12.5.sp,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 badges.forEach { badge ->
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = badge, color = AmberCore, fontSize = 8.5.sp, fontWeight = FontWeight.Black,
-                        modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(AmberGlow.copy(alpha = 0.18f)).padding(horizontal = 5.dp, vertical = 1.dp)
+                        text = badge,
+                        color = AmberCore,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(AmberGlow.copy(alpha = 0.18f))
+                            .padding(horizontal = 5.dp, vertical = 1.dp)
                     )
                 }
             }
             if (subtitle != null) {
-                Text(text = subtitle, color = TextMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = subtitle,
+                    color = TextMuted,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
         if (selected) {
-            Icon(imageVector = Icons.Default.Check, contentDescription = "Selected", tint = AmberCore, modifier = Modifier.size(15.dp))
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = "Selected",
+                tint = AmberCore,
+                modifier = Modifier.size(15.dp)
+            )
         }
         if (onDelete != null) {
             Spacer(modifier = Modifier.width(6.dp))
-            // FIX: the clickable used to be directly on the 15dp icon
-            // itself — well under Android's 48dp recommended minimum
-            // touch target, and sitting right against the much larger
-            // row-wide clickable for onClick (select this track). Easy
-            // to miss and select the track instead of deleting it. Visual
-            // icon size unchanged; only the tappable area is bigger now.
             Box(
                 modifier = Modifier.size(40.dp).clickable { onDelete() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.Delete, contentDescription = "Delete subtitle file", tint = TextMuted,
+                    imageVector = Icons.Rounded.Delete,
+                    contentDescription = "Delete subtitle file",
+                    tint = TextMuted,
                     modifier = Modifier.size(15.dp)
                 )
             }
@@ -439,21 +456,27 @@ private fun TrackRow(
 }
 
 @Composable
-private fun IconCircleSmall(icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
-    // FIX: restyled as the same amber-filled pill used everywhere else
-    // now (Studio close/back, lock button, Search's close) — was a plain
-    // glass circle.
+private fun IconCircleSmall(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit
+) {
     Box(
-        modifier = Modifier.height(34.dp).clip(RoundedCornerShape(50)).background(AmberCore).clickable { onClick() }.padding(horizontal = 9.dp),
+        modifier = Modifier
+            .height(34.dp)
+            .clip(RoundedCornerShape(50))
+            .background(AmberCore)
+            .clickable { onClick() }
+            .padding(horizontal = 9.dp),
         contentAlignment = Alignment.Center
     ) {
-        Icon(imageVector = icon, contentDescription = "Close", tint = Color.Black, modifier = Modifier.size(15.dp))
+        Icon(
+            imageVector = icon,
+            contentDescription = "Close",
+            tint = Color.Black,
+            modifier = Modifier.size(15.dp)
+        )
     }
 }
 
-// Language-code -> display-name mapping shared with the rest of the
-// subtitle system — deliberately duplicated (not imported) from
-// VideoPlayerScreen.kt's private friendlyLanguageName, since that one is
-// `private` to that file. Keeping this one small and local avoids exposing
-// a wider surface just for this.
-private fun friendlyLanguageDisplay(code: String?): String = SubtitleLanguageRegistry.displayName(code)
+private fun friendlyLanguageDisplay(code: String?): String =
+    SubtitleLanguageRegistry.displayName(code)
