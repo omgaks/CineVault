@@ -388,11 +388,37 @@ fun VideoPlayerScreen(
         subtitleUri: Uri? = null,
         resumePosition: Long = 0L,
         isOriginalSubtitle: Boolean = true,
+        resetSubtitleTiming: Boolean = isOriginalSubtitle,
     ) = playbackNavigationCoordinator.playCurrentVideoWithSubtitle(
         subtitleUri,
         resumePosition,
         isOriginalSubtitle,
+        resetSubtitleTiming,
     )
+
+    fun replaySubtitlePreservingTiming(resumePosition: Long) {
+        val baseUri = trackUi.renderBaseUri ?: trackUi.originalUri
+        if (baseUri == null || !coreUi.subtitlesEnabled) {
+            playCurrentVideoWithSubtitle(null, resumePosition, false)
+            return
+        }
+        val offsetMs = playerSubtitleSyncOffsetMs(coreUi.syncOffset)
+        val scale = driftUi.scale
+        if (offsetMs == 0L && scale == 1.0f) {
+            playCurrentVideoWithSubtitle(baseUri, resumePosition, false)
+            return
+        }
+        scope.launch {
+            val shifted = withContext(Dispatchers.IO) {
+                buildShiftedSubtitleFile(context, baseUri, offsetMs, scale)
+            }
+            playCurrentVideoWithSubtitle(shifted ?: baseUri, resumePosition, false)
+            if (shifted != null) {
+                trackUi.appliedOffsetMs = offsetMs
+                driftUi.appliedScale = scale
+            }
+        }
+    }
 
     // Slice 86: all decoder analytics and recovery effects now live in one
     // responsibility-owned host instead of accumulating in this screen.
@@ -461,11 +487,12 @@ fun VideoPlayerScreen(
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, disabled)
                 .build()
         },
-        playVideoWithSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle ->
+        playVideoWithSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle, resetSubtitleTiming ->
             playCurrentVideoWithSubtitle(
                 subtitleUri = subtitleUri,
                 resumePosition = resumePosition,
                 isOriginalSubtitle = isOriginalSubtitle,
+                resetSubtitleTiming = resetSubtitleTiming,
             )
         },
         getCurrentSafeResumePosition = {
@@ -592,12 +619,8 @@ fun VideoPlayerScreen(
             chromeUi.showControls = true
             chromeUi.showTopBar = true
         },
-        onRetryPlayback = { subtitleUri, resumePosition ->
-            playCurrentVideoWithSubtitle(
-                subtitleUri = subtitleUri,
-                resumePosition = resumePosition,
-                isOriginalSubtitle = false,
-            )
+        onRetryPlayback = { _, resumePosition ->
+            replaySubtitlePreservingTiming(resumePosition)
         },
         onSoftwareFallbackRequested = { errorCode, resumePosition, subtitleUri ->
             playbackRecovery.requestSoftwareFallback(
@@ -988,11 +1011,7 @@ fun VideoPlayerScreen(
             onBack = onBack,
             onRetry = {
                 playbackHealth.errorRetryCount = 0
-                playCurrentVideoWithSubtitle(
-                    subtitleUri = trackUi.originalUri,
-                    resumePosition = position,
-                    isOriginalSubtitle = false,
-                )
+                replaySubtitlePreservingTiming(position)
             },
             onSpeedSelected = { playerSessionActionsCoordinator.setPlaybackSpeed(it) },
             onDismissSpeedMenu = { chromeUi.showSpeedMenu = false },

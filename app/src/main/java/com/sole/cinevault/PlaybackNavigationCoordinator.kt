@@ -49,7 +49,8 @@ class PlaybackNavigationCoordinator(
     fun playCurrentVideoWithSubtitle(
         subtitleUri: Uri? = null,
         resumePosition: Long = 0L,
-        isOriginalSubtitle: Boolean = true
+        isOriginalSubtitle: Boolean = true,
+        resetSubtitleTiming: Boolean = isOriginalSubtitle
     ) {
         val currentVideo = getCurrentVideo()
         val isSmbMedia = currentVideo.path.startsWith("smb://", ignoreCase = true)
@@ -64,8 +65,11 @@ class PlaybackNavigationCoordinator(
             setPlayerErrorMessage(null)
             if (subtitleUri != null && isOriginalSubtitle) {
                 trackUi.originalUri = subtitleUri
-                trackUi.appliedOffsetMs = 0L
-                coreUi.syncOffset = 0f
+                trackUi.renderBaseUri = null
+                if (resetSubtitleTiming) {
+                    trackUi.appliedOffsetMs = 0L
+                    coreUi.syncOffset = 0f
+                }
             }
 
             val mediaItem = buildPlaybackMediaItem(currentVideo.path, subtitleUri)

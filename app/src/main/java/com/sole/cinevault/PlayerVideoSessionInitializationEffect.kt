@@ -70,7 +70,7 @@ fun PlayerVideoSessionInitializationEffect(
     studioUi: SubtitleStudioUiState,
     autoSubtitleFetch: AutoSubtitleFetchState,
     setTextTracksDisabled: (Boolean) -> Unit,
-    playVideoWithSubtitle: (Uri?, Long, Boolean) -> Unit,
+    playVideoWithSubtitle: (Uri?, Long, Boolean, Boolean) -> Unit,
     getCurrentSafeResumePosition: () -> Long,
     setters: PlayerVideoSessionSetters,
 ) {
@@ -120,6 +120,7 @@ fun PlayerVideoSessionInitializationEffect(
         setters.setStuckBufferingHint(false)
 
         trackUi.originalUri = null
+        trackUi.renderBaseUri = null
         trackUi.appliedOffsetMs = 0L
         coreUi.syncOffset = 0.0f
         driftUi.scale = 1.0f
@@ -231,12 +232,14 @@ fun PlayerVideoSessionInitializationEffect(
                         rememberedPrimaryUri,
                         savedPosition,
                         true,
+                        false,
                     )
                 } else {
                     playVideoWithSubtitle(
                         null,
                         savedPosition,
                         true,
+                        false,
                     )
                 }
 
@@ -266,6 +269,7 @@ fun PlayerVideoSessionInitializationEffect(
                     cleanedLocalUri,
                     savedPosition,
                     true,
+                    true,
                 )
                 autoSubtitleFetch.attemptedForPath = video.path
                 trackUi.selectedKey =
@@ -292,6 +296,7 @@ fun PlayerVideoSessionInitializationEffect(
                     cleanedCachedUri,
                     savedPosition,
                     true,
+                    true,
                 )
                 autoSubtitleFetch.attemptedForPath = video.path
                 trackUi.selectedKey = "downloaded"
@@ -304,6 +309,7 @@ fun PlayerVideoSessionInitializationEffect(
                 playVideoWithSubtitle(
                     null,
                     savedPosition,
+                    true,
                     true,
                 )
             }
@@ -370,6 +376,7 @@ fun PlayerVideoSessionInitializationEffect(
                             cleanedResultUri,
                             getCurrentSafeResumePosition(),
                             true,
+                    true,
                         )
 
                         trackUi.selectedKey = "downloaded"

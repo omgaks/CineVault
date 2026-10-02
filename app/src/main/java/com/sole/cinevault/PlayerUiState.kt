@@ -61,6 +61,10 @@ class SubtitleTrackSelectionState {
     var primaryUri by mutableStateOf<Uri?>(null)
     var primaryLanguage by mutableStateOf<String?>(null)
     var originalUri by mutableStateOf<Uri?>(null)
+    // Unshifted render base. Normally null (originalUri is the base); Dual Subs
+    // sets this to the unshifted merged file so timing can be reapplied without
+    // losing the true primary/original subtitle identity.
+    var renderBaseUri by mutableStateOf<Uri?>(null)
     var appliedOffsetMs by mutableLongStateOf(0L)
     var selectedKey by mutableStateOf<String?>(null)
     var selectedLabel by mutableStateOf("")

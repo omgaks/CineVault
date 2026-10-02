@@ -135,7 +135,7 @@ fun rememberPlayerSubtitleRuntimeEffects(
     val subtitleSyncRenderCoordinator = remember(exoPlayer) {
         SubtitleSyncRenderCoordinator(
             context = context,
-            getBaseUri = { trackUi.originalUri },
+            getBaseUri = { trackUi.renderBaseUri ?: trackUi.originalUri },
             areSubtitlesEnabled = { coreUi.subtitlesEnabled },
             getSyncOffsetSeconds = { coreUi.syncOffset },
             getRequestedScale = { driftUi.scale },
@@ -160,6 +160,7 @@ fun rememberPlayerSubtitleRuntimeEffects(
         coreUi.syncOffset,
         driftUi.scale,
         trackUi.originalUri,
+        trackUi.renderBaseUri,
     ) {
         subtitleSyncRenderCoordinator.applyIfNeeded()
     }
