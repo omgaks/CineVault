@@ -1,12 +1,13 @@
 package com.sole.cinevault.subtitles
 
+import android.annotation.SuppressLint
+
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
 import androidx.media3.common.C
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.common.TrackSelectionOverride
-import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.sole.cinevault.SubtitleAcquisitionUiState
 import com.sole.cinevault.SubtitleCoreUiState
@@ -140,7 +141,7 @@ class SubtitleSearchCoordinator(
         }
     }
 
-    @UnstableApi
+    @SuppressLint("UnsafeOptInUsageError")
     fun selectSubtitleTrack(choice: SubtitleTrackChoice) {
         studioUi.menuTouchKey++
         when (choice) {
