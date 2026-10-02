@@ -98,6 +98,7 @@ internal fun RememberPlayerSubtitleDisplayProfile(
             settings.edgeColor,
             settings.backgroundColor,
         )
+        appearanceUi.preserveOriginalStyling = settings.preserveOriginalStyling
         profileLoadedFor = currentProfileId
     }
 
@@ -107,6 +108,7 @@ internal fun RememberPlayerSubtitleDisplayProfile(
         appearanceUi.bottomPadding,
         appearanceUi.preset,
         appearanceUi.appearance,
+        appearanceUi.preserveOriginalStyling,
     ) {
         if (profileLoadedFor != currentProfileId) return@LaunchedEffect
         delay(400)
@@ -122,6 +124,7 @@ internal fun RememberPlayerSubtitleDisplayProfile(
                 edgeType = appearanceUi.appearance.edgeType,
                 edgeColor = appearanceUi.appearance.edgeColor,
                 backgroundColor = appearanceUi.appearance.backgroundColor,
+                preserveOriginalStyling = appearanceUi.preserveOriginalStyling,
             ),
         )
     }

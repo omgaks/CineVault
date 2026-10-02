@@ -7,8 +7,8 @@ import com.sole.cinevault.subtitles.*
 /**
  * Slice 65: owns the subtitle display-profile lifecycle around the player.
  *
- * This keeps profile selection, per-movie subtitle appearance persistence
- * and reset-coordinator wiring together while VideoPlayerScreen continues
+ * This keeps display-profile appearance ownership, per-movie subtitle session
+ * persistence and reset-coordinator wiring together while VideoPlayerScreen continues
  * to own the mutable UI state itself.
  */
 @Composable
@@ -18,16 +18,13 @@ internal fun rememberPlayerSubtitleDisplayRuntime(
     isSmallPhone: Boolean,
     isLandscape: Boolean,
     videoPath: String,
-    movieSubtitleMemory: MovieSubtitleMemory?,
     movieSubtitleMemoryReady: Boolean,
-    movieAppearanceMemoryReady: Boolean,
     coreUi: SubtitleCoreUiState,
     trackUi: SubtitleTrackSelectionState,
     dualUi: DualSubtitleState,
     appearanceUi: SubtitleAppearanceUiState,
     driftUi: DriftCorrectionState,
     dualSecondaryColorHex: String,
-    onMovieAppearanceMemoryReadyChanged: (Boolean) -> Unit,
     setAudioSyncMs: (Int) -> Unit,
     setShowControls: (Boolean) -> Unit,
     incrementMenuTouchKey: () -> Unit,
@@ -43,17 +40,11 @@ internal fun rememberPlayerSubtitleDisplayRuntime(
     PlayerMovieSubtitleMemoryEffects(
         context = context,
         videoPath = videoPath,
-        displayProfileName = displayProfileType.name,
-        isLandscape = isLandscape,
-        movieSubtitleMemory = movieSubtitleMemory,
         movieSubtitleMemoryReady = movieSubtitleMemoryReady,
-        movieAppearanceMemoryReady = movieAppearanceMemoryReady,
         coreUi = coreUi,
         trackUi = trackUi,
         dualUi = dualUi,
-        appearanceUi = appearanceUi,
         dualSecondaryColorHex = dualSecondaryColorHex,
-        onMovieAppearanceMemoryReadyChanged = onMovieAppearanceMemoryReadyChanged,
     )
 
     return SubtitleResetCoordinator(

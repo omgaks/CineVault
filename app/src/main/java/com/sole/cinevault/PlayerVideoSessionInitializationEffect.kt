@@ -23,9 +23,7 @@ import kotlinx.coroutines.withContext
  */
 data class PlayerVideoSessionSetters(
     val setMovieSubtitleMemoryReady: (Boolean) -> Unit,
-    val setMovieAppearanceMemoryReady: (Boolean) -> Unit,
     val setRestoredDualNeedsApply: (Boolean) -> Unit,
-    val setMovieSubtitleMemory: (MovieSubtitleMemory?) -> Unit,
     val setPosition: (Long) -> Unit,
     val setDuration: (Long) -> Unit,
     val setShowControls: (Boolean) -> Unit,
@@ -76,7 +74,6 @@ fun PlayerVideoSessionInitializationEffect(
 ) {
     LaunchedEffect(video.path) {
         setters.setMovieSubtitleMemoryReady(false)
-        setters.setMovieAppearanceMemoryReady(false)
         setters.setRestoredDualNeedsApply(false)
 
         val savedPosition =
@@ -86,7 +83,6 @@ fun PlayerVideoSessionInitializationEffect(
         val savedSubtitleMemory = withContext(Dispatchers.IO) {
             loadMovieSubtitleMemory(context, video.path)
         }
-        setters.setMovieSubtitleMemory(savedSubtitleMemory)
 
         setters.setPosition(savedPosition)
         setters.setDuration(1L)
@@ -135,7 +131,6 @@ fun PlayerVideoSessionInitializationEffect(
         trackUi.primaryUri = null
         trackUi.primaryLanguage = null
         setters.setAudioLanguageCheckedForPath(null)
-        appearanceUi.preserveOriginalStyling = false
         studioUi.gestureFeedback = ""
         setters.setAutoSyncStatus(AutoSyncStatus.Idle)
         setters.setAutoSyncSpeechTimeline(null)
@@ -152,8 +147,6 @@ fun PlayerVideoSessionInitializationEffect(
             dualUi.gapLines = memory.dualGapLines
             dualUi.secondarySourceLabel = memory.dualSecondarySource
             setters.setDualSecondaryColorHex(memory.dualSecondaryColorHex)
-            appearanceUi.preserveOriginalStyling =
-                memory.preserveOriginalStyling
         }
 
         if (!isStreamMedia) {

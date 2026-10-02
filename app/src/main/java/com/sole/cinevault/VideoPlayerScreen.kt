@@ -195,11 +195,7 @@ fun VideoPlayerScreen(
     var showDualSubsWindow by remember { mutableStateOf(false) }
     var showSubtitleBehaviourWindow by remember { mutableStateOf(false) }
     var pendingDualAiLanguage by remember(currentVideo.path) { mutableStateOf<String?>(null) }
-    var movieSubtitleMemory by remember(currentVideo.path) {
-        mutableStateOf<MovieSubtitleMemory?>(null)
-    }
     var movieSubtitleMemoryReady by remember(currentVideo.path) { mutableStateOf(false) }
-    var movieAppearanceMemoryReady by remember(currentVideo.path) { mutableStateOf(false) }
     var restoredDualNeedsApply by remember(currentVideo.path) { mutableStateOf(false) }
     var trackSelectorManageMode by remember { mutableStateOf(false) }
     var activeDockItem by remember { mutableStateOf<com.sole.cinevault.subtitles.SubtitleDockItem?>(null) }
@@ -500,9 +496,7 @@ fun VideoPlayerScreen(
         },
         setters = PlayerVideoSessionSetters(
             setMovieSubtitleMemoryReady = { movieSubtitleMemoryReady = it },
-            setMovieAppearanceMemoryReady = { movieAppearanceMemoryReady = it },
             setRestoredDualNeedsApply = { restoredDualNeedsApply = it },
-            setMovieSubtitleMemory = { movieSubtitleMemory = it },
             setPosition = { position = it },
             setDuration = { duration = it },
             setShowControls = { chromeUi.showControls = it },
@@ -794,18 +788,13 @@ fun VideoPlayerScreen(
             isSmallPhone = playerLayout.isSmallPhone,
             isLandscape = playerLayout.isLandscape,
             videoPath = currentVideo.path,
-            movieSubtitleMemory = movieSubtitleMemory,
             movieSubtitleMemoryReady = movieSubtitleMemoryReady,
-            movieAppearanceMemoryReady = movieAppearanceMemoryReady,
             coreUi = coreUi,
             trackUi = trackUi,
             dualUi = dualUi,
             appearanceUi = appearanceUi,
             driftUi = driftUi,
             dualSecondaryColorHex = dualSecondaryColorHex,
-            onMovieAppearanceMemoryReadyChanged = {
-                movieAppearanceMemoryReady = it
-            },
             setAudioSyncMs = { audioSyncMs = it },
             setShowControls = { chromeUi.showControls = it },
             incrementMenuTouchKey = { studioUi.menuTouchKey++ },

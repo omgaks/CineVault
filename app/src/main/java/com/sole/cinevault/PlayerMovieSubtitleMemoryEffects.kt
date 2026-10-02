@@ -4,12 +4,13 @@ import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import com.sole.cinevault.subtitles.MovieSubtitleMemory
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import com.sole.cinevault.subtitles.MovieSubtitleMemoryCoordinator
 
 /**
- * Slice 49: Compose lifecycle wrapper for per-movie subtitle appearance
- * restoration and subtitle-memory persistence.
+ * Per-movie subtitle session persistence. Display appearance is intentionally
+ * excluded so PHONE/TABLET/EXTERNAL profiles remain the single source of truth.
  *
  * MovieSubtitleMemoryCoordinator still owns the actual restore/save behavior.
  * This file only removes the large effect-key wiring from VideoPlayerScreen.
@@ -18,49 +19,26 @@ import com.sole.cinevault.subtitles.MovieSubtitleMemoryCoordinator
 fun PlayerMovieSubtitleMemoryEffects(
     context: Context,
     videoPath: String,
-    displayProfileName: String,
-    isLandscape: Boolean,
-    movieSubtitleMemory: MovieSubtitleMemory?,
     movieSubtitleMemoryReady: Boolean,
-    movieAppearanceMemoryReady: Boolean,
     coreUi: SubtitleCoreUiState,
     trackUi: SubtitleTrackSelectionState,
     dualUi: DualSubtitleState,
-    appearanceUi: SubtitleAppearanceUiState,
     dualSecondaryColorHex: String,
-    onMovieAppearanceMemoryReadyChanged: (Boolean) -> Unit,
 ) {
-    val movieAppearanceProfileKey =
-        "$videoPath|$displayProfileName|$isLandscape"
-
-    val coordinator = remember {
+    val currentDualSecondaryColorHex by rememberUpdatedState(dualSecondaryColorHex)
+    val coordinator = remember(context, coreUi, trackUi, dualUi) {
         MovieSubtitleMemoryCoordinator(
             context = context,
             coreUi = coreUi,
             trackUi = trackUi,
             dualUi = dualUi,
-            appearanceUi = appearanceUi,
-            getDualSecondaryColorHex = { dualSecondaryColorHex },
-            setMovieAppearanceMemoryReady =
-                onMovieAppearanceMemoryReadyChanged,
-        )
-    }
-
-    LaunchedEffect(
-        movieAppearanceProfileKey,
-        movieSubtitleMemory,
-        movieSubtitleMemoryReady,
-    ) {
-        coordinator.restoreAppearance(
-            memoryReady = movieSubtitleMemoryReady,
-            memory = movieSubtitleMemory,
+            getDualSecondaryColorHex = { currentDualSecondaryColorHex },
         )
     }
 
     LaunchedEffect(
         videoPath,
         movieSubtitleMemoryReady,
-        movieAppearanceMemoryReady,
         coreUi.subtitlesEnabled,
         trackUi.primaryUri,
         trackUi.primaryLanguage,
@@ -73,16 +51,10 @@ fun PlayerMovieSubtitleMemoryEffects(
         dualUi.secondarySourceLabel,
         dualSecondaryColorHex,
         coreUi.syncOffset,
-        appearanceUi.textSizeSp,
-        appearanceUi.bottomPadding,
-        appearanceUi.preset,
-        appearanceUi.appearance,
-        appearanceUi.preserveOriginalStyling,
     ) {
         coordinator.saveAfterDebounce(
             videoPath = videoPath,
             subtitleMemoryReady = movieSubtitleMemoryReady,
-            appearanceMemoryReady = movieAppearanceMemoryReady,
         )
     }
 }
