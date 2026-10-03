@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CastConnected
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -25,6 +26,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.network.CineVaultNearbyRuntime
+import com.sole.cinevault.picture.PictureEnhanceRegistry
 import com.sole.cinevault.ui.theme.*
 
 @Composable
@@ -71,6 +73,18 @@ internal fun TopIconCluster(
             active = playbackSpeed != 1f || showSpeedMenu,
             onClick = onSpeedClick,
         )
+        // Picture enhancement entry (GPU filters). Shown once the player has registered it.
+        PictureEnhanceRegistry.current?.let { picture ->
+            val pictureActive = picture.isActive || picture.panelOpen
+            LabeledGlowIcon(
+                icon = Icons.Rounded.Tune,
+                label = "Picture",
+                size = iconSize,
+                tint = if (pictureActive) AmberCore else TextBright,
+                active = pictureActive,
+                onClick = { picture.togglePanel() },
+            )
+        }
     }
 
     if (isLandscape) {

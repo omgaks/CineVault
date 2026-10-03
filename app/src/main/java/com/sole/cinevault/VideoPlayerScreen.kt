@@ -5,6 +5,9 @@ import com.sole.cinevault.glasses.display.ExternalViewportSessionState
 import com.sole.cinevault.glasses.gestures.rememberHeadGestureDetector
 
 import com.sole.cinevault.audiofx.AudioFxController
+import com.sole.cinevault.picture.PictureEnhanceController
+import com.sole.cinevault.picture.PictureEnhanceRegistry
+import com.sole.cinevault.picture.PicturePanelHost
 import com.sole.cinevault.audiofx.AudioFxDashboard
 import com.sole.cinevault.library.*
 import com.sole.cinevault.smb.*
@@ -304,6 +307,19 @@ fun VideoPlayerScreen(
     )
     val trackSelector = playerRuntime.trackSelector
     val exoPlayer = playerRuntime.player
+
+    // Picture enhancement (GPU filters). Installs its Media3 effect pipeline lazily, only
+    // after the user first turns it on, so normal playback is untouched until then.
+    val pictureController = remember(exoPlayer) { PictureEnhanceController(context, exoPlayer) }
+    DisposableEffect(pictureController) {
+        PictureEnhanceRegistry.current = pictureController
+        onDispose {
+            if (PictureEnhanceRegistry.current === pictureController) {
+                PictureEnhanceRegistry.current = null
+            }
+            pictureController.release()
+        }
+    }
     val audioFxController = remember { AudioFxController(context) }
     var showAudioFxDashboard by remember { mutableStateOf(false) }
 
@@ -833,6 +849,13 @@ fun VideoPlayerScreen(
             onPlayNext = onPlayNext,
         )
         val currentMeta = episodeRuntime.currentMeta
+        LaunchedEffect(currentVideo.path, currentMeta?.genres) {
+            pictureController.bindVideo(
+                path = currentVideo.path,
+                fileName = currentVideo.name,
+                genres = currentMeta?.genres.orEmpty(),
+            )
+        }
         val activeSmartSegment = episodeRuntime.activeSmartSegment
         val exactSceneSegment = episodeRuntime.exactSceneSegment
         val creditsSegment = episodeRuntime.creditsSegment
@@ -1231,6 +1254,9 @@ fun VideoPlayerScreen(
                 },
             )
         }
+
+        // Picture enhancement panel (draws nothing while closed).
+        PicturePanelHost(pictureController)
 
         // Slice 60: all non-main-control overlay surfaces are now hosted
         // together: lock/Auto-Sync/delete feedback, Subtitle Studio surfaces,
