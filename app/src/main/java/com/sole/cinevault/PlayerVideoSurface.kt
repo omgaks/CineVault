@@ -12,7 +12,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.annotation.OptIn
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
@@ -26,6 +28,7 @@ import com.sole.cinevault.glasses.CinemaVoidControllerSurface
  * source/video-size changes are therefore live on the real playback session,
  * SBS now uses the native full-frame external-display path; ordinary 2D is unchanged.
  */
+@OptIn(UnstableApi::class)
 @Composable
 internal fun PlayerVideoSurface(
     player: Player,
