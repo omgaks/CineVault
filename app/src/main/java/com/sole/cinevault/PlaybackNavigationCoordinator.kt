@@ -84,20 +84,13 @@ class PlaybackNavigationCoordinator(
             )
             val resumeAt = resumePosition.coerceAtLeast(0L)
 
-            if (exoPlayer.mediaItemCount > 0) {
-                // Subtitle/style re-application must not deliberately rebuild
-                // the whole player session. Replacing the current MediaItem
-                // lets Media3 retain the PlayerView/video surface while it
-                // updates the item's subtitle configuration.
-                val index = exoPlayer.currentMediaItemIndex.coerceAtLeast(0)
-                exoPlayer.replaceMediaItem(index, mediaItem)
-                exoPlayer.seekTo(index, resumeAt)
-            } else {
-                // True initial playback still requires preparation.
-                exoPlayer.setMediaItem(mediaItem)
-                exoPlayer.prepare()
-                exoPlayer.seekTo(resumeAt)
-            }
+            // A live replaceMediaItem() attached the new subtitle but Media3 did not
+            // render it until the movie was reopened (confirmed on device for AI,
+            // Tracks, SubDL, OpenSubtitles and Dual). setMediaItem + prepare is the
+            // same path a normal movie open uses, and that path renders. The
+            // PlayerView stays attached to the same player, so the surface is kept.
+            exoPlayer.setMediaItem(mediaItem, resumeAt)
+            exoPlayer.prepare()
 
             if (subtitleId != null && coreUi.subtitlesEnabled) {
                 externalSubtitleSelector?.arm(subtitleId)
