@@ -42,6 +42,7 @@ class GeneratedSubtitleOrchestrator(
     private val setSelectedKey: (String) -> Unit,
     private val setSelectedLabel: (String) -> Unit,
     private val setSelectedSource: (String) -> Unit,
+    private val prepareExplicitTextSelection: (String?) -> Unit,
     private val playWithSubtitle: (Uri, Long) -> Unit,
 ) {
     fun resolveActiveSubtitle(): SubtitleSourceResolver.Resolved? =
@@ -67,10 +68,17 @@ class GeneratedSubtitleOrchestrator(
         setPrimaryUri(file.uri)
         setOriginalUri(file.uri)
         setPrimaryLanguage(language)
-        setSelectedKey("local:${file.uri.path ?: file.fileName}")
+        // Generated files are first-class CineVault tracks. Keep the same identity
+        // used by Tracks/Manage so ACTIVE state and the rendered Media3 track cannot
+        // diverge after AI Translation or Speech-to-Subs completes.
+        setSelectedKey("generated:${file.fileName}")
         setSelectedLabel(file.label)
         setSelectedSource(sourceLabel)
 
+        // An embedded preferred track may still be selected in DefaultTrackSelector.
+        // Explicitly clear that preference before replacing the MediaItem, otherwise
+        // Media3 can keep rendering embedded English while the UI says Generated.
+        prepareExplicitTextSelection(language)
         playWithSubtitle(file.uri, resumeAt)
     }
 }
