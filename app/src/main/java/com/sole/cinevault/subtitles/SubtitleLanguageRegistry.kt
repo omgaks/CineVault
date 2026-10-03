@@ -63,7 +63,9 @@ object SubtitleLanguageRegistry {
     fun normalize(rawCode: String?): String? {
         if (rawCode.isNullOrBlank()) return null
         val key = rawCode.trim().lowercase()
-        return LOOKUP[key]?.code
+        LOOKUP[key]?.let { return it.code }
+        // Any other valid ISO 639-1 code (e.g. translation targets outside the list above).
+        return key.takeIf { it.length == 2 && it in java.util.Locale.getISOLanguages() }
     }
 
     // Friendly display name for any recognized code/alias. Falls back to
@@ -75,6 +77,10 @@ object SubtitleLanguageRegistry {
         val trimmed = rawCode.trim().lowercase()
         if (trimmed == "und" || trimmed == "unknown") return "Unknown"
         LOOKUP[trimmed]?.let { return it.displayName }
+        if (trimmed.length == 2 && trimmed in java.util.Locale.getISOLanguages()) {
+            val name = java.util.Locale(trimmed).getDisplayLanguage(java.util.Locale.ENGLISH)
+            if (name.isNotBlank()) return name.replaceFirstChar { it.uppercase() }
+        }
         return rawCode.uppercase()
     }
 }

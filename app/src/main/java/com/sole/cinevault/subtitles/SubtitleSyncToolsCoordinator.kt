@@ -1,5 +1,7 @@
 package com.sole.cinevault.subtitles
 
+import com.sole.cinevault.CineVaultToast
+
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
@@ -64,7 +66,7 @@ class SubtitleSyncToolsCoordinator(
         if (reference != null) {
             val deltaMs = exoPlayer.currentPosition - reference
             coreUi.syncOffset = (coreUi.syncOffset + deltaMs / 1000f).coerceIn(-10f, 10f)
-            Toast.makeText(context, "Sync adjusted by ${if (deltaMs >= 0) "+" else ""}${String.format(java.util.Locale.US, "%.1f", deltaMs / 1000f)}s", Toast.LENGTH_SHORT).show()
+            CineVaultToast.show(context, "Sync adjusted by ${if (deltaMs >= 0) "+" else ""}${String.format(java.util.Locale.US, "%.1f", deltaMs / 1000f)}s")
         }
         coreUi.dialogueSyncArmed = false
         coreUi.dialogueSyncReferenceMs = null
@@ -86,7 +88,7 @@ class SubtitleSyncToolsCoordinator(
         driftUi.scale = scale
         coreUi.syncOffset = (shiftMs / 1000f).coerceIn(-30f, 30f)
         driftUi.showDialog = false
-        Toast.makeText(context, "Drift correction applied", Toast.LENGTH_SHORT).show()
+        CineVaultToast.show(context, "Drift correction applied")
     }
 
     // ── Dual Subtitles ─────────────────────────────────────────────────
@@ -94,25 +96,22 @@ class SubtitleSyncToolsCoordinator(
     // subtitle -> AI translation fallback. Regardless of origin, the result
     // becomes the secondary track and is merged through the same pipeline.
     fun fetchAndApplyDualSecondary() {
+        dualUi.lastSecondaryUri = null
         val primary = trackUi.primaryUri
         if (primary == null) {
-            Toast.makeText(context, "Dual subtitles need a downloaded or local subtitle as the primary track", Toast.LENGTH_LONG).show()
+            CineVaultToast.show(context, "Dual subtitles need a downloaded or local subtitle as the primary track", long = true)
             dualUi.enabled = false
             return
         }
         if (!supportsCustomTextPipeline(detectSubtitleFormat(primary))) {
-            Toast.makeText(context, "Dual subtitles currently only work with .srt as the primary track", Toast.LENGTH_LONG).show()
+            CineVaultToast.show(context, "Dual subtitles currently only work with .srt as the primary track", long = true)
             dualUi.enabled = false
             return
         }
 
         val normalizedSecondary = SubtitleLanguageRegistry.normalize(dualUi.secondaryLanguage)
         if (trackUi.primaryLanguage != null && normalizedSecondary != null && trackUi.primaryLanguage == normalizedSecondary) {
-            Toast.makeText(
-                context,
-                "Secondary language can't be the same as the primary (${SubtitleLanguageRegistry.displayName(trackUi.primaryLanguage)}) — pick a different one",
-                Toast.LENGTH_LONG
-            ).show()
+            CineVaultToast.show(context, "Secondary language can't be the same as the primary (${SubtitleLanguageRegistry.displayName(trackUi.primaryLanguage)}) — pick a different one", long = true)
             dualUi.enabled = false
             return
         }
@@ -188,9 +187,23 @@ class SubtitleSyncToolsCoordinator(
         }
     }
 
+    // Colour or gap changed: re-merge from the secondary already in use. This used to
+    // repeat the whole provider search, which was slow and made a tap look ignored.
+    fun reapplyDualStyle() {
+        val uri = dualUi.lastSecondaryUri
+        if (uri != null && dualUi.lastSecondaryVideoPath == getCurrentVideoPath()) {
+            applyDualSecondaryUri(uri, dualUi.lastSecondaryLabel.ifBlank { "Saved" })
+        } else {
+            fetchAndApplyDualSecondary()
+        }
+    }
+
     fun applyDualSecondaryUri(secondaryUri: Uri, sourceLabel: String) {
         val primary = trackUi.primaryUri
         if (primary == null || !dualUi.enabled) return
+        dualUi.lastSecondaryUri = secondaryUri
+        dualUi.lastSecondaryVideoPath = getCurrentVideoPath()
+        dualUi.lastSecondaryLabel = sourceLabel
 
         val normalizedSecondary =
             SubtitleLanguageRegistry.normalize(dualUi.secondaryLanguage)
@@ -232,7 +245,7 @@ class SubtitleSyncToolsCoordinator(
                 }
 
                 dualUi.statusText = "Couldn't build the AI secondary subtitle"
-                Toast.makeText(context, dualUi.statusText, Toast.LENGTH_LONG).show()
+                CineVaultToast.show(context, dualUi.statusText, long = true)
                 dualUi.enabled = false
                 return@launch
             }
@@ -269,6 +282,7 @@ class SubtitleSyncToolsCoordinator(
     }
 
     fun disableDualSubtitles() {
+        dualUi.lastSecondaryUri = null
         // Slice 25: cancelling Dual Subs also cancels any pending AI-secondary
         // request here, so the player wrapper no longer owns one piece of the
         // dual-subtitle lifecycle.

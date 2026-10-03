@@ -1,5 +1,7 @@
 package com.sole.cinevault.subtitles
 
+import com.sole.cinevault.CineVaultToast
+
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
@@ -52,16 +54,12 @@ class SubtitleGenerationCoordinator(
             ) {
                 WhisperModelManager.DownloadResult.Success -> {
                     setStatus(SubtitleGenerationStatus.Idle)
-                    Toast.makeText(
-                        context,
-                        "${WhisperModelManager.modelDisplayName()} is ready",
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    CineVaultToast.show(context, "${WhisperModelManager.modelDisplayName()} is ready")
                 }
 
                 is WhisperModelManager.DownloadResult.Failed -> {
                     setStatus(SubtitleGenerationStatus.Failed(result.reason))
-                    Toast.makeText(context, result.reason, Toast.LENGTH_LONG).show()
+                    CineVaultToast.show(context, result.reason, long = true)
                 }
             }
         }
@@ -80,7 +78,7 @@ class SubtitleGenerationCoordinator(
             val reason =
                 "AI subtitle generation currently supports local files and content:// videos only."
             setStatus(SubtitleGenerationStatus.Failed(reason))
-            Toast.makeText(context, reason, Toast.LENGTH_LONG).show()
+            CineVaultToast.show(context, reason, long = true)
             return
         }
 
@@ -125,11 +123,7 @@ class SubtitleGenerationCoordinator(
             when (result) {
                 is SubtitleGenerationEngine.Result.Failed -> {
                     setStatus(SubtitleGenerationStatus.Failed(result.reason))
-                    Toast.makeText(
-                        context,
-                        "Subtitle generation failed: ${result.reason}",
-                        Toast.LENGTH_LONG,
-                    ).show()
+                    CineVaultToast.show(context, "Subtitle generation failed: ${result.reason}", long = true)
                 }
 
                 is SubtitleGenerationEngine.Result.Success -> {
@@ -161,11 +155,7 @@ class SubtitleGenerationCoordinator(
                     onGeneratedLibraryChanged()
                     onSubtitleReady(generated.uri)
 
-                    Toast.makeText(
-                        context,
-                        "Generated ${generated.cueCount.coerceAtLeast(result.cueCount)} subtitle lines",
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    CineVaultToast.show(context, "Generated ${generated.cueCount.coerceAtLeast(result.cueCount)} subtitle lines")
                 }
             }
         }
@@ -182,11 +172,7 @@ class SubtitleGenerationCoordinator(
 
         val primary = getPrimarySubtitleUri()
         if (primary == null) {
-            Toast.makeText(
-                context,
-                "Generate or load a subtitle first, then translate it",
-                Toast.LENGTH_LONG,
-            ).show()
+            CineVaultToast.show(context, "Generate or load a subtitle first, then translate it", long = true)
             return
         }
 
@@ -233,11 +219,7 @@ class SubtitleGenerationCoordinator(
             when (result) {
                 is SubtitleTranslationEngine.Result.Failed -> {
                     setStatus(SubtitleGenerationStatus.Failed(result.reason))
-                    Toast.makeText(
-                        context,
-                        "Translation failed: ${result.reason}",
-                        Toast.LENGTH_LONG,
-                    ).show()
+                    CineVaultToast.show(context, "Translation failed: ${result.reason}", long = true)
                 }
 
                 is SubtitleTranslationEngine.Result.Success -> {
@@ -270,11 +252,7 @@ class SubtitleGenerationCoordinator(
                     onGeneratedLibraryChanged()
                     onSubtitleReady(generated.uri)
 
-                    Toast.makeText(
-                        context,
-                        "Translated to ${target.label}",
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    CineVaultToast.show(context, "Translated to ${target.label}")
                 }
             }
         }

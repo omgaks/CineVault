@@ -1,5 +1,7 @@
 package com.sole.cinevault.subtitles
 
+import com.sole.cinevault.CineVaultToast
+
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -63,11 +65,7 @@ class SubtitleLocalImportCoordinator(
                 }
 
                 is SubtitleImportResult.Failure -> {
-                    Toast.makeText(
-                        context,
-                        result.userMessage,
-                        Toast.LENGTH_LONG,
-                    ).show()
+                    CineVaultToast.show(context, result.userMessage, long = true)
                 }
             }
         }

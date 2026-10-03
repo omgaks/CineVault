@@ -1,5 +1,7 @@
 package com.sole.cinevault.subtitles
 
+import com.sole.cinevault.CineVaultToast
+
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
@@ -59,7 +61,7 @@ class AutoSyncCoordinator(
         val primary = getPrimarySubtitleUri()
         val expectedVideoPath = getCurrentVideoPath()
         if (primary == null) {
-            Toast.makeText(context, "Auto-Sync needs a downloaded or local subtitle loaded first", Toast.LENGTH_LONG).show()
+            CineVaultToast.show(context, "Auto-Sync needs a downloaded or local subtitle loaded first", long = true)
             return
         }
         setAutoSyncStatus(AutoSyncStatus.Analyzing("Extracting audio…"))
@@ -130,6 +132,6 @@ class AutoSyncCoordinator(
         setDriftScale(result.timeScale.toFloat())
         setAutoSyncStatus(AutoSyncStatus.Idle)
         incrementStudioMenuTouchKey()
-        Toast.makeText(context, if (result.timeScale != 1.0) "Auto-Sync applied (drift correction)" else "Auto-Sync applied", Toast.LENGTH_SHORT).show()
+        CineVaultToast.show(context, if (result.timeScale != 1.0) "Auto-Sync applied (drift correction)" else "Auto-Sync applied")
     }
 }

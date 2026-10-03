@@ -1,5 +1,7 @@
 package com.sole.cinevault.subtitles
 
+import com.sole.cinevault.CineVaultToast
+
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
@@ -53,16 +55,12 @@ class SpeechSubtitleCoordinator(
                 ) {
                     WhisperModelManager.DownloadResult.Success -> {
                         setStatus(SpeechSubtitleStatus.Idle)
-                        Toast.makeText(
-                            context,
-                            "${WhisperModelManager.modelDisplayName(context)} is ready",
-                            Toast.LENGTH_SHORT,
-                        ).show()
+                        CineVaultToast.show(context, "${WhisperModelManager.modelDisplayName(context)} is ready")
                     }
 
                     is WhisperModelManager.DownloadResult.Failed -> {
                         setStatus(SpeechSubtitleStatus.Failed(result.reason))
-                        Toast.makeText(context, result.reason, Toast.LENGTH_LONG).show()
+                        CineVaultToast.show(context, result.reason, long = true)
                     }
                 }
             } catch (_: CancellationException) {
@@ -97,7 +95,7 @@ class SpeechSubtitleCoordinator(
             val reason =
                 "Speech recognition currently supports local files and content:// videos only."
             setStatus(SpeechSubtitleStatus.Failed(reason))
-            Toast.makeText(context, reason, Toast.LENGTH_LONG).show()
+            CineVaultToast.show(context, reason, long = true)
             return
         }
 
@@ -143,11 +141,7 @@ class SpeechSubtitleCoordinator(
                 when (result) {
                     is SubtitleGenerationEngine.Result.Failed -> {
                         setStatus(SpeechSubtitleStatus.Failed(result.reason))
-                        Toast.makeText(
-                            context,
-                            "Speech recognition failed: ${result.reason}",
-                            Toast.LENGTH_LONG,
-                        ).show()
+                        CineVaultToast.show(context, "Speech recognition failed: ${result.reason}", long = true)
                     }
 
                     is SubtitleGenerationEngine.Result.Success -> {
@@ -185,16 +179,12 @@ class SpeechSubtitleCoordinator(
                         onGeneratedLibraryChanged()
                         onSubtitleReady(generated, result.detectedLanguage)
 
-                        Toast.makeText(
-                            context,
-                            "Generated $cueCount subtitle ${if (cueCount == 1) "line" else "lines"}",
-                            Toast.LENGTH_SHORT,
-                        ).show()
+                        CineVaultToast.show(context, "Generated $cueCount subtitle ${if (cueCount == 1) "line" else "lines"}")
                     }
                 }
             } catch (_: CancellationException) {
                 setStatus(SpeechSubtitleStatus.Idle)
-                Toast.makeText(context, "Transcription stopped", Toast.LENGTH_SHORT).show()
+                CineVaultToast.show(context, "Transcription stopped")
             } finally {
                 generationJob = null
             }

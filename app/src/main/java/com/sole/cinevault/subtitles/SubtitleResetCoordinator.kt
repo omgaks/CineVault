@@ -1,5 +1,7 @@
 package com.sole.cinevault.subtitles
 
+import com.sole.cinevault.CineVaultToast
+
 import android.content.Context
 import android.widget.Toast
 import com.sole.cinevault.AudioSyncHolder
@@ -62,11 +64,7 @@ class SubtitleResetCoordinator(
         AudioSyncHolder.offsetUs = 0L
         setAudioSyncMs(0)
 
-        Toast.makeText(
-            context,
-            "Subtitle settings reset for ${displayProfileType.label}",
-            Toast.LENGTH_SHORT,
-        ).show()
+        CineVaultToast.show(context, "Subtitle settings reset for ${displayProfileType.label}")
 
         setShowControls(true)
         incrementMenuTouchKey()

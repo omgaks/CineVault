@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.SubtitlesOff
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Delete
@@ -146,7 +147,7 @@ fun SubtitleTrackSelectorSheet(
         val activeTrackLabel = when {
             subtitlesAreOff -> "Subtitles off"
             downloadedTrack != null && selectedKey == downloadedTrack.key ->
-                "${friendlyLanguageDisplay(downloadedTrack.language)} · Downloaded"
+                "${friendlyLanguageDisplay(downloadedTrack.language)} · ${downloadedProviderLabel(downloadedTrack.file) ?: "Downloaded"}"
             else -> localFiles.firstOrNull { selectedKey == "local:${it.absolutePath}" }
                 ?.let { "${it.nameWithoutExtension} · Local" }
                 ?: generatedFiles.firstOrNull { selectedKey == "generated:${it.fileName}" }
@@ -180,30 +181,13 @@ fun SubtitleTrackSelectorSheet(
             modifier = Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())
         ) {
             if (!manageMode) {
-                TrackSectionLabel("Subtitle state")
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Box(modifier = Modifier.weight(1f)) {
-                        TrackRow(
-                            icon = Icons.Default.Check,
-                            title = "Subtitles On",
-                            subtitle = null,
-                            badges = emptyList(),
-                            selected = !subtitlesAreOff,
-                            onClick = { onSelect(SubtitleTrackChoice.On) }
-                        )
+                SubtitleStatePill(
+                    enabled = !subtitlesAreOff,
+                    onToggle = { on ->
+                        onSelect(if (on) SubtitleTrackChoice.On else SubtitleTrackChoice.Off)
                     }
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Box(modifier = Modifier.weight(1f)) {
-                        TrackRow(
-                            icon = Icons.Default.SubtitlesOff,
-                            title = "Subtitles Off",
-                            subtitle = null,
-                            badges = emptyList(),
-                            selected = subtitlesAreOff,
-                            onClick = { onSelect(SubtitleTrackChoice.Off) }
-                        )
-                    }
-                }
+                )
+                Spacer(modifier = Modifier.height(4.dp))
 
                 if (embeddedTracks.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(10.dp))
@@ -230,7 +214,7 @@ fun SubtitleTrackSelectorSheet(
                     TrackRow(
                         icon = null,
                         title = friendlyLanguageDisplay(downloadedTrack.language),
-                        subtitle = "Downloaded",
+                        subtitle = downloadedProviderLabel(downloadedTrack.file)?.let { "Downloaded · $it" } ?: "Downloaded",
                         badges = emptyList(),
                         selected = selectedKey == downloadedTrack.key,
                         onClick = { onSelect(downloadedTrack) }
@@ -291,7 +275,7 @@ fun SubtitleTrackSelectorSheet(
                     TrackRow(
                         icon = null,
                         title = friendlyLanguageDisplay(downloadedTrack.language),
-                        subtitle = "Downloaded subtitle",
+                        subtitle = downloadedProviderLabel(downloadedTrack.file)?.let { "Downloaded · $it" } ?: "Downloaded subtitle",
                         badges = emptyList(),
                         selected = selectedKey == downloadedTrack.key,
                         onClick = {},
@@ -480,3 +464,67 @@ private fun IconCircleSmall(
 
 private fun friendlyLanguageDisplay(code: String?): String =
     SubtitleLanguageRegistry.displayName(code)
+
+// Cached downloads are named "<key>.<lang>.<provider>.srt".
+private fun downloadedProviderLabel(file: File): String? {
+    val parts = file.name.split('.')
+    return when (parts.getOrNull(parts.size - 2)?.lowercase()) {
+        "subdl" -> "SubDL"
+        "opensubtitles" -> "OpenSubtitles"
+        else -> null
+    }
+}
+
+/** One pill: amber glow, filled switch when on; no fill and an empty switch when off. */
+@Composable
+private fun SubtitleStatePill(enabled: Boolean, onToggle: (Boolean) -> Unit) {
+    val shape = RoundedCornerShape(50)
+    val dark = Color(0xFF1A1206)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(if (enabled) AmberGlow.copy(alpha = 0.26f) else Color.Transparent)
+            .border(
+                1.dp,
+                if (enabled) AmberCore.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.18f),
+                shape
+            )
+            .clickable { onToggle(!enabled) }
+            .padding(horizontal = 16.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = if (enabled) Icons.Default.Subtitles else Icons.Default.SubtitlesOff,
+            contentDescription = null,
+            tint = if (enabled) AmberCore else TextMuted,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = "Subtitles",
+            color = if (enabled) AmberCore else TextMuted,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f)
+        )
+        Box(
+            modifier = Modifier
+                .width(42.dp)
+                .height(24.dp)
+                .clip(shape)
+                .background(if (enabled) AmberCore else Color.Transparent)
+                .border(1.5.dp, if (enabled) AmberCore else TextMuted.copy(alpha = 0.6f), shape)
+                .padding(3.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .align(if (enabled) Alignment.CenterEnd else Alignment.CenterStart)
+                    .clip(CircleShape)
+                    .background(if (enabled) dark else Color.Transparent)
+                    .border(1.5.dp, if (enabled) dark else TextMuted.copy(alpha = 0.6f), CircleShape)
+            )
+        }
+    }
+}

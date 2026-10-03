@@ -1,5 +1,7 @@
 package com.sole.cinevault.subtitles
 
+import com.sole.cinevault.CineVaultToast
+
 import android.content.Context
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
@@ -52,7 +54,7 @@ class SubtitleDeletionCoordinator(
                 pendingDeletePaths.remove(file.absolutePath)
                 setPendingConsentFile(null)
                 onDeleteUndone(file)
-                Toast.makeText(context, "Couldn't delete: ${e.message}", Toast.LENGTH_SHORT).show()
+                CineVaultToast.show(context, "Couldn't delete: ${e.message}")
             }
         )
     }

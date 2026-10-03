@@ -1,5 +1,7 @@
 package com.sole.cinevault.subtitles
 
+import com.sole.cinevault.CineVaultToast
+
 import android.annotation.SuppressLint
 
 import android.content.Context
@@ -69,7 +71,7 @@ class SubtitleSearchCoordinator(
             searchUi.showEmbeddedBrowser = false
             searchUi.pendingImportCandidates = null
             setShowControls(true)
-            Toast.makeText(context, "Subtitle loaded", Toast.LENGTH_SHORT).show()
+            CineVaultToast.show(context, "Subtitle loaded")
         }
     }
 
@@ -119,7 +121,7 @@ class SubtitleSearchCoordinator(
                 OpenSubtitlesClient.downloadSubtitleByFileId(context, expectedPath, result.fileId, result.language, result.provider)
             }
             if (!isCurrentVideo(expectedPath)) {
-                Toast.makeText(context, "Subtitle download ignored: video changed", Toast.LENGTH_SHORT).show()
+                CineVaultToast.show(context, "Subtitle download ignored: video changed")
                 return@launch
             }
             when (downloadResult) {
@@ -141,12 +143,12 @@ class SubtitleSearchCoordinator(
                         playSubtitle(cleanedApplyUri, resumeAt, true)
                         searchUi.showSearch = false
                         setShowControls(true)
-                        Toast.makeText(context, "Subtitle applied", Toast.LENGTH_SHORT).show()
+                        CineVaultToast.show(context, "Subtitle applied")
                     } else {
-                        Toast.makeText(context, "Subtitle saved — apply it from Tracks", Toast.LENGTH_SHORT).show()
+                        CineVaultToast.show(context, "Subtitle saved — apply it from Tracks")
                     }
                 }
-                else -> Toast.makeText(context, downloadResult.summary(), Toast.LENGTH_LONG).show()
+                else -> CineVaultToast.show(context, downloadResult.summary(), long = true)
             }
         }
     }
@@ -201,7 +203,7 @@ class SubtitleSearchCoordinator(
                     trackUi.selectedKey = "off"
                     trackUi.selectedLabel = ""
                     trackUi.selectedSource = ""
-                    Toast.makeText(context, "Subtitle track is no longer available", Toast.LENGTH_SHORT).show()
+                    CineVaultToast.show(context, "Subtitle track is no longer available")
                     return
                 }
 

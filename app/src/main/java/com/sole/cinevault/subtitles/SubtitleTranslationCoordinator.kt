@@ -1,5 +1,7 @@
 package com.sole.cinevault.subtitles
 
+import com.sole.cinevault.CineVaultToast
+
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
@@ -106,7 +108,7 @@ class SubtitleTranslationCoordinator(
             val reason =
                 "No readable external subtitle is active. Load a Subtitle Studio download, local SRT, or generated subtitle first."
             setStatus(SubtitleTranslationStatus.Failed(reason))
-            Toast.makeText(context, reason, Toast.LENGTH_LONG).show()
+            CineVaultToast.show(context, reason, long = true)
             return
         }
 
@@ -179,11 +181,7 @@ class SubtitleTranslationCoordinator(
                 when (result) {
                     is SubtitleTranslationEngine.Result.Failed -> {
                         setStatus(SubtitleTranslationStatus.Failed(result.reason))
-                        Toast.makeText(
-                            context,
-                            "Translation failed: ${result.reason}",
-                            Toast.LENGTH_LONG,
-                        ).show()
+                        CineVaultToast.show(context, "Translation failed: ${result.reason}", long = true)
                     }
 
                     is SubtitleTranslationEngine.Result.Success -> {
@@ -228,7 +226,7 @@ class SubtitleTranslationCoordinator(
                 // from some other owner (for example, the parent scope).
                 if (generation == translationGeneration) {
                     setStatus(SubtitleTranslationStatus.Idle)
-                    Toast.makeText(context, "Translation stopped", Toast.LENGTH_SHORT).show()
+                    CineVaultToast.show(context, "Translation stopped")
                 }
             } catch (oom: OutOfMemoryError) {
                 setStatus(
@@ -236,11 +234,7 @@ class SubtitleTranslationCoordinator(
                         "Translation ran out of available memory. Try again after closing other apps."
                     )
                 )
-                Toast.makeText(
-                    context,
-                    "Translation stopped: not enough memory",
-                    Toast.LENGTH_LONG,
-                ).show()
+                CineVaultToast.show(context, "Translation stopped: not enough memory", long = true)
             } catch (t: Throwable) {
                 val detail = t.message
                     ?.takeIf { it.isNotBlank() }
@@ -251,11 +245,7 @@ class SubtitleTranslationCoordinator(
                         "Translation failed safely: $detail"
                     )
                 )
-                Toast.makeText(
-                    context,
-                    "Translation failed: $detail",
-                    Toast.LENGTH_LONG,
-                ).show()
+                CineVaultToast.show(context, "Translation failed: $detail", long = true)
             } finally {
                 if (generation == translationGeneration) {
                     translationJob = null
@@ -274,6 +264,6 @@ class SubtitleTranslationCoordinator(
         translationJob = null
         activeJob.cancel()
         setStatus(SubtitleTranslationStatus.Idle)
-        Toast.makeText(context, "Translation stopped", Toast.LENGTH_SHORT).show()
+        CineVaultToast.show(context, "Translation stopped")
     }
 }

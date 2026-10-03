@@ -26,23 +26,30 @@ object SubtitleTranslationEngine {
 
     data class SupportedLanguage(val label: String, val mlKitCode: String)
 
-    val commonTargetLanguages: List<SupportedLanguage> = listOf(
-        SupportedLanguage("English", TranslateLanguage.ENGLISH),
-        SupportedLanguage("Hindi", TranslateLanguage.HINDI),
-        SupportedLanguage("Spanish", TranslateLanguage.SPANISH),
-        SupportedLanguage("French", TranslateLanguage.FRENCH),
-        SupportedLanguage("German", TranslateLanguage.GERMAN),
-        SupportedLanguage("Portuguese", TranslateLanguage.PORTUGUESE),
-        SupportedLanguage("Japanese", TranslateLanguage.JAPANESE),
-        SupportedLanguage("Korean", TranslateLanguage.KOREAN),
-        SupportedLanguage("Chinese (Simplified)", TranslateLanguage.CHINESE),
-        SupportedLanguage("Arabic", TranslateLanguage.ARABIC),
-        SupportedLanguage("Russian", TranslateLanguage.RUSSIAN),
-        SupportedLanguage("Italian", TranslateLanguage.ITALIAN),
-        SupportedLanguage("Tamil", TranslateLanguage.TAMIL),
-        SupportedLanguage("Telugu", TranslateLanguage.TELUGU),
-        SupportedLanguage("Bengali", TranslateLanguage.BENGALI),
+    // Every language ML Kit can translate into (59), most-used first, the rest A-Z.
+    // The picker already has search and favourites, so the longer list stays usable.
+    private val popularCodes = listOf(
+        TranslateLanguage.ENGLISH, TranslateLanguage.HINDI, TranslateLanguage.SPANISH,
+        TranslateLanguage.FRENCH, TranslateLanguage.GERMAN, TranslateLanguage.PORTUGUESE,
+        TranslateLanguage.JAPANESE, TranslateLanguage.KOREAN, TranslateLanguage.CHINESE,
+        TranslateLanguage.ARABIC, TranslateLanguage.RUSSIAN, TranslateLanguage.ITALIAN,
+        TranslateLanguage.TAMIL, TranslateLanguage.TELUGU, TranslateLanguage.BENGALI,
+        TranslateLanguage.THAI,
     )
+
+    private fun labelFor(code: String): String = when (code) {
+        TranslateLanguage.CHINESE -> "Chinese (Simplified)"
+        else -> java.util.Locale(code).getDisplayLanguage(java.util.Locale.ENGLISH)
+            .replaceFirstChar { it.uppercase() }
+            .ifBlank { code.uppercase() }
+    }
+
+    val commonTargetLanguages: List<SupportedLanguage> by lazy {
+        val all = TranslateLanguage.getAllLanguages()
+        val popular = popularCodes.filter { it in all }
+        val rest = all.filterNot { it in popular }.sortedBy { labelFor(it) }
+        (popular + rest).map { SupportedLanguage(labelFor(it), it) }
+    }
 
     suspend fun translate(
         srtText: String,
@@ -185,26 +192,8 @@ object SubtitleTranslationEngine {
     fun mlKitCodeForWhisperLanguage(code: String): String? =
         mlKitCodeForLanguageTag(code)
 
-    private fun mlKitCodeForLanguageTag(tag: String): String? {
-        return when (tag.lowercase().substringBefore('-')) {
-            "en" -> TranslateLanguage.ENGLISH
-            "hi" -> TranslateLanguage.HINDI
-            "es" -> TranslateLanguage.SPANISH
-            "fr" -> TranslateLanguage.FRENCH
-            "de" -> TranslateLanguage.GERMAN
-            "pt" -> TranslateLanguage.PORTUGUESE
-            "ja" -> TranslateLanguage.JAPANESE
-            "ko" -> TranslateLanguage.KOREAN
-            "zh" -> TranslateLanguage.CHINESE
-            "ar" -> TranslateLanguage.ARABIC
-            "ru" -> TranslateLanguage.RUSSIAN
-            "it" -> TranslateLanguage.ITALIAN
-            "ta" -> TranslateLanguage.TAMIL
-            "te" -> TranslateLanguage.TELUGU
-            "bn" -> TranslateLanguage.BENGALI
-            else -> null
-        }
-    }
+    private fun mlKitCodeForLanguageTag(tag: String): String? =
+        TranslateLanguage.fromLanguageTag(tag.lowercase().substringBefore('-'))
 
     private fun diagnosticMessage(t: Throwable): String {
         val type = t.javaClass.simpleName.ifBlank { t.javaClass.name }
