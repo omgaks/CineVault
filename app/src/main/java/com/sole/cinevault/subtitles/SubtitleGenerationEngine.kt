@@ -80,7 +80,7 @@ object SubtitleGenerationEngine {
                 maxSpeechDuration = 20f,
             ),
             sampleRate = 16_000,
-            numThreads = WhisperModelManager.recommendedThreadCount().coerceAtMost(3),
+            numThreads = WhisperModelManager.recommendedThreadCount().coerceAtMost(4),
             provider = "cpu",
         )
         val vad = Vad(assetManager = context.assets, config = vadConfig)
