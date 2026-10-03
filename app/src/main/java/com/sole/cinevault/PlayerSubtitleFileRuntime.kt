@@ -15,7 +15,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.subtitles.*
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.runtime.DisposableEffect
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import java.io.File
 
 internal data class PlayerSubtitleFileRuntime(
@@ -52,6 +55,17 @@ internal fun rememberPlayerSubtitleFileRuntime(
     val detachedSubtitleForUndoState = remember { mutableStateOf<File?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // Subtitle messages ("Subtitle applied", errors...) show in the CineVault glass pill.
+    DisposableEffect(snackbarHostState, scope) {
+        CineVaultToast.sink = { message ->
+            scope.launch {
+                snackbarHostState.currentSnackbarData?.dismiss()
+                snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
+            }
+        }
+        onDispose { CineVaultToast.sink = null }
+    }
+
     val deleteConsentLauncher =
         rememberLauncherForActivityResult(
             ActivityResultContracts.StartIntentSenderForResult()
@@ -61,7 +75,7 @@ internal fun rememberPlayerSubtitleFileRuntime(
                 if (consentedFile != null) {
                     pendingDeletePaths.remove(consentedFile.absolutePath)
                 }
-                Toast.makeText(context, "Delete cancelled", Toast.LENGTH_SHORT).show()
+                CineVaultToast.show(context, "Delete cancelled")
             }
             pendingConsentFileState.value = null
         }

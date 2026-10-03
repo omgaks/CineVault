@@ -5,7 +5,9 @@ import android.annotation.SuppressLint
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.media3.common.C
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -174,6 +176,10 @@ fun rememberPlayerSubtitleRuntimeEffects(
     // This coordinator owns per-video cache/hash lookup and writes a merged
     // subtitle for the active title. Recreate it when the video changes so no
     // episode/movie can inherit a stale path captured by the previous runtime.
+    // Read the colour at call time. The coordinator below is remembered, so a plain
+    // capture kept the colour from when it was created: a tap re-applied the OLD
+    // colour and only a second tap picked up the new one.
+    val latestDualSecondaryColorHex by rememberUpdatedState(dualSecondaryColorHex)
     val dualRuntimeIdentity = remember(currentVideoPath, dualSecondaryColorHex) {
         subtitleRuntimeIdentity(currentVideoPath, dualSecondaryColorHex)
     }
@@ -186,7 +192,7 @@ fun rememberPlayerSubtitleRuntimeEffects(
             driftUi = driftUi,
             dualUi = dualUi,
             trackUi = trackUi,
-            getDualSecondaryColorHex = { dualSecondaryColorHex },
+            getDualSecondaryColorHex = { latestDualSecondaryColorHex },
             getCurrentVideoPath = { currentVideoPath },
             playSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle ->
                 playCurrentVideoWithSubtitle(

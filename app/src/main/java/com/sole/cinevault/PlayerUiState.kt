@@ -38,6 +38,12 @@ class DualSubtitleState {
     var gapLines by mutableStateOf(0)
     var statusText by mutableStateOf("")
     var secondarySourceLabel by mutableStateOf("")
+
+    // The secondary file currently merged in. Colour/gap changes re-merge from this
+    // directly instead of repeating the provider search.
+    var lastSecondaryUri: android.net.Uri? = null
+    var lastSecondaryVideoPath: String = ""
+    var lastSecondaryLabel: String = ""
 }
 
 class SubtitleStudioUiState {

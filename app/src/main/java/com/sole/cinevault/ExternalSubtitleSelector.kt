@@ -1,7 +1,6 @@
 package com.sole.cinevault
 
 import android.content.Context
-import android.widget.Toast
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
@@ -58,11 +57,11 @@ class ExternalSubtitleSelector(
 
             override fun onPlayerError(error: PlaybackException) {
                 disarm()
-                Toast.makeText(
+                CineVaultToast.show(
                     context,
                     "Subtitle didn't load (${error.errorCodeName})",
-                    Toast.LENGTH_LONG,
-                ).show()
+                    long = true,
+                )
             }
         }
         armedListener = listener

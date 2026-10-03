@@ -8,6 +8,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -148,8 +150,16 @@ internal fun BoxScope.PlayerSubtitleDeleteFeedback(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong)
+                .border(1.dp, AmberCore.copy(alpha = 0.35f), RoundedCornerShape(50))
                 .padding(horizontal = 18.dp, vertical = 12.dp)
         ) {
+            Box(
+                modifier = Modifier
+                    .size(7.dp)
+                    .clip(CircleShape)
+                    .background(AmberCore)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = data.visuals.message,
                 color = TextBright,

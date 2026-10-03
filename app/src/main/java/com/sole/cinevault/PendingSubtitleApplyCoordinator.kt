@@ -38,7 +38,7 @@ class PendingSubtitleApplyCoordinator(
         val pickedFormat = detectSubtitleFormat(uri)
         if (pickedFormat == SubtitleFormat.UNKNOWN) {
             autoSubtitleFetch.status = "Unsupported subtitle format"
-            Toast.makeText(context, "Unsupported subtitle format", Toast.LENGTH_LONG).show()
+            CineVaultToast.show(context, "Unsupported subtitle format", long = true)
             clearPendingUri()
             return
         }
@@ -65,7 +65,7 @@ class PendingSubtitleApplyCoordinator(
         coreUi.showSettings = false
         trackUi.showSelector = false
         showControls()
-        Toast.makeText(context, "$formatLabel file loaded", Toast.LENGTH_SHORT).show()
+        CineVaultToast.show(context, "$formatLabel file loaded")
 
         delay(playerSubtitleStatusClearDelayMs())
         autoSubtitleFetch.status = ""

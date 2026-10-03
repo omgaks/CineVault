@@ -409,7 +409,7 @@ internal fun PlayerSubtitleStudioSurfaces(
             onGapLinesChange = { gap ->
                 dualUi.gapLines = gap
                 if (dualUi.enabled) {
-                    subtitleSyncTools.fetchAndApplyDualSecondary()
+                    subtitleSyncTools.reapplyDualStyle()
                 }
                 studioUi.menuTouchKey++
             },
@@ -417,7 +417,7 @@ internal fun PlayerSubtitleStudioSurfaces(
             onSecondaryColorChange = { color ->
                 onDualSecondaryColorHexChanged(color)
                 if (dualUi.enabled) {
-                    subtitleSyncTools.fetchAndApplyDualSecondary()
+                    subtitleSyncTools.reapplyDualStyle()
                 }
                 studioUi.menuTouchKey++
             },

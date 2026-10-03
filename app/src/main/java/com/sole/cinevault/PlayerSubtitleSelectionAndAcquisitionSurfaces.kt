@@ -410,11 +410,7 @@ internal fun BoxScope.PlayerSubtitleSelectionAndAcquisitionSurfaces(
             player.pause()
             launchSubtitleCustomTab(context, subtitleWebQuery)
             searchUi.showFallback = false
-            Toast.makeText(
-                context,
-                "After downloading, return and choose Import downloaded subtitle",
-                Toast.LENGTH_LONG,
-            ).show()
+            CineVaultToast.show(context, "After downloading, return and choose Import downloaded subtitle", long = true)
         },
         onEmbeddedBrowser = {
             player.pause()
@@ -461,11 +457,7 @@ internal fun BoxScope.PlayerSubtitleSelectionAndAcquisitionSurfaces(
             }
         },
         onMessage = {
-            Toast.makeText(
-                context,
-                it,
-                Toast.LENGTH_LONG,
-            ).show()
+            CineVaultToast.show(context, it, long = true)
         },
         onDismissEmbeddedBrowser = {
             searchUi.showEmbeddedBrowser = false
