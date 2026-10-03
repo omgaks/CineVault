@@ -401,11 +401,13 @@ fun VideoPlayerScreen(
         resumePosition: Long = 0L,
         isOriginalSubtitle: Boolean = true,
         resetSubtitleTiming: Boolean = isOriginalSubtitle,
+        forceRebuild: Boolean = false,
     ) = playbackNavigationCoordinator.playCurrentVideoWithSubtitle(
         subtitleUri,
         resumePosition,
         isOriginalSubtitle,
         resetSubtitleTiming,
+        forceRebuild,
     )
 
     fun replaySubtitlePreservingTiming(resumePosition: Long) {
@@ -443,10 +445,12 @@ fun VideoPlayerScreen(
         isPlaying = isPlaying,
         subtitleUri = trackUi.originalUri,
         onPlayCurrentVideoWithSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle ->
+            // Decoder fallback / startup-stall recovery must really rebuild the video.
             playCurrentVideoWithSubtitle(
                 subtitleUri = subtitleUri,
                 resumePosition = resumePosition,
                 isOriginalSubtitle = isOriginalSubtitle,
+                forceRebuild = true,
             )
         },
     )
