@@ -700,7 +700,6 @@ fun VideoPlayerScreen(
         context = context,
         scope = scope,
         exoPlayer = exoPlayer,
-        trackSelector = trackSelector,
         currentVideoPath = currentVideo.path,
         isStreamMedia = isStreamMedia,
         trackUi = trackUi,
