@@ -241,12 +241,30 @@ class SubtitleSyncToolsCoordinator(
             // file is only the render base while Dual Subs is enabled; timing is
             // then reapplied to that base by SubtitleSyncRenderCoordinator.
             trackUi.renderBaseUri = merged
-            trackUi.appliedOffsetMs = Long.MIN_VALUE
-            driftUi.appliedScale = Float.NaN
             coreUi.subtitlesEnabled = true
             dualUi.secondarySourceLabel = sourceLabel
             dualUi.statusText =
                 "Dual subtitles: ${if (trackUi.primaryLanguage != null) SubtitleLanguageRegistry.displayName(trackUi.primaryLanguage) else "Primary"} + ${SubtitleLanguageRegistry.displayName(dualUi.secondaryLanguage)}"
+
+            // Do not wait for a Compose effect to notice renderBaseUri. Dual Subs
+            // has already produced the exact subtitle payload that must be shown,
+            // so attach it to Media3 immediately while preserving the current
+            // sync/drift transform. This also makes a successful Dual toggle
+            // deterministic when the merge completes between recompositions.
+            val offsetMs = (coreUi.syncOffset * 1000f).toLong()
+            val requestedScale = driftUi.scale
+            val renderUri = withContext(Dispatchers.IO) {
+                com.sole.cinevault.buildShiftedSubtitleFile(
+                    context,
+                    merged,
+                    offsetMs,
+                    requestedScale,
+                )
+            } ?: merged
+            trackUi.appliedOffsetMs = offsetMs
+            driftUi.appliedScale = requestedScale
+            val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+            playSubtitle(renderUri, resumeAt, false)
         }
     }
 
