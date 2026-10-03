@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Switch
@@ -89,6 +90,7 @@ private val AccentStream = Color(0xFFC792FF)
 private val AccentSupport = Color(0xFFFF6E8C)
 private val AccentAbout = Color(0xFFE8C77A)
 private val AccentPrivacy = Color(0xFF8FD9A8)
+private val AccentReset = Color(0xFFFFB74D)
 
 // Distinct color per folder pill — cycled by position so every added folder
 // reads as visually its own thing rather than a uniform list.
@@ -135,6 +137,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     var showStreamDialog by remember { mutableStateOf(false) }
     var showCrashLog by remember { mutableStateOf(false) }
+    var showResetSettingsConfirm by remember { mutableStateOf(false) }
 
     var smbShares by remember { mutableStateOf(loadSmbShares(context)) }
     var showSmbDialog by remember { mutableStateOf(false) }
@@ -147,6 +150,7 @@ fun SettingsScreen(
     // the dialog and returning to Settings.
     BackHandler(enabled = showStreamDialog) { showStreamDialog = false }
     BackHandler(enabled = showCrashLog) { showCrashLog = false }
+    BackHandler(enabled = showResetSettingsConfirm) { showResetSettingsConfirm = false }
     BackHandler(enabled = showSmbDialog) { showSmbDialog = false; editingShare = null }
 
     // Select Folder — the general "Add Media Folder" picker (and the whole
@@ -368,6 +372,27 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(18.dp))
 
+            GlassSectionCard(
+                title = "Reset Settings",
+                subtitle = "Restore CineVault preferences to their defaults.",
+                icon = Icons.Rounded.RestartAlt,
+                accent = AccentReset
+            ) {
+                val onResetClick = { showResetSettingsConfirm = true }
+                TvFocusableSlot(isTelevision = isTelevision, onActivate = onResetClick) {
+                    GlassActionRow(
+                        icon = Icons.Rounded.RestartAlt,
+                        iconTint = AccentReset,
+                        title = "Reset CineVault settings",
+                        subtitle = "Keeps your library, history, favourites, folders and subtitle files",
+                        action = "RESET",
+                        onClick = onResetClick
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
             // Support
             GlassSectionCard(title = "Support CineVault", subtitle = "A small thank you keeps the vault alive.", icon = Icons.Filled.Favorite, accent = AccentSupport) {
                 val onCoffeeClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.buymeacoffee.com/"))) }
@@ -520,6 +545,52 @@ fun SettingsScreen(
                             Text(
                                 text = "Clear Log", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
                                 modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFFFF5252)).clickable(onClick = onClearLogClick).padding(horizontal = 16.dp, vertical = 9.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (showResetSettingsConfirm) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.62f))
+                    .clickable { showResetSettingsConfirm = false },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .width(330.dp)
+                        .glassPanel(cornerRadius = 24.dp, fill = SpaceMid.copy(alpha = 0.98f))
+                        .clickable(enabled = false) { }
+                        .padding(20.dp)
+                ) {
+                    Text(text = "Reset CineVault settings?", color = TextBright, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Subtitle, audio, display and privacy preferences will return to defaults. Your library, watch history, favourites, selected folders, downloaded subtitles and AI subtitles will stay untouched.",
+                        color = TextMuted, fontSize = 13.sp, lineHeight = 18.sp
+                    )
+                    Spacer(modifier = Modifier.height(18.dp))
+                    val onCancelReset = { showResetSettingsConfirm = false }
+                    val onConfirmReset = {
+                        resetCineVaultSettings(context)
+                        showResetSettingsConfirm = false
+                        Toast.makeText(context, "CineVault settings reset", Toast.LENGTH_SHORT).show()
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(50), onActivate = onCancelReset) {
+                            Text(
+                                text = "Cancel", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable(onClick = onCancelReset).padding(horizontal = 16.dp, vertical = 9.dp)
+                            )
+                        }
+                        TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(50), onActivate = onConfirmReset) {
+                            Text(
+                                text = "Reset", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
+                                modifier = Modifier.clip(RoundedCornerShape(50)).background(AccentReset).clickable(onClick = onConfirmReset).padding(horizontal = 16.dp, vertical = 9.dp)
                             )
                         }
                     }
