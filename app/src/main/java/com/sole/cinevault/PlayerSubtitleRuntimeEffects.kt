@@ -1,6 +1,7 @@
 package com.sole.cinevault
 
 import android.content.Context
+import android.annotation.SuppressLint
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -27,6 +28,7 @@ data class PlayerSubtitleRuntimeEffects(
     val isAssOrSsaFormat: Boolean,
 )
 
+@SuppressLint("UnsafeOptInUsageError")
 @Composable
 fun rememberPlayerSubtitleRuntimeEffects(
     context: Context,
