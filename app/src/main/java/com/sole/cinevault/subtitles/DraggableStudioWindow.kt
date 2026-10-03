@@ -15,6 +15,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.graphicsLayer
 
 /**
  * Wraps any Studio window content in free-drag behavior, reachable to any
@@ -46,19 +47,37 @@ fun DraggableStudioWindow(
     initialOffset: Offset,
     containerSize: IntSize,
     modifier: Modifier = Modifier,
+    // When true the window sits at the right edge, vertically centred in the available
+    // space, in any orientation, until the user drags it somewhere else.
+    anchorCenterEnd: Boolean = false,
+    anchorMarginPx: Float = 0f,
     content: @Composable (dragHandleModifier: Modifier) -> Unit
 ) {
     var offset by remember(initialOffset) { mutableStateOf(initialOffset) }
+    var userMoved by remember(initialOffset) { mutableStateOf(false) }
     var windowSize by remember { mutableStateOf(IntSize.Zero) }
 
-    val dragModifier = Modifier.pointerInput(containerSize, windowSize) {
+    val measured = windowSize != IntSize.Zero
+    val anchored = anchorCenterEnd && !userMoved && measured
+    val effective = if (anchored) {
+        Offset(
+            x = (containerSize.width - windowSize.width - anchorMarginPx).coerceAtLeast(0f),
+            y = ((containerSize.height - windowSize.height) / 2f).coerceAtLeast(0f),
+        )
+    } else {
+        offset
+    }
+
+    val dragModifier = Modifier.pointerInput(containerSize, windowSize, anchored) {
         detectDragGestures { change, dragAmount ->
             change.consume()
             val maxX = (containerSize.width - windowSize.width).coerceAtLeast(0).toFloat()
             val maxY = (containerSize.height - windowSize.height).coerceAtLeast(0).toFloat()
+            val base = if (anchored) effective else offset
+            userMoved = true
             offset = Offset(
-                x = (offset.x + dragAmount.x).coerceIn(0f, maxX),
-                y = (offset.y + dragAmount.y).coerceIn(0f, maxY)
+                x = (base.x + dragAmount.x).coerceIn(0f, maxX),
+                y = (base.y + dragAmount.y).coerceIn(0f, maxY)
             )
         }
     }
@@ -66,7 +85,10 @@ fun DraggableStudioWindow(
     Box(
         modifier = modifier
             .onGloballyPositioned { windowSize = it.size }
-            .offset { IntOffset(offset.x.roundToInt(), offset.y.roundToInt()) }
+            // Stay invisible for the one frame before the window has been measured, so an
+            // anchored window never flashes at the wrong spot.
+            .graphicsLayer(alpha = if (anchorCenterEnd && !measured) 0f else 1f)
+            .offset { IntOffset(effective.x.roundToInt(), effective.y.roundToInt()) }
     ) {
         content(dragModifier)
     }

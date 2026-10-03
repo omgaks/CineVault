@@ -62,6 +62,7 @@ import com.sole.cinevault.ui.theme.TextBright
 import com.sole.cinevault.ui.theme.TextFaint
 import com.sole.cinevault.ui.theme.TextMuted
 import com.sole.cinevault.ui.theme.glassPanel
+import com.sole.cinevault.blockTapThrough
 
 enum class StudioCategory { DOWNLOAD, STYLE, POWER_TOOLS, SETTINGS }
 
@@ -264,16 +265,20 @@ fun DualSubsWindow(
         mutableStateOf(loadDualFavoriteLanguages(context))
     }
 
+    val marginPx = with(androidx.compose.ui.platform.LocalDensity.current) { 12.dp.toPx() }
     DraggableStudioWindow(
         initialOffset = initialOffset,
         containerSize = containerSize,
-        modifier = modifier
+        modifier = modifier,
+        anchorCenterEnd = true,
+        anchorMarginPx = marginPx,
     ) { dragHandleModifier ->
         Column(
             modifier = Modifier
                 .widthIn(min = 230.dp, max = 270.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(GlassSurfaceStrong)
+                .blockTapThrough()
                 .padding(12.dp)
         ) {
             Row(

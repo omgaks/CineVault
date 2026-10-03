@@ -33,9 +33,16 @@ class SubtitleSearchCoordinator(
     private val getCurrentVideoPath: () -> String,
     private val setShowControls: (Boolean) -> Unit,
     private val setPendingSrtUri: (Uri) -> Unit,
-    private val playSubtitle: (subtitleUri: Uri?, resumePosition: Long, isOriginalSubtitle: Boolean) -> Unit
+    private val playSubtitle: (subtitleUri: Uri?, resumePosition: Long, isOriginalSubtitle: Boolean) -> Unit,
+    private val externalOverlay: com.sole.cinevault.ExternalSubtitleOverlay? = null,
 ) {
     private var searchGeneration = 0L
+
+    // What the Tracks list showed as active before the Subtitles pill was switched off,
+    // so switching it back on restores the same external subtitle.
+    private var stashedKey: String? = null
+    private var stashedLabel: String = ""
+    private var stashedSource: String = ""
 
     private fun isCurrentVideo(expectedPath: String): Boolean =
         getCurrentVideoPath() == expectedPath
@@ -158,6 +165,16 @@ class SubtitleSearchCoordinator(
         studioUi.menuTouchKey++
         when (choice) {
             is SubtitleTrackChoice.On -> {
+                val overlay = externalOverlay
+                if (overlay != null && overlay.hasContent) {
+                    // An external subtitle is loaded: just show it again.
+                    coreUi.subtitlesEnabled = true
+                    overlay.setVisible(true)
+                    stashedKey?.let { trackUi.selectedKey = it }
+                    trackUi.selectedLabel = stashedLabel
+                    trackUi.selectedSource = stashedSource
+                    return
+                }
                 val textGroups = exoPlayer.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
                 val firstAvailable = textGroups.firstOrNull { it.length > 0 }
 
@@ -186,6 +203,12 @@ class SubtitleSearchCoordinator(
                 trackSelector.parameters = builder.build()
             }
             is SubtitleTrackChoice.Off -> {
+                if (externalOverlay?.hasContent == true) {
+                    stashedKey = trackUi.selectedKey
+                    stashedLabel = trackUi.selectedLabel
+                    stashedSource = trackUi.selectedSource
+                    externalOverlay?.setVisible(false)
+                }
                 coreUi.subtitlesEnabled = false
                 trackSelector.parameters = trackSelector.buildUponParameters()
                     .clearOverridesOfType(C.TRACK_TYPE_TEXT)
@@ -207,6 +230,8 @@ class SubtitleSearchCoordinator(
                     return
                 }
 
+                // An embedded track replaces any external subtitle shown by the overlay.
+                externalOverlay?.clear()
                 val group = textGroups[choice.groupIndex]
                 trackSelector.parameters = trackSelector.buildUponParameters()
                     .clearOverridesOfType(C.TRACK_TYPE_TEXT)
