@@ -1,6 +1,7 @@
 package com.sole.cinevault
 
 import android.content.Context
+import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,6 +32,7 @@ data class PlayerSubtitleAiRuntime(
     val translationJobProgress: Int?,
 )
 
+@SuppressLint("UnsafeOptInUsageError")
 @Composable
 fun rememberPlayerSubtitleAiRuntime(
     context: Context,
