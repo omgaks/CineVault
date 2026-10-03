@@ -26,6 +26,7 @@ internal data class PlayerSessionCoordinatorBundle(
  * Groups playback-speed/sleep actions, playlist navigation, and subtitle
  * search coordination. State still belongs to VideoPlayerScreen.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 internal fun rememberPlayerSessionCoordinators(
     context: Context,
