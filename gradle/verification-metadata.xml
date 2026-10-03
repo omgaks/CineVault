@@ -3,6 +3,14 @@
    <configuration>
       <verify-metadata>true</verify-metadata>
       <verify-signatures>false</verify-signatures>
+      <trusted-artifacts>
+         <!-- media3-effect (Picture enhancement) and the libraries it pulls in. -->
+         <trust group="androidx.media3" name="media3-effect" version="1.9.0"/>
+         <trust group="com.airbnb.android" name="lottie" version="6.6.0"/>
+         <trust group="androidx.concurrent" name="concurrent-futures" version="1.2.0"/>
+         <trust group="org.jetbrains.kotlinx" name="kotlinx-coroutines-guava" version="1.10.2"/>
+         <trust group="org.jetbrains.kotlinx" name="kotlinx-coroutines-guava" version="1.9.0"/>
+      </trusted-artifacts>
    </configuration>
    <components>
       <component group="androidx.activity" name="activity" version="1.10.1">
