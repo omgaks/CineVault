@@ -5,6 +5,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.media3.common.C
 import com.sole.cinevault.subtitles.SubtitleFormat
+import com.sole.cinevault.subtitles.SubtitleLanguageRegistry
 import com.sole.cinevault.subtitles.buildCleanedSubtitleFile
 import com.sole.cinevault.subtitles.detectSubtitleFormat
 import com.sole.cinevault.subtitles.parseSubtitleFilename
@@ -29,7 +30,9 @@ class PendingSubtitleApplyCoordinator(
         val resumeAt = getResumePosition()
         coreUi.subtitlesEnabled = true
         val pickedFile = uri.path?.let(::File)
-        val pickedLanguage = pickedFile?.name?.let { name -> parseSubtitleFilename(name).first }
+        val pickedLanguage = pickedFile?.name?.let { name ->
+            generatedLanguageFromFileName(name) ?: parseSubtitleFilename(name).first
+        }
         enableTextTracks(pickedLanguage)
 
         val pickedFormat = detectSubtitleFormat(uri)
@@ -69,3 +72,13 @@ class PendingSubtitleApplyCoordinator(
         clearPendingUri()
     }
 }
+
+// Generated files are named "<video>-translated-<lang>-<timestamp>.srt" (or "-ai-").
+// parseSubtitleFilename() splits on "." and cannot read that pattern, so a
+// generated Hindi/Spanish file used to come back with no language.
+private val GENERATED_LANGUAGE_PATTERN =
+    Regex("-(?:translated|ai)-([A-Za-z_]+)-\\d{10,}\\.srt$", RegexOption.IGNORE_CASE)
+
+private fun generatedLanguageFromFileName(name: String): String? =
+    GENERATED_LANGUAGE_PATTERN.find(name)?.groupValues?.get(1)
+        ?.let { SubtitleLanguageRegistry.normalize(it) }

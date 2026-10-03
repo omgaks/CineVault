@@ -24,7 +24,8 @@ class PlaybackNavigationCoordinator(
     private val setEdgeSwipeHint: (String) -> Unit,
     private val setPlayerErrorMessage: (String?) -> Unit,
     private val setIsVideoEnded: (Boolean) -> Unit,
-    private val onPlayNext: (VideoWithMetadata) -> Unit
+    private val onPlayNext: (VideoWithMetadata) -> Unit,
+    private val externalSubtitleSelector: ExternalSubtitleSelector? = null,
 ) {
     fun playPrevious() {
         val episodeList = getEpisodeList()
@@ -72,7 +73,15 @@ class PlaybackNavigationCoordinator(
                 }
             }
 
-            val mediaItem = buildPlaybackMediaItem(currentVideo.path, subtitleUri, trackUi.primaryLanguage)
+            // Each attached subtitle gets a unique id so its Media3 track can be
+            // found again and selected explicitly (see ExternalSubtitleSelector).
+            val subtitleId = if (subtitleUri != null) externalSubtitleSelector?.nextId() else null
+            val mediaItem = buildPlaybackMediaItem(
+                currentVideo.path,
+                subtitleUri,
+                trackUi.primaryLanguage,
+                subtitleId ?: "cinevault-external",
+            )
             val resumeAt = resumePosition.coerceAtLeast(0L)
 
             if (exoPlayer.mediaItemCount > 0) {
@@ -88,6 +97,12 @@ class PlaybackNavigationCoordinator(
                 exoPlayer.setMediaItem(mediaItem)
                 exoPlayer.prepare()
                 exoPlayer.seekTo(resumeAt)
+            }
+
+            if (subtitleId != null && coreUi.subtitlesEnabled) {
+                externalSubtitleSelector?.arm(subtitleId)
+            } else {
+                externalSubtitleSelector?.disarm()
             }
 
             exoPlayer.playWhenReady = true

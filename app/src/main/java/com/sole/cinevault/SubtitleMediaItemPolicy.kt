@@ -16,6 +16,7 @@ internal fun buildPlaybackMediaItem(
     videoUri: String,
     subtitleUri: Uri?,
     subtitleLanguage: String? = null,
+    subtitleId: String = "cinevault-external",
 ): MediaItem {
     val builder = MediaItem.Builder().setUri(videoUri)
     if (subtitleUri != null) {
@@ -27,7 +28,7 @@ internal fun buildPlaybackMediaItem(
                     .setMimeType(subtitleMimeType)
                     .setLanguage(subtitleLanguage)
                     .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                    .setId("cinevault-external")
+                    .setId(subtitleId)
                     .build()
             )
         )

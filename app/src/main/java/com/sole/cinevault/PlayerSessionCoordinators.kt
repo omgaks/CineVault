@@ -94,7 +94,11 @@ internal fun rememberPlayerSessionCoordinators(
         }
     }
 
-    val navigation = remember(player) {
+    val externalSubtitleSelector = remember(player, trackSelector) {
+        ExternalSubtitleSelector(context, player, trackSelector)
+    }
+
+    val navigation = remember(player, externalSubtitleSelector) {
         PlaybackNavigationCoordinator(
             context = context,
             scope = scope,
@@ -111,6 +115,7 @@ internal fun rememberPlayerSessionCoordinators(
             setPlayerErrorMessage = onPlayerErrorMessageChanged,
             setIsVideoEnded = onVideoEndedChanged,
             onPlayNext = onPlayNext,
+            externalSubtitleSelector = externalSubtitleSelector,
         )
     }
 
