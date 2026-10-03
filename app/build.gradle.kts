@@ -103,6 +103,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
     implementation("androidx.media3:media3-ui:$media3Version")
+    // Picture enhancement: GPU video effects (GlEffect / setVideoEffects).
+    implementation("androidx.media3:media3-effect:$media3Version")
     implementation("androidx.media3:media3-session:$media3Version")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
