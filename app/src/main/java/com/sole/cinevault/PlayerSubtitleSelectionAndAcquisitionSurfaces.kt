@@ -287,8 +287,11 @@ internal fun BoxScope.PlayerSubtitleSelectionAndAcquisitionSurfaces(
         selectedTrackKey = trackUi.selectedKey,
         onSelectTrack = { choice ->
             subtitleSearchCoordinator.selectSubtitleTrack(choice)
-            trackUi.showSelector = false
-            onShowControlsChanged(true)
+            // The on/off pill leaves the sheet open; picking an actual track closes it.
+            if (choice !is SubtitleTrackChoice.On && choice !is SubtitleTrackChoice.Off) {
+                trackUi.showSelector = false
+                onShowControlsChanged(true)
+            }
         },
         onDeleteLocalTrack = { file ->
             subtitleDeletionCoordinator.requestDeleteSubtitle(file)

@@ -3,12 +3,16 @@ package com.sole.cinevault
 import android.content.Context
 import android.net.Uri
 import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.Player
+import androidx.media3.common.C
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.library.VideoFile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class PlaybackNavigationCoordinator(
     private val context: Context,
     private val scope: CoroutineScope,
@@ -26,7 +30,13 @@ class PlaybackNavigationCoordinator(
     private val setIsVideoEnded: (Boolean) -> Unit,
     private val onPlayNext: (VideoWithMetadata) -> Unit,
     private val externalSubtitleSelector: ExternalSubtitleSelector? = null,
+    private val subtitleOverlay: ExternalSubtitleOverlay? = null,
+    private val trackSelector: DefaultTrackSelector? = null,
 ) {
+    // True only when the current MediaItem carries an attached subtitle (the fallback path
+    // for formats the overlay cannot draw). Such an item has to be rebuilt to remove it.
+    private var playerItemHasSubtitle = false
+
     fun playPrevious() {
         val episodeList = getEpisodeList()
         val idx = episodeList.indexOfFirst { it.video.path == getCurrentVideo().path }
@@ -51,7 +61,8 @@ class PlaybackNavigationCoordinator(
         subtitleUri: Uri? = null,
         resumePosition: Long = 0L,
         isOriginalSubtitle: Boolean = true,
-        resetSubtitleTiming: Boolean = isOriginalSubtitle
+        resetSubtitleTiming: Boolean = isOriginalSubtitle,
+        forceRebuild: Boolean = false,
     ) {
         val currentVideo = getCurrentVideo()
         val isSmbMedia = currentVideo.path.startsWith("smb://", ignoreCase = true)
@@ -73,37 +84,83 @@ class PlaybackNavigationCoordinator(
                 }
             }
 
-            // Each attached subtitle gets a unique id so its Media3 track can be
-            // found again and selected explicitly (see ExternalSubtitleSelector).
-            val subtitleId = if (subtitleUri != null) externalSubtitleSelector?.nextId() else null
-            val mediaItem = buildPlaybackMediaItem(
-                currentVideo.path,
-                subtitleUri,
-                trackUi.primaryLanguage,
-                subtitleId ?: "cinevault-external",
-            )
             val resumeAt = resumePosition.coerceAtLeast(0L)
+            val overlay = subtitleOverlay
+            val useOverlay = subtitleUri != null && overlay != null && overlay.canHandle(subtitleUri)
 
-            // A live replaceMediaItem() attached the new subtitle but Media3 did not
-            // render it until the movie was reopened (confirmed on device for AI,
-            // Tracks, SubDL, OpenSubtitles and Dual). setMediaItem + prepare is the
-            // same path a normal movie open uses, and that path renders. The
-            // PlayerView stays attached to the same player, so the surface is kept.
-            exoPlayer.setMediaItem(mediaItem, resumeAt)
-            exoPlayer.prepare()
+            // The video itself only needs rebuilding when it is not loaded yet, has stopped
+            // (error / fallback), is a different file, or still carries an attached subtitle.
+            // A plain subtitle change never touches the video: no pause, no buffering circle.
+            val loadedUri = exoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
+            val needsRebuild =
+                forceRebuild ||
+                    exoPlayer.mediaItemCount == 0 ||
+                    exoPlayer.playbackState == Player.STATE_IDLE ||
+                    loadedUri != currentVideo.path ||
+                    (playerItemHasSubtitle && (subtitleUri == null || useOverlay))
 
-            if (subtitleId != null && coreUi.subtitlesEnabled) {
-                externalSubtitleSelector?.arm(subtitleId)
-            } else {
-                externalSubtitleSelector?.disarm()
+            when {
+                useOverlay -> {
+                    overlay!!.claimEarly()
+                    if (needsRebuild) rebuildPlayer(currentVideo.path, null, resumeAt)
+                    overlay.show(subtitleUri!!) { shown ->
+                        if (!shown) {
+                            // Unreadable by the overlay: let Media3 try with its own parser.
+                            overlay.clear()
+                            restoreTextSelection()
+                            rebuildPlayer(
+                                currentVideo.path,
+                                subtitleUri,
+                                exoPlayer.currentPosition.coerceAtLeast(0L),
+                            )
+                        }
+                    }
+                }
+                subtitleUri != null -> {
+                    // Overlay unavailable or format not supported (e.g. ASS): attach to the item.
+                    overlay?.clear()
+                    rebuildPlayer(currentVideo.path, subtitleUri, resumeAt)
+                }
+                else -> {
+                    overlay?.clear()
+                    if (needsRebuild) rebuildPlayer(currentVideo.path, null, resumeAt)
+                }
             }
-
-            exoPlayer.playWhenReady = true
-            exoPlayer.play()
             exoPlayer.playbackParameters = PlaybackParameters(getPlaybackSpeed())
             setIsVideoEnded(false)
         } catch (e: Exception) {
             setPlayerErrorMessage("Couldn't start playback: ${e.message ?: e.javaClass.simpleName}")
+        }
+    }
+
+    private fun rebuildPlayer(videoPath: String, subtitleUri: Uri?, resumeAt: Long) {
+        val subtitleId = if (subtitleUri != null) externalSubtitleSelector?.nextId() else null
+        val mediaItem = buildPlaybackMediaItem(
+            videoPath,
+            subtitleUri,
+            trackUi.primaryLanguage,
+            subtitleId ?: "cinevault-external",
+        )
+        exoPlayer.setMediaItem(mediaItem, resumeAt)
+        exoPlayer.prepare()
+        playerItemHasSubtitle = subtitleUri != null
+
+        if (subtitleId != null && coreUi.subtitlesEnabled) {
+            externalSubtitleSelector?.arm(subtitleId)
+        } else {
+            externalSubtitleSelector?.disarm()
+        }
+
+        exoPlayer.playWhenReady = true
+        exoPlayer.play()
+    }
+
+    /** Gives subtitle rendering back to ExoPlayer after the overlay could not read a file. */
+    private fun restoreTextSelection() {
+        trackSelector?.let { selector ->
+            selector.parameters = selector.buildUponParameters()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !coreUi.subtitlesEnabled)
+                .build()
         }
     }
 }

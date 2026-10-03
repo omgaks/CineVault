@@ -14,6 +14,10 @@ import androidx.compose.ui.unit.dp
 import com.sole.cinevault.glasses.display.CineVaultRenderDestination
 import com.sole.cinevault.glasses.display.LocalCineVaultRenderDestination
 import com.sole.cinevault.subtitles.*
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 
 /**
  * Slice 50: owns the floating Speech → Subs / AI Translate presentation:
@@ -93,15 +97,21 @@ fun BoxScope.PlayerSubtitleAiPanels(
                 .coerceAtMost(340.dp)
                 .coerceAtLeast(240.dp)
 
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            DraggableFloatingPopup(
-                containerWidth = containerWidth,
-                containerHeight = containerHeight,
-                popupWidth = panelWidth,
-                popupMaxHeight = panelHeight,
-                onUserInteraction = {},
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Tap on empty space minimises the panel (a running job keeps going as a pill).
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) { detectTapGestures { onHideSpeechPanel() } }
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 12.dp)
+                    .width(panelWidth)
+                    .heightIn(max = (containerHeight * 0.85f).coerceAtMost(440.dp))
+                    .blockTapThrough()
             ) {
-                Box(modifier = Modifier.width(panelWidth)) {
                     SpeechSubtitlePanel(
                         status = speechStatus,
                         models = WhisperModelManager.modelCatalog(context),
@@ -118,7 +128,6 @@ fun BoxScope.PlayerSubtitleAiPanels(
                         },
                         onDismiss = onHideSpeechPanel,
                     )
-                }
             }
         }
     }
@@ -137,15 +146,22 @@ fun BoxScope.PlayerSubtitleAiPanels(
                 .coerceAtMost(350.dp)
                 .coerceAtLeast(245.dp)
 
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            DraggableFloatingPopup(
-                containerWidth = containerWidth,
-                containerHeight = containerHeight,
-                popupWidth = panelWidth,
-                popupMaxHeight = panelHeight,
-                onUserInteraction = {},
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Tap on empty space closes the panel.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) { detectTapGestures { onHideTranslationPanel() } }
+            )
+            // The 59-language list used to stretch this panel to the full screen height.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 12.dp)
+                    .width(panelWidth)
+                    .heightIn(max = (containerHeight * 0.80f).coerceAtMost(420.dp))
+                    .blockTapThrough()
             ) {
-                Box(modifier = Modifier.width(panelWidth)) {
                     SubtitleTranslationPanel(
                         status = translationStatus,
                         activeSource =
@@ -168,7 +184,6 @@ fun BoxScope.PlayerSubtitleAiPanels(
                         },
                         onDismiss = onHideTranslationPanel,
                     )
-                }
             }
         }
     }

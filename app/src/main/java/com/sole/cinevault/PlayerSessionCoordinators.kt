@@ -98,7 +98,15 @@ internal fun rememberPlayerSessionCoordinators(
         ExternalSubtitleSelector(context, player, trackSelector)
     }
 
-    val navigation = remember(player, externalSubtitleSelector) {
+    // Draws external subtitles itself so changing one never restarts the video.
+    val subtitleOverlay = remember(player, trackSelector) {
+        ExternalSubtitleOverlay(player, trackSelector) { studioUi.playerView?.subtitleView }
+    }
+    androidx.compose.runtime.DisposableEffect(subtitleOverlay) {
+        onDispose { subtitleOverlay.release() }
+    }
+
+    val navigation = remember(player, externalSubtitleSelector, subtitleOverlay) {
         PlaybackNavigationCoordinator(
             context = context,
             scope = scope,
@@ -116,6 +124,8 @@ internal fun rememberPlayerSessionCoordinators(
             setIsVideoEnded = onVideoEndedChanged,
             onPlayNext = onPlayNext,
             externalSubtitleSelector = externalSubtitleSelector,
+            subtitleOverlay = subtitleOverlay,
+            trackSelector = trackSelector,
         )
     }
 
@@ -139,6 +149,7 @@ internal fun rememberPlayerSessionCoordinators(
                     isOriginalSubtitle,
                 )
             },
+            externalOverlay = subtitleOverlay,
         )
     }
 
