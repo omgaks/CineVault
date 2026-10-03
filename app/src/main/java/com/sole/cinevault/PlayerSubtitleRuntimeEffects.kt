@@ -66,11 +66,15 @@ fun rememberPlayerSubtitleRuntimeEffects(
             getResumePosition = {
                 playerSafeResumePosition(exoPlayer.currentPosition)
             },
-            enableTextTracks = {
-                trackSelector.parameters =
-                    trackSelector.buildUponParameters()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                        .build()
+            enableTextTracks = { language ->
+                val normalized = com.sole.cinevault.subtitles.SubtitleLanguageRegistry.normalize(language ?: "")
+                val builder = trackSelector.buildUponParameters()
+                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .setIgnoredTextSelectionFlags(0)
+                    .setSelectUndeterminedTextLanguage(true)
+                if (!normalized.isNullOrBlank()) builder.setPreferredTextLanguage(normalized)
+                trackSelector.parameters = builder.build()
             },
             playSubtitle = { subtitleUri, resumePosition ->
                 playCurrentVideoWithSubtitle(

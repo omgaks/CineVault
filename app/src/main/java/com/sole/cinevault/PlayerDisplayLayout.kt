@@ -89,16 +89,30 @@ internal fun RememberPlayerSubtitleDisplayProfile(
 
     LaunchedEffect(currentProfileId) {
         val settings = loadSubtitleProfileSettings(context, displayProfileType, isLandscape)
+        // Size and placement remain display/orientation-specific, but visual style is
+        // a user choice and must not silently change on portrait/landscape rotation.
+        // On the first profile load use its stored style; on later profile switches
+        // carry the currently visible style into the new profile.
+        val firstLoad = profileLoadedFor == null
+        val carriedAppearance = appearanceUi.appearance
+        val carriedPreset = appearanceUi.preset
+        val carriedPreserveOriginalStyling = appearanceUi.preserveOriginalStyling
         appearanceUi.textSizeSp = settings.fontSizeSp
         appearanceUi.bottomPadding = settings.bottomPadding
-        appearanceUi.preset = settings.presetName
-        appearanceUi.appearance = SubtitleAppearance(
-            settings.foregroundColor,
-            settings.edgeType,
-            settings.edgeColor,
-            settings.backgroundColor,
-        )
-        appearanceUi.preserveOriginalStyling = settings.preserveOriginalStyling
+        if (firstLoad) {
+            appearanceUi.preset = settings.presetName
+            appearanceUi.appearance = SubtitleAppearance(
+                settings.foregroundColor,
+                settings.edgeType,
+                settings.edgeColor,
+                settings.backgroundColor,
+            )
+            appearanceUi.preserveOriginalStyling = settings.preserveOriginalStyling
+        } else {
+            appearanceUi.preset = carriedPreset
+            appearanceUi.appearance = carriedAppearance
+            appearanceUi.preserveOriginalStyling = carriedPreserveOriginalStyling
+        }
         profileLoadedFor = currentProfileId
     }
 

@@ -7,7 +7,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.media3.common.C
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.sole.cinevault.subtitles.*
 import kotlinx.coroutines.CoroutineScope
 
@@ -34,6 +36,7 @@ fun rememberPlayerSubtitleAiRuntime(
     context: Context,
     scope: CoroutineScope,
     exoPlayer: ExoPlayer,
+    trackSelector: DefaultTrackSelector,
     currentVideoPath: String,
     trackUi: SubtitleTrackSelectionState,
     coreUi: SubtitleCoreUiState,
@@ -109,6 +112,16 @@ fun rememberPlayerSubtitleAiRuntime(
             setSelectedKey = { trackUi.selectedKey = it },
             setSelectedLabel = { trackUi.selectedLabel = it },
             setSelectedSource = { trackUi.selectedSource = it },
+            prepareExplicitTextSelection = { language ->
+                val normalized = SubtitleLanguageRegistry.normalize(language ?: "")
+                val builder = trackSelector.buildUponParameters()
+                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .setIgnoredTextSelectionFlags(0)
+                    .setSelectUndeterminedTextLanguage(true)
+                if (!normalized.isNullOrBlank()) builder.setPreferredTextLanguage(normalized)
+                trackSelector.parameters = builder.build()
+            },
             playWithSubtitle = { uri, resumeAt ->
                 latestPlayCurrentVideoWithSubtitle(uri, resumeAt)
             },

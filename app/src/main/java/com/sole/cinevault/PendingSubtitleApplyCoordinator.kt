@@ -3,6 +3,7 @@ package com.sole.cinevault
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
+import androidx.media3.common.C
 import com.sole.cinevault.subtitles.SubtitleFormat
 import com.sole.cinevault.subtitles.buildCleanedSubtitleFile
 import com.sole.cinevault.subtitles.detectSubtitleFormat
@@ -19,7 +20,7 @@ class PendingSubtitleApplyCoordinator(
     private val trackUi: SubtitleTrackSelectionState,
     private val autoSubtitleFetch: AutoSubtitleFetchState,
     private val getResumePosition: () -> Long,
-    private val enableTextTracks: () -> Unit,
+    private val enableTextTracks: (String?) -> Unit,
     private val playSubtitle: (Uri, Long) -> Unit,
     private val showControls: () -> Unit,
     private val clearPendingUri: () -> Unit,
@@ -27,7 +28,9 @@ class PendingSubtitleApplyCoordinator(
     suspend fun apply(uri: Uri) {
         val resumeAt = getResumePosition()
         coreUi.subtitlesEnabled = true
-        enableTextTracks()
+        val pickedFile = uri.path?.let(::File)
+        val pickedLanguage = pickedFile?.name?.let { name -> parseSubtitleFilename(name).first }
+        enableTextTracks(pickedLanguage)
 
         val pickedFormat = detectSubtitleFormat(uri)
         if (pickedFormat == SubtitleFormat.UNKNOWN) {
@@ -44,8 +47,7 @@ class PendingSubtitleApplyCoordinator(
         } ?: uri
 
         trackUi.primaryUri = cleanedUri
-        val pickedFile = uri.path?.let(::File)
-        trackUi.primaryLanguage = pickedFile?.name?.let { name -> parseSubtitleFilename(name).first }
+        trackUi.primaryLanguage = pickedLanguage
 
         // Set identity before the handoff so the MediaItem is built with the
         // selected language and UI never temporarily falls back to Embedded.
