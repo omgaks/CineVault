@@ -10,7 +10,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import java.nio.ByteOrder
-import java.nio.ShortBuffer
 import kotlin.math.ceil
 
 /**
@@ -157,10 +156,9 @@ object AutoSyncAudioExtractor {
 
                             if (outputBuffer != null &&
                                 bufferInfo.size > 0 &&
-                                bufferInfo.presentationTimeUs >= startUs &&
                                 bufferInfo.presentationTimeUs < endUs
                             ) {
-                                if (pcmEncoding != AudioFormat.ENCODING_PCM_16BIT) {
+                                if (!PcmSampleDecoder.isSupported(pcmEncoding)) {
                                     incompatibleOutput = true
                                     sawOutputEnd = true
                                 } else {
@@ -172,10 +170,19 @@ object AutoSyncAudioExtractor {
                                             durationMs = durationMs
                                         )
                                     }
-                                    outputBuffer.order(ByteOrder.LITTLE_ENDIAN)
-                                    outputBuffer.position(bufferInfo.offset)
-                                    outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
-                                    converter?.consume(outputBuffer.slice().order(ByteOrder.LITTLE_ENDIAN).asShortBuffer())
+
+                                    // MediaCodec output is not guaranteed to be 16-bit PCM.
+                                    // In particular, some E-AC3/AC3/AAC decoders expose FLOAT
+                                    // or 32-bit PCM. The old extractor interpreted only shorts,
+                                    // which could turn perfectly audible movie dialogue into an
+                                    // effectively silent VAD/Whisper input. Decode the format the
+                                    // codec actually reports and feed normalized mono samples to
+                                    // the same streaming resampler.
+                                    val bounded = outputBuffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
+                                    bounded.position(bufferInfo.offset.coerceAtLeast(0))
+                                    bounded.limit((bufferInfo.offset + bufferInfo.size).coerceAtMost(bounded.capacity()))
+                                    val pcm = bounded.slice().order(ByteOrder.LITTLE_ENDIAN)
+                                    converter?.consume(pcm, pcmEncoding)
                                 }
                             }
 
@@ -235,12 +242,9 @@ object AutoSyncAudioExtractor {
         return audioTracks.first()
     }
 
-    /**
-     * Converts interleaved signed 16-bit PCM to mono target-rate floats while
-     * each decoder buffer is still small. Linear interpolation is sufficient
-     * for VAD, which analyzes speech activity rather than audio fidelity.
-     */
-    private class StreamingPcmConverter(
+    /** Converts decoded interleaved PCM to mono target-rate floats while each
+     * MediaCodec output buffer is still small. */
+    internal class StreamingPcmConverter(
         private val sourceSampleRate: Int,
         private val channelCount: Int,
         targetSampleRate: Int,
@@ -248,9 +252,7 @@ object AutoSyncAudioExtractor {
     ) {
         private val sourceFramesPerOutput = sourceSampleRate.toDouble() / targetSampleRate.toDouble()
         private val maximumOutputSamples = ceil(durationMs * targetSampleRate / 1_000.0)
-            .toLong()
-            .coerceAtMost(Int.MAX_VALUE.toLong() - 2L)
-            .toInt() + 2
+            .toLong().coerceAtMost(Int.MAX_VALUE.toLong() - 2L).toInt() + 2
         private val output = FloatArray(maximumOutputSamples)
 
         private var outputSize = 0
@@ -267,12 +269,12 @@ object AutoSyncAudioExtractor {
             require(targetSampleRate > 0)
         }
 
-        fun consume(buffer: ShortBuffer) {
-            while (buffer.hasRemaining() && outputSize < maximumOutputSamples) {
-                pendingChannelSum += buffer.get().toFloat()
+        fun consume(buffer: java.nio.ByteBuffer, pcmEncoding: Int) {
+            while (PcmSampleDecoder.hasSample(buffer, pcmEncoding) && outputSize < maximumOutputSamples) {
+                pendingChannelSum += PcmSampleDecoder.readNormalized(buffer, pcmEncoding)
                 pendingChannelCount++
                 if (pendingChannelCount == channelCount) {
-                    val mono = (pendingChannelSum / channelCount) / 32_768f
+                    val mono = (pendingChannelSum / channelCount).coerceIn(-1f, 1f)
                     pendingChannelSum = 0f
                     pendingChannelCount = 0
                     consumeMonoFrame(mono)
@@ -288,14 +290,9 @@ object AutoSyncAudioExtractor {
                 appendWhileDue(currentMono, currentMono)
                 return
             }
-
             val previousIndex = sourceFrameIndex - 1L
-            while (nextOutputSourcePosition <= sourceFrameIndex.toDouble() &&
-                outputSize < maximumOutputSamples
-            ) {
-                val fraction = (nextOutputSourcePosition - previousIndex)
-                    .toFloat()
-                    .coerceIn(0f, 1f)
+            while (nextOutputSourcePosition <= sourceFrameIndex.toDouble() && outputSize < maximumOutputSamples) {
+                val fraction = (nextOutputSourcePosition - previousIndex).toFloat().coerceIn(0f, 1f)
                 output[outputSize++] = previousMono + (currentMono - previousMono) * fraction
                 nextOutputSourcePosition += sourceFramesPerOutput
             }
@@ -303,15 +300,50 @@ object AutoSyncAudioExtractor {
         }
 
         private fun appendWhileDue(previous: Float, current: Float) {
-            while (nextOutputSourcePosition <= sourceFrameIndex.toDouble() &&
-                outputSize < maximumOutputSamples
-            ) {
+            while (nextOutputSourcePosition <= sourceFrameIndex.toDouble() && outputSize < maximumOutputSamples) {
                 output[outputSize++] = previous + (current - previous)
                 nextOutputSourcePosition += sourceFramesPerOutput
             }
         }
 
         fun finish(): FloatArray = output.copyOf(outputSize)
+    }
+
+    internal object PcmSampleDecoder {
+        fun isSupported(encoding: Int): Boolean = when (encoding) {
+            AudioFormat.ENCODING_PCM_8BIT,
+            AudioFormat.ENCODING_PCM_16BIT,
+            AudioFormat.ENCODING_PCM_FLOAT,
+            AudioFormat.ENCODING_PCM_24BIT_PACKED,
+            AudioFormat.ENCODING_PCM_32BIT -> true
+            else -> false
+        }
+
+        fun bytesPerSample(encoding: Int): Int = when (encoding) {
+            AudioFormat.ENCODING_PCM_8BIT -> 1
+            AudioFormat.ENCODING_PCM_16BIT -> 2
+            AudioFormat.ENCODING_PCM_24BIT_PACKED -> 3
+            AudioFormat.ENCODING_PCM_FLOAT, AudioFormat.ENCODING_PCM_32BIT -> 4
+            else -> 0
+        }
+
+        fun hasSample(buffer: java.nio.ByteBuffer, encoding: Int): Boolean =
+            bytesPerSample(encoding).let { it > 0 && buffer.remaining() >= it }
+
+        fun readNormalized(buffer: java.nio.ByteBuffer, encoding: Int): Float = when (encoding) {
+            AudioFormat.ENCODING_PCM_8BIT -> ((buffer.get().toInt() and 0xff) - 128) / 128f
+            AudioFormat.ENCODING_PCM_16BIT -> buffer.short / 32768f
+            AudioFormat.ENCODING_PCM_FLOAT -> buffer.float.coerceIn(-1f, 1f)
+            AudioFormat.ENCODING_PCM_24BIT_PACKED -> {
+                val b0 = buffer.get().toInt() and 0xff
+                val b1 = buffer.get().toInt() and 0xff
+                val b2 = buffer.get().toInt()
+                val value = b0 or (b1 shl 8) or (b2 shl 16)
+                value / 8_388_608f
+            }
+            AudioFormat.ENCODING_PCM_32BIT -> buffer.int / 2_147_483_648f
+            else -> 0f
+        }
     }
 
     private fun MediaFormat.intOrDefault(key: String, default: Int): Int =
