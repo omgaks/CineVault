@@ -4,7 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.*
@@ -35,6 +37,7 @@ fun SpeechSubtitlePanel(
     val downloading = status is SpeechSubtitleStatus.DownloadingModel
     val busy = generating || downloading
     val selected = models.firstOrNull { it.selected }
+    val scrollState = rememberScrollState()
 
     Column(
         modifier = Modifier
@@ -61,81 +64,96 @@ fun SpeechSubtitlePanel(
             }
         }
 
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "SPEECH MODEL",
-            color = AmberCore,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Bold,
+        // Keep the header reachable while every model/status/action below it can
+        // scroll on portrait, split-screen and other constrained windows.
+        Column(
             modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .background(AmberCore.copy(alpha = 0.10f))
-                .padding(horizontal = 9.dp, vertical = 4.dp)
-        )
-        Spacer(Modifier.height(5.dp))
-
-        models.forEach { model ->
-            ModelRow(
-                model = model,
-                enabled = !busy,
-                onSelect = { onSelectModel(model.id) },
-                onDownload = { onDownloadModel(model.id) },
-                onDelete = { onDeleteModel(model.id) },
+                .fillMaxWidth()
+                .weight(1f, fill = false)
+                .verticalScroll(scrollState)
+        ) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "SPEECH MODEL",
+                color = AmberCore,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(AmberCore.copy(alpha = 0.10f))
+                    .padding(horizontal = 9.dp, vertical = 4.dp)
             )
-            Spacer(Modifier.height(4.dp))
-        }
+            Spacer(Modifier.height(5.dp))
 
-        if (selected?.installed == true) {
-            Button(
-                onClick = onGenerate,
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth().padding(top = 5.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AmberCore)
-            ) {
-                Text("Generate with ${selected.displayName}", color = Color.Black, fontWeight = FontWeight.Bold)
+            models.forEach { model ->
+                ModelRow(
+                    model = model,
+                    enabled = !busy,
+                    onSelect = { onSelectModel(model.id) },
+                    onDownload = { onDownloadModel(model.id) },
+                    onDelete = { onDeleteModel(model.id) },
+                )
+                Spacer(Modifier.height(4.dp))
             }
-        }
 
-        when (status) {
-            is SpeechSubtitleStatus.DownloadingModel ->
-                SpeechProgress("Downloading & verifying ${status.fileName}", status.percent)
-
-            is SpeechSubtitleStatus.Generating -> {
-                SpeechProgress(status.phase, status.percent)
-                OutlinedButton(
-                    onClick = onStop,
-                    modifier = Modifier.padding(top = 8.dp),
+            if (selected?.installed == true) {
+                Button(
+                    onClick = onGenerate,
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth().padding(top = 5.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AmberCore)
                 ) {
-                    Text("Stop transcription")
+                    Text(
+                        "Generate with ${selected.displayName}",
+                        color = Color.Black,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
 
-            is SpeechSubtitleStatus.Ready ->
-                Text(
-                    "Ready • ${status.cueCount} ${if (status.cueCount == 1) "cue" else "cues"}",
-                    color = TextBright,
-                    fontSize = 10.sp,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
+            when (status) {
+                is SpeechSubtitleStatus.DownloadingModel ->
+                    SpeechProgress("Downloading & verifying ${status.fileName}", status.percent)
 
-            is SpeechSubtitleStatus.Failed ->
-                Text(
-                    status.reason,
-                    color = AmberCore,
-                    fontSize = 9.5.sp,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
+                is SpeechSubtitleStatus.Generating -> {
+                    SpeechProgress(status.phase, status.percent)
+                    OutlinedButton(
+                        onClick = onStop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                    ) {
+                        Text("Stop transcription")
+                    }
+                }
 
-            SpeechSubtitleStatus.Idle -> Unit
+                is SpeechSubtitleStatus.Ready ->
+                    Text(
+                        "Ready • ${status.cueCount} ${if (status.cueCount == 1) "cue" else "cues"}",
+                        color = TextBright,
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+
+                is SpeechSubtitleStatus.Failed ->
+                    Text(
+                        status.reason,
+                        color = AmberCore,
+                        fontSize = 9.5.sp,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+
+                SpeechSubtitleStatus.Idle -> Unit
+            }
+
+            Text(
+                "Every downloaded model file is SHA-256 verified before CineVault installs or loads it.",
+                color = TextMuted,
+                fontSize = 8.5.sp,
+                lineHeight = 11.sp,
+                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+            )
         }
-
-        Text(
-            "Every downloaded model file is SHA-256 verified before CineVault installs or loads it.",
-            color = TextMuted,
-            fontSize = 8.5.sp,
-            lineHeight = 11.sp,
-            modifier = Modifier.padding(top = 8.dp),
-        )
     }
 }
 

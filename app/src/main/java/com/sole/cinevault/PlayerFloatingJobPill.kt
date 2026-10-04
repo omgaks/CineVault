@@ -8,40 +8,40 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.ui.theme.AmberCore
 import com.sole.cinevault.ui.theme.AmberGlow
 import com.sole.cinevault.ui.theme.SpaceDeep
 import com.sole.cinevault.ui.theme.TextBright
+import kotlin.math.roundToInt
 
 /**
- * Reusable CineVault pattern for long-running automatic work.
+ * Long-running job pill.
  *
- * Short tap = reopen the related full window.
- * Long-press + drag = move the pill using the existing proven popup wrapper.
+ * The pill owns normalized coordinates rather than raw pixels. This keeps it
+ * on-screen when the player rotates or changes window size. The default safe
+ * home is top-right, away from the centre/right subtitle panels seen during
+ * Tracks/Studio use. Long-press + drag still lets the user move it.
  */
 @Composable
 internal fun BoxScope.PlayerFloatingJobOverlay(
@@ -54,24 +54,52 @@ internal fun BoxScope.PlayerFloatingJobOverlay(
 ) {
     if (!visible) return
 
+    val density = LocalDensity.current
+    val popupWidth = 190.dp
+    val popupHeight = 56.dp
+    val edgePadding = 14.dp
+
+    var bias by remember { mutableStateOf(DefaultFloatingJobBias) }
+
+    val maxX = with(density) {
+        ((containerWidth - popupWidth) / 2 - edgePadding).coerceAtLeast(0.dp).toPx()
+    }
+    val maxY = with(density) {
+        ((containerHeight - popupHeight) / 2 - edgePadding).coerceAtLeast(0.dp).toPx()
+    }
+
+    // Re-clamp normalized state whenever dimensions change. Because position is
+    // normalized, rotation expands/contracts the travel area without stranding
+    // the pill at stale portrait pixel coordinates.
+    LaunchedEffect(containerWidth, containerHeight) {
+        bias = clampFloatingJobBias(bias.x, bias.y)
+    }
+
     Box(
         modifier = Modifier
-            .align(Alignment.CenterEnd)
-            .padding(end = 14.dp)
+            .align(Alignment.Center)
+            .offset {
+                IntOffset(
+                    x = (bias.x * maxX).roundToInt(),
+                    y = (bias.y * maxY).roundToInt(),
+                )
+            }
+            .pointerInput(maxX, maxY) {
+                detectDragGesturesAfterLongPress { change, dragAmount ->
+                    change.consume()
+                    val nextX =
+                        if (maxX > 0f) bias.x + (dragAmount.x / maxX) else bias.x
+                    val nextY =
+                        if (maxY > 0f) bias.y + (dragAmount.y / maxY) else bias.y
+                    bias = clampFloatingJobBias(nextX, nextY)
+                }
+            }
     ) {
-        DraggableFloatingPopup(
-            containerWidth = containerWidth,
-            containerHeight = containerHeight,
-            popupWidth = 190.dp,
-            popupMaxHeight = 56.dp,
-            onUserInteraction = {},
-        ) {
-            FloatingJobPill(
-                label = label,
-                progress = progress,
-                onClick = onOpen,
-            )
-        }
+        FloatingJobPill(
+            label = label,
+            progress = progress,
+            onClick = onOpen,
+        )
     }
 }
 
@@ -97,6 +125,7 @@ private fun FloatingJobPill(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
+            .widthIn(max = 190.dp)
             .clip(RoundedCornerShape(50))
             .background(SpaceDeep.copy(alpha = 0.86f))
             .border(
