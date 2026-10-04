@@ -15,36 +15,34 @@ class SubtitleAutoPlacementTest {
     }
 
     @Test
-    fun portraitWideVideo_sitsJustUnderThePicture() {
-        // 1080x2000 screen, 16:9 video -> picture 607px tall, bars of ~696px.
+    fun portraitWideVideo_staysInsidePicture() {
+        // 1080x2000 screen, 16:9 video -> picture 607.5px tall, bottom bar ~696px.
         val f = SubtitleAutoPlacement.bottomPaddingFraction(1080f, 2000f, 16f / 9f, 40f)!!
-        val bar = (2000f - 1080f / (16f / 9f)) / 2f
+        val pictureHeight = 1080f / (16f / 9f)
+        val bar = (2000f - pictureHeight) / 2f
         val paddingPx = f * 2000f
-        // Text block's top edge is ~half a line under the picture, not at the screen edge.
-        val textTopFromPictureBottom = bar - paddingPx - 40f * 1.25f * 2
-        assertEquals(20f, textTopFromPictureBottom, 1.5f)
-        assertTrue("must not hug the bottom edge", f > 0.2f)
+        assertEquals(bar + pictureHeight * 0.075f, paddingPx, 1.5f)
+        assertTrue("must stay well above the device bottom", f > 0.30f)
     }
 
     @Test
-    fun fullScreenVideo_sitsInsideTheBottomOfThePicture() {
-        // Aspect equal to the view: no bars, text goes just inside the picture.
+    fun fullScreenVideo_usesPictureSafeMargin() {
         val f = SubtitleAutoPlacement.bottomPaddingFraction(1600f, 900f, 16f / 9f, 40f)!!
-        assertEquals(0.04f, f, 0.001f)
+        assertEquals(0.075f, f, 0.001f)
     }
 
     @Test
-    fun thinBar_fallsBackToInsideThePicture() {
-        // Slightly wider than the view: bar too thin for two lines.
+    fun thinBar_stillStaysInsidePicture() {
         val f = SubtitleAutoPlacement.bottomPaddingFraction(1600f, 900f, 2.0f, 60f)!!
-        val bar = (900f - 1600f / 2.0f) / 2f
-        assertEquals((bar + (1600f / 2.0f) * 0.04f) / 900f, f, 0.001f)
+        val pictureHeight = 1600f / 2.0f
+        val bar = (900f - pictureHeight) / 2f
+        assertEquals((bar + pictureHeight * 0.075f) / 900f, f, 0.001f)
     }
 
     @Test
-    fun zoomMode_ignoresBars() {
+    fun zoomMode_usesVisibleViewportSafeMargin() {
         val f = SubtitleAutoPlacement.bottomPaddingFraction(1080f, 2000f, 16f / 9f, 40f, fitMode = false)!!
-        assertEquals(0.04f, f, 0.001f)
+        assertEquals(0.075f, f, 0.001f)
         assertNotNull(f)
     }
 }
@@ -73,28 +71,37 @@ class AutoSubtitleSizeTest {
     }
 }
 
-
 class AutoPlacementFromRectsTest {
     @Test
-    fun portraitWideFilm_sitsJustUnderPicture() {
-        // Portrait 1568x2350, 1.85:1 picture occupies y 751..1599 (the Ghost in the Shell case).
+    fun portraitWideFilm_staysInsidePicture() {
+        // Portrait 1568x2350, picture y 751..1599.
         val f = SubtitleAutoPlacement.bottomPaddingFractionFromRects(
             subtitleViewBottomPx = 2350f, subtitleViewHeightPx = 2350f,
             pictureTopPx = 751f, pictureBottomPx = 1599f, textPx = 36f,
         )!!
         val paddingPx = f * 2350f
-        val textBlockTop = 2350f - paddingPx - 36f * 1.25f * 2
-        assertEquals(1599f + 18f, textBlockTop, 2f) // half a line under the picture
+        assertEquals((2350f - 1599f) + (1599f - 751f) * 0.075f, paddingPx, 2f)
     }
 
     @Test
-    fun landscapeThinBar_staysInsideTheBottomOfThePicture() {
+    fun landscapeThinBar_usesSamePictureRelativeRule() {
         val f = SubtitleAutoPlacement.bottomPaddingFractionFromRects(
             subtitleViewBottomPx = 1568f, subtitleViewHeightPx = 1568f,
             pictureTopPx = 148f, pictureBottomPx = 1420f, textPx = 46f,
         )!!
-        val expected = (148f + (1420f - 148f) * 0.04f) / 1568f
+        val expected = (148f + (1420f - 148f) * 0.075f) / 1568f
         assertEquals(expected, f, 0.001f)
+    }
+
+    @Test
+    fun lineCount_doesNotMoveBottomAnchor() {
+        val one = SubtitleAutoPlacement.bottomPaddingFractionFromRects(
+            2000f, 2000f, 600f, 1400f, 40f, lines = 1,
+        )!!
+        val three = SubtitleAutoPlacement.bottomPaddingFractionFromRects(
+            2000f, 2000f, 600f, 1400f, 40f, lines = 3,
+        )!!
+        assertEquals(one, three, 0.0001f)
     }
 
     @Test
