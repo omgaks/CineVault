@@ -107,7 +107,7 @@ internal fun BoxScope.PlayerOverlaySurfacesHost(
     val embeddedTrackChoices = remember(player.currentTracks) {
         buildEmbeddedSubtitleChoices(player.currentTracks)
     }
-    val downloadedTrackChoice = rememberDownloadedSubtitleChoice(
+    val downloadedTrackChoices = rememberDownloadedSubtitleChoices(
         context = context,
         videoPath = currentVideoPath,
         preferredLanguages = coreUi.behaviorPrefs.preferredLanguages,
@@ -123,15 +123,15 @@ internal fun BoxScope.PlayerOverlaySurfacesHost(
     val quickHudFileName = remember(
         trackUi.selectedKey,
         embeddedTrackChoices,
-        downloadedTrackChoice,
+        downloadedTrackChoices,
         localFileChoices,
         generatedSubtitleFiles,
     ) {
         val key = trackUi.selectedKey
         when {
             key == null || key == SubtitleTrackChoice.Off.key -> null
-            downloadedTrackChoice?.key == key ->
-                SubtitleLanguageRegistry.displayName(downloadedTrackChoice.language)
+            downloadedTrackChoices.any { it.key == key } ->
+                downloadedTrackChoices.first { it.key == key }.let { SubtitleLanguageRegistry.displayName(it.language) }
             else ->
                 localFileChoices
                     .firstOrNull { SubtitleTrackChoice.Local(it).key == key }

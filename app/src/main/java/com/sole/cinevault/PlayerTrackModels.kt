@@ -98,28 +98,27 @@ internal fun buildEmbeddedSubtitleChoices(tracks: Tracks): List<SubtitleTrackCho
         }
 
 @Composable
-internal fun rememberDownloadedSubtitleChoice(
+internal fun rememberDownloadedSubtitleChoices(
     context: Context,
     videoPath: String,
     preferredLanguages: List<String>,
     selectorVisible: Boolean,
     canDownloadExternalSubtitles: Boolean
-): SubtitleTrackChoice.Downloaded? = remember(videoPath, selectorVisible) {
+): List<SubtitleTrackChoice.Downloaded> = remember(videoPath, selectorVisible) {
     if (!canDownloadExternalSubtitles) {
-        null
+        emptyList()
     } else {
-        OpenSubtitlesClient.findCachedSubtitle(
-            context,
-            videoPath,
-            preferredLanguages
-        )?.let { cached ->
-            cached.uri.path?.let { path ->
-                SubtitleTrackChoice.Downloaded(
-                    file = java.io.File(path),
-                    language = cached.language
-                )
+        val preferred = preferredLanguages.mapNotNull { SubtitleLanguageRegistry.normalize(it) }.toSet()
+        OpenSubtitlesClient.listCachedSubtitlesForVideo(context, videoPath)
+            .filter { cached -> preferred.isEmpty() || SubtitleLanguageRegistry.normalize(cached.language) in preferred }
+            .mapNotNull { cached ->
+                cached.uri.path?.let { path ->
+                    SubtitleTrackChoice.Downloaded(
+                        file = java.io.File(path),
+                        language = cached.language
+                    )
+                }
             }
-        }
     }
 }
 

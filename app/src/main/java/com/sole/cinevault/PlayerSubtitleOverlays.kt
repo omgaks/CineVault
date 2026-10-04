@@ -75,7 +75,7 @@ fun BoxScope.SubtitleQuickMenuAndTrackSelector(
     containerWidth: Dp,
     containerHeight: Dp,
     embeddedTrackChoices: List<SubtitleTrackChoice.Embedded>,
-    downloadedTrackChoice: SubtitleTrackChoice.Downloaded?,
+    downloadedTrackChoices: List<SubtitleTrackChoice.Downloaded>,
     localFileChoices: List<File>,
     generatedSubtitleFiles: List<GeneratedSubtitleFile> = emptyList(),
     selectedTrackKey: String?,
@@ -126,7 +126,7 @@ fun BoxScope.SubtitleQuickMenuAndTrackSelector(
         ) {
             SubtitleTrackSelectorSheet(
                 embeddedTracks = embeddedTrackChoices,
-                downloadedTrack = downloadedTrackChoice,
+                downloadedTracks = downloadedTrackChoices,
                 localFiles = localFileChoices,
                 generatedFiles = generatedSubtitleFiles,
                 selectedKey = selectedTrackKey,

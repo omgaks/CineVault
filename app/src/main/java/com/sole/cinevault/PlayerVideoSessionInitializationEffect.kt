@@ -302,7 +302,7 @@ fun PlayerVideoSessionInitializationEffect(
                     true,
                 )
                 autoSubtitleFetch.attemptedForPath = video.path
-                trackUi.selectedKey = "downloaded"
+                trackUi.selectedKey = "downloaded:${cachedSubtitle.uri.path ?: cachedSubtitle.uri}"
                 trackUi.selectedLabel =
                     friendlyLanguageName(cachedSubtitle.language)
                 trackUi.selectedSource = "OpenSubtitles"
@@ -382,7 +382,7 @@ fun PlayerVideoSessionInitializationEffect(
                     true,
                         )
 
-                        trackUi.selectedKey = "downloaded"
+                        trackUi.selectedKey = "downloaded:${result.uri.path ?: result.uri}"
                         trackUi.selectedLabel =
                             friendlyLanguageName(result.language)
                         trackUi.selectedSource = "OpenSubtitles"

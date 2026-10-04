@@ -154,7 +154,7 @@ internal fun BoxScope.PlayerSubtitleSelectionAndAcquisitionSurfaces(
     val embeddedTrackChoices = remember(player.currentTracks) {
         buildEmbeddedSubtitleChoices(player.currentTracks)
     }
-    val downloadedTrackChoice = rememberDownloadedSubtitleChoice(
+    val downloadedTrackChoices = rememberDownloadedSubtitleChoices(
         context = context,
         videoPath = videoPath,
         preferredLanguages = coreUi.behaviorPrefs.preferredLanguages,
@@ -278,7 +278,7 @@ internal fun BoxScope.PlayerSubtitleSelectionAndAcquisitionSurfaces(
         containerWidth = containerWidth,
         containerHeight = containerHeight,
         embeddedTrackChoices = embeddedTrackChoices,
-        downloadedTrackChoice = downloadedTrackChoice,
+        downloadedTrackChoices = downloadedTrackChoices,
         localFileChoices = localFileChoices,
         generatedSubtitleFiles =
             generatedSubtitleFiles.filter { generated ->
