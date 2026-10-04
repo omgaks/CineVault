@@ -13,7 +13,9 @@ import com.sole.cinevault.subtitles.DisplayProfileType
 import com.sole.cinevault.subtitles.SubtitleAppearance
 import com.sole.cinevault.subtitles.SubtitleProfileSettings
 import com.sole.cinevault.subtitles.displayProfileId
+import com.sole.cinevault.subtitles.loadSubtitleAutoPosition
 import com.sole.cinevault.subtitles.loadSubtitleProfileSettings
+import com.sole.cinevault.subtitles.saveSubtitleAutoPosition
 import com.sole.cinevault.subtitles.saveSubtitleProfileSettings
 import kotlinx.coroutines.delay
 
