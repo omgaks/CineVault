@@ -28,6 +28,14 @@ object AutoSyncAudioExtractor {
 
     data class ExtractedAudio(val samples: FloatArray, val sampleRate: Int)
 
+    /**
+     * Why audio could not be read for the last request (null = no known problem). Lets the
+     * speech engine say "this phone can't decode E-AC3" instead of a misleading
+     * "no speech detected".
+     */
+    @Volatile
+    var lastFailureReason: String? = null
+
     suspend fun extractWindow(
         context: Context,
         filePath: String,
@@ -231,15 +239,38 @@ object AutoSyncAudioExtractor {
         }
         if (audioTracks.isEmpty()) return null
 
+        // Only consider tracks this phone has a decoder for; if none, report why.
+        val decodable = audioTracks.filter { index ->
+            val mime = extractor.getTrackFormat(index).getString(MediaFormat.KEY_MIME)
+            mime != null && hasAudioDecoder(mime)
+        }
+        if (decodable.isEmpty()) {
+            val mimes = audioTracks.mapNotNull {
+                extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)
+            }.distinct().joinToString(", ") { it.removePrefix("audio/") }
+            lastFailureReason =
+                "This phone can't decode the movie's audio ($mimes) for speech recognition."
+            return null
+        }
+        lastFailureReason = null
+
         if (!preferredLanguage.isNullOrBlank()) {
-            audioTracks.firstOrNull { index ->
+            decodable.firstOrNull { index ->
                 extractor.getTrackFormat(index)
                     .getString(MediaFormat.KEY_LANGUAGE)
                     ?.take(2)
                     ?.equals(preferredLanguage.take(2), ignoreCase = true) == true
             }?.let { return it }
         }
-        return audioTracks.first()
+        return decodable.first()
+    }
+
+    private fun hasAudioDecoder(mime: String): Boolean = try {
+        android.media.MediaCodecList(android.media.MediaCodecList.REGULAR_CODECS)
+            .codecInfos
+            .any { info -> !info.isEncoder && info.supportedTypes.any { it.equals(mime, ignoreCase = true) } }
+    } catch (_: Exception) {
+        true // can't tell: let the real decoder attempt decide
     }
 
     /** Converts decoded interleaved PCM to mono target-rate floats while each

@@ -189,16 +189,23 @@ class SubtitleSyncToolsCoordinator(
 
     // Colour or gap changed: re-merge from the secondary already in use. This used to
     // repeat the whole provider search, which was slow and made a tap look ignored.
-    fun reapplyDualStyle() {
+    //
+    // [colorHex] is the colour the user JUST picked. It is passed in directly because the
+    // screen's colour state only updates on the next recomposition: reading it here made a tap
+    // sometimes apply the previous colour (so it needed a second tap).
+    fun reapplyDualStyle(colorHex: String? = null) {
         val uri = dualUi.lastSecondaryUri
         if (uri != null && dualUi.lastSecondaryVideoPath == getCurrentVideoPath()) {
-            applyDualSecondaryUri(uri, dualUi.lastSecondaryLabel.ifBlank { "Saved" })
+            applyDualSecondaryUri(uri, dualUi.lastSecondaryLabel.ifBlank { "Saved" }, colorHex)
         } else {
             fetchAndApplyDualSecondary()
         }
     }
 
-    fun applyDualSecondaryUri(secondaryUri: Uri, sourceLabel: String) {
+    // Only the newest colour/gap request may finish: rapid taps never apply out of order.
+    private var dualStyleJob: kotlinx.coroutines.Job? = null
+
+    fun applyDualSecondaryUri(secondaryUri: Uri, sourceLabel: String, colorHex: String? = null) {
         val primary = trackUi.primaryUri
         if (primary == null || !dualUi.enabled) return
         dualUi.lastSecondaryUri = secondaryUri
@@ -209,15 +216,18 @@ class SubtitleSyncToolsCoordinator(
             SubtitleLanguageRegistry.normalize(dualUi.secondaryLanguage)
                 ?: dualUi.secondaryLanguage.take(2).lowercase()
 
-        scope.launch {
+        val colorToUse = colorHex ?: getDualSecondaryColorHex()
+        val gapToUse = dualUi.gapLines
+        dualStyleJob?.cancel()
+        dualStyleJob = scope.launch {
             val merged = withContext(Dispatchers.IO) {
                 val primaryText = readTextFromUri(context, primary) ?: return@withContext null
                 val secondaryText = readTextFromUri(context, secondaryUri) ?: return@withContext null
                 val mergedText = mergeDualSubtitles(
                     primaryText,
                     secondaryText,
-                    getDualSecondaryColorHex(),
-                    dualUi.gapLines
+                    colorToUse,
+                    gapToUse
                 )
                 if (!dualMergeContainsSecondary(mergedText)) {
                     return@withContext null

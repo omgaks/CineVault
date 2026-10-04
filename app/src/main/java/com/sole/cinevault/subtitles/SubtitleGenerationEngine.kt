@@ -55,6 +55,7 @@ object SubtitleGenerationEngine {
         onProgress: (Progress) -> Unit
     ): Result {
         if (videoDurationMs <= 0L) return Result.Failed("Unknown video duration.")
+        AutoSyncAudioExtractor.lastFailureReason = null // never show a stale reason from another run
         if (!WhisperModelManager.isModelReady(context)) {
             return Result.Failed(WhisperModelManager.setupInstructions(context))
         }
@@ -231,7 +232,10 @@ object SubtitleGenerationEngine {
 
         val cueCount = cueIndex - 1
         if (cueCount == 0) {
-            return Result.Failed("No speech detected — the audio track may be silent, music-only, or in a format the recognizer couldn't read.")
+            val reason = AutoSyncAudioExtractor.lastFailureReason
+            return Result.Failed(
+                reason ?: "No speech detected — the audio track may be silent or music-only."
+            )
         }
         onProgress(Progress("Done", 100))
         return Result.Success(srtText = srt.toString().trim() + "\n", detectedLanguage = detectedLanguage, cueCount = cueCount)
