@@ -31,7 +31,7 @@ class AudioRuntimeRescuePlaybackSnapshotTest {
 
         assertEquals(0L, snapshot.resumePositionMs)
         assertEquals(false, snapshot.playWhenReady)
-        assertEquals(4.0f, snapshot.playbackSpeed, 0.0f)
+        assertEquals(5.0f, snapshot.playbackSpeed, 0.0f)
         assertEquals(0.0f, snapshot.volume, 0.0f)
     }
 
