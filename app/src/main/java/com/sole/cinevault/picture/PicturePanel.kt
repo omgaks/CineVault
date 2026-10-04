@@ -133,7 +133,7 @@ fun PicturePanelHost(controller: PictureEnhanceController) {
                     .pointerInput(containerW) {
                         detectHorizontalDragGestures { change, delta ->
                             change.consume()
-                            controller.setSplitPosition(controller.splitPosition + delta / containerW)
+                            controller.moveSplit(controller.splitPosition + delta / containerW)
                         }
                     }
             )

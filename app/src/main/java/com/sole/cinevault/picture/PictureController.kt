@@ -274,7 +274,7 @@ class PictureEnhanceController(
         refreshLive()
     }
 
-    fun setSplitPosition(value: Float) {
+    fun moveSplit(value: Float) {
         splitPosition = value.coerceIn(0.08f, 0.92f)
         refreshLive()
     }
