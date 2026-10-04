@@ -52,7 +52,7 @@ class PictureLogicTest {
         assertEquals(0.15f, PictureProfiles.tune(PicturePreset.CINEMA, PictureContent.FILM).grain, 0.0001f)
         assertEquals(0f, PictureProfiles.tune(PicturePreset.CINEMA, PictureContent.ANIME).grain, 0.0001f)
         assertEquals(0.65f, PictureProfiles.tune(PicturePreset.NATURAL, PictureContent.ANIME).deband, 0.0001f)
-        assertEquals(0.2975f, PictureProfiles.tune(PicturePreset.NATURAL, PictureContent.ANIME).sharpen, 0.0001f)
+        assertEquals(0.425f, PictureProfiles.tune(PicturePreset.NATURAL, PictureContent.ANIME).sharpen, 0.0001f)
     }
 
     @Test
@@ -92,5 +92,44 @@ class PictureLogicTest {
         assertNull(PictureSettingsCodec.decode("x"))
         assertNull(PictureSettingsCodec.decode("BOGUS,AUTO,0.5,0.5,0.5,0.5,0.5"))
         assertEquals(1f, PictureSettingsCodec.decode("NATURAL,AUTO,5.0,0.5,0.5,0.5,0.5")!!.intensity, 0.0001f)
+    }
+
+    @Test
+    fun splitView_onlyWhileNotComparing() {
+        val settings = PictureSettings(preset = PicturePreset.NATURAL)
+        assertEquals(0.5f, PictureProfiles.toShaderParams(settings, false, true, splitView = true).split, 0.0001f)
+        assertEquals(0f, PictureProfiles.toShaderParams(settings, true, true, splitView = true).split, 0.0001f)
+        assertEquals(0f, PictureProfiles.toShaderParams(settings, false, true, splitView = false).split, 0.0001f)
+    }
+
+    @Test
+    fun resetFineTune_restoresPresetValues() {
+        val moved = PictureProfiles.withPreset(PictureSettings(), PicturePreset.VIVID, PictureContent.FILM)
+            .copy(preset = PicturePreset.CUSTOM, sharpen = 0.01f, deband = 0.99f, colour = 0.0f, grain = 0.7f)
+        val reset = PictureProfiles.resetFineTune(moved, PictureContent.FILM, PicturePreset.VIVID)
+        assertEquals(PicturePreset.VIVID, reset.preset)
+        assertEquals(0.50f, reset.sharpen, 0.0001f)
+        assertEquals(0.45f, reset.colour, 0.0001f)
+        assertEquals(0f, reset.grain, 0.0001f)
+    }
+
+    @Test
+    fun resetFineTune_keepsOffOff() {
+        val reset = PictureProfiles.resetFineTune(PictureSettings(), PictureContent.FILM, PicturePreset.NATURAL)
+        assertEquals(PicturePreset.OFF, reset.preset)
+    }
+
+    @Test
+    fun resetAll_keepsOnOffAndRestoresDefaults() {
+        val custom = PictureSettings(
+            preset = PicturePreset.SHARP, content = PictureContent.ANIME, intensity = 0.2f,
+            sharpen = 0.9f, deband = 0.1f, colour = 0.9f, grain = 0.9f,
+        )
+        val reset = PictureProfiles.resetAll(custom, PictureContent.FILM)
+        assertEquals(PicturePreset.NATURAL, reset.preset)
+        assertEquals(PictureContent.AUTO, reset.content)
+        assertEquals(0.9f, reset.intensity, 0.0001f)
+        assertEquals(0f, reset.grain, 0.0001f)
+        assertEquals(PicturePreset.OFF, PictureProfiles.resetAll(PictureSettings(), PictureContent.FILM).preset)
     }
 }
