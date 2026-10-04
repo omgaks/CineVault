@@ -10,6 +10,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.sole.cinevault.subtitles.OpenSubtitlesClient
 import com.sole.cinevault.subtitles.SubtitleTrackChoice
+import com.sole.cinevault.subtitles.SubtitleLanguageRegistry
 
 /**
  * Pure/live model builders shared by the player track menus.
