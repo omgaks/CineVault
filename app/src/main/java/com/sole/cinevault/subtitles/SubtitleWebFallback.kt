@@ -1,6 +1,7 @@
 package com.sole.cinevault.subtitles
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.webkit.DownloadListener
 import android.webkit.WebChromeClient
@@ -30,7 +31,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.OpenInBrowser
@@ -38,6 +43,9 @@ import androidx.compose.material.icons.rounded.UnfoldLess
 import androidx.compose.material.icons.rounded.UnfoldMore
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -66,6 +74,11 @@ import com.sole.cinevault.ui.theme.*
 import kotlinx.coroutines.launch
 
 fun launchSubtitleCustomTab(context: Context, query: String) {
+    launchSubtitleCustomTabUri(context, SubtitleWebPolicy.searchUri(query))
+}
+
+/** Opens [uri] in a protected browser panel using the phone's DEFAULT browser (Brave, Chrome…). */
+fun launchSubtitleCustomTabUri(context: Context, uri: Uri) {
     val initialHeight = (context.resources.displayMetrics.heightPixels * 0.82f).toInt()
     val colors = CustomTabColorSchemeParams.Builder().setToolbarColor(0xFF161622.toInt()).build()
     // FIX: real crash confirmed via the in-app crash log —
@@ -76,7 +89,7 @@ fun launchSubtitleCustomTab(context: Context, query: String) {
     // Android — no documented valid range could be confirmed either way.
     // This was purely a cosmetic touch; removed entirely rather than
     // guessing at another number that might also fail on this device.
-    CustomTabsIntent.Builder().setShowTitle(true).setDefaultColorSchemeParams(colors).setInitialActivityHeightPx(initialHeight, CustomTabsIntent.ACTIVITY_HEIGHT_ADJUSTABLE).setShareState(CustomTabsIntent.SHARE_STATE_OFF).build().launchUrl(context, SubtitleWebPolicy.searchUri(query))
+    CustomTabsIntent.Builder().setShowTitle(true).setDefaultColorSchemeParams(colors).setInitialActivityHeightPx(initialHeight, CustomTabsIntent.ACTIVITY_HEIGHT_ADJUSTABLE).setShareState(CustomTabsIntent.SHARE_STATE_OFF).build().launchUrl(context, uri)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -190,6 +203,11 @@ fun EmbeddedSubtitleBrowser(query: String, preferredLanguage: String, onImported
     var webView: WebView? by remember {
         mutableStateOf(null)
     }
+    var canGoBackState by remember { mutableStateOf(false) }
+    var canGoForwardState by remember { mutableStateOf(false) }
+    var loadProgress by remember { mutableStateOf(0) }
+    var browserMenuOpen by remember { mutableStateOf(false) }
+    val hostContext = androidx.compose.ui.platform.LocalContext.current
 
     BackHandler {
         when {
@@ -228,7 +246,84 @@ fun EmbeddedSubtitleBrowser(query: String, preferredLanguage: String, onImported
                 }
             }
 
-            AndroidView(modifier = Modifier.fillMaxWidth().height(if (minimized) 1.dp else 520.dp).alpha(if (minimized) 0f else 1f), factory = { context ->
+            if (!minimized) {
+                // Browser controls: back / forward / refresh / home + "open in my browser".
+                Row(
+                    Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = { webView?.goBack() }, enabled = canGoBackState) {
+                        Icon(
+                            Icons.AutoMirrored.Rounded.ArrowBack, "Back",
+                            tint = if (canGoBackState) Color.White else Color.White.copy(alpha = 0.3f),
+                        )
+                    }
+                    IconButton(onClick = { webView?.goForward() }, enabled = canGoForwardState) {
+                        Icon(
+                            Icons.AutoMirrored.Rounded.ArrowForward, "Forward",
+                            tint = if (canGoForwardState) Color.White else Color.White.copy(alpha = 0.3f),
+                        )
+                    }
+                    IconButton(onClick = { webView?.reload() }) {
+                        Icon(Icons.Rounded.Refresh, "Refresh", tint = Color.White)
+                    }
+                    IconButton(onClick = { webView?.loadUrl(SubtitleWebPolicy.searchUri(query).toString()) }) {
+                        Icon(Icons.Rounded.Home, "Back to the search results", tint = Color.White)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Box {
+                        IconButton(onClick = { browserMenuOpen = true }) {
+                            Icon(Icons.Rounded.OpenInBrowser, "Open in my browser", tint = AmberCore)
+                        }
+                        DropdownMenu(expanded = browserMenuOpen, onDismissRequest = { browserMenuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Open in my default browser") },
+                                onClick = {
+                                    browserMenuOpen = false
+                                    val page = webView?.url?.takeIf { it.startsWith("http") }
+                                        ?: SubtitleWebPolicy.searchUri(query).toString()
+                                    try {
+                                        launchSubtitleCustomTabUri(hostContext, Uri.parse(page))
+                                        onMessage("Download the subtitle there, then use Import downloaded subtitle.")
+                                    } catch (e: Exception) {
+                                        onMessage("No browser could be opened.")
+                                    }
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Choose a browser…") },
+                                onClick = {
+                                    browserMenuOpen = false
+                                    val page = webView?.url?.takeIf { it.startsWith("http") }
+                                        ?: SubtitleWebPolicy.searchUri(query).toString()
+                                    try {
+                                        hostContext.startActivity(
+                                            Intent.createChooser(
+                                                Intent(Intent.ACTION_VIEW, Uri.parse(page)),
+                                                "Open with",
+                                            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        )
+                                        onMessage("Download the subtitle there, then use Import downloaded subtitle.")
+                                    } catch (e: Exception) {
+                                        onMessage("No browser could be opened.")
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+                if (loadProgress in 1..99) {
+                    LinearProgressIndicator(
+                        progress = { loadProgress / 100f },
+                        modifier = Modifier.fillMaxWidth().height(2.dp),
+                        color = AmberCore,
+                    )
+                } else {
+                    Spacer(Modifier.height(2.dp))
+                }
+            }
+
+            AndroidView(modifier = Modifier.fillMaxWidth().height(if (minimized) 1.dp else 470.dp).alpha(if (minimized) 0f else 1f), factory = { context ->
                 WebView(context).apply {
                     webView = this
                     settings.javaScriptEnabled = true
@@ -239,9 +334,31 @@ fun EmbeddedSubtitleBrowser(query: String, preferredLanguage: String, onImported
                     settings.allowUniversalAccessFromFileURLs = false
                     settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
                     settings.setSupportMultipleWindows(false)
-                    webChromeClient = WebChromeClient()
+                    webChromeClient = object : WebChromeClient() {
+                        override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                            loadProgress = newProgress
+                        }
+                    }
                     webViewClient = object : WebViewClient() {
-                        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = !SubtitleWebPolicy.isAllowed(request.url)
+                        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                            val allowed = SubtitleWebPolicy.isAllowed(request.url)
+                            if (!allowed && request.isForMainFrame) {
+                                // Used to be ignored silently, which felt like a dead link.
+                                onMessage("That link is outside OpenSubtitles. Use the browser button to open it in your own browser.")
+                            }
+                            return !allowed
+                        }
+
+                        override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
+                            canGoBackState = view.canGoBack()
+                            canGoForwardState = view.canGoForward()
+                        }
+
+                        override fun onPageFinished(view: WebView, url: String?) {
+                            canGoBackState = view.canGoBack()
+                            canGoForwardState = view.canGoForward()
+                            loadProgress = 100
+                        }
 
                         override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                             currentPage = url

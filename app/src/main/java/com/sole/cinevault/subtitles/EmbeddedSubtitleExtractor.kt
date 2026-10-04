@@ -43,6 +43,8 @@ data class EmbeddedSubtitleTrack(
     val language: String?,
     val label: String?,
     val cues: List<RawCue>,
+    /** False for image subtitles (PGS, VobSub): kept in the list only so positions line up. */
+    val supported: Boolean = true,
 )
 
 /**
@@ -70,11 +72,7 @@ object EmbeddedSubtitleExtractor {
         ref: EmbeddedSubtitleRef,
         onProgress: (Int) -> Unit = {},
     ): Result {
-        val dir = File(context.filesDir, "embedded_subs").apply { mkdirs() }
-        val base = videoPath.substringAfterLast('/').substringBeforeLast('.')
-            .replace(Regex("[^A-Za-z0-9 ._()\\[\\]-]"), "_").take(80).ifBlank { "movie" }
-        val cacheName = "$base-embedded-${ref.ordinal}-${(ref.language ?: "und").take(8)}-${videoPath.hashCode().toUInt().toString(16)}.srt"
-        val cacheFile = File(dir, cacheName)
+        val cacheFile = cacheFileFor(context, videoPath, ref)
         if (cacheFile.isFile && cacheFile.length() > 0L) {
             val count = cacheFile.readText().split("\n\n").count { it.isNotBlank() }
             return Result.Success(cacheFile, ref.language, count)
@@ -95,11 +93,33 @@ object EmbeddedSubtitleExtractor {
         }
         val chosen = chooseTrack(tracks, ref)
             ?: return Result.Failure("Couldn't match the selected subtitle to a text track in the file.")
+        if (!chosen.supported) {
+            return Result.Failure("The selected subtitle is a picture-based track (such as PGS), which can't be read as text. Pick a text subtitle track instead.")
+        }
         if (chosen.cues.isEmpty()) {
             return Result.Failure("The selected embedded subtitle has no text cues.")
         }
         cacheFile.writeText(toSrt(chosen.cues))
         return Result.Success(cacheFile, chosen.language ?: ref.language, chosen.cues.size)
+    }
+
+    /** Where the extracted copy of this embedded subtitle is (or will be) saved. */
+    fun cacheFileFor(context: Context, videoPath: String, ref: EmbeddedSubtitleRef): File =
+        File(File(context.filesDir, "embedded_subs").apply { mkdirs() }, cacheFileName(videoPath, ref))
+
+    /**
+     * Forgets the saved copy, so the next request reads the subtitle out of the movie again
+     * (and shows the "Reading subtitle · N%" progress). Returns true if a copy was removed.
+     */
+    fun clearCache(context: Context, videoPath: String, ref: EmbeddedSubtitleRef): Boolean {
+        val file = cacheFileFor(context, videoPath, ref)
+        return file.isFile && file.delete()
+    }
+
+    internal fun cacheFileName(videoPath: String, ref: EmbeddedSubtitleRef): String {
+        val base = videoPath.substringAfterLast('/').substringBeforeLast('.')
+            .replace(Regex("[^A-Za-z0-9 ._()\\[\\]-]"), "_").take(80).ifBlank { "movie" }
+        return "$base-embedded-${ref.ordinal}-${(ref.language ?: "und").take(8)}-${videoPath.hashCode().toUInt().toString(16)}.srt"
     }
 
     // ── Pure helpers (unit-tested) ───────────────────────────────────────────────
@@ -320,8 +340,10 @@ object EmbeddedSubtitleExtractor {
 
             return sinks.values.filterIsInstance<TextSink>().mapNotNull { sink ->
                 val format = sink.format ?: return@mapNotNull null
-                val cues = convert(format.sampleMimeType, sink.samples) ?: return@mapNotNull null
-                EmbeddedSubtitleTrack(format.language, format.label, cues)
+                val cues = convert(format.sampleMimeType, sink.samples)
+                // Image tracks are KEPT (as unsupported) so the Nth subtitle the player lists is
+                // still the Nth entry here; dropping them shifted every later track by one.
+                EmbeddedSubtitleTrack(format.language, format.label, cues ?: emptyList(), supported = cues != null)
             }
         } finally {
             try { raf?.close() } catch (_: Exception) {}

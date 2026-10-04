@@ -292,6 +292,24 @@ class SubtitleTranslationCoordinator(
         }
     }
 
+    /**
+     * Forget the saved copy of the embedded subtitle so the next translation reads it out of the
+     * movie again (with visible "Reading subtitle · N%" progress).
+     */
+    fun rereadEmbeddedNextTime() {
+        val ref = getEmbeddedRef()
+        if (ref == null) {
+            CineVaultToast.show(context, "Pick an embedded subtitle track first")
+            return
+        }
+        val removed = EmbeddedSubtitleExtractor.clearCache(context, getCurrentVideoPath(), ref)
+        CineVaultToast.show(
+            context,
+            if (removed) "Will re-read the subtitle from the movie next time"
+            else "Nothing saved yet — the next translation reads it from the movie",
+        )
+    }
+
     fun cancelTranslation() {
         val activeJob = translationJob?.takeIf { it.isActive } ?: return
 
