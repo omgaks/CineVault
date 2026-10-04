@@ -284,11 +284,22 @@ class PictureEnhanceController(
      * output size until a new frame is produced. Re-showing the current frame fixes that without
      * the user having to press play.
      */
-    fun refreshFrame() {
+    suspend fun refreshFrame() {
         if (!pipelineInstalled) return
-        val state = player.playbackState
-        if (state != Player.STATE_READY) return
-        if (!player.isPlaying) player.seekTo(player.currentPosition)
+        if (player.playbackState != Player.STATE_READY || player.playWhenReady) return
+        // A paused movie only redraws when a NEW frame arrives. Seeking to the same spot was not
+        // enough on device, so play for a split second with the sound off, then pause and return
+        // to exactly where it was. The picture then re-renders at the new size.
+        val position = player.currentPosition
+        val volume = player.volume
+        player.volume = 0f
+        player.playWhenReady = true
+        kotlinx.coroutines.delay(260)
+        if (player.playWhenReady) {
+            player.playWhenReady = false
+            player.seekTo(position)
+        }
+        player.volume = volume
     }
 
     /** Called by the panel while it is open so the status line reflects reality. */

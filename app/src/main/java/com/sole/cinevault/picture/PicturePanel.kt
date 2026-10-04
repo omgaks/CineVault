@@ -83,7 +83,7 @@ fun PicturePanelHost(controller: PictureEnhanceController) {
     // After a rotation the filtered picture can keep the old size while paused: re-show the frame.
     val configuration = LocalConfiguration.current
     LaunchedEffect(configuration.orientation, configuration.screenWidthDp, configuration.screenHeightDp) {
-        delay(350)
+        delay(450)
         controller.refreshFrame()
     }
 
