@@ -75,11 +75,9 @@ internal class SubtitleAppearanceCoordinator {
                     bottomPadding = appearanceUi.bottomPadding,
                     textSizeSp = appearanceUi.textSizeSp,
                 )
-                // Still at the default position (the user hasn't dragged or nudged it):
-                // place the text next to the picture instead of at the far screen edge.
-                val atDefault =
-                    appearanceUi.bottomPadding <= SubtitlePositionPolicy.MIN_BOTTOM_PADDING + 0.004f
-                if (!atDefault || playerView == null) {
+                // Until the user moves the subtitles, place them next to the picture instead of
+                // at a fixed screen position.
+                if (!appearanceUi.autoPosition || playerView == null) {
                     manual
                 } else {
                     val metrics = playerView.resources.displayMetrics
@@ -89,14 +87,19 @@ internal class SubtitleAppearanceCoordinator {
                         renderedTextSizeSp,
                         metrics,
                     )
-                    SubtitleAutoPlacement.bottomPaddingFraction(
+                    // Preferred: the real on-screen position of the picture and the subtitle view.
+                    val measured = measuredFraction(playerView, subtitleView, textPx)
+                    // The layout may not be final yet (just rotated / just opened): measure again
+                    // right after the next layout pass.
+                    scheduleRemeasure(playerView, subtitleView, textPx)
+                    (measured ?: SubtitleAutoPlacement.bottomPaddingFraction(
                         viewWidthPx = availableWidthDp * density,
                         viewHeightPx = availableHeightDp * density,
                         videoAspect = videoAspect,
                         textPx = textPx,
                         lines = 2,
                         fitMode = playerView.resizeMode == AspectRatioFrameLayout.RESIZE_MODE_FIT,
-                    )?.coerceIn(
+                    ))?.coerceIn(
                         SubtitlePositionPolicy.MIN_BOTTOM_PADDING,
                         SubtitlePositionPolicy.maxBottomPadding(appearanceUi.textSizeSp),
                     ) ?: manual
@@ -115,5 +118,67 @@ internal class SubtitleAppearanceCoordinator {
                 null,
             ),
         )
+    }
+
+    private fun measuredFraction(
+        playerView: androidx.media3.ui.PlayerView,
+        subtitleView: androidx.media3.ui.SubtitleView,
+        textPx: Float,
+    ): Float? {
+        val surface = playerView.videoSurfaceView ?: return null
+        if (subtitleView.height <= 0 || surface.height <= 0 || surface.width <= 0) return null
+        val svLoc = IntArray(2)
+        val picLoc = IntArray(2)
+        subtitleView.getLocationInWindow(svLoc)
+        surface.getLocationInWindow(picLoc)
+        val svTop = svLoc[1].toFloat()
+        val svBottom = svTop + subtitleView.height
+        // Zoomed / cropped video can extend beyond the screen: only the visible part counts.
+        val picTop = maxOf(picLoc[1].toFloat(), svTop)
+        val picBottom = minOf(picLoc[1].toFloat() + surface.height, svBottom)
+        return SubtitleAutoPlacement.bottomPaddingFractionFromRects(
+            subtitleViewBottomPx = svBottom,
+            subtitleViewHeightPx = subtitleView.height.toFloat(),
+            pictureTopPx = picTop,
+            pictureBottomPx = picBottom,
+            textPx = textPx,
+            lines = 2,
+        )
+    }
+
+    private var pendingRemeasure: android.view.View.OnLayoutChangeListener? = null
+
+    private fun scheduleRemeasure(
+        playerView: androidx.media3.ui.PlayerView,
+        subtitleView: androidx.media3.ui.SubtitleView,
+        textPx: Float,
+    ) {
+        pendingRemeasure?.let { playerView.removeOnLayoutChangeListener(it) }
+        val listener = object : android.view.View.OnLayoutChangeListener {
+            override fun onLayoutChange(
+                v: android.view.View?, l: Int, t: Int, r: Int, b: Int,
+                ol: Int, ot: Int, or: Int, ob: Int,
+            ) {
+                playerView.removeOnLayoutChangeListener(this)
+                if (pendingRemeasure === this) pendingRemeasure = null
+                playerView.post {
+                    measuredFraction(playerView, subtitleView, textPx)?.let {
+                        subtitleView.setBottomPaddingFraction(
+                            it.coerceIn(SubtitlePositionPolicy.MIN_BOTTOM_PADDING, 0.9f)
+                        )
+                    }
+                }
+            }
+        }
+        pendingRemeasure = listener
+        playerView.addOnLayoutChangeListener(listener)
+        // Also once after a short delay: video size/surface settle a moment after opening.
+        playerView.postDelayed({
+            measuredFraction(playerView, subtitleView, textPx)?.let {
+                subtitleView.setBottomPaddingFraction(
+                    it.coerceIn(SubtitlePositionPolicy.MIN_BOTTOM_PADDING, 0.9f)
+                )
+            }
+        }, 450L)
     }
 }

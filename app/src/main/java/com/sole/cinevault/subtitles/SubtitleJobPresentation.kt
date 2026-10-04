@@ -40,7 +40,7 @@ fun subtitleTranslationJobPresentation(
     when (status) {
         is SubtitleTranslationStatus.Translating ->
             SubtitleJobPresentation(
-                label = "AI Translate",
+                label = if (status.phase.startsWith("Reading embedded")) "Reading subtitle" else "AI Translate",
                 progress = status.percent,
             )
 

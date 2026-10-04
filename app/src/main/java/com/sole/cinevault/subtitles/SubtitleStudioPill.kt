@@ -277,7 +277,8 @@ fun DualSubsWindow(
             modifier = Modifier
                 .widthIn(min = 230.dp, max = 270.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(GlassSurfaceStrong)
+                // Mostly opaque so the text stays readable over bright pictures.
+                .background(GlassSurfaceStrong.copy(alpha = 0.94f))
                 .blockTapThrough()
                 .padding(12.dp)
         ) {

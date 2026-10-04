@@ -1,5 +1,7 @@
 package com.sole.cinevault.subtitles
 
+import com.sole.cinevault.CineVaultToast
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -227,6 +229,36 @@ fun SubtitleSearchSheet(
 
         Spacer(Modifier.height(8.dp))
 
+        val browserContext = androidx.compose.ui.platform.LocalContext.current
+        Text(
+            text = "🌐 Open in browser (Brave, Chrome…)",
+            color = AmberCore,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .padding(bottom = 8.dp)
+                .clip(RoundedCornerShape(50))
+                .border(1.dp, AmberCore.copy(alpha = 0.4f), RoundedCornerShape(50))
+                .clickable {
+                    onUserInteraction()
+                    // The system chooser lists every installed browser, so Brave can be used.
+                    // Files downloaded there can then be picked with "Open subtitle file…".
+                    try {
+                        val view = android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            SubtitleWebPolicy.searchUri(query.trim().ifBlank { initialQuery })
+                        )
+                        browserContext.startActivity(
+                            android.content.Intent.createChooser(view, "Open with")
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    } catch (e: Exception) {
+                        CineVaultToast.show(browserContext, "No browser could be opened")
+                    }
+                }
+                .padding(horizontal = 14.dp, vertical = 6.dp)
+        )
+
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -351,41 +383,6 @@ fun SubtitleSearchSheet(
                         color = TextMuted,
                         fontSize = 11.sp,
                         modifier = Modifier.padding(vertical = 10.dp)
-                    )
-                    val browserContext = androidx.compose.ui.platform.LocalContext.current
-                    Text(
-                        text = "Open in browser (Brave, Chrome…)",
-                        color = AmberCore,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .padding(bottom = 8.dp)
-                            .clip(RoundedCornerShape(50))
-                            .border(
-                                1.dp,
-                                AmberCore.copy(alpha = 0.4f),
-                                RoundedCornerShape(50)
-                            )
-                            .clickable {
-                                onUserInteraction()
-                                // The system chooser lists every browser, so Brave can be used.
-                                // Files downloaded there can then be picked with "Open subtitle file…".
-                                try {
-                                    val view = android.content.Intent(
-                                        android.content.Intent.ACTION_VIEW,
-                                        SubtitleWebPolicy.searchUri(query.trim().ifBlank { initialQuery })
-                                    )
-                                    browserContext.startActivity(
-                                        android.content.Intent.createChooser(view, "Open with")
-                                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    )
-                                } catch (_: Exception) {
-                                }
-                            }
-                            .padding(
-                                horizontal = 14.dp,
-                                vertical = 6.dp
-                            )
                     )
                     Text(
                         text = "Search website",

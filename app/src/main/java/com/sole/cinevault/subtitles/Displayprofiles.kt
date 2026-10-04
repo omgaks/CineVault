@@ -89,6 +89,14 @@ fun defaultSubtitleProfileSettings(type: DisplayProfileType, isLandscape: Boolea
 
 private const val PROFILE_PREFS_NAME = "cinevault_subtitle_profiles"
 
+/** Subtitles follow the picture automatically until the user moves them; absent = automatic. */
+fun loadSubtitleAutoPosition(context: Context): Boolean =
+    context.getSharedPreferences(PROFILE_PREFS_NAME, Context.MODE_PRIVATE).getBoolean("autoPositionV3", true)
+
+fun saveSubtitleAutoPosition(context: Context, auto: Boolean) {
+    context.getSharedPreferences(PROFILE_PREFS_NAME, Context.MODE_PRIVATE).edit { putBoolean("autoPositionV3", auto) }
+}
+
 fun loadSubtitleProfileSettings(context: Context, type: DisplayProfileType, isLandscape: Boolean): SubtitleProfileSettings {
     val id = displayProfileId(type, isLandscape)
     val prefs = context.getSharedPreferences(PROFILE_PREFS_NAME, Context.MODE_PRIVATE)

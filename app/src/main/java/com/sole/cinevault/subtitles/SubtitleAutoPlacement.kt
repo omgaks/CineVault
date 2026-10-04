@@ -46,4 +46,38 @@ object SubtitleAutoPlacement {
             }
         return (paddingPx / viewHeightPx).coerceIn(0f, 0.9f)
     }
+
+    /**
+     * Same placement rule as [bottomPaddingFraction], but from the REAL positions of the views on
+     * screen instead of from assumed screen/video sizes: the subtitle view's bottom edge and
+     * height, and the top/bottom edge of the picture, all in the same coordinate space (pixels).
+     * Returns null when the geometry isn't usable yet (not laid out).
+     */
+    fun bottomPaddingFractionFromRects(
+        subtitleViewBottomPx: Float,
+        subtitleViewHeightPx: Float,
+        pictureTopPx: Float,
+        pictureBottomPx: Float,
+        textPx: Float,
+        lines: Int = 2,
+    ): Float? {
+        if (subtitleViewHeightPx <= 0f || textPx <= 0f) return null
+        val pictureHeight = pictureBottomPx - pictureTopPx
+        if (pictureHeight <= 0f) return null
+
+        val bar = (subtitleViewBottomPx - pictureBottomPx).coerceAtLeast(0f)
+        val block = textPx * 1.25f * lines.coerceAtLeast(1)
+        val gap = textPx * 0.5f
+
+        // Text block's bottom edge, measured from the subtitle view's bottom.
+        val paddingPx =
+            if (bar >= block + gap * 2f) {
+                // Room under the picture: sit just beneath it.
+                bar - gap - block
+            } else {
+                // No usable bar: just inside the bottom of the picture.
+                bar + pictureHeight * 0.04f
+            }
+        return (paddingPx / subtitleViewHeightPx).coerceIn(0f, 0.9f)
+    }
 }

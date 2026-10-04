@@ -44,6 +44,7 @@ class SubtitleResetCoordinator(
 
         appearanceUi.textSizeSp = defaults.fontSizeSp
         appearanceUi.bottomPadding = defaults.bottomPadding
+        appearanceUi.autoPosition = true
         appearanceUi.preset = defaults.presetName
         appearanceUi.appearance = SubtitleAppearance(
             defaults.foregroundColor,
