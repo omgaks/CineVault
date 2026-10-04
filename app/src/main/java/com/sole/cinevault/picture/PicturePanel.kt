@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -26,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
@@ -34,12 +36,12 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
@@ -57,16 +59,31 @@ import com.sole.cinevault.ui.theme.GlassSurfaceStrong
 import com.sole.cinevault.ui.theme.TextBright
 import com.sole.cinevault.ui.theme.TextMuted
 import com.sole.cinevault.ui.theme.glassPanel
+import kotlinx.coroutines.delay
+
+private enum class PicturePage { MAIN, FINE }
 
 /**
  * Hosts the Picture panel over the player. Closed = draws nothing.
- * Tap outside closes it; the system Back button closes it too.
+ * Tap outside closes it; the system Back button steps back (Fine-tune → Picture → closed).
  */
 @Composable
 fun PicturePanelHost(controller: PictureEnhanceController) {
     if (!controller.panelOpen) return
 
-    BackHandler(enabled = true) { controller.closePanel() }
+    var page by remember { mutableStateOf(PicturePage.MAIN) }
+
+    BackHandler(enabled = true) {
+        if (page == PicturePage.FINE) page = PicturePage.MAIN else controller.closePanel()
+    }
+
+    // Keeps the "Live · 24 fps" line honest while the panel is open.
+    LaunchedEffect(controller) {
+        while (true) {
+            controller.refreshActivity()
+            delay(700)
+        }
+    }
 
     // While "Hold to compare" is pressed the panel fades away so the picture is visible.
     val panelAlpha by animateFloatAsState(
@@ -84,6 +101,8 @@ fun PicturePanelHost(controller: PictureEnhanceController) {
 
         PicturePanel(
             controller = controller,
+            page = page,
+            onPage = { page = it },
             maxPanelHeight = maxHeight - 32.dp,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
@@ -110,13 +129,14 @@ fun PicturePanelHost(controller: PictureEnhanceController) {
 @Composable
 private fun PicturePanel(
     controller: PictureEnhanceController,
+    page: PicturePage,
+    onPage: (PicturePage) -> Unit,
     maxPanelHeight: Dp,
     modifier: Modifier = Modifier,
 ) {
     val settings = controller.settings
     val available = controller.availability is PictureAvailability.Available
     val on = settings.preset != PicturePreset.OFF
-    var fineTuneOpen by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -129,55 +149,65 @@ private fun PicturePanel(
             .verticalScroll(rememberScrollState())
             .padding(14.dp),
     ) {
-        // Header
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(50))
-                    .background(AmberCore.copy(alpha = 0.12f))
-                    .border(1.dp, AmberCore.copy(alpha = 0.30f), RoundedCornerShape(50))
-                    .padding(horizontal = 12.dp, vertical = 7.dp),
-            ) {
-                Icon(Icons.Rounded.Tune, contentDescription = null, tint = AmberCore, modifier = Modifier.size(15.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("PICTURE", color = AmberCore, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            }
-            IconButton(onClick = { controller.closePanel() }, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Rounded.Close, contentDescription = "Close", tint = TextMuted)
-            }
+        if (page == PicturePage.MAIN) {
+            MainPage(controller, settings, available, on, onFine = { onPage(PicturePage.FINE) })
+        } else {
+            FinePage(controller, settings, available && on, onBack = { onPage(PicturePage.MAIN) })
         }
+    }
+}
 
-        // Status
-        val unavailable = controller.availability as? PictureAvailability.Unavailable
-        val statusText = when {
-            unavailable != null -> unavailable.reason
-            controller.note != null -> controller.note.orEmpty()
-            else -> "Detected: ${controller.detected.label}"
+@Composable
+private fun MainPage(
+    controller: PictureEnhanceController,
+    settings: PictureSettings,
+    available: Boolean,
+    on: Boolean,
+    onFine: () -> Unit,
+) {
+    // Header
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        TitlePill(text = "PICTURE", modifier = Modifier.weight(1f))
+        IconButton(onClick = { controller.closePanel() }, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Rounded.Close, contentDescription = "Close", tint = TextMuted)
         }
+    }
+
+    // Live status: proof the filter is really running (or why it isn't).
+    val unavailable = controller.availability as? PictureAvailability.Unavailable
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(top = 8.dp),
+    ) {
+        Box(
+            Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(if (controller.statusLive) AmberCore else TextMuted.copy(alpha = 0.5f))
+        )
+        Spacer(Modifier.width(8.dp))
         Text(
-            text = statusText,
-            color = if (unavailable != null || controller.note != null) AmberCore else TextMuted,
+            text = controller.statusLine,
+            color = if (controller.statusLive) AmberCore else TextMuted,
             fontSize = 11.sp,
-            modifier = Modifier.padding(top = 8.dp, bottom = 10.dp),
+            fontWeight = FontWeight.SemiBold,
         )
+    }
+    val message = unavailable?.reason ?: controller.note
+    if (message != null) {
+        Text(message, color = AmberCore, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+    }
+    controller.lastError?.let {
+        Text("Reason: $it", color = TextMuted, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
+    }
+    Spacer(Modifier.height(10.dp))
 
-        // One pill, like the Subtitles pill: amber glow + filled switch when on.
-        PictureMasterPill(
-            enabled = on,
-            usable = available,
-            onToggle = { controller.setEnabled(it) },
-        )
+    PictureMasterPill(enabled = on, usable = available, onToggle = { controller.setEnabled(it) })
 
-        SectionLabel("LOOK")
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-            listOf(
-                PicturePreset.NATURAL,
-                PicturePreset.CINEMA,
-                PicturePreset.VIVID,
-                PicturePreset.SHARP,
-            ).forEach { preset ->
+    SectionLabel("LOOK")
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+        listOf(PicturePreset.NATURAL, PicturePreset.CINEMA, PicturePreset.VIVID, PicturePreset.SHARP)
+            .forEach { preset ->
                 Chip(
                     label = preset.label,
                     selected = settings.preset == preset,
@@ -186,55 +216,137 @@ private fun PicturePanel(
                     onClick = { controller.selectPreset(preset) },
                 )
             }
-        }
+    }
 
-        SectionLabel("CONTENT")
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-            PictureContent.values().forEach { content ->
-                Chip(
-                    label = content.label,
-                    selected = settings.content == content,
-                    enabled = available,
-                    modifier = Modifier.weight(1f),
-                    onClick = { controller.setContent(content) },
-                )
-            }
+    // CONTENT: the detected type is highlighted even while Auto is selected.
+    val resolved = PictureProfiles.resolveContent(settings.content, controller.detected)
+    SectionLabel(
+        if (settings.content == PictureContent.AUTO) "CONTENT · detected ${controller.detected.label}"
+        else "CONTENT"
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+        Chip(
+            label = "Auto",
+            selected = settings.content == PictureContent.AUTO,
+            enabled = available,
+            modifier = Modifier.weight(1f),
+            onClick = { controller.setContent(PictureContent.AUTO) },
+        )
+        listOf(PictureContent.ANIME, PictureContent.ANIMATION, PictureContent.FILM).forEach { content ->
+            Chip(
+                label = content.label,
+                selected = resolved == content,
+                enabled = available,
+                modifier = Modifier.weight(if (content == PictureContent.ANIMATION) 1.5f else 1f),
+                onClick = { controller.setContent(content) },
+            )
         }
+    }
 
-        SectionLabel("INTENSITY")
-        PictureSlider(
-            value = settings.intensity,
+    SectionLabel("INTENSITY")
+    PictureSlider(
+        value = settings.intensity,
+        enabled = available && on,
+        onChange = { controller.setIntensity(it) },
+        onFinished = { controller.commit() },
+    )
+
+    Spacer(Modifier.height(6.dp))
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Chip(
+            label = "Fine-tune  ›",
+            selected = false,
             enabled = available && on,
-            onChange = { controller.setIntensity(it) },
-            onFinished = { controller.commit() },
+            modifier = Modifier.weight(1f),
+            onClick = onFine,
         )
+        Spacer(Modifier.width(6.dp))
+        Chip(
+            label = "Split view",
+            selected = controller.splitView,
+            enabled = available && on,
+            modifier = Modifier.weight(1f),
+            onClick = { controller.toggleSplit() },
+        )
+        Spacer(Modifier.width(6.dp))
+        Chip(
+            label = "Reset all",
+            selected = false,
+            enabled = available,
+            modifier = Modifier.weight(1f),
+            onClick = { controller.resetAll() },
+        )
+    }
 
-        // Fine-tune
-        Text(
-            text = if (fineTuneOpen) "FINE-TUNE  ▴" else "FINE-TUNE  ▾",
-            color = AmberCore,
-            fontSize = 10.5.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier
-                .padding(top = 12.dp)
-                .clip(RoundedCornerShape(50))
-                .clickable { fineTuneOpen = !fineTuneOpen }
-                .padding(vertical = 4.dp),
-        )
-        if (fineTuneOpen) {
-            val fineEnabled = available && on
-            LabeledSlider("Sharpness", settings.sharpen, fineEnabled,
-                { controller.setFineTune(sharpen = it) }, { controller.commit() })
-            LabeledSlider("Smooth gradients", settings.deband, fineEnabled,
-                { controller.setFineTune(deband = it) }, { controller.commit() })
-            LabeledSlider("Colour", settings.colour, fineEnabled,
-                { controller.setFineTune(colour = it) }, { controller.commit() })
-            LabeledSlider("Film grain", settings.grain, fineEnabled,
-                { controller.setFineTune(grain = it) }, { controller.commit() })
+    Spacer(Modifier.height(12.dp))
+    HoldToCompareButton(enabled = available && on, controller = controller)
+}
+
+@Composable
+private fun FinePage(
+    controller: PictureEnhanceController,
+    settings: PictureSettings,
+    enabled: Boolean,
+    onBack: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Rounded.ChevronLeft, contentDescription = "Back to Picture", tint = AmberCore)
         }
+        TitlePill(text = "FINE-TUNE", modifier = Modifier.weight(1f))
+        Spacer(Modifier.width(8.dp))
+        Chip(
+            label = "Reset",
+            selected = false,
+            enabled = enabled,
+            modifier = Modifier.width(72.dp),
+            onClick = { controller.resetFineTune() },
+        )
+    }
 
-        Spacer(Modifier.height(14.dp))
-        HoldToCompareButton(enabled = available && on, controller = controller)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(top = 8.dp),
+    ) {
+        Box(
+            Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(if (controller.statusLive) AmberCore else TextMuted.copy(alpha = 0.5f))
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(controller.statusLine, color = if (controller.statusLive) AmberCore else TextMuted, fontSize = 11.sp)
+    }
+
+    LabeledSlider("Sharpness", settings.sharpen, enabled,
+        { controller.setFineTune(sharpen = it) }, { controller.commit() })
+    LabeledSlider("Smooth gradients", settings.deband, enabled,
+        { controller.setFineTune(deband = it) }, { controller.commit() })
+    LabeledSlider("Colour", settings.colour, enabled,
+        { controller.setFineTune(colour = it) }, { controller.commit() })
+    LabeledSlider("Film grain", settings.grain, enabled,
+        { controller.setFineTune(grain = it) }, { controller.commit() })
+
+    Spacer(Modifier.height(14.dp))
+    HoldToCompareButton(enabled = enabled, controller = controller)
+}
+
+@Composable
+private fun TitlePill(text: String, modifier: Modifier = Modifier) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(AmberCore.copy(alpha = 0.12f))
+            .border(1.dp, AmberCore.copy(alpha = 0.30f), RoundedCornerShape(50))
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+    ) {
+        Icon(Icons.Rounded.Tune, contentDescription = null, tint = AmberCore, modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(text, color = AmberCore, fontSize = 12.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -382,7 +494,7 @@ private fun LabeledSlider(
         text = label,
         color = TextMuted,
         fontSize = 10.5.sp,
-        modifier = Modifier.padding(top = 8.dp),
+        modifier = Modifier.padding(top = 10.dp),
     )
     PictureSlider(value, enabled, onChange, onFinished)
 }

@@ -19,6 +19,10 @@ import androidx.media3.effect.GlShaderProgram
 class PictureLiveParams {
     @Volatile
     var current: PictureShaderParams = PictureShaderParams.OFF
+
+    /** Frames drawn by the shader so far. Written by the GL thread only; read by the panel. */
+    @Volatile
+    var frames: Long = 0L
 }
 
 /**
@@ -77,6 +81,7 @@ private class PictureShaderProgram(
             glProgram.setFloatUniform("uDeband", p.deband)
             glProgram.setFloatUniform("uColour", p.colour)
             glProgram.setFloatUniform("uGrain", p.grain)
+            glProgram.setFloatUniform("uSplit", p.split)
             // Changes every frame so grain / dither never sits still.
             glProgram.setFloatUniform(
                 "uSeed",
@@ -84,6 +89,7 @@ private class PictureShaderProgram(
             )
             glProgram.bindAttributesAndUniforms()
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, /* first= */ 0, /* count= */ 4)
+            live.frames = live.frames + 1L
         } catch (e: GlUtil.GlException) {
             throw VideoFrameProcessingException(e, presentationTimeUs)
         }
@@ -118,6 +124,7 @@ uniform float uSharpen;
 uniform float uDeband;
 uniform float uColour;
 uniform float uGrain;
+uniform float uSplit;
 uniform float uSeed;
 varying vec2 vTexSamplingCoord;
 
@@ -162,10 +169,10 @@ void main() {
   vec3 mn = min(min(min(d, e), min(f, b)), h);
   vec3 mx = max(max(max(d, e), max(f, b)), h);
   vec3 amp = sqrt(clamp(min(mn, 1.0 - mx) / max(mx, vec3(0.0001)), 0.0, 1.0));
-  float peak = -1.0 / mix(8.0, 5.0, uSharpen);
+  float peak = -1.0 / mix(9.0, 4.0, uSharpen);
   vec3 w = amp * peak;
   vec3 sharpened = clamp((b * w + d * w + f * w + h * w + e) / (1.0 + 4.0 * w), 0.0, 1.0);
-  vec3 col = mix(e, sharpened, uSharpen);
+  vec3 col = sharpened;
 
   // 3. Vibrance: lifts muted colours most, leaves skin tones and black alone.
   float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
@@ -178,7 +185,7 @@ void main() {
     * smoothstep(0.10, 0.28, hueT) * (1.0 - smoothstep(0.62, 0.90, hueT))
     * smoothstep(0.05, 0.14, chroma) * (1.0 - smoothstep(0.50, 0.70, chroma));
   float vib = uColour * (1.0 - chroma) * (1.0 - 0.75 * skin);
-  col = clamp(mix(vec3(luma), col, 1.0 + 0.6 * vib), 0.0, 1.0);
+  col = clamp(mix(vec3(luma), col, 1.0 + 1.6 * vib), 0.0, 1.0);
 
   // 4. Dither (hides banding steps) + optional film grain. Masked off in near-black
   //    so letterbox bars and OLED blacks stay perfectly clean.
@@ -189,7 +196,14 @@ void main() {
   float noiseAmp = uDeband * (1.0 / 255.0) + uGrain * 0.035;
   col += n * noiseAmp * mask;
 
-  gl_FragColor = vec4(mix(e0, clamp(col, 0.0, 1.0), uAmount), 1.0);
+  vec3 outc = mix(e0, clamp(col, 0.0, 1.0), uAmount);
+  // Split view: enhanced on the left of the amber line, original on the right.
+  if (uSplit > 0.0) {
+    float sx = vTexSamplingCoord.x;
+    if (sx > uSplit) { outc = e0; }
+    if (abs(sx - uSplit) < uTexel.x * 1.5) { outc = vec3(1.0, 0.75, 0.2); }
+  }
+  gl_FragColor = vec4(outc, 1.0);
 }
 """
     }

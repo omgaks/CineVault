@@ -24,10 +24,10 @@ enum class PicturePreset(val label: String) {
 data class PictureSettings(
     val preset: PicturePreset = PicturePreset.OFF,
     val content: PictureContent = PictureContent.AUTO,
-    val intensity: Float = 0.8f,
-    val sharpen: Float = 0.35f,
+    val intensity: Float = 0.9f,
+    val sharpen: Float = 0.5f,
     val deband: Float = 0.5f,
-    val colour: Float = 0.1f,
+    val colour: Float = 0.15f,
     val grain: Float = 0f,
 )
 
@@ -38,9 +38,11 @@ data class PictureShaderParams(
     val deband: Float,
     val colour: Float,
     val grain: Float,
+    /** 0 = off; otherwise the x position (0..1) of the split-view divider. */
+    val split: Float = 0f,
 ) {
     companion object {
-        val OFF = PictureShaderParams(0f, 0f, 0f, 0f, 0f)
+        val OFF = PictureShaderParams(0f, 0f, 0f, 0f, 0f, 0f)
     }
 }
 
@@ -54,12 +56,13 @@ object PictureProfiles {
     )
 
     fun tune(preset: PicturePreset, content: PictureContent): Tune {
+        // Values chosen so each look is clearly visible on a real 1080p frame.
         val base = when (preset) {
-            PicturePreset.NATURAL -> Tune(0.35f, 0.50f, 0.10f, 0.00f)
-            PicturePreset.CINEMA -> Tune(0.30f, 0.60f, 0.05f, 0.15f)
-            PicturePreset.VIVID -> Tune(0.45f, 0.50f, 0.35f, 0.00f)
-            PicturePreset.SHARP -> Tune(0.80f, 0.40f, 0.10f, 0.00f)
-            PicturePreset.OFF, PicturePreset.CUSTOM -> Tune(0.35f, 0.50f, 0.10f, 0.00f)
+            PicturePreset.NATURAL -> Tune(0.50f, 0.50f, 0.15f, 0.00f)
+            PicturePreset.CINEMA -> Tune(0.40f, 0.60f, 0.05f, 0.15f)
+            PicturePreset.VIVID -> Tune(0.50f, 0.50f, 0.45f, 0.00f)
+            PicturePreset.SHARP -> Tune(0.90f, 0.40f, 0.15f, 0.00f)
+            PicturePreset.OFF, PicturePreset.CUSTOM -> Tune(0.50f, 0.50f, 0.15f, 0.00f)
         }
         return when (content) {
             // 2D anime: flat colour fills band easily, line art needs a lighter hand,
@@ -100,7 +103,12 @@ object PictureProfiles {
         )
     }
 
-    fun toShaderParams(settings: PictureSettings, comparing: Boolean, active: Boolean): PictureShaderParams {
+    fun toShaderParams(
+        settings: PictureSettings,
+        comparing: Boolean,
+        active: Boolean,
+        splitView: Boolean = false,
+    ): PictureShaderParams {
         if (!active || settings.preset == PicturePreset.OFF) return PictureShaderParams.OFF
         val amount = if (comparing) 0f else settings.intensity.coerceIn(0f, 1f)
         return PictureShaderParams(
@@ -109,7 +117,39 @@ object PictureProfiles {
             deband = settings.deband.coerceIn(0f, 1f),
             colour = settings.colour.coerceIn(0f, 1f),
             grain = settings.grain.coerceIn(0f, 1f),
+            split = if (splitView && !comparing) 0.5f else 0f,
         )
+    }
+
+    /** Fine-tune sliders back to the current look's own values (Custom falls back to [fallback]). */
+    fun resetFineTune(
+        settings: PictureSettings,
+        resolvedContent: PictureContent,
+        fallback: PicturePreset,
+    ): PictureSettings {
+        val preset = when (settings.preset) {
+            PicturePreset.OFF -> PicturePreset.OFF
+            PicturePreset.CUSTOM -> fallback
+            else -> settings.preset
+        }
+        val t = tune(if (preset == PicturePreset.OFF) fallback else preset, resolvedContent)
+        return settings.copy(
+            preset = preset,
+            sharpen = t.sharpen,
+            deband = t.deband,
+            colour = t.colour,
+            grain = t.grain,
+        )
+    }
+
+    /** Everything back to defaults, keeping Picture on or off as it was. */
+    fun resetAll(settings: PictureSettings, detected: PictureContent): PictureSettings {
+        val on = settings.preset != PicturePreset.OFF
+        val fresh = PictureSettings(
+            preset = if (on) PicturePreset.NATURAL else PicturePreset.OFF,
+            content = PictureContent.AUTO,
+        )
+        return resetFineTune(fresh, resolveContent(PictureContent.AUTO, detected), PicturePreset.NATURAL)
     }
 }
 

@@ -10,8 +10,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
-import androidx.media3.common.MimeTypes
 import androidx.media3.common.ColorInfo
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
@@ -32,26 +32,30 @@ object PictureEnhanceRegistry {
 }
 
 /**
- * Owns Picture enhancement for the player: settings, per-title memory, the GPU effect
- * attachment, and the safety guards (HDR / 4K / decoder errors / dropped frames / heat).
+ * Owns Picture enhancement for the player: settings, per-title memory, the GPU effect, and
+ * the safety guards.
  *
- * Slider moves and hold-to-compare only change [PictureLiveParams] — no pipeline rebuild.
- *
- * The Media3 effect pipeline is installed lazily, the first time the user turns Picture on
- * for this player instance, so normal playback (HDR, glasses mode, direct surface output)
- * is untouched until then. Installing it needs one quick playback restart (stop + prepare at
- * the same position); after that, on/off and tuning are instant. Media3 offers no way to
- * remove the pipeline again, so it stays until the player screen closes.
+ * Design rules learned from device testing:
+ *  - The Media3 effect list is changed at most ONCE (the first time Picture is switched on
+ *    for a title, before the first prepare() when the choice was saved). After that every
+ *    change — presets, sliders, Off, hold-to-compare, split view — only changes shader
+ *    uniforms, so nothing ever touches the running video pipeline.
+ *  - If the effect pipeline itself fails, the failure is caught here before the player's
+ *    own error handling sees it: the effect is removed, playback resumes at the same
+ *    position, and the reason is shown in the panel instead of freezing the movie.
  */
 @OptIn(UnstableApi::class)
 class PictureEnhanceController(
     private val context: Context,
     private val player: ExoPlayer,
+    initialPath: String? = null,
 ) {
     var settings by mutableStateOf(PictureSettings())
         private set
     var panelOpen by mutableStateOf(false)
     var comparing by mutableStateOf(false)
+        private set
+    var splitView by mutableStateOf(false)
         private set
     var detected by mutableStateOf(PictureContent.FILM)
         private set
@@ -60,6 +64,14 @@ class PictureEnhanceController(
     /** Explains an automatic pause ("Phone is hot…"), shown in the panel. */
     var note by mutableStateOf<String?>(null)
         private set
+    /** Technical reason the last effect failure happened, shown in the panel. */
+    var lastError by mutableStateOf<String?>(null)
+        private set
+    /** "Live · 24 fps", "Off", "Waiting…" … proof that frames really go through the shader. */
+    var statusLine by mutableStateOf("Off")
+        private set
+    var statusLive by mutableStateOf(false)
+        private set
 
     val isActive: Boolean
         get() = settings.preset != PicturePreset.OFF && availability is PictureAvailability.Available
@@ -67,15 +79,17 @@ class PictureEnhanceController(
     private val live = PictureLiveParams()
     private val effect = PictureEnhanceEffect(live)
 
-    private var attached = false
-    private var attachedAtMs = 0L
+    private var pipelineInstalled = false
+    private var installedAtMs = 0L
     private var badDropWindows = 0
     private var currentPath = ""
     private var setupFailed = false
-    private var pipelineInstalled = false
+    private var failureHandled = false
     private var lockedReason: String? = null
     private var lastPreset = PicturePreset.NATURAL
     private var thermalListener: Any? = null
+    private var lastFrames = 0L
+    private var lastPollAtMs = 0L
 
     private val playerListener = object : Player.Listener {
         override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -85,18 +99,6 @@ class PictureEnhanceController(
         override fun onTracksChanged(tracks: Tracks) {
             evaluateAvailability()
         }
-
-        override fun onPlayerError(error: PlaybackException) {
-            if (!attached) return
-            val code = error.errorCode
-            if (code == PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSING_FAILED ||
-                code == PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSOR_INIT_FAILED
-            ) {
-                lockedReason = "Not supported for this video"
-                CineVaultToast.show(context, "Picture enhancement isn't supported for this video")
-                evaluateAvailability()
-            }
-        }
     }
 
     private val analyticsListener = object : AnalyticsListener {
@@ -105,9 +107,9 @@ class PictureEnhanceController(
             droppedFrames: Int,
             elapsedMs: Long,
         ) {
-            if (!attached || comparing) return
-            // Ignore the start-up / seek burst right after the effect is attached.
-            if (SystemClock.elapsedRealtime() - attachedAtMs < 5_000L) return
+            if (!pipelineInstalled || !isActive || comparing) return
+            // Ignore the start-up / seek burst right after the effect is installed.
+            if (SystemClock.elapsedRealtime() - installedAtMs < 6_000L) return
             badDropWindows = if (droppedFrames >= 8) badDropWindows + 1 else maxOf(0, badDropWindows - 1)
             if (badDropWindows >= 3) {
                 pauseAutomatically("Picture enhancement paused to keep playback smooth")
@@ -119,6 +121,19 @@ class PictureEnhanceController(
         player.addListener(playerListener)
         player.addAnalyticsListener(analyticsListener)
         if (Build.VERSION.SDK_INT >= 29) registerThermalListener()
+
+        // If this title was left on, install the pipeline NOW — before the first prepare() —
+        // so opening it never needs a restart.
+        if (!initialPath.isNullOrEmpty()) {
+            val saved = PictureMemory.load(context, initialPath)
+            if (saved != null && saved.preset != PicturePreset.OFF) {
+                currentPath = initialPath
+                settings = saved
+                if (saved.preset != PicturePreset.CUSTOM) lastPreset = saved.preset
+                refreshLive()
+                installPipeline(restart = false)
+            }
+        }
         evaluateAvailability()
     }
 
@@ -131,6 +146,7 @@ class PictureEnhanceController(
         lockedReason = null
         note = null
         comparing = false
+        splitView = false
         badDropWindows = 0
         settings = PictureMemory.load(context, path) ?: PictureSettings()
         if (settings.preset != PicturePreset.OFF && settings.preset != PicturePreset.CUSTOM) {
@@ -143,6 +159,10 @@ class PictureEnhanceController(
 
     fun togglePanel() {
         panelOpen = !panelOpen
+        if (!panelOpen) {
+            comparing = false
+            refreshLive()
+        }
     }
 
     fun closePanel() {
@@ -160,6 +180,7 @@ class PictureEnhanceController(
             }
             settings = settings.copy(preset = PicturePreset.OFF)
             note = null
+            splitView = false
             persist()
             applyEffects()
         }
@@ -216,6 +237,27 @@ class PictureEnhanceController(
         refreshLive()
     }
 
+    /** Fine-tune sliders back to the current look's own values. */
+    fun resetFineTune() {
+        settings = PictureProfiles.resetFineTune(
+            settings,
+            PictureProfiles.resolveContent(settings.content, detected),
+            lastPreset,
+        )
+        persist()
+        refreshLive()
+    }
+
+    /** Everything back to defaults; Picture stays on or off as it was. */
+    fun resetAll() {
+        settings = PictureProfiles.resetAll(settings, detected)
+        splitView = false
+        note = null
+        if (settings.preset != PicturePreset.OFF) lastPreset = PicturePreset.NATURAL
+        persist()
+        applyEffects()
+    }
+
     /** Call when a slider drag ends. */
     fun commit() {
         persist()
@@ -224,6 +266,87 @@ class PictureEnhanceController(
     fun holdCompare(value: Boolean) {
         comparing = value
         refreshLive()
+    }
+
+    fun toggleSplit() {
+        splitView = !splitView
+        refreshLive()
+    }
+
+    /** Called by the panel while it is open so the status line reflects reality. */
+    fun refreshActivity() {
+        val now = SystemClock.elapsedRealtime()
+        val frames = live.frames
+        val dt = now - lastPollAtMs
+        val delta = frames - lastFrames
+        lastFrames = frames
+        lastPollAtMs = now
+        val fps = if (dt in 1..5000 && delta >= 0) (delta * 1000f / dt) else 0f
+
+        when {
+            !isActive -> {
+                statusLive = false
+                statusLine = if (availability is PictureAvailability.Unavailable) "Not available" else "Off"
+            }
+            !pipelineInstalled -> {
+                statusLive = false
+                statusLine = "Starting…"
+            }
+            lockedReason != null -> {
+                statusLive = false
+                statusLine = "Stopped"
+            }
+            fps >= 1f -> {
+                statusLive = true
+                statusLine = "Live · ${fps.toInt()} fps through the GPU filter"
+            }
+            player.isPlaying && now - installedAtMs > 3_000L -> {
+                statusLive = false
+                statusLine = "Not running — no frames reached the filter"
+            }
+            else -> {
+                statusLive = false
+                statusLine = if (player.isPlaying) "Starting…" else "Paused"
+            }
+        }
+    }
+
+    /**
+     * Called first thing from the player's error handler. Returns true when the failure was
+     * caused by the picture filter and has been fully handled here (effect removed, playback
+     * resumed), so the normal retry / software-fallback / error-screen logic must not run.
+     */
+    fun consumeEffectFailure(error: PlaybackException): Boolean {
+        if (!pipelineInstalled || failureHandled) return false
+        val code = error.errorCode
+        val sinceInstall = SystemClock.elapsedRealtime() - installedAtMs
+        val frameProcessing =
+            code == PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSOR_INIT_FAILED ||
+                code == PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSING_FAILED
+        val decoderRightAfterInstall = code in 4001..4005 && sinceInstall < 20_000L
+        if (!frameProcessing && !decoderRightAfterInstall) return false
+
+        failureHandled = true
+        val cause = generateSequence<Throwable>(error) { it.cause }.last().message.orEmpty()
+        lastError = "${error.errorCodeName}${if (cause.isNotBlank()) ": " + cause.take(140) else ""}"
+        lockedReason = "Stopped: the GPU filter failed on this video"
+        availability = PictureAvailability.Unavailable(lockedReason.orEmpty())
+        settings = settings.copy(preset = PicturePreset.OFF)
+        persist() // forgets the saved "on" so the title opens normally next time
+        live.current = PictureShaderParams.OFF
+        try {
+            player.setVideoEffects(emptyList())
+        } catch (_: Throwable) {
+        }
+        pipelineInstalled = false
+        CineVaultToast.show(context, "Picture enhancement stopped — your movie continues", long = true)
+
+        val resumeAt = player.currentPosition.coerceAtLeast(0L)
+        val resumePlaying = player.playWhenReady
+        player.prepare()
+        player.seekTo(resumeAt)
+        player.playWhenReady = resumePlaying
+        return true
     }
 
     fun release() {
@@ -242,7 +365,7 @@ class PictureEnhanceController(
     }
 
     private fun refreshLive() {
-        live.current = PictureProfiles.toShaderParams(settings, comparing, isActive)
+        live.current = PictureProfiles.toShaderParams(settings, comparing, isActive, splitView)
     }
 
     private fun isHdr(): Boolean {
@@ -269,45 +392,46 @@ class PictureEnhanceController(
     }
 
     private fun applyEffects() {
-        val want = isActive
         refreshLive() // values must be ready before the first frame reaches the shader
-        if (want && !attached) {
-            try {
-                val needsRestart = !pipelineInstalled && player.playbackState != Player.STATE_IDLE
-                player.setVideoEffects(listOf(effect))
-                pipelineInstalled = true
-                attached = true
-                attachedAtMs = SystemClock.elapsedRealtime()
-                badDropWindows = 0
-                if (needsRestart) {
-                    // The renderer only builds its effect pipeline when it is (re-)enabled.
-                    // stop() resets it and keeps the playlist and position; prepare() resumes.
-                    val resume = player.playWhenReady
-                    player.stop()
-                    player.prepare()
-                    player.playWhenReady = resume
-                }
-            } catch (_: Throwable) {
-                setupFailed = true
-                availability = PictureAvailability.Unavailable("Video effects aren't available here")
-            }
-        } else if (!want && attached) {
-            try {
-                player.setVideoEffects(emptyList())
-            } catch (_: Throwable) {
-            }
-            attached = false
+        if (isActive && !pipelineInstalled && !failureHandled) {
+            installPipeline(restart = true)
         }
     }
 
-    /** Switches enhancement off without forgetting the user's saved choice for this title. */
+    /**
+     * The one and only change to the Media3 effect list. [restart] is needed when the player
+     * is already prepared, because the renderer builds its effect pipeline when it is enabled.
+     */
+    private fun installPipeline(restart: Boolean) {
+        try {
+            val needsRestart = restart && player.playbackState != Player.STATE_IDLE
+            val resumeAt = player.currentPosition.coerceAtLeast(0L)
+            val resumePlaying = player.playWhenReady
+            player.setVideoEffects(listOf(effect))
+            pipelineInstalled = true
+            installedAtMs = SystemClock.elapsedRealtime()
+            badDropWindows = 0
+            if (needsRestart) {
+                player.stop()
+                player.prepare()
+                player.seekTo(resumeAt)
+                player.playWhenReady = resumePlaying
+            }
+        } catch (_: Throwable) {
+            setupFailed = true
+            pipelineInstalled = false
+            availability = PictureAvailability.Unavailable("Video effects aren't available here")
+        }
+    }
+
+    /** Switches the filter off without forgetting the user's saved choice for this title. */
     private fun pauseAutomatically(reason: String) {
         if (!isActive) return
         if (settings.preset != PicturePreset.CUSTOM) lastPreset = settings.preset
         settings = settings.copy(preset = PicturePreset.OFF)
         note = reason
         CineVaultToast.show(context, reason)
-        applyEffects()
+        refreshLive()
     }
 
     @RequiresApi(29)
