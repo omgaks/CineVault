@@ -229,7 +229,43 @@ fun SubtitleSearchSheet(
 
         Spacer(Modifier.height(8.dp))
 
-        Spacer(Modifier.height(6.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .background(
+                    if (showManualFields)
+                        AmberGlow.copy(alpha = 0.16f)
+                    else
+                        SpaceDeep.copy(alpha = 0.6f)
+                )
+                .border(
+                    1.dp,
+                    AmberCore.copy(
+                        alpha = if (showManualFields) 0.6f else 0.25f
+                    ),
+                    RoundedCornerShape(10.dp)
+                )
+                .clickable {
+                    onUserInteraction()
+                    showManualFields = !showManualFields
+                }
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            Text(
+                text =
+                    if (showManualFields)
+                        "▾ TV show: Season / Episode"
+                    else
+                        "▸ TV show? Set Season / Episode",
+                color = AmberCore,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        if (showManualFields) {
+            Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 OutlinedTextField(
                     value = season,

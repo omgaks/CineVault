@@ -273,17 +273,19 @@ fun SubtitleTrackSelectorSheet(
                     onClick = onOpenFilePicker
                 )
             } else {
-                if (downloadedTrack != null) {
+                if (downloadedTracks.isNotEmpty()) {
                     TrackSectionLabel("Downloaded")
-                    TrackRow(
-                        icon = null,
-                        title = friendlyLanguageDisplay(downloadedTrack.language),
-                        subtitle = downloadedProviderLabel(downloadedTrack.file)?.let { "Downloaded · $it" } ?: "Downloaded subtitle",
-                        badges = emptyList(),
-                        selected = selectedKey == downloadedTrack.key,
-                        onClick = {},
-                        onDelete = { onDeleteLocal(downloadedTrack.file) }
-                    )
+                    downloadedTracks.forEach { downloadedTrack ->
+                        TrackRow(
+                            icon = null,
+                            title = friendlyLanguageDisplay(downloadedTrack.language),
+                            subtitle = downloadedProviderLabel(downloadedTrack.file)?.let { "Downloaded · $it" } ?: "Downloaded subtitle",
+                            badges = emptyList(),
+                            selected = selectedKey == downloadedTrack.key,
+                            onClick = {},
+                            onDelete = { onDeleteLocal(downloadedTrack.file) }
+                        )
+                    }
                 }
 
                 if (generatedFiles.isNotEmpty()) {
