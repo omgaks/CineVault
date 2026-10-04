@@ -241,6 +241,7 @@ internal fun BoxScope.PlayerSubtitleSelectionAndAcquisitionSurfaces(
             studioUi.menuTouchKey++
         },
         onVerticalPositionChange = {
+            appearanceUi.autoPosition = false
             appearanceUi.bottomPadding = it
             onShowControlsChanged(true)
             studioUi.menuTouchKey++
@@ -529,6 +530,7 @@ internal fun BoxScope.PlayerSubtitleSelectionAndAcquisitionSurfaces(
         appearanceBottomPaddingFraction =
             appearanceUi.bottomPadding,
         onAppearanceBottomPaddingChange = {
+            appearanceUi.autoPosition = false
             appearanceUi.bottomPadding = it
         },
         onApplyPreset = { name, preset ->

@@ -80,6 +80,9 @@ class SubtitleTrackSelectionState {
 class SubtitleAppearanceUiState {
     var textSizeSp by mutableFloatStateOf(22f)
     var bottomPadding by mutableFloatStateOf(0.02f)
+    // True until the user moves the subtitles themselves: then CineVault keeps them next to the
+    // picture (just under it when there is room). Moving them sets this to false.
+    var autoPosition by mutableStateOf(true)
     var preset by mutableStateOf("CineVault")
     var appearance by mutableStateOf(SubtitlePresets.CineVault)
     var preserveOriginalStyling by mutableStateOf(false)

@@ -43,6 +43,7 @@ fun BoxScope.PlayerSubtitleAiPanels(
     translationStatus: SubtitleTranslationStatus,
     generatedFiles: List<GeneratedSubtitleFile>,
     activeSubtitleUri: Uri?,
+    embeddedSubtitleLabel: String? = null,
     speechCoordinator: SpeechSubtitleCoordinator,
     translationCoordinator: SubtitleTranslationCoordinator,
     generatedSubtitleOrchestrator: GeneratedSubtitleOrchestrator,
@@ -166,7 +167,17 @@ fun BoxScope.PlayerSubtitleAiPanels(
                     SubtitleTranslationPanel(
                         status = translationStatus,
                         activeSource =
-                            generatedSubtitleOrchestrator.resolveActiveSubtitle(),
+                            generatedSubtitleOrchestrator.resolveActiveSubtitle()
+                                ?: embeddedSubtitleLabel?.let {
+                                    // An embedded track is read out of the movie when translation
+                                    // starts, so it counts as a usable source.
+                                    SubtitleSourceResolver.Resolved(
+                                        uri = Uri.EMPTY,
+                                        language = null,
+                                        label = it,
+                                        source = "read from the movie",
+                                    )
+                                },
                         generatedFiles = generatedFiles,
                         activeSubtitleUri = activeSubtitleUri,
                         onLoadGenerated = { file ->

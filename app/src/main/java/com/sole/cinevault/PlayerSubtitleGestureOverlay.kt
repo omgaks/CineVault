@@ -107,6 +107,7 @@ internal fun PlayerSubtitleGestureOverlay(
                             }
                     },
                     onVerticalPositionDrag = { deltaFraction ->
+                        appearanceUi.autoPosition = false
                         appearanceUi.bottomPadding =
                             SubtitlePositionPolicy.sanitize(
                                 appearanceUi.bottomPadding + deltaFraction,

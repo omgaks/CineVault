@@ -107,6 +107,7 @@ internal fun PlayerSubtitleStudioSurfaces(
             },
             bottomPadding = appearanceUi.bottomPadding,
             onBottomPaddingChange = {
+                appearanceUi.autoPosition = false
                 appearanceUi.bottomPadding = it
                 studioUi.menuTouchKey++
             },

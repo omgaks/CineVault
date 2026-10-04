@@ -100,6 +100,7 @@ internal fun RememberPlayerSubtitleDisplayProfile(
         appearanceUi.textSizeSp = settings.fontSizeSp
         appearanceUi.bottomPadding = settings.bottomPadding
         if (firstLoad) {
+            appearanceUi.autoPosition = loadSubtitleAutoPosition(context)
             appearanceUi.preset = settings.presetName
             appearanceUi.appearance = SubtitleAppearance(
                 settings.foregroundColor,
@@ -120,12 +121,14 @@ internal fun RememberPlayerSubtitleDisplayProfile(
         currentProfileId,
         appearanceUi.textSizeSp,
         appearanceUi.bottomPadding,
+        appearanceUi.autoPosition,
         appearanceUi.preset,
         appearanceUi.appearance,
         appearanceUi.preserveOriginalStyling,
     ) {
         if (profileLoadedFor != currentProfileId) return@LaunchedEffect
         delay(400)
+        saveSubtitleAutoPosition(context, appearanceUi.autoPosition)
         saveSubtitleProfileSettings(
             context,
             displayProfileType,

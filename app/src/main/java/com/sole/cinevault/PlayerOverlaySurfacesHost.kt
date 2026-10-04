@@ -207,6 +207,12 @@ internal fun BoxScope.PlayerOverlaySurfacesHost(
         translationStatus = subtitleTranslationStatus,
         generatedFiles = generatedSubtitleFiles,
         activeSubtitleUri = trackUi.primaryUri ?: trackUi.originalUri,
+        embeddedSubtitleLabel =
+            if (trackUi.primaryUri == null && trackUi.selectedKey?.startsWith("embedded:") == true) {
+                "Embedded subtitle"
+            } else {
+                null
+            },
         speechCoordinator = speechSubtitleCoordinator,
         translationCoordinator = subtitleTranslationCoordinator,
         generatedSubtitleOrchestrator = generatedSubtitleOrchestrator,
