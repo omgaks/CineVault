@@ -2,6 +2,7 @@ package com.sole.cinevault
 
 import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.media3.exoplayer.ExoPlayer
@@ -9,12 +10,6 @@ import com.sole.cinevault.subtitles.AutoSyncCoordinator
 import com.sole.cinevault.subtitles.AutoSyncStatus
 import kotlinx.coroutines.CoroutineScope
 
-/**
- * Owns the player-facing Auto-Sync setup that previously lived inline in
- * VideoPlayerScreen. The AutoSyncCoordinator remains responsible for the
- * behavior itself; this runtime only derives availability and wires the
- * coordinator to the screen's existing state holders.
- */
 internal data class PlayerAutoSyncRuntime(
     val available: Boolean,
     val coordinator: AutoSyncCoordinator,
@@ -66,6 +61,12 @@ internal fun rememberPlayerAutoSyncRuntime(
             incrementStudioMenuTouchKey = { studioUi.menuTouchKey++ },
             setSpeechTimeline = onAutoSyncSpeechTimelineChanged,
         )
+    }
+
+    DisposableEffect(coordinator, currentVideoPath, primarySubtitle) {
+        onDispose {
+            coordinator.cancelAutoSync()
+        }
     }
 
     return PlayerAutoSyncRuntime(
