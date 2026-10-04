@@ -391,6 +391,15 @@ fun VideoPlayerScreen(
         onVideoEndedChanged = { isVideoEnded = it },
         onPendingSrtUriChanged = { pendingSrtUri = it },
         onPlayNext = onPlayNext,
+        onExternalSubtitleReplaced = {
+            // Dual subtitles are built from an external primary file; with an embedded
+            // track as the subtitle there is nothing to merge, so Dual goes off cleanly.
+            if (dualUi.enabled) {
+                dualUi.enabled = false
+                dualUi.statusText = ""
+                dualUi.lastSecondaryUri = null
+            }
+        },
     )
     val playerSessionActionsCoordinator = sessionCoordinators.sessionActions
     val playbackNavigationCoordinator = sessionCoordinators.navigation

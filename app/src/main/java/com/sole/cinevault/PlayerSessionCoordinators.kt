@@ -58,6 +58,7 @@ internal fun rememberPlayerSessionCoordinators(
     onVideoEndedChanged: (Boolean) -> Unit,
     onPendingSrtUriChanged: (android.net.Uri?) -> Unit,
     onPlayNext: (VideoWithMetadata) -> Unit,
+    onExternalSubtitleReplaced: () -> Unit = {},
 ): PlayerSessionCoordinatorBundle {
     // These coordinators are remembered for the player lifetime, so any values
     // they read later through callbacks must stay fresh across recomposition.
@@ -98,6 +99,8 @@ internal fun rememberPlayerSessionCoordinators(
     val externalSubtitleSelector = remember(player, trackSelector) {
         ExternalSubtitleSelector(context, player, trackSelector)
     }
+
+    val latestExternalSubtitleReplaced = rememberUpdatedState(onExternalSubtitleReplaced)
 
     // Draws external subtitles itself so changing one never restarts the video.
     val subtitleOverlay = remember(player, trackSelector) {
@@ -151,6 +154,7 @@ internal fun rememberPlayerSessionCoordinators(
                 )
             },
             externalOverlay = subtitleOverlay,
+            onExternalSubtitleReplaced = { latestExternalSubtitleReplaced.value() },
         )
     }
 
