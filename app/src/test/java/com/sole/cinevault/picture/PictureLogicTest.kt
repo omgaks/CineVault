@@ -132,4 +132,12 @@ class PictureLogicTest {
         assertEquals(0f, reset.grain, 0.0001f)
         assertEquals(PicturePreset.OFF, PictureProfiles.resetAll(PictureSettings(), PictureContent.FILM).preset)
     }
+
+    @Test
+    fun splitPosition_isClampedAndUsed() {
+        val settings = PictureSettings(preset = PicturePreset.NATURAL)
+        assertEquals(0.3f, PictureProfiles.toShaderParams(settings, false, true, true, 0.3f).split, 0.0001f)
+        assertEquals(0.95f, PictureProfiles.toShaderParams(settings, false, true, true, 2f).split, 0.0001f)
+        assertEquals(0.05f, PictureProfiles.toShaderParams(settings, false, true, true, -1f).split, 0.0001f)
+    }
 }
