@@ -1,20 +1,24 @@
 package com.sole.cinevault.subtitles
 
 /**
- * Works out where subtitles should sit so they are close to the picture.
+ * Places subtitles against the REAL visible picture, never against the device/window bottom.
  *
- * A fixed "2% from the bottom of the screen" is fine for a full-screen video but, in portrait
- * (or with a wide film on a tablet), it puts the text on the far edge of a big black area,
- * nowhere near the action. Here the text is placed just under the picture when the black bar
- * below it is tall enough, and just inside the bottom of the picture when it is not.
+ * CineVault deliberately keeps subtitle cues inside the video frame. Letterbox/pillarbox space is
+ * presentation chrome, not subtitle space: using it made portrait subtitles float far below the
+ * movie and made landscape placement vary with aspect ratio.
  *
- * Pure maths, covered by plain JVM tests.
+ * The returned value is Media3 SubtitleView bottom padding (fraction of SubtitleView height).
+ * Pure maths, covered by JVM tests.
  */
 object SubtitleAutoPlacement {
+    private const val PICTURE_BOTTOM_SAFE_FRACTION = 0.075f
 
     /**
-     * @return the bottom padding as a fraction of the view height, or null when the view or
-     *   video size isn't known yet (the caller then keeps its manual value).
+     * Calculates the default position from the player bounds and source aspect ratio.
+     *
+     * FIT: reconstruct the fitted picture rectangle and place the subtitle 7.5% of picture height
+     * above its bottom edge. FILL/ZOOM: the visible picture is the whole viewport, so use the same
+     * 7.5% safe margin from the viewport bottom.
      */
     fun bottomPaddingFraction(
         viewWidthPx: Float,
@@ -27,31 +31,20 @@ object SubtitleAutoPlacement {
         if (viewWidthPx <= 0f || viewHeightPx <= 0f || videoAspect <= 0f || textPx <= 0f) return null
 
         val viewAspect = viewWidthPx / viewHeightPx
-        val videoHeight = when {
+        val pictureHeight = when {
             !fitMode -> viewHeightPx
             videoAspect > viewAspect -> viewWidthPx / videoAspect
             else -> viewHeightPx
         }
-        val bar = ((viewHeightPx - videoHeight) / 2f).coerceAtLeast(0f)
-        val block = textPx * 1.25f * lines.coerceAtLeast(1)
-        val gap = textPx * 0.5f
-
-        val paddingPx =
-            if (bar >= block + gap * 2f) {
-                // Room below the picture: sit just under it, inside the black bar.
-                bar - gap - block
-            } else {
-                // No usable bar: sit just inside the bottom of the picture.
-                bar + videoHeight * 0.04f
-            }
+        val bottomBar = ((viewHeightPx - pictureHeight) / 2f).coerceAtLeast(0f)
+        val paddingPx = bottomBar + pictureHeight * PICTURE_BOTTOM_SAFE_FRACTION
         return (paddingPx / viewHeightPx).coerceIn(0f, 0.9f)
     }
 
     /**
-     * Same placement rule as [bottomPaddingFraction], but from the REAL positions of the views on
-     * screen instead of from assumed screen/video sizes: the subtitle view's bottom edge and
-     * height, and the top/bottom edge of the picture, all in the same coordinate space (pixels).
-     * Returns null when the geometry isn't usable yet (not laid out).
+     * Same rule when the caller already knows the visible picture rectangle in window pixels.
+     * The number of cue lines does not change the anchor: Media3 grows a multi-line cue upward from
+     * this bottom-safe position, which keeps one-, two- and three-line cues consistently framed.
      */
     fun bottomPaddingFractionFromRects(
         subtitleViewBottomPx: Float,
@@ -65,19 +58,8 @@ object SubtitleAutoPlacement {
         val pictureHeight = pictureBottomPx - pictureTopPx
         if (pictureHeight <= 0f) return null
 
-        val bar = (subtitleViewBottomPx - pictureBottomPx).coerceAtLeast(0f)
-        val block = textPx * 1.25f * lines.coerceAtLeast(1)
-        val gap = textPx * 0.5f
-
-        // Text block's bottom edge, measured from the subtitle view's bottom.
-        val paddingPx =
-            if (bar >= block + gap * 2f) {
-                // Room under the picture: sit just beneath it.
-                bar - gap - block
-            } else {
-                // No usable bar: just inside the bottom of the picture.
-                bar + pictureHeight * 0.04f
-            }
+        val bottomBar = (subtitleViewBottomPx - pictureBottomPx).coerceAtLeast(0f)
+        val paddingPx = bottomBar + pictureHeight * PICTURE_BOTTOM_SAFE_FRACTION
         return (paddingPx / subtitleViewHeightPx).coerceIn(0f, 0.9f)
     }
 }
