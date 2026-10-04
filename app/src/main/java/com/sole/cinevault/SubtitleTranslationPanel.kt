@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -63,6 +64,7 @@ fun SubtitleTranslationPanel(
     onTranslate: (SubtitleTranslationEngine.SupportedLanguage) -> Unit,
     onStop: () -> Unit,
     onDismiss: () -> Unit,
+    onRereadEmbedded: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var favoriteCodes by remember { mutableStateOf(loadFavoriteLanguageCodes(context)) }
@@ -132,7 +134,7 @@ fun SubtitleTranslationPanel(
         }
 
         Text(
-            activeSource?.let { "Active: ${it.label} • ${it.source}" }
+            activeSource?.let { "Active: ${friendlySourceLabel(it.label)} • ${it.source}" }
                 ?: "Load a Subtitle Studio download or local/generated SRT first.",
             color = if (activeSource != null) TextBright else AmberCore,
             fontSize = 11.5.sp,
@@ -145,6 +147,23 @@ fun SubtitleTranslationPanel(
             fontSize = 10.5.sp,
             modifier = Modifier.padding(top = 3.dp),
         )
+
+        // Embedded subtitles are saved after the first read; this clears that copy so the next
+        // translation shows the "Reading subtitle · N%" step again.
+        if (onRereadEmbedded != null && activeSource?.source == "read from the movie" && !busy) {
+            Text(
+                "↻ Re-read from movie",
+                color = AmberCore,
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .padding(top = 8.dp)
+                    .clip(RoundedCornerShape(50))
+                    .border(1.dp, AmberCore.copy(alpha = 0.4f), RoundedCornerShape(50))
+                    .clickable { onRereadEmbedded() }
+                    .padding(horizontal = 12.dp, vertical = 5.dp),
+            )
+        }
 
         when (status) {
             is SubtitleTranslationStatus.Translating -> {
@@ -430,4 +449,23 @@ private fun toggleFavoriteLanguage(
         .apply()
 
     return updated
+}
+
+private val GENERATED_FILE_NAME =
+    Regex("""-(translated|ai)-([A-Za-z_]+)-\d{10,}\.srt$""", RegexOption.IGNORE_CASE)
+
+/**
+ * Generated subtitle files carry the whole movie file name plus a timestamp; showing that raw
+ * name wrapped over several lines. Show "AI translated · Hindi" instead.
+ */
+internal fun friendlySourceLabel(label: String): String {
+    GENERATED_FILE_NAME.find(label)?.let { m ->
+        val kind = if (m.groupValues[1].equals("ai", ignoreCase = true)) "Speech-to-subs" else "AI translated"
+        val code = m.groupValues[2]
+        val language = java.util.Locale.forLanguageTag(code).getDisplayLanguage(java.util.Locale.ENGLISH)
+            .ifBlank { code.uppercase() }
+            .replaceFirstChar { it.uppercase() }
+        return "$kind · $language"
+    }
+    return if (label.length > 42) label.take(40) + "…" else label
 }

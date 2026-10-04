@@ -194,6 +194,7 @@ fun BoxScope.PlayerSubtitleAiPanels(
                         onStop = {
                             translationCoordinator.cancelTranslation()
                         },
+                        onRereadEmbedded = { translationCoordinator.rereadEmbeddedNextTime() },
                         onDismiss = onHideTranslationPanel,
                     )
             }
