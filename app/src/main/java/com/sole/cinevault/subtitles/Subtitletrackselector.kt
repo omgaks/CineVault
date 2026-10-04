@@ -41,7 +41,7 @@ sealed class SubtitleTrackChoice(val key: String) {
         val isForced: Boolean,
         val isSdh: Boolean
     ) : SubtitleTrackChoice("embedded:$groupIndex:$trackIndexInGroup")
-    data class Downloaded(val file: File, val language: String) : SubtitleTrackChoice("downloaded")
+    data class Downloaded(val file: File, val language: String) : SubtitleTrackChoice("downloaded:${file.absolutePath}")
     data class Local(val file: File) : SubtitleTrackChoice("local:${file.absolutePath}")
     data class Generated(
         val file: GeneratedSubtitleFile,
@@ -52,7 +52,7 @@ sealed class SubtitleTrackChoice(val key: String) {
 @Composable
 fun SubtitleTrackSelectorSheet(
     embeddedTracks: List<SubtitleTrackChoice.Embedded>,
-    downloadedTrack: SubtitleTrackChoice.Downloaded?,
+    downloadedTracks: List<SubtitleTrackChoice.Downloaded>,
     localFiles: List<File>,
     generatedFiles: List<GeneratedSubtitleFile> = emptyList(),
     selectedKey: String?,
@@ -146,8 +146,9 @@ fun SubtitleTrackSelectorSheet(
 
         val activeTrackLabel = when {
             subtitlesAreOff -> "Subtitles off"
-            downloadedTrack != null && selectedKey == downloadedTrack.key ->
-                "${friendlyLanguageDisplay(downloadedTrack.language)} · ${downloadedProviderLabel(downloadedTrack.file) ?: "Downloaded"}"
+            downloadedTracks.any { selectedKey == it.key } -> downloadedTracks.first { selectedKey == it.key }.let { downloaded ->
+                "${friendlyLanguageDisplay(downloaded.language)} · ${downloadedProviderLabel(downloaded.file) ?: "Downloaded"}"
+            }
             else -> localFiles.firstOrNull { selectedKey == "local:${it.absolutePath}" }
                 ?.let { "${it.nameWithoutExtension} · Local" }
                 ?: generatedFiles.firstOrNull { selectedKey == "generated:${it.fileName}" }
@@ -208,17 +209,19 @@ fun SubtitleTrackSelectorSheet(
                     }
                 }
 
-                if (downloadedTrack != null) {
+                if (downloadedTracks.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(10.dp))
                     TrackSectionLabel("Downloaded subtitles")
-                    TrackRow(
-                        icon = null,
-                        title = friendlyLanguageDisplay(downloadedTrack.language),
-                        subtitle = downloadedProviderLabel(downloadedTrack.file)?.let { "Downloaded · $it" } ?: "Downloaded",
-                        badges = emptyList(),
-                        selected = selectedKey == downloadedTrack.key,
-                        onClick = { onSelect(downloadedTrack) }
-                    )
+                    downloadedTracks.forEach { downloadedTrack ->
+                        TrackRow(
+                            icon = null,
+                            title = friendlyLanguageDisplay(downloadedTrack.language),
+                            subtitle = downloadedProviderLabel(downloadedTrack.file)?.let { "Downloaded · $it" } ?: "Downloaded",
+                            badges = emptyList(),
+                            selected = selectedKey == downloadedTrack.key,
+                            onClick = { onSelect(downloadedTrack) }
+                        )
+                    }
                 }
 
                 if (generatedFiles.isNotEmpty()) {
@@ -316,7 +319,7 @@ fun SubtitleTrackSelectorSheet(
                     }
                 }
 
-                if (downloadedTrack == null && generatedFiles.isEmpty() && localFiles.isEmpty()) {
+                if (downloadedTracks.isEmpty() && generatedFiles.isEmpty() && localFiles.isEmpty()) {
                     Text(
                         text = "No subtitle files available to manage.",
                         color = TextMuted,

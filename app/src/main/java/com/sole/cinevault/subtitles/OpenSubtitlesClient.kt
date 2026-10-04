@@ -56,7 +56,8 @@ data class SubtitleSearchResult(
     val fps: Double?,
     val hashMatch: Boolean = false,
     val provider: String = "OpenSubtitles",
-    val subDlDownloadPath: String? = null
+    val subDlDownloadPath: String? = null,
+    val matchScore: Double? = null
 ) {
     val sourceTag: String? by lazy {
         val r = release.lowercase()
@@ -289,7 +290,7 @@ object OpenSubtitlesClient {
 
             if (fileId == null || succeededLanguage == null) {
                 for (lang in languagesToTry) {
-                    val subDlResult = SubDlClient.search(cleanName, null, null, lang)
+                    val subDlResult = SubDlClient.search(cleanName, null, null, lang, videoPath.substringAfterLast('/').substringAfterLast('\\'))
                     val best = (subDlResult as? SubtitleSearchListResult.Success)?.results?.firstOrNull()
                     if (best?.subDlDownloadPath != null) {
                         Log.d(TAG, "SubDL fallback match found for $videoPath ($lang)")

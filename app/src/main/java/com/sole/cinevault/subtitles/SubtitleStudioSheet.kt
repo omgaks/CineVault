@@ -279,7 +279,7 @@ fun SubtitleStudioSheet(
                         is StudioScreen.Tool -> when (s.tab) {
                             SubtitleStudioTab.TRACK -> SubtitleTrackSelectorSheet(
                                 embeddedTracks = embeddedTracks,
-                                downloadedTrack = downloadedTrack,
+                                downloadedTracks = listOfNotNull(downloadedTrack),
                                 localFiles = localFiles,
                                 generatedFiles = generatedFiles,
                                 selectedKey = selectedTrackKey,
@@ -486,11 +486,7 @@ private fun StudioDualTab(
 // subtitleCacheFile), with a fallback for anything cached before this
 // existed (legacy <hash>.<lang>.srt files are treated as OpenSubtitles,
 // since that's the only provider that existed when those were written).
-// One real gap left: subtitles downloaded through SubDL's OWN direct
-// download path (SubDlClient.downloadSubtitle) aren't confirmed to write
-// through this same scheme — that file wasn't available to verify against,
-// so a SubDL download via that specific path might still land in the
-// legacy/default slot until SubDlClient.kt is checked.
+// Both OpenSubtitles and SubDL now use the provider-tagged cache scheme.
 @Composable
 internal fun StudioSectionLabel(text: String, tight: Boolean = false) {
     Text(

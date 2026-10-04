@@ -229,76 +229,7 @@ fun SubtitleSearchSheet(
 
         Spacer(Modifier.height(8.dp))
 
-        val browserContext = androidx.compose.ui.platform.LocalContext.current
-        Text(
-            text = "🌐 Open in browser (Brave, Chrome…)",
-            color = AmberCore,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier
-                .padding(bottom = 8.dp)
-                .clip(RoundedCornerShape(50))
-                .border(1.dp, AmberCore.copy(alpha = 0.4f), RoundedCornerShape(50))
-                .clickable {
-                    onUserInteraction()
-                    // The system chooser lists every installed browser, so Brave can be used.
-                    // Files downloaded there can then be picked with "Open subtitle file…".
-                    try {
-                        val view = android.content.Intent(
-                            android.content.Intent.ACTION_VIEW,
-                            SubtitleWebPolicy.searchUri(query.trim().ifBlank { initialQuery })
-                        )
-                        browserContext.startActivity(
-                            android.content.Intent.createChooser(view, "Open with")
-                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        )
-                    } catch (e: Exception) {
-                        CineVaultToast.show(browserContext, "No browser could be opened")
-                    }
-                }
-                .padding(horizontal = 14.dp, vertical = 6.dp)
-        )
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .clip(RoundedCornerShape(10.dp))
-                .background(
-                    if (showManualFields)
-                        AmberGlow.copy(alpha = 0.16f)
-                    else
-                        SpaceDeep.copy(alpha = 0.6f)
-                )
-                .border(
-                    1.dp,
-                    AmberCore.copy(
-                        alpha = if (showManualFields) 0.6f else 0.25f
-                    ),
-                    RoundedCornerShape(10.dp)
-                )
-                .clickable {
-                    onUserInteraction()
-                    showManualFields = !showManualFields
-                }
-                .padding(
-                    horizontal = 12.dp,
-                    vertical = 8.dp
-                )
-        ) {
-            Text(
-                text =
-                    if (showManualFields)
-                        "▾ TV show: Season / Episode"
-                    else
-                        "▸ TV show? Set Season / Episode",
-                color = AmberCore,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        if (showManualFields) {
-            Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 OutlinedTextField(
                     value = season,
@@ -554,6 +485,7 @@ private fun SubtitleResultCard(
             Text(
                 text = buildString {
                     append("SRT")
+                    result.matchScore?.let { append(" · ${String.format("%.0f", it * 100)}% release match") }
                     if (result.downloadCount > 0) {
                         append(" · ${formatDownloadCount(result.downloadCount)} downloads")
                     }

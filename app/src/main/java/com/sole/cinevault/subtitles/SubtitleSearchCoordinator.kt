@@ -115,7 +115,7 @@ class SubtitleSearchCoordinator(
                 )
             }
             val subDlDeferred = async {
-                SubDlClient.search(query, seasonText.toIntOrNull(), episodeText.toIntOrNull(), language)
+                SubDlClient.search(query, seasonText.toIntOrNull(), episodeText.toIntOrNull(), language, expectedPath.substringAfterLast('/').substringAfterLast('\\'))
             }
             val openSubsResult = openSubsDeferred.await()
             val subDlResult = subDlDeferred.await()
@@ -154,7 +154,7 @@ class SubtitleSearchCoordinator(
                     if (alsoPlay) {
                         coreUi.subtitlesEnabled = true
                         prepareExplicitExternalSelection(result.language)
-                        trackUi.selectedKey = "downloaded"
+                        trackUi.selectedKey = "downloaded:${downloadResult.uri.path ?: downloadResult.uri}"
                         trackUi.selectedLabel = SubtitleLanguageRegistry.displayName(result.language)
                         trackUi.selectedSource = result.provider
                         if (coreUi.behaviorPrefs.rememberLastSelectedLanguage && result.language.isNotBlank()) {

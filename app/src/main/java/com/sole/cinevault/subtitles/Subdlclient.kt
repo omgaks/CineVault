@@ -54,13 +54,65 @@ object SubDlClient {
     // "results" can list several candidate titles, but "subtitles" is only
     // for the first one) — same category of risk as any filename-based
     // search, not something new introduced here.
-    suspend fun search(filmName: String, season: Int?, episode: Int?, language: String): SubtitleSearchListResult = withContext(Dispatchers.IO) {
+    suspend fun search(filmName: String, season: Int?, episode: Int?, language: String, releaseFilename: String? = null): SubtitleSearchListResult = withContext(Dispatchers.IO) {
         if (filmName.isBlank()) return@withContext SubtitleSearchListResult.NoResults
         if (API_KEY.isBlank()) {
             Log.w(TAG, "SUBDL_API_KEY not configured — skipping SubDL search")
             return@withContext SubtitleSearchListResult.NoResults
         }
         try {
+            // Prefer SubDL v2 Drop & Match when the actual release filename is available.
+            // It ranks subtitles against the exact media filename and exposes match_score,
+            // which is substantially safer than title-only matching for sync.
+            if (!releaseFilename.isNullOrBlank()) {
+                val encodedFilename = URLEncoder.encode(releaseFilename, "UTF-8")
+                val lang = URLEncoder.encode(language.lowercase(), "UTF-8")
+                val v2Url = "https://api.subdl.com/api/v2/files/search?filename=$encodedFilename&languages=$lang&engine=local&subs_per_page=25"
+                val v2Request = Request.Builder()
+                    .url(v2Url).get()
+                    .addHeader("Accept", "application/json")
+                    .addHeader("Authorization", "Bearer $API_KEY")
+                    .addHeader("User-Agent", USER_AGENT)
+                    .build()
+                httpClient.newCall(v2Request).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
+                    if (response.isSuccessful && body.isNotBlank()) {
+                        val json = JSONObject(body)
+                        val subs = json.optJSONArray("subtitles")
+                        if (subs != null && subs.length() > 0) {
+                            val ranked = mutableListOf<SubtitleSearchResult>()
+                            for (i in 0 until subs.length()) {
+                                val sub = subs.optJSONObject(i) ?: continue
+                                val downloadPath = sub.optString("url", "")
+                                if (downloadPath.isBlank()) continue
+                                ranked += SubtitleSearchResult(
+                                    fileId = -1,
+                                    language = language,
+                                    release = sub.optString("release_name", "").ifBlank { sub.optString("name", "Unknown release") },
+                                    downloadCount = 0,
+                                    rating = 0.0,
+                                    hearingImpaired = sub.optBoolean("hi", false),
+                                    forced = false,
+                                    aiTranslated = false,
+                                    machineTranslated = false,
+                                    fromTrusted = false,
+                                    fps = sub.optString("fps", "").toDoubleOrNull(),
+                                    provider = "SubDL",
+                                    subDlDownloadPath = downloadPath,
+                                    matchScore = sub.optDouble("match_score").takeIf { !it.isNaN() }
+                                )
+                            }
+                            if (ranked.isNotEmpty()) {
+                                return@withContext SubtitleSearchListResult.Success(
+                                    ranked.sortedByDescending { it.matchScore ?: -1.0 }.take(25)
+                                )
+                            }
+                        }
+                    } else {
+                        Log.w(TAG, "SubDL v2 filename match unavailable (${response.code}); falling back to title search")
+                    }
+                }
+            }
             val encoded = URLEncoder.encode(filmName, "UTF-8")
             var url = "$BASE_URL/subtitles?api_key=$API_KEY&film_name=$encoded&languages=${language.uppercase()}&subs_per_page=25&hi=1"
             if (season != null) url += "&season_number=$season"
