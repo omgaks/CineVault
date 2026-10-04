@@ -43,6 +43,7 @@ class SubtitleSyncToolsCoordinator(
     private val trackUi: SubtitleTrackSelectionState,
     private val getDualSecondaryColorHex: () -> String,
     private val getCurrentVideoPath: () -> String,
+    private val getEmbeddedRef: () -> EmbeddedSubtitleRef? = { null },
     private val playSubtitle: (subtitleUri: Uri?, resumePosition: Long, isOriginalSubtitle: Boolean) -> Unit,
     private val findCachedAiSecondary: (String) -> Uri?,
     private val requestAiSecondary: (String) -> Unit,
@@ -91,6 +92,37 @@ class SubtitleSyncToolsCoordinator(
         CineVaultToast.show(context, "Drift correction applied")
     }
 
+    private var embeddedExtractionJob: kotlinx.coroutines.Job? = null
+
+    private fun extractEmbeddedPrimaryThenContinue(ref: EmbeddedSubtitleRef) {
+        dualUi.statusText = "Reading the embedded subtitle…"
+        embeddedExtractionJob?.cancel()
+        embeddedExtractionJob = scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                EmbeddedSubtitleExtractor.extract(context, getCurrentVideoPath(), ref) { pct ->
+                    scope.launch(Dispatchers.Main.immediate) {
+                        if (dualUi.enabled) dualUi.statusText = "Reading the embedded subtitle… $pct%"
+                    }
+                }
+            }
+            if (!dualUi.enabled) return@launch // Dual was switched off while reading
+            when (result) {
+                is EmbeddedSubtitleExtractor.Result.Failure -> {
+                    dualUi.statusText = result.reason
+                    CineVaultToast.show(context, result.reason, long = true)
+                    dualUi.enabled = false
+                }
+                is EmbeddedSubtitleExtractor.Result.Success -> {
+                    val uri = Uri.fromFile(result.file)
+                    trackUi.primaryUri = uri
+                    trackUi.originalUri = uri
+                    SubtitleLanguageRegistry.normalize(result.language ?: "")?.let { trackUi.primaryLanguage = it }
+                    fetchAndApplyDualSecondary()
+                }
+            }
+        }
+    }
+
     // ── Dual Subtitles ─────────────────────────────────────────────────
     // Priority: cached real subtitle -> cached AI translation -> online real
     // subtitle -> AI translation fallback. Regardless of origin, the result
@@ -99,7 +131,14 @@ class SubtitleSyncToolsCoordinator(
         dualUi.lastSecondaryUri = null
         val primary = trackUi.primaryUri
         if (primary == null) {
-            CineVaultToast.show(context, "Dual subtitles need a downloaded or local subtitle as the primary track", long = true)
+            // An embedded track is the subtitle: read its text out of the movie first, then
+            // carry on exactly as if it had been a downloaded file.
+            val ref = getEmbeddedRef()
+            if (ref != null) {
+                extractEmbeddedPrimaryThenContinue(ref)
+                return
+            }
+            CineVaultToast.show(context, "Dual subtitles need a subtitle track to start from. Pick one in Tracks first.", long = true)
             dualUi.enabled = false
             return
         }

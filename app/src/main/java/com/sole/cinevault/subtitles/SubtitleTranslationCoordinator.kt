@@ -94,6 +94,8 @@ class SubtitleTranslationCoordinator(
     private val setStatus: (SubtitleTranslationStatus) -> Unit,
     private val onSubtitleReady: (GeneratedSubtitleFile, String) -> Unit,
     private val onGeneratedLibraryChanged: () -> Unit,
+    // The embedded subtitle currently selected, if any: it is read out of the movie first.
+    private val getEmbeddedRef: () -> EmbeddedSubtitleRef? = { null },
 ) {
     private var translationJob: Job? = null
     private var translationGeneration = 0L
@@ -104,7 +106,8 @@ class SubtitleTranslationCoordinator(
         val generation = ++translationGeneration
 
         val source = resolveActiveSubtitle()
-        if (source == null) {
+        val embeddedRef = if (source == null) getEmbeddedRef() else null
+        if (source == null && embeddedRef == null) {
             val reason =
                 "No readable external subtitle is active. Load a Subtitle Studio download, local SRT, or generated subtitle first."
             setStatus(SubtitleTranslationStatus.Failed(reason))
@@ -112,16 +115,51 @@ class SubtitleTranslationCoordinator(
             return
         }
 
-        val knownSource =
-            source.language?.let(SubtitleTranslationEngine::mlKitCodeForWhisperLanguage)
-
         setStatus(SubtitleTranslationStatus.Translating("Starting", 0))
         val videoPath = getCurrentVideoPath()
 
         translationJob = scope.launch {
             try {
+                var activeSource: SubtitleSourceResolver.Resolved? = source
+                if (activeSource == null && embeddedRef != null) {
+                    // Embedded track: save its text as an SRT first, then translate that.
+                    setStatus(SubtitleTranslationStatus.Translating("Reading embedded subtitle", 0))
+                    val extracted = withContext(Dispatchers.IO) {
+                        EmbeddedSubtitleExtractor.extract(context, videoPath, embeddedRef) { pct ->
+                            scope.launch(Dispatchers.Main.immediate) {
+                                if (generation == translationGeneration &&
+                                    getStatus() is SubtitleTranslationStatus.Translating
+                                ) {
+                                    setStatus(
+                                        SubtitleTranslationStatus.Translating("Reading embedded subtitle", pct)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    if (generation != translationGeneration) return@launch
+                    when (extracted) {
+                        is EmbeddedSubtitleExtractor.Result.Failure -> {
+                            setStatus(SubtitleTranslationStatus.Failed(extracted.reason))
+                            CineVaultToast.show(context, extracted.reason, long = true)
+                            return@launch
+                        }
+                        is EmbeddedSubtitleExtractor.Result.Success -> {
+                            activeSource = SubtitleSourceResolver.Resolved(
+                                uri = Uri.fromFile(extracted.file),
+                                language = extracted.language ?: embeddedRef.language,
+                                label = "Embedded subtitle",
+                                source = "Embedded",
+                            )
+                        }
+                    }
+                }
+                val resolvedSource = activeSource ?: return@launch
+                val knownSource =
+                    resolvedSource.language?.let(SubtitleTranslationEngine::mlKitCodeForWhisperLanguage)
+
                 val srtText = withContext(Dispatchers.IO) {
-                    readTextFromUri(context, source.uri)
+                    readTextFromUri(context, resolvedSource.uri)
                 }
 
                 if (srtText.isNullOrBlank()) {

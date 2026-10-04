@@ -92,6 +92,15 @@ private const val PROFILE_PREFS_NAME = "cinevault_subtitle_profiles"
 fun loadSubtitleProfileSettings(context: Context, type: DisplayProfileType, isLandscape: Boolean): SubtitleProfileSettings {
     val id = displayProfileId(type, isLandscape)
     val prefs = context.getSharedPreferences(PROFILE_PREFS_NAME, Context.MODE_PRIVATE)
+    // One-time: positions saved by older versions were mostly never moved on purpose, and they
+    // overrode the new "place the subtitles next to the picture" behaviour. Clear them once;
+    // dragging or nudging the subtitle afterwards saves a manual position again as before.
+    if (!prefs.getBoolean("autoPlacementV2", false)) {
+        prefs.edit {
+            prefs.all.keys.filter { it.endsWith(".bottomPadding") }.forEach { remove(it) }
+            putBoolean("autoPlacementV2", true)
+        }
+    }
     val defaults = defaultSubtitleProfileSettings(type, isLandscape)
     // A profile is only considered "saved" once its font size key exists —
     // used as the presence check for the whole settings bundle, since all
