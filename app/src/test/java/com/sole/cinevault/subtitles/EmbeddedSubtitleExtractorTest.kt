@@ -92,4 +92,27 @@ class EmbeddedSubtitleExtractorTest {
         assertNull(EmbeddedSubtitleRef.fromSelectedKey(null, null))
         assertTrue(EmbeddedSubtitleRef.fromSelectedKey("embedded:0:0", null) != null)
     }
+
+    @Test
+    fun chooseTrack_positionStaysAlignedWhenAnImageTrackIsInTheList() {
+        // Player lists: 0 = English text, 1 = English PGS (image), 2 = Hindi text.
+        val tracks = listOf(
+            EmbeddedSubtitleTrack("eng", null, listOf(RawCue(0, 1, "a"))),
+            EmbeddedSubtitleTrack("eng", null, emptyList(), supported = false),
+            EmbeddedSubtitleTrack("hin", null, listOf(RawCue(0, 1, "c"))),
+        )
+        assertEquals("hin", EmbeddedSubtitleExtractor.chooseTrack(tracks, EmbeddedSubtitleRef(2, "hi"))!!.language)
+        assertEquals(false, EmbeddedSubtitleExtractor.chooseTrack(tracks, EmbeddedSubtitleRef(1, "en"))!!.supported)
+    }
+
+    @Test
+    fun cacheName_isStablePerMovieTrackAndLanguage() {
+        val ref = EmbeddedSubtitleRef(1, "en")
+        val a = EmbeddedSubtitleExtractor.cacheFileName("/movies/Ghost in the Shell.mkv", ref)
+        assertEquals(a, EmbeddedSubtitleExtractor.cacheFileName("/movies/Ghost in the Shell.mkv", ref))
+        assertTrue(a.startsWith("Ghost in the Shell-embedded-1-en-"))
+        assertTrue(a.endsWith(".srt"))
+        assertTrue(a != EmbeddedSubtitleExtractor.cacheFileName("/movies/Ghost in the Shell.mkv", EmbeddedSubtitleRef(2, "en")))
+        assertTrue(a != EmbeddedSubtitleExtractor.cacheFileName("/other/Ghost in the Shell.mkv", ref))
+    }
 }
