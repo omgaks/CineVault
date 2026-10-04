@@ -304,7 +304,11 @@ fun DualSubsWindow(
 
             if (!canEnable) {
                 Spacer(modifier = Modifier.height(6.dp))
-                Text(text = "Select a primary subtitle first.", color = TextFaint, fontSize = 8.5.sp)
+                Text(
+                    text = "Dual needs a downloaded, local or generated subtitle as the primary. Embedded tracks can't be merged.",
+                    color = TextFaint,
+                    fontSize = 8.5.sp,
+                )
             }
 
             Spacer(modifier = Modifier.height(10.dp))

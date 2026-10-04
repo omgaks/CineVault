@@ -35,8 +35,26 @@ class SubtitleSearchCoordinator(
     private val setPendingSrtUri: (Uri) -> Unit,
     private val playSubtitle: (subtitleUri: Uri?, resumePosition: Long, isOriginalSubtitle: Boolean) -> Unit,
     private val externalOverlay: com.sole.cinevault.ExternalSubtitleOverlay? = null,
+    // Called when an embedded track replaces the external subtitle, so anything built on that
+    // external file (Dual subtitles) can be switched off.
+    private val onExternalSubtitleReplaced: () -> Unit = {},
 ) {
     private var searchGeneration = 0L
+
+    /**
+     * An embedded track is now the subtitle. The previous external file must stop counting as
+     * "the primary subtitle": otherwise Dual subtitles would still merge the OLD file (and
+     * reject a secondary language that merely matches it), and a decoder fallback could put the
+     * old external subtitle back over the embedded choice.
+     */
+    private fun adoptEmbeddedAsPrimary(language: String?) {
+        val hadExternal = trackUi.primaryUri != null || trackUi.originalUri != null
+        trackUi.primaryUri = null
+        trackUi.originalUri = null
+        trackUi.renderBaseUri = null
+        trackUi.primaryLanguage = SubtitleLanguageRegistry.normalize(language ?: "")
+        if (hadExternal) onExternalSubtitleReplaced()
+    }
 
     // What the Tracks list showed as active before the Subtitles pill was switched off,
     // so switching it back on restores the same external subtitle.
@@ -188,6 +206,8 @@ class SubtitleSearchCoordinator(
                         TrackSelectionOverride(firstAvailable.mediaTrackGroup, listOf(0))
                     )
                     val format = firstAvailable.getTrackFormat(0)
+                    externalOverlay?.clear()
+                    adoptEmbeddedAsPrimary(format.language)
                     trackUi.selectedKey = "embedded:0:0"
                     trackUi.selectedLabel = SubtitleLanguageRegistry.displayName(format.language)
                     trackUi.selectedSource = "Embedded"
@@ -232,6 +252,7 @@ class SubtitleSearchCoordinator(
 
                 // An embedded track replaces any external subtitle shown by the overlay.
                 externalOverlay?.clear()
+                adoptEmbeddedAsPrimary(choice.language)
                 val group = textGroups[choice.groupIndex]
                 trackSelector.parameters = trackSelector.buildUponParameters()
                     .clearOverridesOfType(C.TRACK_TYPE_TEXT)
