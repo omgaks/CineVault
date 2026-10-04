@@ -6,10 +6,13 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +20,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -45,6 +49,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -69,9 +80,18 @@ private enum class PicturePage { MAIN, FINE }
  */
 @Composable
 fun PicturePanelHost(controller: PictureEnhanceController) {
+    // After a rotation the filtered picture can keep the old size while paused: re-show the frame.
+    val configuration = LocalConfiguration.current
+    LaunchedEffect(configuration.orientation, configuration.screenWidthDp, configuration.screenHeightDp) {
+        delay(350)
+        controller.refreshFrame()
+    }
+
     if (!controller.panelOpen) return
 
     var page by remember { mutableStateOf(PicturePage.MAIN) }
+    var panelOffset by remember { mutableStateOf(Offset.Zero) }
+    var panelSize by remember { mutableStateOf(IntSize.Zero) }
 
     BackHandler(enabled = true) {
         if (page == PicturePage.FINE) page = PicturePage.MAIN else controller.closePanel()
@@ -92,21 +112,55 @@ fun PicturePanelHost(controller: PictureEnhanceController) {
         label = "picturePanelAlpha",
     )
 
+    val density = LocalDensity.current
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val containerW = with(density) { maxWidth.toPx() }
+        val containerH = with(density) { maxHeight.toPx() }
+        val marginPx = with(density) { 12.dp.toPx() }
+
+        // Tap on empty space closes the panel (and ends split view).
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(Unit) { detectTapGestures { controller.closePanel() } }
         )
 
+        // Split view: drag anywhere on the picture to move the divider.
+        if (controller.splitView && !controller.comparing) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(containerW) {
+                        detectHorizontalDragGestures { change, delta ->
+                            change.consume()
+                            controller.setSplitPosition(controller.splitPosition + delta / containerW)
+                        }
+                    }
+            )
+            SplitViewOverlay(controller.splitPosition, containerW, containerH)
+        }
+
         PicturePanel(
             controller = controller,
             page = page,
             onPage = { page = it },
             maxPanelHeight = maxHeight - 32.dp,
+            dragHandle = Modifier.pointerInput(containerW, containerH, panelSize) {
+                detectDragGestures { change, drag ->
+                    change.consume()
+                    val minX = -(containerW - panelSize.width - marginPx).coerceAtLeast(0f)
+                    val maxY = ((containerH - panelSize.height) / 2f).coerceAtLeast(0f)
+                    panelOffset = Offset(
+                        (panelOffset.x + drag.x).coerceIn(minX, marginPx),
+                        (panelOffset.y + drag.y).coerceIn(-maxY, maxY),
+                    )
+                }
+            },
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .padding(end = 12.dp)
+                .offset { IntOffset(panelOffset.x.roundToInt(), panelOffset.y.roundToInt()) }
+                .onSizeChanged { panelSize = it }
                 .graphicsLayer(alpha = panelAlpha),
         )
 
@@ -126,12 +180,62 @@ fun PicturePanelHost(controller: PictureEnhanceController) {
     }
 }
 
+/** Labels for both halves plus a grab handle on the divider. */
+@Composable
+private fun BoxScope.SplitViewOverlay(position: Float, containerW: Float, containerH: Float) {
+    val density = LocalDensity.current
+    val dividerX = containerW * position
+    Row(
+        modifier = Modifier
+            .align(Alignment.TopStart)
+            .padding(top = 28.dp)
+            .offset { IntOffset((dividerX * 0.5f).roundToInt() - with(density) { 44.dp.roundToPx() }, 0) },
+    ) {
+        SplitLabel("LIVE · ENHANCED", highlighted = true)
+    }
+    Row(
+        modifier = Modifier
+            .align(Alignment.TopStart)
+            .padding(top = 28.dp)
+            .offset { IntOffset(((dividerX + containerW) * 0.5f).roundToInt() - with(density) { 36.dp.roundToPx() }, 0) },
+    ) {
+        SplitLabel("ORIGINAL", highlighted = false)
+    }
+    // Grab handle in the middle of the divider.
+    Box(
+        modifier = Modifier
+            .align(Alignment.CenterStart)
+            .offset { IntOffset(dividerX.roundToInt() - with(density) { 16.dp.roundToPx() }, 0) }
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(AmberCore)
+            .border(2.dp, Color(0xFF1A1206), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("↔", color = Color(0xFF1A1206), fontSize = 14.sp, fontWeight = FontWeight.Black)
+    }
+}
+
+@Composable
+private fun SplitLabel(text: String, highlighted: Boolean) {
+    Text(
+        text = text,
+        color = if (highlighted) AmberCore else TextBright,
+        fontSize = 10.5.sp,
+        fontWeight = FontWeight.Black,
+        modifier = Modifier
+            .glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    )
+}
+
 @Composable
 private fun PicturePanel(
     controller: PictureEnhanceController,
     page: PicturePage,
     onPage: (PicturePage) -> Unit,
     maxPanelHeight: Dp,
+    dragHandle: Modifier,
     modifier: Modifier = Modifier,
 ) {
     val settings = controller.settings
@@ -150,9 +254,9 @@ private fun PicturePanel(
             .padding(14.dp),
     ) {
         if (page == PicturePage.MAIN) {
-            MainPage(controller, settings, available, on, onFine = { onPage(PicturePage.FINE) })
+            MainPage(controller, settings, available, on, dragHandle, onFine = { onPage(PicturePage.FINE) })
         } else {
-            FinePage(controller, settings, available && on, onBack = { onPage(PicturePage.MAIN) })
+            FinePage(controller, settings, available && on, dragHandle, onBack = { onPage(PicturePage.MAIN) })
         }
     }
 }
@@ -163,11 +267,12 @@ private fun MainPage(
     settings: PictureSettings,
     available: Boolean,
     on: Boolean,
+    dragHandle: Modifier,
     onFine: () -> Unit,
 ) {
     // Header
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        TitlePill(text = "PICTURE", modifier = Modifier.weight(1f))
+        TitlePill(text = "PICTURE · drag to move", modifier = Modifier.weight(1f).then(dragHandle))
         IconButton(onClick = { controller.closePanel() }, modifier = Modifier.size(36.dp)) {
             Icon(Icons.Rounded.Close, contentDescription = "Close", tint = TextMuted)
         }
@@ -290,13 +395,14 @@ private fun FinePage(
     controller: PictureEnhanceController,
     settings: PictureSettings,
     enabled: Boolean,
+    dragHandle: Modifier,
     onBack: () -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
             Icon(Icons.Rounded.ChevronLeft, contentDescription = "Back to Picture", tint = AmberCore)
         }
-        TitlePill(text = "FINE-TUNE", modifier = Modifier.weight(1f))
+        TitlePill(text = "FINE-TUNE", modifier = Modifier.weight(1f).then(dragHandle))
         Spacer(Modifier.width(8.dp))
         Chip(
             label = "Reset",

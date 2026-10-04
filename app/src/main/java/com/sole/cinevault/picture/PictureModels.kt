@@ -108,6 +108,7 @@ object PictureProfiles {
         comparing: Boolean,
         active: Boolean,
         splitView: Boolean = false,
+        splitPosition: Float = 0.5f,
     ): PictureShaderParams {
         if (!active || settings.preset == PicturePreset.OFF) return PictureShaderParams.OFF
         val amount = if (comparing) 0f else settings.intensity.coerceIn(0f, 1f)
@@ -117,7 +118,7 @@ object PictureProfiles {
             deband = settings.deband.coerceIn(0f, 1f),
             colour = settings.colour.coerceIn(0f, 1f),
             grain = settings.grain.coerceIn(0f, 1f),
-            split = if (splitView && !comparing) 0.5f else 0f,
+            split = if (splitView && !comparing) splitPosition.coerceIn(0.05f, 0.95f) else 0f,
         )
     }
 

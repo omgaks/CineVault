@@ -57,6 +57,9 @@ class PictureEnhanceController(
         private set
     var splitView by mutableStateOf(false)
         private set
+    /** Where the split-view divider sits (0..1 across the picture); the user can drag it. */
+    var splitPosition by mutableStateOf(0.5f)
+        private set
     var detected by mutableStateOf(PictureContent.FILM)
         private set
     var availability by mutableStateOf<PictureAvailability>(PictureAvailability.Available)
@@ -158,16 +161,14 @@ class PictureEnhanceController(
     // ── User actions ─────────────────────────────────────────────────────────────
 
     fun togglePanel() {
-        panelOpen = !panelOpen
-        if (!panelOpen) {
-            comparing = false
-            refreshLive()
-        }
+        if (panelOpen) closePanel() else panelOpen = true
     }
 
     fun closePanel() {
         panelOpen = false
         comparing = false
+        // Split view is a "look while adjusting" tool: it ends with the panel.
+        splitView = false
         refreshLive()
     }
 
@@ -273,6 +274,23 @@ class PictureEnhanceController(
         refreshLive()
     }
 
+    fun setSplitPosition(value: Float) {
+        splitPosition = value.coerceIn(0.08f, 0.92f)
+        refreshLive()
+    }
+
+    /**
+     * After a rotation while PAUSED, the effect pipeline keeps showing the last frame at the old
+     * output size until a new frame is produced. Re-showing the current frame fixes that without
+     * the user having to press play.
+     */
+    fun refreshFrame() {
+        if (!pipelineInstalled) return
+        val state = player.playbackState
+        if (state != Player.STATE_READY) return
+        if (!player.isPlaying) player.seekTo(player.currentPosition)
+    }
+
     /** Called by the panel while it is open so the status line reflects reality. */
     fun refreshActivity() {
         val now = SystemClock.elapsedRealtime()
@@ -365,7 +383,7 @@ class PictureEnhanceController(
     }
 
     private fun refreshLive() {
-        live.current = PictureProfiles.toShaderParams(settings, comparing, isActive, splitView)
+        live.current = PictureProfiles.toShaderParams(settings, comparing, isActive, splitView, splitPosition)
     }
 
     private fun isHdr(): Boolean {
