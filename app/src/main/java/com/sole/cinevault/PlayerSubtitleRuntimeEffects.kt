@@ -221,6 +221,9 @@ fun rememberPlayerSubtitleRuntimeEffects(
             trackUi = trackUi,
             getDualSecondaryColorHex = { latestDualSecondaryColorHex },
             getCurrentVideoPath = { currentVideoPath },
+            getEmbeddedRef = {
+                EmbeddedSubtitleRef.fromSelectedKey(trackUi.selectedKey, trackUi.primaryLanguage)
+            },
             playSubtitle = { subtitleUri, resumePosition, isOriginalSubtitle ->
                 playCurrentVideoWithSubtitle(
                     subtitleUri,

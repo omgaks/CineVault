@@ -10,6 +10,6 @@ internal data class AudioRuntimeRescuePlaybackSnapshot(
 internal fun AudioRuntimeRescuePlaybackSnapshot.normalized(): AudioRuntimeRescuePlaybackSnapshot =
     copy(
         resumePositionMs = resumePositionMs.coerceAtLeast(0L),
-        playbackSpeed = playbackSpeed.coerceIn(0.25f, 4.0f),
+        playbackSpeed = playbackSpeed.coerceIn(0.25f, 5.0f),
         volume = volume.coerceIn(0.0f, 1.0f),
     )

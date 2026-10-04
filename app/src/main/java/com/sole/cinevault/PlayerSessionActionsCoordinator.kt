@@ -34,7 +34,7 @@ class PlayerSessionActionsCoordinator(
         exoPlayer.playbackParameters = PlaybackParameters(speed)
         closeSpeedMenu()
         showControls()
-        Toast.makeText(context, "${speed}x speed", Toast.LENGTH_SHORT).show()
+        CineVaultToast.show(context, "${if (speed % 1f == 0f) speed.toInt().toString() else speed.toString()}x speed")
     }
 
     fun setSleepTimer(minutes: Int) {
@@ -44,11 +44,11 @@ class PlayerSessionActionsCoordinator(
         if (playerSleepTimerIsOff(minutes)) {
             setSleepTimerActive(false)
             setSleepTimerRemainingMs(0L)
-            Toast.makeText(context, "Sleep timer off", Toast.LENGTH_SHORT).show()
+            CineVaultToast.show(context, "Sleep timer off")
         } else {
             setSleepTimerRemainingMs(playerSleepTimerDurationMs(minutes))
             setSleepTimerActive(true)
-            Toast.makeText(context, "Sleep timer: ${minutes}min", Toast.LENGTH_SHORT).show()
+            CineVaultToast.show(context, "Sleep timer: $minutes min")
         }
 
         closeSleepMenu()

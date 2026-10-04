@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ClosedCaption
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.Icon
@@ -185,7 +186,7 @@ fun SrtBrowserPopup(
 
 @Composable
 fun SpeedMenuPopup(currentSpeed: Float, popupWidth: Dp, popupMaxHeight: Dp, onSpeedSelected: (Float) -> Unit, onDismiss: () -> Unit) {
-    val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+    val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 2.5f, 3.0f, 4.0f, 5.0f)
 
     // Phase 7 of TV support: this popup is only reachable from the transport
     // row's Speed button (phase 4 already made that focusable) — but the
@@ -211,7 +212,7 @@ fun SpeedMenuPopup(currentSpeed: Float, popupWidth: Dp, popupMaxHeight: Dp, onSp
 
     Column(
         modifier = Modifier
-            .width(popupWidth).heightIn(max = popupMaxHeight)
+            .width(popupWidth.coerceAtLeast(132.dp)).heightIn(max = popupMaxHeight.coerceAtLeast(250.dp))
             .glassPanel(cornerRadius = 13.dp, fill = SpaceMid.copy(alpha = 0.97f))
             .padding(5.dp)
             .verticalScroll(rememberScrollState())
@@ -245,7 +246,7 @@ fun SpeedMenuPopup(currentSpeed: Float, popupWidth: Dp, popupMaxHeight: Dp, onSp
                 onActivate = { onSpeedSelected(speed) }
             ) {
                 CompactSelectableRow(
-                    label = if (speed == 1.0f) "1x Normal" else "${speed}x",
+                    label = if (speed == 1.0f) "1x Normal" else if (speed % 1f == 0f) "${speed.toInt()}x" else "${speed}x",
                     selected = speed == currentSpeed,
                     onClick = { onSpeedSelected(speed) }
                 )
@@ -275,7 +276,7 @@ fun SleepMenuPopup(currentMinutes: Int, popupWidth: Dp, popupMaxHeight: Dp, onSe
 
     Column(
         modifier = Modifier
-            .width(popupWidth).heightIn(max = popupMaxHeight)
+            .width(popupWidth.coerceAtLeast(132.dp)).heightIn(max = popupMaxHeight.coerceAtLeast(220.dp))
             .glassPanel(cornerRadius = 13.dp, fill = SpaceMid.copy(alpha = 0.97f))
             .padding(5.dp)
             .verticalScroll(rememberScrollState())
@@ -329,9 +330,12 @@ private fun CompactSelectableRow(label: String, selected: Boolean, onClick: () -
                 if (selected) Modifier.border(width = 1.dp, brush = Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.85f), AmberDeep.copy(alpha = 0.35f))), shape = shape) else Modifier
             )
             .clickable { onClick() }
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = label, color = if (selected) AmberCore else TextBright, fontSize = 10.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        Text(text = label, color = if (selected) AmberCore else TextBright, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        if (selected) {
+            Icon(imageVector = Icons.Rounded.Check, contentDescription = "Selected", tint = AmberCore, modifier = Modifier.size(15.dp))
+        }
     }
 }

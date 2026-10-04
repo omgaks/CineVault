@@ -87,20 +87,6 @@ internal fun BoxScope.PlayerAuxiliarySurfaces(
         onRetry = onRetry,
     )
 
-    PlayerSpeedAndSleepMenus(
-        showSpeedMenu = showSpeedMenu,
-        showSleepMenu = showSleepMenu,
-        playbackSpeed = playbackSpeed,
-        sleepTimerMinutes = sleepTimerMinutes,
-        topClusterPaddingTop = topClusterPaddingTop,
-        clusterHeightPx = clusterHeightPx,
-        isLandscape = isLandscape,
-        sidePadding = sidePadding,
-        smallMenuWidth = smallMenuWidth,
-        smallMenuMaxHeight = smallMenuMaxHeight,
-        onSpeedSelected = onSpeedSelected,
-        onDismissSpeedMenu = onDismissSpeedMenu,
-        onSleepSelected = onSleepSelected,
-        onDismissSleepMenu = onDismissSleepMenu,
-    )
+    // Speed / Sleep menus are drawn from VideoPlayerScreen, AFTER the "tap outside" dismiss layer.
+    // Drawn here they sat underneath it, so the dismiss layer swallowed every tap and scroll.
 }

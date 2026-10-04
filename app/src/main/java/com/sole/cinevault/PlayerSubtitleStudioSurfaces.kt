@@ -378,7 +378,7 @@ internal fun PlayerSubtitleStudioSurfaces(
                 }
                 studioUi.menuTouchKey++
             },
-            canEnable = trackUi.primaryUri != null,
+            canEnable = trackUi.primaryUri != null || trackUi.selectedKey?.startsWith("embedded:") == true,
             primaryLabel = quickHudFileName ?: "None",
             secondaryLanguage = dualUi.secondaryLanguage,
             secondaryLanguageLabel =

@@ -159,7 +159,7 @@ internal fun rememberPlayerSubtitleFileRuntime(
     }
 
     val srtPickerLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        rememberLauncherForActivityResult(OpenDocumentInSubtitleFolder()) { uri ->
             localImportCoordinator.importPickedUri(uri)
         }
 
@@ -168,6 +168,28 @@ internal fun rememberPlayerSubtitleFileRuntime(
         pendingDeleteFileState = pendingDeleteFileState,
         snackbarHostState = snackbarHostState,
         deletionCoordinator = deletionCoordinator,
-        launchSrtPicker = { mimeTypes -> srtPickerLauncher.launch(mimeTypes) },
+        launchSrtPicker = { mimeTypes ->
+            // Make sure this movie's saved subtitles are visible in Documents/CineVault/Subtitles,
+            // then open the picker right there.
+            scope.launch {
+                val copied = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    SubtitlePublicFolder.mirror(context, latestVideoPath.value)
+                }
+                if (copied > 0) {
+                    CineVaultToast.show(context, "Saved $copied subtitle file(s) to ${SubtitlePublicFolder.DISPLAY_PATH}")
+                }
+                srtPickerLauncher.launch(mimeTypes)
+            }
+        },
     )
+}
+
+/** The normal system file picker, but starting in CineVault's public subtitles folder. */
+private class OpenDocumentInSubtitleFolder : ActivityResultContracts.OpenDocument() {
+    override fun createIntent(context: Context, input: Array<String>): android.content.Intent =
+        super.createIntent(context, input).apply {
+            if (android.os.Build.VERSION.SDK_INT >= 26) {
+                putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, SubtitlePublicFolder.initialPickerUri())
+            }
+        }
 }

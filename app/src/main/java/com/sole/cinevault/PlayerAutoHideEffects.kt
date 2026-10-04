@@ -108,13 +108,13 @@ LaunchedEffect(showSrtBrowser) {
     }
     LaunchedEffect(showSpeedMenu) {
         if (showSpeedMenu) {
-            delay(8000)
+            delay(20000)
             onHideSpeedMenu()
         }
     }
     LaunchedEffect(showSleepMenu) {
         if (showSleepMenu) {
-            delay(8000)
+            delay(20000)
             onHideSleepMenu()
         }
     }

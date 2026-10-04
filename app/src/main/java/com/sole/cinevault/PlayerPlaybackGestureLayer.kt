@@ -279,6 +279,11 @@ internal fun PlayerPlaybackGestureLayer(
                     onShowControlsChanged(true)
                     onShowTopBarChanged(true)
                 },
+                onTogglePlayPause = {
+                    if (player.isPlaying) player.pause() else player.play()
+                    onShowControlsChanged(true)
+                    onShowTopBarChanged(true)
+                },
                 onDragSettled = onGestureEnd,
                 onEdgeSwipeNext = { playbackNavigationCoordinator.playNext() },
                 onBrightnessDrag = { deltaY ->

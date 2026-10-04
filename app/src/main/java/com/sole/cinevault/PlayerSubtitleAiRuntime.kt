@@ -195,6 +195,9 @@ fun rememberPlayerSubtitleAiRuntime(
                 )
             },
             onGeneratedLibraryChanged = { latestGeneratedRefreshRequested() },
+            getEmbeddedRef = {
+                EmbeddedSubtitleRef.fromSelectedKey(trackUi.selectedKey, trackUi.primaryLanguage)
+            },
         )
     }
 

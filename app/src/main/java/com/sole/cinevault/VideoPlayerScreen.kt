@@ -1057,6 +1057,24 @@ fun VideoPlayerScreen(
             },
         )
 
+        // Speed / Sleep menus: above the dismiss layer so they can be tapped and scrolled.
+        PlayerSpeedAndSleepMenus(
+            showSpeedMenu = chromeUi.showSpeedMenu,
+            showSleepMenu = chromeUi.showSleepMenu,
+            playbackSpeed = playbackSpeed,
+            sleepTimerMinutes = sleepTimerMinutes,
+            topClusterPaddingTop = playerLayout.topClusterPaddingTop,
+            clusterHeightPx = clusterHeightPx,
+            isLandscape = playerLayout.isLandscape,
+            sidePadding = playerLayout.sidePadding,
+            smallMenuWidth = playerLayout.smallMenuWidth,
+            smallMenuMaxHeight = playerLayout.smallMenuMaxHeight,
+            onSpeedSelected = { playerSessionActionsCoordinator.setPlaybackSpeed(it) },
+            onDismissSpeedMenu = { chromeUi.showSpeedMenu = false },
+            onSleepSelected = { playerSessionActionsCoordinator.setSleepTimer(it) },
+            onDismissSleepMenu = { chromeUi.showSleepMenu = false },
+        )
+
         PlayerSubtitleSelectionAndAcquisitionSurfaces(
             context = context,
             player = exoPlayer,

@@ -40,6 +40,7 @@ fun Modifier.videoPlaybackGestures(
     onSeekBack: () -> Unit,
     onSeekForward: () -> Unit,
     onToggleZoomMode: () -> Unit,
+    onTogglePlayPause: () -> Unit = {},
     onDragSettled: () -> Unit,
     onEdgeSwipeNext: () -> Unit,
     onBrightnessDrag: (deltaY: Float) -> Unit,
@@ -63,13 +64,19 @@ fun Modifier.videoPlaybackGestures(
     .pointerInput(videoPathKey) {
         detectTapGestures(
             onTap = { onTap() },
+            // Double-tap the middle to play / pause; the sides still skip back / forward.
             onDoubleTap = { offset ->
                 val w = size.width
                 when {
-                    offset.x < w * 0.45f -> onSeekBack()
-                    offset.x > w * 0.55f -> onSeekForward()
-                    else -> onToggleZoomMode()
+                    offset.x < w * 0.35f -> onSeekBack()
+                    offset.x > w * 0.65f -> onSeekForward()
+                    else -> onTogglePlayPause()
                 }
+            },
+            // Long-press the middle to switch fit / fill (the old double-tap-middle action).
+            onLongPress = { offset ->
+                val w = size.width
+                if (offset.x in (w * 0.35f)..(w * 0.65f)) onToggleZoomMode()
             }
         )
     }
