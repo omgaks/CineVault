@@ -61,4 +61,13 @@ class SubtitleJobPresentationTest {
         assertNull(result.label)
         assertNull(result.progress)
     }
+
+    @Test
+    fun readingEmbeddedSubtitleHasItsOwnLabel() {
+        val result = subtitleTranslationJobPresentation(
+            SubtitleTranslationStatus.Translating("Reading embedded subtitle", 40)
+        )
+        assertEquals("Reading subtitle", result.label)
+        assertEquals(40, result.progress)
+    }
 }

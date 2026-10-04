@@ -72,3 +72,34 @@ class AutoSubtitleSizeTest {
         assertTrue(bigger > normal * 1.15f)
     }
 }
+
+
+class AutoPlacementFromRectsTest {
+    @Test
+    fun portraitWideFilm_sitsJustUnderPicture() {
+        // Portrait 1568x2350, 1.85:1 picture occupies y 751..1599 (the Ghost in the Shell case).
+        val f = SubtitleAutoPlacement.bottomPaddingFractionFromRects(
+            subtitleViewBottomPx = 2350f, subtitleViewHeightPx = 2350f,
+            pictureTopPx = 751f, pictureBottomPx = 1599f, textPx = 36f,
+        )!!
+        val paddingPx = f * 2350f
+        val textBlockTop = 2350f - paddingPx - 36f * 1.25f * 2
+        assertEquals(1599f + 18f, textBlockTop, 2f) // half a line under the picture
+    }
+
+    @Test
+    fun landscapeThinBar_staysInsideTheBottomOfThePicture() {
+        val f = SubtitleAutoPlacement.bottomPaddingFractionFromRects(
+            subtitleViewBottomPx = 1568f, subtitleViewHeightPx = 1568f,
+            pictureTopPx = 148f, pictureBottomPx = 1420f, textPx = 46f,
+        )!!
+        val expected = (148f + (1420f - 148f) * 0.04f) / 1568f
+        assertEquals(expected, f, 0.001f)
+    }
+
+    @Test
+    fun notLaidOut_returnsNull() {
+        assertNull(SubtitleAutoPlacement.bottomPaddingFractionFromRects(0f, 0f, 0f, 100f, 40f))
+        assertNull(SubtitleAutoPlacement.bottomPaddingFractionFromRects(2000f, 2000f, 100f, 100f, 40f))
+    }
+}
