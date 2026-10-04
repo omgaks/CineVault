@@ -122,6 +122,14 @@ internal fun PlayerEventListener(
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                // Picture enhancement runs on its own GPU pipeline. If that pipeline is what
+                // failed, the Picture controller removes it and resumes playback here, so the
+                // normal retry / software-fallback / error-screen logic must not run.
+                if (com.sole.cinevault.picture.PictureEnhanceRegistry.current
+                        ?.consumeEffectFailure(error) == true
+                ) {
+                    return
+                }
                 val positionAtError = player.currentPosition.coerceAtLeast(0L)
                 val attribution = attributePlaybackFailure(error)
 

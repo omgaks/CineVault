@@ -310,7 +310,7 @@ fun VideoPlayerScreen(
 
     // Picture enhancement (GPU filters). Installs its Media3 effect pipeline lazily, only
     // after the user first turns it on, so normal playback is untouched until then.
-    val pictureController = remember(exoPlayer) { PictureEnhanceController(context, exoPlayer) }
+    val pictureController = remember(exoPlayer) { PictureEnhanceController(context, exoPlayer, currentVideo.path) }
     DisposableEffect(pictureController) {
         PictureEnhanceRegistry.current = pictureController
         onDispose {

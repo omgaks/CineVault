@@ -123,10 +123,11 @@ internal fun PlayerVideoSurface(
                 PlayerView(context).apply {
                     this.player = if (cinemaVoidHost) null else player
                     useController = false
-                    setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
-                    // Keep the last video frame on screen while a subtitle swap re-prepares
-                    // the item, so the swap does not flash black.
-                    setKeepContentOnPlayerReset(true)
+                    // Black shutter until the first frame: a transparent shutter let the window
+                    // behind the video flash for a split second when a movie opened. Subtitle
+                    // changes no longer rebuild the video, so the old keep-last-frame trick that
+                    // hid those restarts is not needed any more.
+                    setShutterBackgroundColor(android.graphics.Color.BLACK)
                     resizeMode = resolvedResizeMode
                     subtitleView?.setViewType(SubtitleView.VIEW_TYPE_CANVAS)
                     onPlayerViewChanged(this)

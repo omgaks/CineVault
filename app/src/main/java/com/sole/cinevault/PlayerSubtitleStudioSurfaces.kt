@@ -417,7 +417,7 @@ internal fun PlayerSubtitleStudioSurfaces(
             onSecondaryColorChange = { color ->
                 onDualSecondaryColorHexChanged(color)
                 if (dualUi.enabled) {
-                    subtitleSyncTools.reapplyDualStyle()
+                    subtitleSyncTools.reapplyDualStyle(color)
                 }
                 studioUi.menuTouchKey++
             },

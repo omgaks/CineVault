@@ -4,11 +4,16 @@ import android.content.Context
 import android.annotation.SuppressLint
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.media3.common.C
+import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.sole.cinevault.subtitles.*
@@ -116,8 +121,29 @@ fun rememberPlayerSubtitleRuntimeEffects(
             null
         }
 
+    // The video's real shape, so subtitles can sit next to the picture instead of at the far
+    // screen edge. Updates as soon as Media3 knows the size (and on every new movie).
+    var videoAspect by remember(exoPlayer) { mutableStateOf(0f) }
+    DisposableEffect(exoPlayer) {
+        fun aspectOf(size: VideoSize): Float =
+            if (size.width > 0 && size.height > 0) {
+                size.width * size.pixelWidthHeightRatio / size.height
+            } else {
+                0f
+            }
+        videoAspect = aspectOf(exoPlayer.videoSize)
+        val listener = object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                videoAspect = aspectOf(videoSize)
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose { exoPlayer.removeListener(listener) }
+    }
+
     LaunchedEffect(
         studioUi.playerView,
+        videoAspect,
         appearanceUi.textSizeSp,
         appearanceUi.bottomPadding,
         appearanceUi.appearance,
@@ -137,6 +163,7 @@ fun rememberPlayerSubtitleRuntimeEffects(
             availableWidthDp = availableWidthDp,
             availableHeightDp = availableHeightDp,
             externalVisibleFrame = externalVisibleFrame,
+            videoAspect = videoAspect,
         )
     }
 

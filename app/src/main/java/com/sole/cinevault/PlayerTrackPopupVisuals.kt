@@ -4,9 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Audiotrack
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,7 +39,13 @@ import com.sole.cinevault.tvmode.TelevisionModeDetector
 import com.sole.cinevault.tvmode.TvFocusableSlot
 import com.sole.cinevault.ui.theme.*
 
-data class TrackPopupRowData(val title: String, val subtitle: String, val onClick: () -> Unit)
+data class TrackPopupRowData(
+    val title: String,
+    val subtitle: String,
+    val onClick: () -> Unit,
+    /** True for the track that is playing right now (drawn with an amber tick). */
+    val selected: Boolean = false,
+)
 
 internal fun friendlyLanguageName(code: String?): String = SubtitleLanguageRegistry.displayName(code)
 
@@ -73,6 +82,8 @@ fun FloatingTrackPopup(title: String, modifier: Modifier, rows: List<TrackPopupR
 
     Column(
         modifier = modifier
+            // Long audio lists must scroll instead of running off the screen.
+            .heightIn(max = 340.dp)
             .glassPanel(cornerRadius = 16.dp, fill = SpaceMid.copy(alpha = 0.97f))
             .padding(6.dp)
             .then(
@@ -105,16 +116,28 @@ fun FloatingTrackPopup(title: String, modifier: Modifier, rows: List<TrackPopupR
             )
     ) {
         Text(text = title, color = AmberCore, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
-        rows.forEachIndexed { index, row ->
-            TvFocusableSlot(
-                isTelevision = isTelevision,
-                focusRequester = if (index == 0) firstRowFocusRequester else null,
-                shape = RoundedCornerShape(10.dp),
-                onActivate = { onAnyClick(); row.onClick() }
-            ) {
-                CompactGlassMenuRow(icon = Icons.Rounded.Audiotrack, label = row.title, onClick = { onAnyClick(); row.onClick() })
+        Column(
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState())
+        ) {
+            rows.forEachIndexed { index, row ->
+                TvFocusableSlot(
+                    isTelevision = isTelevision,
+                    focusRequester = if (index == 0) firstRowFocusRequester else null,
+                    shape = RoundedCornerShape(10.dp),
+                    onActivate = { onAnyClick(); row.onClick() }
+                ) {
+                    CompactGlassMenuRow(
+                        icon = Icons.Rounded.Audiotrack,
+                        label = row.title,
+                        detail = row.subtitle,
+                        selected = row.selected,
+                        onClick = { onAnyClick(); row.onClick() },
+                    )
+                }
+                Spacer(modifier = Modifier.height(3.dp))
             }
-            Spacer(modifier = Modifier.height(3.dp))
         }
         Text(text = "Audio Delay", color = AmberCore, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
         Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 3.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -147,18 +170,34 @@ fun FloatingTrackPopup(title: String, modifier: Modifier, rows: List<TrackPopupR
 }
 
 @Composable
-private fun CompactGlassMenuRow(icon: ImageVector?, label: String, onClick: () -> Unit) {
+private fun CompactGlassMenuRow(
+    icon: ImageVector?,
+    label: String,
+    onClick: () -> Unit,
+    detail: String = "",
+    selected: Boolean = false,
+) {
     Row(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+            .background(if (selected) AmberCore.copy(alpha = 0.16f) else androidx.compose.ui.graphics.Color.Transparent)
             .clickable { onClick() }
             .padding(horizontal = 9.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (icon != null) {
-            Icon(imageVector = icon, contentDescription = null, tint = TextMuted, modifier = Modifier.size(13.dp))
+            Icon(imageVector = icon, contentDescription = null, tint = if (selected) AmberCore else TextMuted, modifier = Modifier.size(13.dp))
             Spacer(modifier = Modifier.width(7.dp))
         }
-        Text(text = label, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = label, color = if (selected) AmberCore else TextBright, fontSize = 11.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            if (detail.isNotBlank()) {
+                Text(text = detail, color = TextMuted, fontSize = 9.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+        }
+        if (selected) {
+            Spacer(modifier = Modifier.width(6.dp))
+            Icon(imageVector = Icons.Rounded.Check, contentDescription = "Playing", tint = AmberCore, modifier = Modifier.size(14.dp))
+        }
     }
 }
 

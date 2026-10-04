@@ -35,7 +35,9 @@ internal fun buildAudioTrackRows(
                 } else {
                     language
                 },
-                subtitle = "Track ${trackIndex + 1}",
+                // Codec and channels tell apart several tracks in the same language.
+                subtitle = audioTrackDetail(format, trackIndex),
+                selected = group.isTrackSelected(trackIndex),
                 onClick = {
                     trackSelector.parameters = trackSelector
                         .buildUponParameters()
@@ -51,6 +53,30 @@ internal fun buildAudioTrackRows(
             )
         }
     }
+
+private fun audioTrackDetail(format: androidx.media3.common.Format, trackIndex: Int): String {
+    val codec = when (format.sampleMimeType) {
+        androidx.media3.common.MimeTypes.AUDIO_AC3 -> "Dolby Digital"
+        androidx.media3.common.MimeTypes.AUDIO_E_AC3, androidx.media3.common.MimeTypes.AUDIO_E_AC3_JOC -> "Dolby Digital+"
+        androidx.media3.common.MimeTypes.AUDIO_TRUEHD -> "TrueHD"
+        androidx.media3.common.MimeTypes.AUDIO_DTS, androidx.media3.common.MimeTypes.AUDIO_DTS_HD -> "DTS"
+        androidx.media3.common.MimeTypes.AUDIO_AAC -> "AAC"
+        androidx.media3.common.MimeTypes.AUDIO_OPUS -> "Opus"
+        androidx.media3.common.MimeTypes.AUDIO_MPEG -> "MP3"
+        androidx.media3.common.MimeTypes.AUDIO_FLAC -> "FLAC"
+        else -> format.sampleMimeType?.substringAfter('/')?.uppercase().orEmpty()
+    }
+    val channels = when (format.channelCount) {
+        1 -> "Mono"
+        2 -> "Stereo"
+        6 -> "5.1"
+        8 -> "7.1"
+        androidx.media3.common.Format.NO_VALUE -> ""
+        else -> "${format.channelCount} ch"
+    }
+    val label = listOf(codec, channels).filter { it.isNotBlank() }.joinToString(" · ")
+    return if (label.isBlank()) "Track ${trackIndex + 1}" else "Track ${trackIndex + 1} · $label"
+}
 
 internal fun hasInternalSubtitleTracks(tracks: Tracks): Boolean =
     tracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.length > 0 }
