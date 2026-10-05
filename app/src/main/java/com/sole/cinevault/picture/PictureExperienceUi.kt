@@ -74,17 +74,17 @@ private fun PictureExperienceCardView(
                 Box(Modifier.width(16.dp).height(3.dp).clip(CircleShape).background(AmberCore))
                 Spacer(Modifier.width(7.dp))
             }
-            Text(card.eyebrow, if(card.selected) AmberCore else TextMuted, fontSize=8.sp,
+            Text(card.eyebrow, color=if(card.selected) AmberCore else TextMuted, fontSize=8.sp,
                 fontWeight=FontWeight.Black, maxLines=1, overflow=TextOverflow.Ellipsis)
         }
         Spacer(Modifier.height(6.dp))
-        Text(card.title, if(card.selected) AmberCore else TextBright, fontSize=15.sp,
+        Text(card.title, color=if(card.selected) AmberCore else TextBright, fontSize=15.sp,
             fontWeight=FontWeight.Bold, maxLines=1)
         Spacer(Modifier.height(3.dp))
-        Text(card.subtitle, TextMuted, fontSize=9.5.sp, lineHeight=12.sp,
+        Text(card.subtitle, color=TextMuted, fontSize=9.5.sp, lineHeight=12.sp,
             maxLines=2, overflow=TextOverflow.Ellipsis)
         Spacer(Modifier.weight(1f))
-        Text(card.signature, if(card.selected) AmberCore.copy(alpha=.82f) else TextMuted.copy(alpha=.78f),
+        Text(card.signature, color=if(card.selected) AmberCore.copy(alpha=.82f) else TextMuted.copy(alpha=.78f),
             fontSize=7.5.sp, fontWeight=FontWeight.Bold, maxLines=1)
     }
 }
@@ -107,10 +107,10 @@ fun PictureQualityRail(
                     .clickable(enabled=enabled){onSelect(choice.tier)}
                     .padding(horizontal=9.dp, vertical=8.dp)
             ) {
-                Text(choice.label, if(choice.selected) AmberCore else TextBright, fontSize=10.5.sp,
+                Text(choice.label, color=if(choice.selected) AmberCore else TextBright, fontSize=10.5.sp,
                     fontWeight=FontWeight.Bold)
                 Spacer(Modifier.height(2.dp))
-                Text(choice.description, TextMuted, fontSize=7.5.sp, lineHeight=9.5.sp,
+                Text(choice.description, color=TextMuted, fontSize=7.5.sp, lineHeight=9.5.sp,
                     maxLines=2, overflow=TextOverflow.Ellipsis)
             }
         }
@@ -129,9 +129,9 @@ fun PictureSourceBadgeView(badge: PictureSourceBadge, modifier: Modifier = Modif
         Box(Modifier.size(5.dp).clip(CircleShape).background(AmberCore.copy(alpha=.88f)))
         Spacer(Modifier.width(7.dp))
         Column {
-            Text(badge.primary, TextBright, fontSize=9.5.sp, fontWeight=FontWeight.SemiBold, maxLines=1)
+            Text(badge.primary, color=TextBright, fontSize=9.5.sp, fontWeight=FontWeight.SemiBold, maxLines=1)
             val detail=listOfNotNull(badge.secondary,badge.scalingHint).joinToString(" · ")
-            if(detail.isNotBlank()) Text(detail, TextMuted, fontSize=7.5.sp, maxLines=1, overflow=TextOverflow.Ellipsis)
+            if(detail.isNotBlank()) Text(detail, color=TextMuted, fontSize=7.5.sp, maxLines=1, overflow=TextOverflow.Ellipsis)
         }
     }
 }
