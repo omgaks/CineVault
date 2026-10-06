@@ -57,6 +57,10 @@ private class PictureShaderProgram(private val live: PictureLiveParams) :
             glProgram.setFloatUniform("uColour",p.colour)
             glProgram.setFloatUniform("uGrain",p.grain)
             glProgram.setFloatUniform("uSplit",p.split)
+            val adaptive=PictureAdaptiveRepairPolicy.forState(p.content,p.amount)
+            glProgram.setFloatUniform("uRepairScale",adaptive.repair)
+            glProgram.setFloatUniform("uChromaScale",adaptive.chroma)
+            glProgram.setFloatUniform("uSharpenGuard",adaptive.sharpenGuard)
             glProgram.setFloatUniform("uSeed",((presentationTimeUs/1000L)%997L).toFloat()/997f)
             glProgram.bindAttributesAndUniforms()
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4)
@@ -78,6 +82,7 @@ precision highp float;
 uniform sampler2D uTexSampler;
 uniform vec2 uTexel;
 uniform float uAmount,uSharpen,uDeband,uColour,uGrain,uSplit,uSeed;
+uniform float uRepairScale,uChromaScale,uSharpenGuard;
 varying vec2 vTexSamplingCoord;
 float rand(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
 float luma709(vec3 c){return dot(c,vec3(0.2126,0.7152,0.0722));}
@@ -111,7 +116,7 @@ void main(){
   float lf=1.0-smoothstep(mix(0.006,0.020,uDeband)*0.55,mix(0.006,0.020,uDeband),lr);
   float cf=1.0-smoothstep(mix(0.008,0.026,uDeband)*0.55,mix(0.008,0.026,uDeband),cr);
   float ds=1.0-smoothstep(mix(0.0025,0.009,uDeband)*0.5,mix(0.0025,0.009,uDeband),lap);
-  e=mix(e0,directional,lf*cf*ds*mix(0.18,0.62,uDeband));
+  e=mix(e0,directional,lf*cf*ds*mix(0.18,0.62,uDeband)*uRepairScale);
  }
 
  // P3-S2 chroma reconstruction.
@@ -130,7 +135,7 @@ void main(){
   float smoothLuma=1.0-smoothstep(0.012,0.040,lumaEdge);
   float safeChroma=1.0-smoothstep(0.025,0.075,chromaEdge);
   vec2 avgC=(cc*2.0+cL+cR+cT+cB)/6.0;
-  float reconstruct=smoothLuma*safeChroma*mix(0.04,0.24,uDeband);
+  float reconstruct=smoothLuma*safeChroma*mix(0.04,0.24,uDeband)*uChromaScale;
   vec2 repairedC=mix(cc,avgC,reconstruct);
   e=clamp(fromLumaChroma(yc,repairedC),0.0,1.0);
  }
@@ -142,7 +147,9 @@ void main(){
  vec3 sh=texture2D(uTexSampler,uv+vec2(0.0,uTexel.y)).rgb;
  vec3 mn=min(min(min(sd,e),min(sf,sb)),sh),mx=max(max(max(sd,e),max(sf,sb)),sh);
  vec3 amp=sqrt(clamp(min(mn,1.0-mx)/max(mx,vec3(0.0001)),0.0,1.0));
- float peak=-1.0/mix(9.0,4.0,uSharpen); vec3 w=amp*peak;
+ float localSpan=max(max(mx.r-mn.r,mx.g-mn.g),mx.b-mn.b);
+ float edgeGuard=1.0-smoothstep(uSharpenGuard,1.0,localSpan);
+ float peak=-1.0/mix(9.0,4.0,uSharpen*edgeGuard); vec3 w=amp*peak;
  vec3 col=clamp((sb*w+sd*w+sf*w+sh*w+e)/(1.0+4.0*w),0.0,1.0);
 
  float lum=luma709(col),mxc=max(col.r,max(col.g,col.b)),mnc=min(col.r,min(col.g,col.b));
