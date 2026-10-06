@@ -165,11 +165,12 @@ class PictureEnhanceController(
     }
 
     fun closePanel() {
-        panelOpen = false
+        // End transient comparison modes before removing the panel host so the shader receives
+        // a normal full-frame state while the UI is still alive.
         comparing = false
-        // Split view is a "look while adjusting" tool: it ends with the panel.
         splitView = false
         refreshLive()
+        panelOpen = false
     }
 
     fun setEnabled(on: Boolean) {
@@ -251,12 +252,15 @@ class PictureEnhanceController(
 
     /** Everything back to defaults; Picture stays on or off as it was. */
     fun resetAll() {
-        settings = PictureProfiles.resetAll(settings, detected)
+        // Reset is a live-uniform operation. Never touch/rebuild the running Media3 pipeline here:
+        // doing so can disturb playback while Split View is active.
+        comparing = false
         splitView = false
+        settings = PictureProfiles.resetAll(settings, detected)
         note = null
         if (settings.preset != PicturePreset.OFF) lastPreset = PicturePreset.NATURAL
         persist()
-        applyEffects()
+        refreshLive()
     }
 
     /** Call when a slider drag ends. */
