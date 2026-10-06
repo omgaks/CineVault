@@ -1,10 +1,11 @@
 package com.sole.cinevault.picture
 
 /**
- * P4-S2 Anime Engine policy.
+ * P4 Anime Engine policy + P5 Animation routing bridge.
  *
- * Runtime-only and conservative. S2 extends the line engine with source-aware reconstruction.
- * It does not change persisted Picture settings or the Media3 effect topology.
+ * P4 Anime values are preserved. P5 Animation uses the same proven single-pass GPU execution
+ * primitive but receives a separate, more conservative animation policy. This keeps the
+ * Media3 effect topology unchanged and avoids stacking another expensive full-frame pass.
  */
 object PictureAnimeEnginePolicy {
     data class Params(
@@ -22,10 +23,28 @@ object PictureAnimeEnginePolicy {
         intensity: Float,
         sourceHeight: Int = 1080,
     ): Params {
+        if (content == PictureContent.ANIMATION) {
+            val animation = PictureAnimationEnginePolicy.forState(
+                content = content,
+                intensity = intensity,
+                sourceHeight = sourceHeight,
+            )
+            return Params(
+                enabled = animation.enabled,
+                lineStrength = animation.lineStrength,
+                flatProtection = animation.flatProtection,
+                haloGuard = animation.haloGuard,
+                reconstruction = animation.reconstruction,
+                diagonalAssist = animation.diagonalAssist,
+                chromaEdgeGuard = animation.chromaEdgeGuard,
+            )
+        }
+
         if (content != PictureContent.ANIME) {
             return Params(0f, 0f, 1f, 1f, 0f, 0f, 1f)
         }
 
+        // P4 values intentionally unchanged.
         val qualityScale = when {
             intensity < 0.72f -> 0.58f
             intensity >= 0.96f -> 1.00f
