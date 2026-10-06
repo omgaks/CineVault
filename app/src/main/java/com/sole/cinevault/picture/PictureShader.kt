@@ -17,7 +17,7 @@ class PictureLiveParams {
     @Volatile var frames: Long = 0L
 }
 
-/** P4 single-pass enhancement: P3 repair/chroma -> Anime line engine -> CAS -> vibrance -> dither/grain. */
+/** P4 single-pass enhancement: P3 repair/chroma -> Anime line/reconstruction engine -> CAS -> vibrance -> dither/grain. */
 @OptIn(UnstableApi::class)
 class PictureEnhanceEffect(private val live: PictureLiveParams) : GlEffect {
     override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram {
@@ -34,6 +34,7 @@ private class PictureShaderProgram(private val live: PictureLiveParams) :
     catch (e: GlUtil.GlException) { throw VideoFrameProcessingException(e) }
 
     private var texel = floatArrayOf(1f/1280f,1f/720f)
+    private var sourceHeight = 720
 
     init {
         glProgram.setBufferAttribute("aFramePosition",GlUtil.getNormalizedCoordinateBounds(),
@@ -42,6 +43,7 @@ private class PictureShaderProgram(private val live: PictureLiveParams) :
 
     override fun configure(inputWidth:Int,inputHeight:Int):Size {
         texel=floatArrayOf(1f/inputWidth.coerceAtLeast(1),1f/inputHeight.coerceAtLeast(1))
+        sourceHeight=inputHeight.coerceAtLeast(1)
         return Size(inputWidth,inputHeight)
     }
 
@@ -61,11 +63,14 @@ private class PictureShaderProgram(private val live: PictureLiveParams) :
             glProgram.setFloatUniform("uRepairScale",adaptive.repair)
             glProgram.setFloatUniform("uChromaScale",adaptive.chroma)
             glProgram.setFloatUniform("uSharpenGuard",adaptive.sharpenGuard)
-            val anime=PictureAnimeEnginePolicy.forState(p.content,p.amount)
+            val anime=PictureAnimeEnginePolicy.forState(p.content,p.amount,sourceHeight)
             glProgram.setFloatUniform("uAnimeEnabled",anime.enabled)
             glProgram.setFloatUniform("uAnimeLine",anime.lineStrength)
             glProgram.setFloatUniform("uAnimeFlat",anime.flatProtection)
             glProgram.setFloatUniform("uAnimeHalo",anime.haloGuard)
+            glProgram.setFloatUniform("uAnimeReconstruct",anime.reconstruction)
+            glProgram.setFloatUniform("uAnimeDiagonal",anime.diagonalAssist)
+            glProgram.setFloatUniform("uAnimeChromaGuard",anime.chromaEdgeGuard)
             glProgram.setFloatUniform("uSeed",((presentationTimeUs/1000L)%997L).toFloat()/997f)
             glProgram.bindAttributesAndUniforms()
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4)
@@ -89,6 +94,7 @@ uniform vec2 uTexel;
 uniform float uAmount,uSharpen,uDeband,uColour,uGrain,uSplit,uSeed;
 uniform float uRepairScale,uChromaScale,uSharpenGuard;
 uniform float uAnimeEnabled,uAnimeLine,uAnimeFlat,uAnimeHalo;
+uniform float uAnimeReconstruct,uAnimeDiagonal,uAnimeChromaGuard;
 varying vec2 vTexSamplingCoord;
 float rand(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
 float luma709(vec3 c){return dot(c,vec3(0.2126,0.7152,0.0722));}
@@ -178,6 +184,30 @@ void main(){
   float targetY=clamp(ac+lineDelta*uAnimeLine*safeLine,localMin,localMax);
   vec2 animeC=chromaRG(e);
   e=clamp(fromLumaChroma(targetY,animeC),0.0,1.0);
+
+  // P4-S2 directional reconstruction. This is a source-aware reconstruction stage inside
+  // the existing same-size GPU pass: it improves low-resolution line continuity without
+  // pretending to change the player's output resolution.
+  float hDiff=abs(al-ar),vDiff=abs(at-ab);
+  float d1Diff=abs(atl-abr),d2Diff=abs(atr-abl);
+  float axisMin=min(hDiff,vDiff),diagMin=min(d1Diff,d2Diff);
+  float axisWeight=1.0/(0.002+axisMin);
+  float diagWeight=uAnimeDiagonal/(0.002+diagMin);
+  float norm=axisWeight+diagWeight;
+
+  float axisY=mix((al+ar)*0.5,(at+ab)*0.5,step(vDiff,hDiff));
+  float diagY=mix((atl+abr)*0.5,(atr+abl)*0.5,step(d2Diff,d1Diff));
+  float reconstructedY=(axisY*axisWeight+diagY*diagWeight)/max(norm,0.0001);
+
+  vec2 cL=chromaRG(aL),cR=chromaRG(aR),cT=chromaRG(aT),cB=chromaRG(aB);
+  float colourBoundary=max(length(cR-cL),length(cB-cT));
+  float colourSafe=1.0-smoothstep(0.020,uAnimeChromaGuard*0.10,colourBoundary);
+  float reconstructionMask=lineMask*(1.0-flatMask*uAnimeFlat)*hardEdgeGuard*colourSafe;
+  float rebuiltY=mix(luma709(e),reconstructedY,uAnimeReconstruct*reconstructionMask);
+
+  // Clamp to the local neighbourhood so reconstruction cannot create bright/dark ringing.
+  rebuiltY=clamp(rebuiltY,localMin,localMax);
+  e=clamp(fromLumaChroma(rebuiltY,chromaRG(e)),0.0,1.0);
  }
 
  // Existing CAS-style adaptive sharpen.
