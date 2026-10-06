@@ -34,19 +34,12 @@ data class ArtworkPreference(
 interface CachedVideoMetadataDao {
     @Query("SELECT * FROM cached_video_metadata WHERE videoPath = :videoPath")
     suspend fun getByPath(videoPath: String): CachedVideoMetadata?
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(metadata: CachedVideoMetadata)
-
-    // Used only by the one-time legacy-data migration (see
-    // ensureMigratedToRoom in MetadataCache.kt) — inserting potentially
-    // hundreds of rows one at a time would be needlessly slow.
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(metadata: List<CachedVideoMetadata>)
-
     @Query("SELECT * FROM cached_video_metadata")
     suspend fun getAll(): List<CachedVideoMetadata>
-
     @Query("DELETE FROM cached_video_metadata")
     suspend fun clearAll()
 }
@@ -55,25 +48,19 @@ interface CachedVideoMetadataDao {
 interface ArtworkPreferenceDao {
     @Query("SELECT * FROM artwork_preferences WHERE videoPath = :videoPath")
     suspend fun getByPath(videoPath: String): ArtworkPreference?
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(preference: ArtworkPreference)
-
     @Query("DELETE FROM artwork_preferences WHERE videoPath = :videoPath")
     suspend fun deleteByPath(videoPath: String)
-
     @Query("DELETE FROM artwork_preferences")
     suspend fun clearAll()
-
     @Query("UPDATE artwork_preferences SET lastAutomaticAttemptAt = 0")
     suspend fun resetAutomaticAttemptTimestamps()
 }
 
 suspend fun canAttemptAutomaticArtwork(context: Context, videoPath: String): Boolean =
     withContext(Dispatchers.IO) {
-        val saved = CachedVideoMetadataDatabase.getInstance(context)
-            .artworkPreferenceDao()
-            .getByPath(videoPath)
+        val saved = CachedVideoMetadataDatabase.getInstance(context).artworkPreferenceDao().getByPath(videoPath)
         saved == null || System.currentTimeMillis() - saved.lastAutomaticAttemptAt >= AUTOMATIC_ARTWORK_RETRY_COOLDOWN_MS
     }
 
@@ -81,11 +68,7 @@ suspend fun recordAutomaticArtworkAttempt(context: Context, videoPath: String) =
     withContext(Dispatchers.IO) {
         val dao = CachedVideoMetadataDatabase.getInstance(context).artworkPreferenceDao()
         val existing = dao.getByPath(videoPath)
-        dao.upsert(
-            (existing ?: ArtworkPreference(videoPath = videoPath)).copy(
-                lastAutomaticAttemptAt = System.currentTimeMillis()
-            )
-        )
+        dao.upsert((existing ?: ArtworkPreference(videoPath = videoPath)).copy(lastAutomaticAttemptAt = System.currentTimeMillis()))
     }
 
 suspend fun loadArtworkPreference(context: Context, videoPath: String): ArtworkPreference? =
@@ -95,25 +78,19 @@ suspend fun loadArtworkPreference(context: Context, videoPath: String): ArtworkP
 
 suspend fun clearManualArtworkChoices(context: Context, videoPath: String) =
     withContext(Dispatchers.IO) {
-        CachedVideoMetadataDatabase.getInstance(context)
-            .artworkPreferenceDao()
-            .deleteByPath(videoPath)
+        CachedVideoMetadataDatabase.getInstance(context).artworkPreferenceDao().deleteByPath(videoPath)
     }
 
-suspend fun saveManualArtworkChoice(
-    context: Context,
-    videoPath: String,
-    kind: ArtworkKind,
-    url: String?
-) = withContext(Dispatchers.IO) {
-    val dao = CachedVideoMetadataDatabase.getInstance(context).artworkPreferenceDao()
-    val existing = dao.getByPath(videoPath) ?: ArtworkPreference(videoPath = videoPath)
-    val updated = when (kind) {
-        ArtworkKind.POSTER -> existing.copy(manualPosterUrl = url)
-        ArtworkKind.BACKDROP -> existing.copy(manualBackdropUrl = url)
+suspend fun saveManualArtworkChoice(context: Context, videoPath: String, kind: ArtworkKind, url: String?) =
+    withContext(Dispatchers.IO) {
+        val dao = CachedVideoMetadataDatabase.getInstance(context).artworkPreferenceDao()
+        val existing = dao.getByPath(videoPath) ?: ArtworkPreference(videoPath = videoPath)
+        val updated = when (kind) {
+            ArtworkKind.POSTER -> existing.copy(manualPosterUrl = url)
+            ArtworkKind.BACKDROP -> existing.copy(manualBackdropUrl = url)
+        }
+        dao.upsert(updated)
     }
-    dao.upsert(updated)
-}
 
 suspend fun applyManualArtworkPreference(
     context: Context,
@@ -126,11 +103,6 @@ suspend fun applyManualArtworkPreference(
     )
 }
 
-// Room only understands primitive-ish column types natively —
-// List<String>?/List<CastEntry>? need explicit conversion to/from a
-// single stored column. Reuses Gson (already a dependency, already used
-// everywhere else in this file) rather than adding a second JSON library
-// just for this.
 class MetadataTypeConverters {
     private val gson = Gson()
 
@@ -140,11 +112,8 @@ class MetadataTypeConverters {
     @TypeConverter
     fun toStringList(value: String?): List<String>? {
         if (value == null) return null
-        return try {
-            gson.fromJson(value, object : TypeToken<List<String>>() {}.type)
-        } catch (_: Exception) {
-            null
-        }
+        return try { gson.fromJson(value, object : TypeToken<List<String>>() {}.type) }
+        catch (_: Exception) { null }
     }
 
     @TypeConverter
@@ -153,34 +122,28 @@ class MetadataTypeConverters {
     @TypeConverter
     fun toCastEntryList(value: String?): List<CastEntry>? {
         if (value == null) return null
-        return try {
-            gson.fromJson(value, object : TypeToken<List<CastEntry>>() {}.type)
-        } catch (_: Exception) {
-            null
-        }
+        return try { gson.fromJson(value, object : TypeToken<List<CastEntry>>() {}.type) }
+        catch (_: Exception) { null }
     }
 }
 
-// Version 2 adds a separate artwork-preferences table. Keeping manual artwork
-// choices and retry timestamps separate from cached metadata means ordinary
-// metadata saves cannot accidentally erase a person's chosen images.
 @Database(
-    entities = [CachedVideoMetadata::class, ArtworkPreference::class],
-    version = 2,
+    entities = [CachedVideoMetadata::class, ArtworkPreference::class, AnimationMetadata::class],
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(MetadataTypeConverters::class)
 abstract class CachedVideoMetadataDatabase : RoomDatabase() {
     abstract fun cachedVideoMetadataDao(): CachedVideoMetadataDao
     abstract fun artworkPreferenceDao(): ArtworkPreferenceDao
+    abstract fun animationMetadataDao(): AnimationMetadataDao
 
     companion object {
         @Volatile private var INSTANCE: CachedVideoMetadataDatabase? = null
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL(
-                    """
+                db.execSQL("""
                     CREATE TABLE IF NOT EXISTS `artwork_preferences` (
                         `videoPath` TEXT NOT NULL,
                         `manualPosterUrl` TEXT,
@@ -188,8 +151,27 @@ abstract class CachedVideoMetadataDatabase : RoomDatabase() {
                         `lastAutomaticAttemptAt` INTEGER NOT NULL,
                         PRIMARY KEY(`videoPath`)
                     )
-                    """.trimIndent()
-                )
+                """.trimIndent())
+            }
+        }
+
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `animation_metadata` (
+                        `videoPath` TEXT NOT NULL,
+                        `tmdbId` INTEGER,
+                        `originalLanguage` TEXT,
+                        `keywords` TEXT,
+                        `subtype` TEXT,
+                        `confidence` REAL,
+                        `source` TEXT,
+                        `evidence` TEXT,
+                        `classifierVersion` INTEGER NOT NULL DEFAULT 0,
+                        `updatedAt` INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY(`videoPath`)
+                    )
+                """.trimIndent())
             }
         }
 
@@ -199,7 +181,7 @@ abstract class CachedVideoMetadataDatabase : RoomDatabase() {
                     context.applicationContext,
                     CachedVideoMetadataDatabase::class.java,
                     "cinevault_metadata.db"
-                ).addMigrations(MIGRATION_1_2)
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { INSTANCE = it }
             }

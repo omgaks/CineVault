@@ -1,11 +1,8 @@
 package com.sole.cinevault
 
 import com.sole.cinevault.library.VideoFile
-
 import androidx.compose.runtime.Immutable
 
-// Lightweight cast entry stored per video so Actor pages can filter the
-// whole library locally instead of re-fetching credits for every item.
 @Immutable
 data class CastEntry(
     val id: Int,
@@ -27,18 +24,19 @@ data class VideoWithMetadata(
     val rottenTomatoesRating: String? = null,
     val tmdbId: Int? = null,
     val type: String,
-    // ── Media intelligence additions ───────────────────────────────────────
-    // All default to empty/null so every existing VideoWithMetadata(...)
-    // construction site (scanner, cache, etc.) keeps compiling unchanged.
     val genres: List<String> = emptyList(),
     val director: String? = null,
     val collectionId: Int? = null,
     val collectionName: String? = null,
-    // Curated groupings (e.g. "Marvel Cinematic Universe") that aren't a
-    // single native TMDB collection — matched by keyword, see MetadataCache.kt.
-    // A movie could in principle match more than one, hence a list.
     val curatedCollections: List<String> = emptyList(),
-    // Top ~10 cast members, captured alongside genres/director during
-    // enrichment (same details call, no extra network cost) — backs Actor pages.
-    val cast: List<CastEntry> = emptyList()
+    val cast: List<CastEntry> = emptyList(),
+    // P5 Animation Intelligence evidence. F1 establishes the contract;
+    // F2 classifies and fills the classification fields.
+    val originalLanguage: String? = null,
+    val metadataKeywords: List<String> = emptyList(),
+    val animationSubtype: String? = null,
+    val animationConfidence: Float? = null,
+    val animationClassificationSource: String? = null,
+    val animationEvidence: List<String> = emptyList(),
+    val animationClassifierVersion: Int = 0,
 )
