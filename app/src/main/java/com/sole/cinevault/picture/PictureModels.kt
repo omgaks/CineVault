@@ -53,7 +53,7 @@ object PictureProfiles {
         active:Boolean,
         splitView:Boolean=false,
         splitPosition:Float=.5f,
-        detectedContent:PictureContent=PictureContent.FILM,
+        detectedContent:PictureContent=PictureAnimeRoutingPolicy.currentDetected(),
     ):PictureShaderParams {
         if(!active||settings.preset==PicturePreset.OFF)return PictureShaderParams.OFF
         return PictureShaderParams(
