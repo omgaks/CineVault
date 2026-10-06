@@ -5,14 +5,26 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PictureAnimeEnginePolicyTest {
-    @Test fun `anime engine is disabled for non anime content`() {
-        listOf(PictureContent.AUTO, PictureContent.ANIMATION, PictureContent.FILM).forEach { content ->
+    @Test fun `anime bridge is disabled for auto and film content`() {
+        listOf(PictureContent.AUTO, PictureContent.FILM).forEach { content ->
             val p = PictureAnimeEnginePolicy.forState(content, 1f, 720)
             assertEquals(0f, p.enabled, 0f)
             assertEquals(0f, p.lineStrength, 0f)
             assertEquals(0f, p.reconstruction, 0f)
             assertEquals(0f, p.diagonalAssist, 0f)
         }
+    }
+
+    @Test fun `animation content is delegated to P5 animation engine`() {
+        val p = PictureAnimeEnginePolicy.forState(PictureContent.ANIMATION, 1f, 720)
+        val animation = PictureAnimationEnginePolicy.forState(PictureContent.ANIMATION, 1f, 720)
+        assertEquals(animation.enabled, p.enabled, 0f)
+        assertEquals(animation.lineStrength, p.lineStrength, 0f)
+        assertEquals(animation.reconstruction, p.reconstruction, 0f)
+        assertEquals(animation.diagonalAssist, p.diagonalAssist, 0f)
+        assertEquals(animation.flatProtection, p.flatProtection, 0f)
+        assertEquals(animation.haloGuard, p.haloGuard, 0f)
+        assertEquals(animation.chromaEdgeGuard, p.chromaEdgeGuard, 0f)
     }
 
     @Test fun `anime engine scales from eco through max`() {
