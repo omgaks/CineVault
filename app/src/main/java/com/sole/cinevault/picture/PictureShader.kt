@@ -17,7 +17,7 @@ class PictureLiveParams {
     @Volatile var frames: Long = 0L
 }
 
-/** P4 single-pass enhancement: P3 repair/chroma -> Anime line/reconstruction engine -> CAS -> vibrance -> dither/grain. */
+/** P6 single-pass enhancement: P3 repair/chroma -> Anime/Animation or Movie recovery -> CAS -> vibrance -> dither/grain. */
 @OptIn(UnstableApi::class)
 class PictureEnhanceEffect(private val live: PictureLiveParams) : GlEffect {
     override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram {
@@ -63,6 +63,7 @@ private class PictureShaderProgram(private val live: PictureLiveParams) :
             glProgram.setFloatUniform("uRepairScale",adaptive.repair)
             glProgram.setFloatUniform("uChromaScale",adaptive.chroma)
             glProgram.setFloatUniform("uSharpenGuard",adaptive.sharpenGuard)
+
             val anime=PictureAnimeEnginePolicy.forState(p.content,p.amount,sourceHeight)
             glProgram.setFloatUniform("uAnimeEnabled",anime.enabled)
             glProgram.setFloatUniform("uAnimeLine",anime.lineStrength)
@@ -71,6 +72,17 @@ private class PictureShaderProgram(private val live: PictureLiveParams) :
             glProgram.setFloatUniform("uAnimeReconstruct",anime.reconstruction)
             glProgram.setFloatUniform("uAnimeDiagonal",anime.diagonalAssist)
             glProgram.setFloatUniform("uAnimeChromaGuard",anime.chromaEdgeGuard)
+
+            val movie=PictureMovieEnginePolicy.forState(p.content,p.amount,sourceHeight)
+            glProgram.setFloatUniform("uMovieEnabled",movie.enabled)
+            glProgram.setFloatUniform("uMovieDetail",movie.detailRecovery)
+            glProgram.setFloatUniform("uMovieTexture",movie.textureProtection)
+            glProgram.setFloatUniform("uMovieGrainProtect",movie.grainProtection)
+            glProgram.setFloatUniform("uMovieSkinProtect",movie.skinProtection)
+            glProgram.setFloatUniform("uMovieHalo",movie.haloGuard)
+            glProgram.setFloatUniform("uMovieChromaGuard",movie.chromaGuard)
+            glProgram.setFloatUniform("uMovieSharpenCeiling",movie.sharpenCeiling)
+
             glProgram.setFloatUniform("uSeed",((presentationTimeUs/1000L)%997L).toFloat()/997f)
             glProgram.bindAttributesAndUniforms()
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4)
@@ -95,6 +107,8 @@ uniform float uAmount,uSharpen,uDeband,uColour,uGrain,uSplit,uSeed;
 uniform float uRepairScale,uChromaScale,uSharpenGuard;
 uniform float uAnimeEnabled,uAnimeLine,uAnimeFlat,uAnimeHalo;
 uniform float uAnimeReconstruct,uAnimeDiagonal,uAnimeChromaGuard;
+uniform float uMovieEnabled,uMovieDetail,uMovieTexture,uMovieGrainProtect;
+uniform float uMovieSkinProtect,uMovieHalo,uMovieChromaGuard,uMovieSharpenCeiling;
 varying vec2 vTexSamplingCoord;
 float rand(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
 float luma709(vec3 c){return dot(c,vec3(0.2126,0.7152,0.0722));}
@@ -103,6 +117,13 @@ vec3 fromLumaChroma(float y,vec2 c){
   float r=y+c.x,b=y+c.y;
   float g=(y-0.2126*r-0.0722*b)/0.7152;
   return vec3(r,g,b);
+}
+float skinMask(vec3 c){
+ float mxc=max(c.r,max(c.g,c.b)),mnc=min(c.r,min(c.g,c.b));
+ float chroma=mxc-mnc,redMax=step(c.g,c.r)*step(c.b,c.r);
+ float hueT=(c.g-c.b)/max(chroma,0.0001);
+ return redMax*smoothstep(0.10,0.28,hueT)*(1.0-smoothstep(0.62,0.90,hueT))
+  *smoothstep(0.05,0.14,chroma)*(1.0-smoothstep(0.50,0.70,chroma));
 }
 
 void main(){
@@ -150,9 +171,7 @@ void main(){
   e=clamp(fromLumaChroma(yc,repairedC),0.0,1.0);
  }
 
- // P4-S1 Anime line engine.
- // It only activates for explicit Anime routing. A cross + diagonal neighbourhood estimates
- // real drawn outlines; flat fills are protected and already-hard edges are prevented from ringing.
+ // P4/P5 Anime + Animation line/reconstruction engine.
  if(uAnimeEnabled>0.5){
   vec3 aL=texture2D(uTexSampler,uv-vec2(uTexel.x,0.0)).rgb;
   vec3 aR=texture2D(uTexSampler,uv+vec2(uTexel.x,0.0)).rgb;
@@ -182,19 +201,14 @@ void main(){
   float lineDelta=ac-neighbourY;
   float safeLine=lineMask*(1.0-flatMask*uAnimeFlat)*hardEdgeGuard;
   float targetY=clamp(ac+lineDelta*uAnimeLine*safeLine,localMin,localMax);
-  vec2 animeC=chromaRG(e);
-  e=clamp(fromLumaChroma(targetY,animeC),0.0,1.0);
+  e=clamp(fromLumaChroma(targetY,chromaRG(e)),0.0,1.0);
 
-  // P4-S2 directional reconstruction. This is a source-aware reconstruction stage inside
-  // the existing same-size GPU pass: it improves low-resolution line continuity without
-  // pretending to change the player's output resolution.
   float hDiff=abs(al-ar),vDiff=abs(at-ab);
   float d1Diff=abs(atl-abr),d2Diff=abs(atr-abl);
   float axisMin=min(hDiff,vDiff),diagMin=min(d1Diff,d2Diff);
   float axisWeight=1.0/(0.002+axisMin);
   float diagWeight=uAnimeDiagonal/(0.002+diagMin);
   float norm=axisWeight+diagWeight;
-
   float axisY=mix((al+ar)*0.5,(at+ab)*0.5,step(vDiff,hDiff));
   float diagY=mix((atl+abr)*0.5,(atr+abl)*0.5,step(d2Diff,d1Diff));
   float reconstructedY=(axisY*axisWeight+diagY*diagWeight)/max(norm,0.0001);
@@ -204,13 +218,39 @@ void main(){
   float colourSafe=1.0-smoothstep(0.020,uAnimeChromaGuard*0.10,colourBoundary);
   float reconstructionMask=lineMask*(1.0-flatMask*uAnimeFlat)*hardEdgeGuard*colourSafe;
   float rebuiltY=mix(luma709(e),reconstructedY,uAnimeReconstruct*reconstructionMask);
-
-  // Clamp to the local neighbourhood so reconstruction cannot create bright/dark ringing.
   rebuiltY=clamp(rebuiltY,localMin,localMax);
   e=clamp(fromLumaChroma(rebuiltY,chromaRG(e)),0.0,1.0);
  }
 
- // Existing CAS-style adaptive sharpen.
+ // P6-S2 Movie Engine. Conservative live-action detail recovery in the same GPU pass.
+ // Texture/grain, skin, chroma boundaries and already-hard edges suppress recovery.
+ if(uMovieEnabled>0.5 && uMovieDetail>0.001){
+  vec3 mL=texture2D(uTexSampler,uv-vec2(uTexel.x,0.0)).rgb;
+  vec3 mR=texture2D(uTexSampler,uv+vec2(uTexel.x,0.0)).rgb;
+  vec3 mT=texture2D(uTexSampler,uv-vec2(0.0,uTexel.y)).rgb;
+  vec3 mB=texture2D(uTexSampler,uv+vec2(0.0,uTexel.y)).rgb;
+  float mc=luma709(e),ml=luma709(mL),mr=luma709(mR),mt=luma709(mT),mb=luma709(mB);
+  float localMin=min(mc,min(min(ml,mr),min(mt,mb)));
+  float localMax=max(mc,max(max(ml,mr),max(mt,mb)));
+  float span=localMax-localMin;
+  float lap=abs(mc-(ml+mr+mt+mb)*0.25);
+
+  vec2 cc=chromaRG(e);
+  float chromaEdge=max(length(chromaRG(mR)-chromaRG(mL)),
+                       length(chromaRG(mB)-chromaRG(mT)));
+  float textureSafe=1.0-smoothstep(0.010,0.050*uMovieTexture,lap);
+  float grainSafe=1.0-smoothstep(0.014,0.060*uMovieGrainProtect,span);
+  float haloSafe=1.0-smoothstep(0.045,0.16*uMovieHalo,span);
+  float chromaSafe=1.0-smoothstep(0.018,0.090*uMovieChromaGuard,chromaEdge);
+  float faceSafe=1.0-skinMask(e)*uMovieSkinProtect;
+  float recoveryMask=textureSafe*grainSafe*haloSafe*chromaSafe*faceSafe;
+
+  float neighbourY=(ml+mr+mt+mb)*0.25;
+  float recoveredY=clamp(mc+(mc-neighbourY)*uMovieDetail*recoveryMask,localMin,localMax);
+  e=clamp(fromLumaChroma(recoveredY,cc),0.0,1.0);
+ }
+
+ // Existing CAS-style adaptive sharpen, with a P6 film ceiling.
  vec3 sb=texture2D(uTexSampler,uv+vec2(0.0,-uTexel.y)).rgb;
  vec3 sd=texture2D(uTexSampler,uv+vec2(-uTexel.x,0.0)).rgb;
  vec3 sf=texture2D(uTexSampler,uv+vec2(uTexel.x,0.0)).rgb;
@@ -219,14 +259,13 @@ void main(){
  vec3 amp=sqrt(clamp(min(mn,1.0-mx)/max(mx,vec3(0.0001)),0.0,1.0));
  float localSpan=max(max(mx.r-mn.r,mx.g-mn.g),mx.b-mn.b);
  float edgeGuard=1.0-smoothstep(uSharpenGuard,1.0,localSpan);
- float peak=-1.0/mix(9.0,4.0,uSharpen*edgeGuard); vec3 w=amp*peak;
+ float effectiveSharpen=uSharpen;
+ if(uMovieEnabled>0.5) effectiveSharpen=min(effectiveSharpen,uMovieSharpenCeiling);
+ float peak=-1.0/mix(9.0,4.0,effectiveSharpen*edgeGuard); vec3 w=amp*peak;
  vec3 col=clamp((sb*w+sd*w+sf*w+sh*w+e)/(1.0+4.0*w),0.0,1.0);
 
  float lum=luma709(col),mxc=max(col.r,max(col.g,col.b)),mnc=min(col.r,min(col.g,col.b));
- float chroma=mxc-mnc,redMax=step(col.g,col.r)*step(col.b,col.r);
- float hueT=(col.g-col.b)/max(chroma,0.0001);
- float skin=redMax*smoothstep(0.10,0.28,hueT)*(1.0-smoothstep(0.62,0.90,hueT))
-  *smoothstep(0.05,0.14,chroma)*(1.0-smoothstep(0.50,0.70,chroma));
+ float chroma=mxc-mnc,skin=skinMask(col);
  float vib=uColour*(1.0-chroma)*(1.0-0.75*skin);
  col=clamp(mix(vec3(lum),col,1.0+1.6*vib),0.0,1.0);
 
