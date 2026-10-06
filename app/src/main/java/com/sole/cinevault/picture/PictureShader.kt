@@ -17,7 +17,7 @@ class PictureLiveParams {
     @Volatile var frames: Long = 0L
 }
 
-/** P3 single-pass enhancement: repair -> chroma reconstruction -> CAS -> vibrance -> dither/grain. */
+/** P4 single-pass enhancement: P3 repair/chroma -> Anime line engine -> CAS -> vibrance -> dither/grain. */
 @OptIn(UnstableApi::class)
 class PictureEnhanceEffect(private val live: PictureLiveParams) : GlEffect {
     override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram {
@@ -61,6 +61,11 @@ private class PictureShaderProgram(private val live: PictureLiveParams) :
             glProgram.setFloatUniform("uRepairScale",adaptive.repair)
             glProgram.setFloatUniform("uChromaScale",adaptive.chroma)
             glProgram.setFloatUniform("uSharpenGuard",adaptive.sharpenGuard)
+            val anime=PictureAnimeEnginePolicy.forState(p.content,p.amount)
+            glProgram.setFloatUniform("uAnimeEnabled",anime.enabled)
+            glProgram.setFloatUniform("uAnimeLine",anime.lineStrength)
+            glProgram.setFloatUniform("uAnimeFlat",anime.flatProtection)
+            glProgram.setFloatUniform("uAnimeHalo",anime.haloGuard)
             glProgram.setFloatUniform("uSeed",((presentationTimeUs/1000L)%997L).toFloat()/997f)
             glProgram.bindAttributesAndUniforms()
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4)
@@ -83,6 +88,7 @@ uniform sampler2D uTexSampler;
 uniform vec2 uTexel;
 uniform float uAmount,uSharpen,uDeband,uColour,uGrain,uSplit,uSeed;
 uniform float uRepairScale,uChromaScale,uSharpenGuard;
+uniform float uAnimeEnabled,uAnimeLine,uAnimeFlat,uAnimeHalo;
 varying vec2 vTexSamplingCoord;
 float rand(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
 float luma709(vec3 c){return dot(c,vec3(0.2126,0.7152,0.0722));}
@@ -97,7 +103,7 @@ void main(){
  vec2 uv=vTexSamplingCoord; vec3 e0=texture2D(uTexSampler,uv).rgb;
  if(uAmount<=0.002){gl_FragColor=vec4(e0,1.0);return;} vec3 e=e0;
 
- // S1 edge-aware gradient repair.
+ // P3 edge-aware gradient repair.
  if(uDeband>0.01){
   vec2 seedXY=gl_FragCoord.xy+vec2(uSeed*61.0,uSeed*29.0);
   float radiusPx=1.5+3.2*uDeband+0.8*(rand(seedXY)-0.5);
@@ -119,9 +125,7 @@ void main(){
   e=mix(e0,directional,lf*cf*ds*mix(0.18,0.62,uDeband)*uRepairScale);
  }
 
- // P3-S2 chroma reconstruction.
- // Uses immediate cross neighbours and preserves centre luma exactly. Reconstruction
- // is allowed only where luma is locally smooth; colour boundaries are protected.
+ // P3 chroma reconstruction.
  if(uDeband>0.01){
   vec3 cl=texture2D(uTexSampler,uv-vec2(uTexel.x,0.0)).rgb;
   vec3 cr=texture2D(uTexSampler,uv+vec2(uTexel.x,0.0)).rgb;
@@ -138,6 +142,42 @@ void main(){
   float reconstruct=smoothLuma*safeChroma*mix(0.04,0.24,uDeband)*uChromaScale;
   vec2 repairedC=mix(cc,avgC,reconstruct);
   e=clamp(fromLumaChroma(yc,repairedC),0.0,1.0);
+ }
+
+ // P4-S1 Anime line engine.
+ // It only activates for explicit Anime routing. A cross + diagonal neighbourhood estimates
+ // real drawn outlines; flat fills are protected and already-hard edges are prevented from ringing.
+ if(uAnimeEnabled>0.5){
+  vec3 aL=texture2D(uTexSampler,uv-vec2(uTexel.x,0.0)).rgb;
+  vec3 aR=texture2D(uTexSampler,uv+vec2(uTexel.x,0.0)).rgb;
+  vec3 aT=texture2D(uTexSampler,uv-vec2(0.0,uTexel.y)).rgb;
+  vec3 aB=texture2D(uTexSampler,uv+vec2(0.0,uTexel.y)).rgb;
+  vec3 aTL=texture2D(uTexSampler,uv-vec2(uTexel.x,uTexel.y)).rgb;
+  vec3 aTR=texture2D(uTexSampler,uv+vec2(uTexel.x,-uTexel.y)).rgb;
+  vec3 aBL=texture2D(uTexSampler,uv+vec2(-uTexel.x,uTexel.y)).rgb;
+  vec3 aBR=texture2D(uTexSampler,uv+vec2(uTexel.x,uTexel.y)).rgb;
+
+  float ac=luma709(e);
+  float al=luma709(aL),ar=luma709(aR),at=luma709(aT),ab=luma709(aB);
+  float atl=luma709(aTL),atr=luma709(aTR),abl=luma709(aBL),abr=luma709(aBR);
+  float axisEdge=max(abs(ar-al),abs(ab-at));
+  float diagEdge=max(abs(abr-atl),abs(abl-atr));
+  float edge=max(axisEdge,diagEdge);
+
+  float localMin=min(min(min(al,ar),min(at,ab)),min(min(atl,atr),min(abl,abr)));
+  float localMax=max(max(max(al,ar),max(at,ab)),max(max(atl,atr),max(abl,abr)));
+  float span=localMax-localMin;
+
+  float lineMask=smoothstep(0.035,0.12,edge);
+  float flatMask=1.0-smoothstep(0.018,0.060,span);
+  float hardEdgeGuard=1.0-smoothstep(uAnimeHalo,1.0,span);
+
+  float neighbourY=(al+ar+at+ab)*0.20+(atl+atr+abl+abr)*0.05;
+  float lineDelta=ac-neighbourY;
+  float safeLine=lineMask*(1.0-flatMask*uAnimeFlat)*hardEdgeGuard;
+  float targetY=clamp(ac+lineDelta*uAnimeLine*safeLine,localMin,localMax);
+  vec2 animeC=chromaRG(e);
+  e=clamp(fromLumaChroma(targetY,animeC),0.0,1.0);
  }
 
  // Existing CAS-style adaptive sharpen.
