@@ -8,9 +8,9 @@ import org.junit.Test
 class PictureLogicTest {
 
     @Test
-    fun detect_animationGenreWithoutAnimeHint_isAnimation() {
+    fun detect_knownRomanisedAnimeFilm_isAnime() {
         assertEquals(
-            PictureContent.ANIMATION,
+            PictureContent.ANIME,
             PictureContentDetector.detect("Spirited Away (2001).mkv", listOf("Animation", "Fantasy")),
         )
     }
