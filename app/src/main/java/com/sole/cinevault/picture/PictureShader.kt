@@ -82,6 +82,9 @@ private class PictureShaderProgram(private val live: PictureLiveParams) :
             glProgram.setFloatUniform("uMovieHalo",movie.haloGuard)
             glProgram.setFloatUniform("uMovieChromaGuard",movie.chromaGuard)
             glProgram.setFloatUniform("uMovieSharpenCeiling",movie.sharpenCeiling)
+            glProgram.setFloatUniform("uMovieStructureFloor",movie.structureFloor)
+            glProgram.setFloatUniform("uMovieTextureCeiling",movie.textureCeiling)
+            glProgram.setFloatUniform("uMovieFaceRecovery",movie.faceRecoveryScale)
 
             glProgram.setFloatUniform("uSeed",((presentationTimeUs/1000L)%997L).toFloat()/997f)
             glProgram.bindAttributesAndUniforms()
@@ -109,6 +112,7 @@ uniform float uAnimeEnabled,uAnimeLine,uAnimeFlat,uAnimeHalo;
 uniform float uAnimeReconstruct,uAnimeDiagonal,uAnimeChromaGuard;
 uniform float uMovieEnabled,uMovieDetail,uMovieTexture,uMovieGrainProtect;
 uniform float uMovieSkinProtect,uMovieHalo,uMovieChromaGuard,uMovieSharpenCeiling;
+uniform float uMovieStructureFloor,uMovieTextureCeiling,uMovieFaceRecovery;
 varying vec2 vTexSamplingCoord;
 float rand(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
 float luma709(vec3 c){return dot(c,vec3(0.2126,0.7152,0.0722));}
@@ -238,12 +242,17 @@ void main(){
   vec2 cc=chromaRG(e);
   float chromaEdge=max(length(chromaRG(mR)-chromaRG(mL)),
                        length(chromaRG(mB)-chromaRG(mT)));
-  float textureSafe=1.0-smoothstep(0.010,0.050*uMovieTexture,lap);
-  float grainSafe=1.0-smoothstep(0.014,0.060*uMovieGrainProtect,span);
+  // S3 structure/texture discriminator: recover coherent detail, not flat fields or grain.
+  float structure=smoothstep(uMovieStructureFloor,uMovieStructureFloor*2.4,span);
+  float textureLimit=max(uMovieStructureFloor*2.6,uMovieTextureCeiling*uMovieTexture);
+  float textureSafe=1.0-smoothstep(textureLimit*0.72,textureLimit,lap);
+  float grainLimit=max(uMovieStructureFloor*3.0,uMovieTextureCeiling*uMovieGrainProtect);
+  float grainSafe=1.0-smoothstep(grainLimit*0.72,grainLimit,span);
   float haloSafe=1.0-smoothstep(0.045,0.16*uMovieHalo,span);
   float chromaSafe=1.0-smoothstep(0.018,0.090*uMovieChromaGuard,chromaEdge);
-  float faceSafe=1.0-skinMask(e)*uMovieSkinProtect;
-  float recoveryMask=textureSafe*grainSafe*haloSafe*chromaSafe*faceSafe;
+  float skin=skinMask(e);
+  float faceSafe=clamp(1.0-skin*uMovieSkinProtect+skin*uMovieFaceRecovery,0.0,1.0);
+  float recoveryMask=structure*textureSafe*grainSafe*haloSafe*chromaSafe*faceSafe;
 
   float neighbourY=(ml+mr+mt+mb)*0.25;
   float recoveredY=clamp(mc+(mc-neighbourY)*uMovieDetail*recoveryMask,localMin,localMax);

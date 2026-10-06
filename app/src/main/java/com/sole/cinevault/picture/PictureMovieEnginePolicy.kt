@@ -1,81 +1,27 @@
 package com.sole.cinevault.picture
 
-/**
- * P6 Movie Engine core policy.
- *
- * S1 is deliberately policy-only: it defines a conservative live-action restoration envelope
- * without changing Media3 effect topology or the shader. The existing single Picture effect
- * remains the only full-frame GPU pass.
- *
- * Goals:
- * - preserve natural film grain and fine texture;
- * - avoid halos and oversharpening on already-clean HD/UHD sources;
- * - allow stronger recovery only where lower-resolution sources benefit;
- * - keep skin/chroma protection high for live-action material;
- * - HDR/Dolby Vision behavior remains unchanged and is still refused by PictureEnhanceEffect.
- */
+/** P6-S3 live-action recovery policy. Resolution tunes strength only, never content type. */
 object PictureMovieEnginePolicy {
-
     data class Params(
-        val enabled: Float,
-        val detailRecovery: Float,
-        val textureProtection: Float,
-        val grainProtection: Float,
-        val skinProtection: Float,
-        val haloGuard: Float,
-        val chromaGuard: Float,
-        val sharpenCeiling: Float,
+        val enabled:Float,val detailRecovery:Float,val textureProtection:Float,
+        val grainProtection:Float,val skinProtection:Float,val haloGuard:Float,
+        val chromaGuard:Float,val sharpenCeiling:Float,val structureFloor:Float,
+        val textureCeiling:Float,val faceRecoveryScale:Float,
     )
-
-    fun forState(
-        content: PictureContent,
-        intensity: Float,
-        sourceHeight: Int = 1080,
-    ): Params {
-        if (content != PictureContent.FILM) return disabled()
-
-        val qualityScale = when {
-            intensity < 0.72f -> 0.52f   // Eco
-            intensity >= 0.96f -> 1.00f  // Max
-            else -> 0.78f                // Balanced
-        }
-
-        // Resolution is used only as a restoration-strength envelope.
-        // It does not classify the movie or infer how it was produced.
-        val sourceScale = when {
-            sourceHeight <= 576 -> 1.00f
-            sourceHeight <= 720 -> 0.82f
-            sourceHeight <= 1080 -> 0.58f
-            else -> 0.30f
-        }
-
-        val cleanSourceBias = when {
-            sourceHeight <= 576 -> 0.00f
-            sourceHeight <= 720 -> 0.12f
-            sourceHeight <= 1080 -> 0.28f
-            else -> 0.48f
-        }
-
+    fun forState(content:PictureContent,intensity:Float,sourceHeight:Int=1080):Params {
+        if(content!=PictureContent.FILM)return disabled()
+        val quality=when{intensity<.72f->.52f;intensity>=.96f->1f;else->.78f}
+        val source=when{sourceHeight<=576->1f;sourceHeight<=720->.82f;sourceHeight<=1080->.58f;else->.30f}
+        val clean=when{sourceHeight<=576->0f;sourceHeight<=720->.12f;sourceHeight<=1080->.28f;else->.48f}
         return Params(
-            enabled = 1f,
-            detailRecovery = (0.22f * qualityScale * sourceScale).coerceIn(0f, 0.22f),
-            textureProtection = (0.84f + 0.12f * cleanSourceBias).coerceIn(0.84f, 0.96f),
-            grainProtection = (0.86f + 0.10f * cleanSourceBias).coerceIn(0.86f, 0.96f),
-            skinProtection = 0.94f,
-            haloGuard = (0.86f + 0.10f * cleanSourceBias).coerceIn(0.86f, 0.96f),
-            chromaGuard = (0.90f + 0.07f * cleanSourceBias).coerceIn(0.90f, 0.97f),
-            sharpenCeiling = (0.26f - 0.08f * cleanSourceBias).coerceIn(0.18f, 0.26f),
+            1f,(.22f*quality*source).coerceIn(0f,.22f),
+            (.84f+.12f*clean).coerceIn(.84f,.96f),(.86f+.10f*clean).coerceIn(.86f,.96f),
+            .94f,(.86f+.10f*clean).coerceIn(.86f,.96f),(.90f+.07f*clean).coerceIn(.90f,.97f),
+            (.26f-.08f*clean).coerceIn(.18f,.26f),
+            (.010f+.006f*clean).coerceIn(.010f,.016f),
+            (.060f-.014f*clean).coerceIn(.046f,.060f),
+            (.22f-.06f*clean).coerceIn(.16f,.22f),
         )
     }
-
-    private fun disabled() = Params(
-        enabled = 0f,
-        detailRecovery = 0f,
-        textureProtection = 1f,
-        grainProtection = 1f,
-        skinProtection = 1f,
-        haloGuard = 1f,
-        chromaGuard = 1f,
-        sharpenCeiling = 0f,
-    )
+    private fun disabled()=Params(0f,0f,1f,1f,1f,1f,1f,0f,1f,0f,0f)
 }
