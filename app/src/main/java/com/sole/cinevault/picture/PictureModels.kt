@@ -47,14 +47,21 @@ object PictureProfiles {
         val x=tune(preset,resolvedContent)
         return settings.copy(preset=preset,sharpen=x.sharpen,deband=x.deband,colour=x.colour,grain=x.grain)
     }
-    fun toShaderParams(settings:PictureSettings,comparing:Boolean,active:Boolean,splitView:Boolean=false,splitPosition:Float=.5f):PictureShaderParams {
+    fun toShaderParams(
+        settings:PictureSettings,
+        comparing:Boolean,
+        active:Boolean,
+        splitView:Boolean=false,
+        splitPosition:Float=.5f,
+        detectedContent:PictureContent=PictureContent.FILM,
+    ):PictureShaderParams {
         if(!active||settings.preset==PicturePreset.OFF)return PictureShaderParams.OFF
         return PictureShaderParams(
             amount=if(comparing)0f else settings.intensity.coerceIn(0f,1f),
             sharpen=settings.sharpen.coerceIn(0f,1f),deband=settings.deband.coerceIn(0f,1f),
             colour=settings.colour.coerceIn(0f,1f),grain=settings.grain.coerceIn(0f,1f),
             split=if(splitView&&!comparing)splitPosition.coerceIn(.05f,.95f) else 0f,
-            content=settings.content,
+            content=PictureAnimeRoutingPolicy.resolve(settings.content,detectedContent),
         )
     }
     fun resetFineTune(settings:PictureSettings,resolvedContent:PictureContent,fallback:PicturePreset):PictureSettings {

@@ -24,12 +24,14 @@ object PictureContentDetector {
         val animationGenre = genres.any {
             it.equals("Animation", ignoreCase = true) || it.equals("Anime", ignoreCase = true)
         }
-        return when {
+        val result = when {
             genres.isNotEmpty() && !animationGenre -> PictureContent.FILM
             animationGenre && animeHint -> PictureContent.ANIME
             animationGenre -> PictureContent.ANIMATION
             animeHint -> PictureContent.ANIME
             else -> PictureContent.FILM
         }
+        PictureAnimeRoutingPolicy.updateDetected(result)
+        return result
     }
 }
