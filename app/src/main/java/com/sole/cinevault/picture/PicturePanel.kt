@@ -51,33 +51,23 @@ private enum class PicturePage { MAIN, FINE }
 @Composable
 fun PicturePanelHost(controller: PictureEnhanceController) {
     val configuration = LocalConfiguration.current
-    val scope = rememberCoroutineScope()
-
     LaunchedEffect(configuration.orientation, configuration.screenWidthDp, configuration.screenHeightDp) {
         delay(450)
         controller.refreshFrame()
     }
-    if (!controller.panelOpen) return
+    if (!controller.panelOpen && !controller.splitView && !controller.comparing) return
 
     var page by remember { mutableStateOf(PicturePage.MAIN) }
     var panelOffset by remember { mutableStateOf(Offset.Zero) }
     var panelSize by remember { mutableStateOf(IntSize.Zero) }
 
-    fun redrawPausedFrame() {
-        scope.launch {
-            delay(16)
-            controller.refreshFrame()
-        }
+    fun closePanelOnly() {
+        // Closing settings must not cancel the explicit Split viewing mode.
+        controller.panelOpen = false
     }
 
-    fun closeAndRefresh() {
-        val needsRedraw = controller.splitView || controller.comparing
-        controller.closePanel()
-        if (needsRedraw) redrawPausedFrame()
-    }
-
-    BackHandler {
-        if (page == PicturePage.FINE) page = PicturePage.MAIN else closeAndRefresh()
+    BackHandler(enabled = controller.panelOpen) {
+        if (page == PicturePage.FINE) page = PicturePage.MAIN else closePanelOnly()
     }
 
     LaunchedEffect(controller) {
@@ -101,11 +91,13 @@ fun PicturePanelHost(controller: PictureEnhanceController) {
 
         // Background dismissal stays available during Split View. The old full-screen split
         // drag detector sat above this layer and swallowed empty-space taps.
-        Box(
-            Modifier.fillMaxSize().pointerInput(controller.splitView) {
-                detectTapGestures { closeAndRefresh() }
-            }
-        )
+        if (controller.panelOpen) {
+            Box(
+                Modifier.fillMaxSize().pointerInput(controller.panelOpen) {
+                    detectTapGestures { closePanelOnly() }
+                }
+            )
+        }
 
         if (controller.splitView && !controller.comparing) {
             SplitViewOverlay(
@@ -114,42 +106,37 @@ fun PicturePanelHost(controller: PictureEnhanceController) {
                 onDrag = { delta ->
                     controller.moveSplit(controller.splitPosition + delta / containerW)
                 },
-                onDragFinished = { redrawPausedFrame() },
             )
         }
 
-        PicturePanel(
-            controller = controller,
-            page = page,
-            onPage = { page = it },
-            maxPanelHeight = maxHeight - 32.dp,
-            dragHandle = Modifier.pointerInput(containerW, containerH, panelSize) {
-                detectDragGestures { change, drag ->
-                    change.consume()
-                    val minX = -(containerW - panelSize.width - marginPx).coerceAtLeast(0f)
-                    val maxY = ((containerH - panelSize.height) / 2f).coerceAtLeast(0f)
-                    panelOffset = Offset(
-                        (panelOffset.x + drag.x).coerceIn(minX, marginPx),
-                        (panelOffset.y + drag.y).coerceIn(-maxY, maxY),
-                    )
-                }
-            },
-            onClose = { closeAndRefresh() },
-            onToggleSplit = {
-                controller.toggleSplit()
-                redrawPausedFrame()
-            },
-            onResetAll = {
-                controller.resetAll()
-                redrawPausedFrame()
-            },
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = 12.dp)
-                .offset { IntOffset(panelOffset.x.roundToInt(), panelOffset.y.roundToInt()) }
-                .onSizeChanged { panelSize = it }
-                .graphicsLayer(alpha = panelAlpha),
-        )
+        if (controller.panelOpen) {
+            PicturePanel(
+                controller = controller,
+                page = page,
+                onPage = { page = it },
+                maxPanelHeight = maxHeight - 32.dp,
+                dragHandle = Modifier.pointerInput(containerW, containerH, panelSize) {
+                    detectDragGestures { change, drag ->
+                        change.consume()
+                        val minX = -(containerW - panelSize.width - marginPx).coerceAtLeast(0f)
+                        val maxY = ((containerH - panelSize.height) / 2f).coerceAtLeast(0f)
+                        panelOffset = Offset(
+                            (panelOffset.x + drag.x).coerceIn(minX, marginPx),
+                            (panelOffset.y + drag.y).coerceIn(-maxY, maxY),
+                        )
+                    }
+                },
+                onClose = { closePanelOnly() },
+                onToggleSplit = { controller.toggleSplit() },
+                onResetAll = { controller.resetAll() },
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 12.dp)
+                    .offset { IntOffset(panelOffset.x.roundToInt(), panelOffset.y.roundToInt()) }
+                    .onSizeChanged { panelSize = it }
+                    .graphicsLayer(alpha = panelAlpha),
+            )
+        }
 
         if (controller.comparing) {
             Text(
@@ -170,7 +157,6 @@ private fun BoxScope.SplitViewOverlay(
     position: Float,
     containerW: Float,
     onDrag: (Float) -> Unit,
-    onDragFinished: () -> Unit,
 ) {
     val density = LocalDensity.current
     val dividerX = containerW * position
@@ -185,6 +171,16 @@ private fun BoxScope.SplitViewOverlay(
             .offset { IntOffset(((dividerX + containerW) * .5f).roundToInt() - with(density) { 36.dp.roundToPx() }, 0) }
     )
 
+    // Compose owns the visible divider. It follows the finger immediately even when
+    // playback is paused and Media3 is not submitting a new frame to the shader.
+    Box(
+        Modifier.align(Alignment.CenterStart)
+            .offset { IntOffset(dividerX.roundToInt(), 0) }
+            .width(1.5.dp)
+            .fillMaxHeight()
+            .background(AmberCore)
+    )
+
     // Only the divider owns the split drag gesture. Empty player space remains tappable.
     Box(
         Modifier.align(Alignment.CenterStart)
@@ -192,10 +188,7 @@ private fun BoxScope.SplitViewOverlay(
             .width(48.dp)
             .fillMaxHeight()
             .pointerInput(containerW) {
-                detectHorizontalDragGestures(
-                    onDragEnd = onDragFinished,
-                    onDragCancel = onDragFinished,
-                ) { change, delta ->
+                detectHorizontalDragGestures { change, delta ->
                     change.consume()
                     onDrag(delta)
                 }
