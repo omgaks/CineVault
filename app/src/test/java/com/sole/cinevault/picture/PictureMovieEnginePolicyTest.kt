@@ -50,6 +50,19 @@ class PictureMovieEnginePolicyTest {
         assertTrue(uhd.faceRecoveryScale>=.16f)
     }
 
+    @Test fun `film sharpen ceiling preserves meaningful user control`() {
+        val sd=PictureMovieEnginePolicy.forState(PictureContent.FILM,.9f,576)
+        val hd=PictureMovieEnginePolicy.forState(PictureContent.FILM,.9f,1080)
+        val uhd=PictureMovieEnginePolicy.forState(PictureContent.FILM,.9f,2160)
+
+        // Natural (0.50) must pass untouched, while Sharp/Fine Tune retain a clearly
+        // stronger range instead of being flattened to the old 0.18-0.26 ceiling.
+        assertTrue(sd.sharpenCeiling>=.70f)
+        assertTrue(hd.sharpenCeiling>=.70f)
+        assertTrue(uhd.sharpenCeiling>=.70f)
+        assertTrue(sd.sharpenCeiling>uhd.sharpenCeiling)
+    }
+
     @Test fun `disabled path cannot leak movie recovery`() {
         listOf(PictureContent.AUTO,PictureContent.ANIME,PictureContent.ANIMATION).forEach {
             val p=PictureMovieEnginePolicy.forState(it,1f,576)
@@ -71,7 +84,7 @@ class PictureMovieEnginePolicyTest {
                 assertTrue(p.skinProtection in .90f..1f)
                 assertTrue(p.haloGuard in .86f..1f)
                 assertTrue(p.chromaGuard in .90f..1f)
-                assertTrue(p.sharpenCeiling in .18f..0.26f)
+                assertTrue(p.sharpenCeiling in .70f..0.82f)
                 assertTrue(p.structureFloor in .010f..0.016f)
                 assertTrue(p.textureCeiling in .046f..0.060f)
                 assertTrue(p.faceRecoveryScale in .16f..0.22f)
