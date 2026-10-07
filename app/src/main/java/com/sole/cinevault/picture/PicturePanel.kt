@@ -43,6 +43,7 @@ import com.sole.cinevault.ui.theme.TextBright
 import com.sole.cinevault.ui.theme.TextMuted
 import com.sole.cinevault.ui.theme.glassPanel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private enum class PicturePage { MAIN, FINE }
@@ -50,6 +51,8 @@ private enum class PicturePage { MAIN, FINE }
 @Composable
 fun PicturePanelHost(controller: PictureEnhanceController) {
     val configuration = LocalConfiguration.current
+    val scope = rememberCoroutineScope()
+
     LaunchedEffect(configuration.orientation, configuration.screenWidthDp, configuration.screenHeightDp) {
         delay(450)
         controller.refreshFrame()
@@ -60,8 +63,21 @@ fun PicturePanelHost(controller: PictureEnhanceController) {
     var panelOffset by remember { mutableStateOf(Offset.Zero) }
     var panelSize by remember { mutableStateOf(IntSize.Zero) }
 
+    fun redrawPausedFrame() {
+        scope.launch {
+            delay(16)
+            controller.refreshFrame()
+        }
+    }
+
+    fun closeAndRefresh() {
+        val needsRedraw = controller.splitView || controller.comparing
+        controller.closePanel()
+        if (needsRedraw) redrawPausedFrame()
+    }
+
     BackHandler {
-        if (page == PicturePage.FINE) page = PicturePage.MAIN else controller.closePanel()
+        if (page == PicturePage.FINE) page = PicturePage.MAIN else closeAndRefresh()
     }
 
     LaunchedEffect(controller) {
@@ -83,22 +99,23 @@ fun PicturePanelHost(controller: PictureEnhanceController) {
         val containerH = with(density) { maxHeight.toPx() }
         val marginPx = with(density) { 12.dp.toPx() }
 
+        // Background dismissal stays available during Split View. The old full-screen split
+        // drag detector sat above this layer and swallowed empty-space taps.
         Box(
-            Modifier.fillMaxSize().pointerInput(Unit) {
-                detectTapGestures { controller.closePanel() }
+            Modifier.fillMaxSize().pointerInput(controller.splitView) {
+                detectTapGestures { closeAndRefresh() }
             }
         )
 
         if (controller.splitView && !controller.comparing) {
-            Box(
-                Modifier.fillMaxSize().pointerInput(containerW) {
-                    detectHorizontalDragGestures { change, delta ->
-                        change.consume()
-                        controller.moveSplit(controller.splitPosition + delta / containerW)
-                    }
-                }
+            SplitViewOverlay(
+                position = controller.splitPosition,
+                containerW = containerW,
+                onDrag = { delta ->
+                    controller.moveSplit(controller.splitPosition + delta / containerW)
+                },
+                onDragFinished = { redrawPausedFrame() },
             )
-            SplitViewOverlay(controller.splitPosition, containerW)
         }
 
         PicturePanel(
@@ -116,6 +133,15 @@ fun PicturePanelHost(controller: PictureEnhanceController) {
                         (panelOffset.y + drag.y).coerceIn(-maxY, maxY),
                     )
                 }
+            },
+            onClose = { closeAndRefresh() },
+            onToggleSplit = {
+                controller.toggleSplit()
+                redrawPausedFrame()
+            },
+            onResetAll = {
+                controller.resetAll()
+                redrawPausedFrame()
             },
             modifier = Modifier
                 .align(Alignment.CenterEnd)
@@ -140,7 +166,12 @@ fun PicturePanelHost(controller: PictureEnhanceController) {
 }
 
 @Composable
-private fun BoxScope.SplitViewOverlay(position: Float, containerW: Float) {
+private fun BoxScope.SplitViewOverlay(
+    position: Float,
+    containerW: Float,
+    onDrag: (Float) -> Unit,
+    onDragFinished: () -> Unit,
+) {
     val density = LocalDensity.current
     val dividerX = containerW * position
     SplitLabel(
@@ -153,6 +184,24 @@ private fun BoxScope.SplitViewOverlay(position: Float, containerW: Float) {
         Modifier.align(Alignment.TopStart).padding(top = 28.dp)
             .offset { IntOffset(((dividerX + containerW) * .5f).roundToInt() - with(density) { 36.dp.roundToPx() }, 0) }
     )
+
+    // Only the divider owns the split drag gesture. Empty player space remains tappable.
+    Box(
+        Modifier.align(Alignment.CenterStart)
+            .offset { IntOffset(dividerX.roundToInt() - with(density) { 24.dp.roundToPx() }, 0) }
+            .width(48.dp)
+            .fillMaxHeight()
+            .pointerInput(containerW) {
+                detectHorizontalDragGestures(
+                    onDragEnd = onDragFinished,
+                    onDragCancel = onDragFinished,
+                ) { change, delta ->
+                    change.consume()
+                    onDrag(delta)
+                }
+            },
+    )
+
     Box(
         Modifier.align(Alignment.CenterStart)
             .offset { IntOffset(dividerX.roundToInt() - with(density) { 16.dp.roundToPx() }, 0) }
@@ -181,6 +230,9 @@ private fun PicturePanel(
     onPage: (PicturePage) -> Unit,
     maxPanelHeight: Dp,
     dragHandle: Modifier,
+    onClose: () -> Unit,
+    onToggleSplit: () -> Unit,
+    onResetAll: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val settings = controller.settings
@@ -194,7 +246,10 @@ private fun PicturePanel(
             .blockTaps().verticalScroll(rememberScrollState()).padding(14.dp)
     ) {
         if (page == PicturePage.MAIN) {
-            MainPage(controller, settings, available, on, dragHandle) { onPage(PicturePage.FINE) }
+            MainPage(
+                controller, settings, available, on, dragHandle,
+                onClose, onToggleSplit, onResetAll
+            ) { onPage(PicturePage.FINE) }
         } else {
             FinePage(controller, settings, available && on, dragHandle) { onPage(PicturePage.MAIN) }
         }
@@ -208,6 +263,9 @@ private fun MainPage(
     available: Boolean,
     on: Boolean,
     dragHandle: Modifier,
+    onClose: () -> Unit,
+    onToggleSplit: () -> Unit,
+    onResetAll: () -> Unit,
     onFine: () -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -215,7 +273,7 @@ private fun MainPage(
             Text("PICTURE", color = AmberCore, fontSize = 15.sp, fontWeight = FontWeight.Black)
             Text("ENHANCEMENT ENGINE", color = TextMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
         }
-        IconButton(onClick = { controller.closePanel() }, modifier = Modifier.size(36.dp)) {
+        IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
             Icon(Icons.Rounded.Close, contentDescription = "Close", tint = TextMuted)
         }
     }
@@ -313,8 +371,8 @@ private fun MainPage(
     Spacer(Modifier.height(6.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
         Chip("Fine Tune  ›", false, available && on, Modifier.weight(1f), onFine)
-        Chip("Split", controller.splitView, available && on, Modifier.weight(1f)) { controller.toggleSplit() }
-        Chip("Reset", false, available, Modifier.weight(1f)) { controller.resetAll() }
+        Chip("Split", controller.splitView, available && on, Modifier.weight(1f), onToggleSplit)
+        Chip("Reset", false, available, Modifier.weight(1f), onResetAll)
     }
 
     Spacer(Modifier.height(12.dp))
