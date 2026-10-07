@@ -81,6 +81,8 @@ class PictureEnhanceController(
 
     private val live = PictureLiveParams()
     private val effect = PictureEnhanceEffect(live)
+    private val performance = PicturePerformanceRuntime()
+    private var performancePlan = performance.plan(settings.intensity)
 
     private var pipelineInstalled = false
     private var installedAtMs = 0L
@@ -96,10 +98,12 @@ class PictureEnhanceController(
 
     private val playerListener = object : Player.Listener {
         override fun onVideoSizeChanged(videoSize: VideoSize) {
+            updatePerformanceSource()
             evaluateAvailability()
         }
 
         override fun onTracksChanged(tracks: Tracks) {
+            updatePerformanceSource()
             evaluateAvailability()
         }
     }
@@ -111,6 +115,12 @@ class PictureEnhanceController(
             elapsedMs: Long,
         ) {
             if (!pipelineInstalled || !isActive || comparing) return
+            // Analytics reports dropped frames in an elapsed window; estimate total frames
+            // from source fps, including the dropped frames themselves.
+            val sourceFps = player.videoFormat?.frameRate?.takeIf { it.isFinite() && it > 0f } ?: 30f
+            val renderedEstimate = (sourceFps * elapsedMs.coerceAtLeast(0L) / 1000f).toInt().coerceAtLeast(0)
+            performance.recordWindow(droppedFrames, renderedEstimate + droppedFrames.coerceAtLeast(0))
+            updatePerformancePlan()
             // Ignore the start-up / seek burst right after the effect is installed.
             if (SystemClock.elapsedRealtime() - installedAtMs < 6_000L) return
             badDropWindows = if (droppedFrames >= 8) badDropWindows + 1 else maxOf(0, badDropWindows - 1)
@@ -151,6 +161,8 @@ class PictureEnhanceController(
         comparing = false
         splitView = false
         badDropWindows = 0
+        performance.reset()
+        updatePerformanceSource()
         settings = PictureMemory.load(context, path) ?: PictureSettings()
         if (settings.preset != PicturePreset.OFF && settings.preset != PicturePreset.CUSTOM) {
             lastPreset = settings.preset
@@ -398,7 +410,20 @@ class PictureEnhanceController(
     }
 
     private fun refreshLive() {
+        // Performance telemetry is intentionally not applied to image uniforms yet:
+        // P6's user-selected appearance must remain unchanged until shader scaling is verified.
+        performancePlan = performance.plan(settings.intensity)
         live.current = PictureProfiles.toShaderParams(settings, comparing, isActive, splitView, splitPosition)
+    }
+
+    private fun updatePerformanceSource() {
+        val format = player.videoFormat ?: return
+        performance.setSource(format.width, format.height, format.frameRate)
+        updatePerformancePlan()
+    }
+
+    private fun updatePerformancePlan() {
+        performancePlan = performance.plan(settings.intensity)
     }
 
     private fun isHdr(): Boolean {
@@ -444,6 +469,7 @@ class PictureEnhanceController(
             pipelineInstalled = true
             installedAtMs = SystemClock.elapsedRealtime()
             badDropWindows = 0
+            performance.resetWindow()
             if (needsRestart) {
                 player.stop()
                 player.prepare()
@@ -471,6 +497,8 @@ class PictureEnhanceController(
     private fun registerThermalListener() {
         val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
         val listener = PowerManager.OnThermalStatusChangedListener { status ->
+            performance.setThermalStatus(status)
+            updatePerformancePlan()
             if (status >= PowerManager.THERMAL_STATUS_SEVERE) {
                 pauseAutomatically("Phone is hot — picture enhancement paused")
             }
