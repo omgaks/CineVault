@@ -3,7 +3,7 @@ package com.sole.cinevault.picture
 /**
  * P6 Movie Engine closure policy.
  *
- * Live-action restoration is deliberately bounded. Resolution changes recovery strength only;
+ * Live-action restoration is deliberately bounded. Film sharpening remains protected without flattening the user-visible Sharp/Fine Tune range. Resolution changes recovery strength only;
  * it never changes semantic content routing. The same single Media3 Picture effect is retained.
  */
 object PictureMovieEnginePolicy {
@@ -52,7 +52,7 @@ object PictureMovieEnginePolicy {
             skinProtection=.94f,
             haloGuard=(.86f+.10f*clean).coerceIn(.86f,.96f),
             chromaGuard=(.90f+.07f*clean).coerceIn(.90f,.97f),
-            sharpenCeiling=(.26f-.08f*clean).coerceIn(.18f,.26f),
+            sharpenCeiling=(.82f-.22f*clean).coerceIn(.70f,.82f),
             structureFloor=(.010f+.006f*clean).coerceIn(.010f,.016f),
             textureCeiling=(.060f-.014f*clean).coerceIn(.046f,.060f),
             faceRecoveryScale=(.22f-.06f*clean).coerceIn(.16f,.22f),

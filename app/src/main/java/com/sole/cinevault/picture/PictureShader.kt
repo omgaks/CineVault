@@ -259,7 +259,7 @@ void main(){
   e=clamp(fromLumaChroma(recoveredY,cc),0.0,1.0);
  }
 
- // Existing CAS-style adaptive sharpen, with a P6 film ceiling.
+ // CAS-style adaptive sharpen. Film keeps protection, but the ceiling preserves a meaningful user-visible range.
  vec3 sb=texture2D(uTexSampler,uv+vec2(0.0,-uTexel.y)).rgb;
  vec3 sd=texture2D(uTexSampler,uv+vec2(-uTexel.x,0.0)).rgb;
  vec3 sf=texture2D(uTexSampler,uv+vec2(uTexel.x,0.0)).rgb;
@@ -284,8 +284,7 @@ void main(){
  col+=n*(uDeband*(0.85/255.0)+uGrain*0.035)*mask;
 
  vec3 outc=mix(e0,clamp(col,0.0,1.0),uAmount);
- if(uSplit>0.0){float sx=vTexSamplingCoord.x;if(sx>uSplit)outc=e0;
-  if(abs(sx-uSplit)<uTexel.x*1.5)outc=vec3(1.0,0.75,0.2);}
+ if(uSplit>0.0){float sx=vTexSamplingCoord.x;if(sx>uSplit)outc=e0;}
  gl_FragColor=vec4(outc,1.0);
 }"""
     }
