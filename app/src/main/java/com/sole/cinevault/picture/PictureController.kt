@@ -10,8 +10,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
-import androidx.media3.common.ColorInfo
-import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
@@ -434,19 +432,14 @@ class PictureEnhanceController(
         }
     }
 
-    private fun isHdr(): Boolean {
-        val format = player.videoFormat ?: return false
-        return ColorInfo.isTransferHdr(format.colorInfo) ||
-            format.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION
-    }
-
     private fun evaluateAvailability() {
         if (!setupFailed) {
             val format = player.videoFormat
             val reason: String? = when {
                 lockedReason != null -> lockedReason
                 format == null -> null
-                isHdr() -> "Not available for HDR / Dolby Vision video"
+                PictureHdrRouting.decide(format).route == PictureHdrPolicy.Route.HDR_PASSTHROUGH ->
+                    "HDR or unknown colour transfer — original playback protected"
                 format.height > 1440 || format.width > 2560 -> "Not needed for 4K video"
                 else -> null
             }
