@@ -15,6 +15,8 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.platform.LocalContext
 import com.sole.cinevault.collections.CollectionPlanner
 import com.sole.cinevault.collections.CollectionRepository
+import com.sole.cinevault.collections.Universe
+import com.sole.cinevault.collections.UniverseCatalog
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.input.key.Key
@@ -35,7 +37,12 @@ private data class CollectionShelfEntry(
     val backdropUrl: String?,
     val isCurated: Boolean,
     val collectionId: Int?,
-    val ownedCount: Int = 0
+    val ownedCount: Int = 0,
+    // Slice B: what to hand the click handler (a member collection's own name, so routing can
+    // find its universe), and, for a universe card, the universe plus the member ids we know.
+    val routeName: String? = null,
+    val universe: Universe? = null,
+    val knownIds: Map<String, Int> = emptyMap()
 )
 
 internal fun LazyGridScope.LocalLibraryCollectionsShelf(
@@ -52,19 +59,33 @@ internal fun LazyGridScope.LocalLibraryCollectionsShelf(
     // page still links to the full collection page. Restricted-folder films are
     // excluded here, matching the collection page's own owned list.
     val countable = visibleSortedVideos.filterNot { it.type.equals("restricted", ignoreCase = true) }
-    val ownedCounts = CollectionPlanner.ownedCountsByCollection(countable)
-    val nativeEntries = countable
-        .filter { it.collectionId != null && it.collectionName != null }
-        .distinctBy { it.collectionId }
-        .filter { CollectionPlanner.earnsShelfCard(ownedCounts[it.collectionId] ?: 0) }
-        .map { video ->
+    val withCollection = countable.filter { it.collectionId != null && it.collectionName != null }
+    // Films of one franchise universe (Jurassic Park + Jurassic World, The Hobbit + The Lord of
+    // the Rings...) share ONE card; every other collection keeps its own. Distinct TMDB films are
+    // counted, so duplicate files of a film don't inflate the number.
+    val nativeEntries = withCollection
+        .groupBy { UniverseCatalog.forCollectionName(it.collectionName)?.id ?: "c:${it.collectionId}" }
+        .mapNotNull { (groupKey, films) ->
+            val owned = films.mapNotNull { it.tmdbId }.distinct().size
+            if (!CollectionPlanner.earnsShelfCard(owned)) return@mapNotNull null
+            val universe = UniverseCatalog.byId(groupKey)
+            val first = films.first()
             CollectionShelfEntry(
-                key = "native:${video.collectionId}",
-                displayName = video.collectionName.orEmpty(),
-                backdropUrl = video.backdropUrl,
+                key = if (universe != null) "universe:${universe.id}" else "native:${first.collectionId}",
+                displayName = universe?.name ?: first.collectionName.orEmpty(),
+                backdropUrl = films.firstOrNull { !it.backdropUrl.isNullOrBlank() }?.backdropUrl,
                 isCurated = false,
-                collectionId = video.collectionId,
-                ownedCount = ownedCounts[video.collectionId] ?: 0
+                collectionId = first.collectionId,
+                ownedCount = owned,
+                routeName = first.collectionName,
+                universe = universe,
+                knownIds = if (universe != null) {
+                    films.mapNotNull { v ->
+                        val cid = v.collectionId
+                        val cname = v.collectionName
+                        if (cid != null && cname != null) UniverseCatalog.key(cname) to cid else null
+                    }.toMap()
+                } else emptyMap()
             )
         }
 
@@ -135,7 +156,7 @@ internal fun LazyGridScope.LocalLibraryCollectionsShelf(
                             onCuratedCollectionClick(entry.displayName)
                         } else {
                             entry.collectionId?.let {
-                                onNativeCollectionClick(it, entry.displayName)
+                                onNativeCollectionClick(it, entry.routeName ?: entry.displayName)
                             }
                             Unit
                         }
@@ -143,8 +164,12 @@ internal fun LazyGridScope.LocalLibraryCollectionsShelf(
                     // Released-film total from TMDB's collection (cache-first, 7-day TTL;
                     // honours the metadata privacy switch). Null until known.
                     val context = LocalContext.current
-                    val total by produceState<Int?>(initialValue = null, key1 = entry.collectionId) {
-                        value = entry.collectionId?.let { CollectionRepository.releasedTotal(context, it) }
+                    val total by produceState<Int?>(initialValue = null, key1 = entry.key) {
+                        value = if (entry.universe != null) {
+                            CollectionRepository.universeReleasedTotal(context, entry.universe, entry.knownIds)
+                        } else {
+                            entry.collectionId?.let { CollectionRepository.releasedTotal(context, it) }
+                        }
                     }
                     TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(18.dp), onActivate = onActivate) {
                         CollectionShelfCard(

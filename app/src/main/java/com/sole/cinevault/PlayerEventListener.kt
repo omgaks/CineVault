@@ -95,7 +95,11 @@ internal fun PlayerEventListener(
                         val index = episodeList.indexOfFirst { it.video.path == currentVideoPath }
                         val next = episodeList.getOrNull(index + 1)
                         if (next != null) {
-                            if (currentMediaType.equals("tv", ignoreCase = true)) onQueueNextEpisode(next)
+                            // A collection-page marathon gets the same "Up next" countdown TV episodes
+                            // do (Cancel / Play now), instead of jumping straight to the next film.
+                            if (currentMediaType.equals("tv", ignoreCase = true) ||
+                                com.sole.cinevault.collections.MarathonSession.matches(episodeList.map { it.video.path })
+                            ) onQueueNextEpisode(next)
                             else onAdvanceImmediately(next)
                         }
                     }

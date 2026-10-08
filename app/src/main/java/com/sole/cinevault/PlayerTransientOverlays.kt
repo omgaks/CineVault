@@ -68,7 +68,7 @@ internal fun NextEpisodeCountdownOverlay(nextEpisode: VideoWithMetadata?, countd
             Text(text = "${countdown.coerceAtLeast(1)}s", color = AmberCore, fontSize = 17.sp, fontWeight = FontWeight.Black)
         }
         Spacer(modifier = Modifier.height(7.dp))
-        Text(text = nextEpisode.subtitle.ifBlank { cleanEpisodeDisplayName(nextEpisode.video.name) }, color = TextBright, fontSize = if (isLandscape) 13.sp else 14.sp, fontWeight = FontWeight.Bold, maxLines = 2)
+        Text(text = if (nextEpisode.type.equals("tv", ignoreCase = true)) nextEpisode.subtitle.ifBlank { cleanEpisodeDisplayName(nextEpisode.video.name) } else nextEpisode.title.ifBlank { cleanEpisodeDisplayName(nextEpisode.video.name) }, color = TextBright, fontSize = if (isLandscape) 13.sp else 14.sp, fontWeight = FontWeight.Bold, maxLines = 2)
         Spacer(modifier = Modifier.height(11.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(text = "Play Now", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore).clickable { onPlayNow() }.padding(horizontal = 15.dp, vertical = 8.dp))

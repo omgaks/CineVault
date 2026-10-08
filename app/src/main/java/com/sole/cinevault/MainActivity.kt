@@ -2,6 +2,8 @@ package com.sole.cinevault
 
 import com.sole.cinevault.library.*
 import com.sole.cinevault.collections.CollectionPageV2
+import com.sole.cinevault.collections.CollectionSource
+import com.sole.cinevault.collections.UniverseCatalog
 import com.sole.cinevault.collections.loadCollectionPageV2Enabled
 import com.sole.cinevault.network.*
 import com.sole.cinevault.smb.loadSmbShares
@@ -384,6 +386,7 @@ sealed class Destination {
     data class ActorPage(val actorId: Int, val actorName: String, val profilePath: String?) : Destination()
     data class NativeCollectionPage(val collectionId: Int, val collectionName: String) : Destination()
     data class CuratedCollectionPage(val collectionName: String) : Destination()
+    data class UniversePage(val universeId: String) : Destination()
     data class RestrictedFolderPage(val folderId: String, val folderName: String, val lastPlayedVideoPath: String? = null) : Destination()
     data object GlassesGestureTutorial : Destination()
     data object NetworkHub : Destination()
@@ -446,6 +449,15 @@ fun CineVaultApp() {
 
     fun push(dest: Destination) { backStack = backStack + dest }
     fun pop() { if (backStack.size > 1) backStack = backStack.dropLast(1) }
+    // Slice B: a collection that belongs to a franchise "universe" (Jurassic Park + Jurassic
+    // World, The Hobbit + The Lord of the Rings, ...) opens the merged page. Universes only
+    // exist on the new collection page, so the Settings switch governs them too.
+    UniverseCatalog.groupingEnabled = loadCollectionPageV2Enabled(context)
+    fun openNativeCollection(id: Int, name: String) {
+        val universe = UniverseCatalog.forCollectionName(name)
+        if (universe != null) push(Destination.UniversePage(universe.id))
+        else push(Destination.NativeCollectionPage(id, name))
+    }
     fun switchTab(index: Int) {
         sessionAppState.onTabSelected(index)
         backStack = listOf(Destination.Tab(index))
@@ -621,7 +633,7 @@ fun CineVaultApp() {
                         onGenreClick = { genreName -> push(Destination.GenrePage(genreName)) },
                         onDirectorClick = { directorName -> push(Destination.DirectorPage(directorName)) },
                         onActorClick = { actorId, actorName, profilePath -> push(Destination.ActorPage(actorId, actorName, profilePath)) },
-                        onNativeCollectionClick = { id, name -> push(Destination.NativeCollectionPage(id, name)) },
+                        onNativeCollectionClick = { id, name -> openNativeCollection(id, name) },
                         onCuratedCollectionClick = { name -> push(Destination.CuratedCollectionPage(name)) },
                         onMetadataUpdated = { updated ->
                             // Refresh what's on screen right now, no back-out needed
@@ -680,7 +692,7 @@ fun CineVaultApp() {
                         // restricted-folder content, so hidden films never count as owned.
                         val owned = homeVisibleVideos.filter { it.collectionId == dest.collectionId }
                         CollectionPageV2(
-                            collectionId = dest.collectionId,
+                            source = CollectionSource.Tmdb(dest.collectionId),
                             title = dest.collectionName,
                             ownedItems = owned,
                             onBack = { pop() },
@@ -704,15 +716,65 @@ fun CineVaultApp() {
                     }
                 }
 
+                is Destination.UniversePage -> {
+                    val universe = UniverseCatalog.byId(dest.universeId)
+                    if (universe == null) {
+                        LaunchedEffect(dest) { pop() }
+                    } else {
+                        // Owned films from every member collection. homeVisibleVideos already
+                        // excludes Secret and restricted-folder content.
+                        val owned = homeVisibleVideos.filter { universe.ownsCollectionName(it.collectionName) }
+                        // Ids we already know from the user's own films save TMDB name lookups.
+                        val knownIds = owned.mapNotNull { v ->
+                            val cid = v.collectionId
+                            val cname = v.collectionName
+                            if (cid != null && cname != null) UniverseCatalog.key(cname) to cid else null
+                        }.toMap()
+                        CollectionPageV2(
+                            source = CollectionSource.UniverseSource(universe, knownIds),
+                            title = universe.name,
+                            ownedItems = owned,
+                            onBack = { pop() },
+                            onItemClick = { item -> push(Destination.Detail(item)) },
+                            onPlay = { item, ordered -> push(Destination.Player(item.video, item.type, ordered)) },
+                            onSearchLibrary = { query ->
+                                sessionAppState.onSearchQueryChanged(query)
+                                switchTab(2)
+                            },
+                            isTelevision = isTelevision
+                        )
+                    }
+                }
+
                 is Destination.CuratedCollectionPage -> {
-                    val items = libraryVideos.filter { it.curatedCollections.contains(dest.collectionName) }
-                    CollectionScreen(
-                        title = dest.collectionName,
-                        items = items,
-                        onBack = { pop() },
-                        onItemClick = { item -> push(Destination.Detail(item)) },
-                        onPlayClick = { item -> push(Destination.Player(item.video, item.type, items)) }
-                    )
+                    if (loadCollectionPageV2Enabled(context)) {
+                        // Curated groups (e.g. the MCU keyword group) have no TMDB list, so the
+                        // new page shows the user's own films, release-dated, with Next up and
+                        // Marathon. Unlike the classic page it never includes hidden videos.
+                        val owned = homeVisibleVideos.filter { it.curatedCollections.contains(dest.collectionName) }
+                        CollectionPageV2(
+                            source = CollectionSource.OwnedOnly,
+                            title = dest.collectionName,
+                            ownedItems = owned,
+                            onBack = { pop() },
+                            onItemClick = { item -> push(Destination.Detail(item)) },
+                            onPlay = { item, ordered -> push(Destination.Player(item.video, item.type, ordered)) },
+                            onSearchLibrary = { query ->
+                                sessionAppState.onSearchQueryChanged(query)
+                                switchTab(2)
+                            },
+                            isTelevision = isTelevision
+                        )
+                    } else {
+                        val items = libraryVideos.filter { it.curatedCollections.contains(dest.collectionName) }
+                        CollectionScreen(
+                            title = dest.collectionName,
+                            items = items,
+                            onBack = { pop() },
+                            onItemClick = { item -> push(Destination.Detail(item)) },
+                            onPlayClick = { item -> push(Destination.Player(item.video, item.type, items)) }
+                        )
+                    }
                 }
 
                 is Destination.RestrictedFolderPage -> {
@@ -812,7 +874,7 @@ fun CineVaultApp() {
                             onTvGroupClick = { group -> push(Destination.TvShow(group)) },
                             onSecretChanged = { scope.launch { reloadAfterSecretChange() } },
                             onGenreClick = { genreName -> push(Destination.GenrePage(genreName)) },
-                            onNativeCollectionClick = { id, name -> push(Destination.NativeCollectionPage(id, name)) },
+                            onNativeCollectionClick = { id, name -> openNativeCollection(id, name) },
                             onCuratedCollectionClick = { name -> push(Destination.CuratedCollectionPage(name)) },
                             onRestrictedFolderClick = { folder -> push(Destination.RestrictedFolderPage(folder.id, folder.displayName, folder.lastPlayedVideoPath)) }
                         )
