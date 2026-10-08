@@ -1,6 +1,6 @@
 # Privacy Policy — CineVault
 
-**Last updated: 10 August 2026**
+**Last updated: 9 October 2026**
 
 CineVault is a local and network media player. Privacy is a core part of its
 design.
@@ -28,6 +28,13 @@ CineVault requests `READ_MEDIA_VIDEO` on Android 13 and newer, or
 play videos. A user can also grant access to a specific folder through
 Android's system folder picker.
 
+If the user adds a "local artwork" folder in Library tools, CineVault uses
+Android's folder access to look for poster, fanart, and NFO files that sit
+beside the user's videos. It reads only inside the folder the user chose. An
+image that is found is copied into CineVault's private storage; an NFO file is
+read only to find a TMDB identifier. Nothing in that folder is uploaded, moved,
+changed, or deleted, and the access can be removed at any time in Library tools.
+
 CineVault does not modify, move, or delete a media file unless the user
 explicitly selects a file-management action. On Android versions that require
 system approval for deletion, Android displays a confirmation prompt.
@@ -40,7 +47,8 @@ SMB network playback.
 
 | Service or destination | Information sent | Purpose |
 | --- | --- | --- |
-| TMDB | Cleaned movie/show title, year, and TMDB identifiers where available | Metadata, artwork, cast, and TMDB rating |
+| TMDB | Cleaned movie/show title, year, and TMDB identifiers where available; collection names and identifiers; for a film on a collection page, its TMDB identifier | Metadata, artwork, cast, TMDB rating, franchise film lists, trailers, and where-to-watch information (provider data comes from JustWatch through TMDB) |
+| Fanart.tv | TMDB identifier and media type | Additional poster and backdrop artwork when TMDB has none, or when the user browses artwork options |
 | OMDb | Movie/show title, year, or IMDb identifier where available | IMDb and Rotten Tomatoes ratings |
 | OpenSubtitles | File hash, file size, cleaned title, season/episode, and preferred subtitle language as applicable | Subtitle search and download |
 | SubDL | Cleaned title, season/episode, and preferred subtitle language as applicable | Subtitle search and download |
@@ -48,8 +56,8 @@ SMB network playback.
 | User-selected SMB server | Server address, share name, and configured credentials | Browse and stream the user's network library |
 | User-provided stream URL | The requested URL and protocol-required headers | Direct network playback |
 
-CineVault does not send local folder paths or video content to TMDB, OMDb,
-OpenSubtitles, SubDL, or IntroDB. A media hash is a content-derived identifier used for
+CineVault does not send local folder paths or video content to TMDB, Fanart.tv,
+OMDb, OpenSubtitles, SubDL, or IntroDB. A media hash is a content-derived identifier used for
 subtitle matching; it is not the video itself.
 
 These third-party services and user-selected servers operate under their own
@@ -75,6 +83,16 @@ to show media controls while a foreground playback service is active. The
 notification contains playback information and controls; it is not used for
 marketing.
 
+## Sharing a collection
+
+The share button on a collection page creates a picture containing the
+collection's name, film titles, and how many the user owns. It is saved in
+CineVault's cache and handed to Android's share sheet only when the user taps
+share. It contains no account, device, location, or file-path information.
+The previous picture is deleted the next time one is made, and Android may
+clear the cache at any time. CineVault does not send the picture anywhere;
+where it goes is the user's choice in the share sheet.
+
 ## Local data storage
 
 CineVault stores application data locally using a combination of Room
@@ -86,6 +104,12 @@ app-private files. Depending on the features used, this can include:
 - Subtitle downloads, imported subtitles, cleaned or time-shifted subtitle
   copies, and subtitle appearance settings
 - Selected folders, restricted folders, and application preferences
+- Collections data: cached franchise film lists, the user's wantlist, and
+  collections the user creates (hand-picked film lists and smart-collection
+  filters), kept only on the device
+- Artwork the user imported from a local folder or captured from a video, and
+  a short history of artwork the user replaced
+- Remembered facts such as whether a film has an after-credits scene
 - Locally generated thumbnails and seek-preview frames
 - In-app crash and playback-error logs
 - SMB connection definitions and Secret Folder path records
