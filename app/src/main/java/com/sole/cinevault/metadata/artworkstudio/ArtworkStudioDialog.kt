@@ -37,6 +37,7 @@ import coil.compose.AsyncImage
 import com.sole.cinevault.VideoWithMetadata
 import com.sole.cinevault.metadata.ArtworkKind
 import com.sole.cinevault.metadata.ArtworkOption
+import com.sole.cinevault.metadata.loadArtworkHistory
 import com.sole.cinevault.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -92,6 +93,13 @@ fun ArtworkStudioDialog(
             }
             busy = false
         }
+    }
+
+    var posterHistory by remember { mutableStateOf<List<String>>(emptyList()) }
+    var backdropHistory by remember { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(current.video.path, current.posterUrl, current.backdropUrl, reload) {
+        posterHistory = loadArtworkHistory(context, current.video.path, ArtworkKind.POSTER, current.posterUrl)
+        backdropHistory = loadArtworkHistory(context, current.video.path, ArtworkKind.BACKDROP, current.backdropUrl)
     }
 
     LaunchedEffect(current.tmdbId, current.type, reload) {
@@ -154,6 +162,15 @@ fun ArtworkStudioDialog(
                     },
                     onReset = { resetKind ->
                         scope.launch { busy = true; accept(ArtworkStudioRepository.applyChoice(context, workingItems, resetKind, null), "Automatic artwork applied"); busy = false }
+                    },
+                    posterHistory = posterHistory,
+                    backdropHistory = backdropHistory,
+                    onRestore = { restoreKind, url ->
+                        scope.launch {
+                            busy = true
+                            accept(ArtworkStudioRepository.applyChoice(context, workingItems, restoreKind, url), "Previous ${restoreKind.name.lowercase()} applied")
+                            busy = false
+                        }
                     }
                 )
                 ArtworkStudioTool.MATCH -> StudioMatchPane(
@@ -232,7 +249,10 @@ private fun StudioOverview(
     loading: Boolean,
     onBrowse: (ArtworkKind) -> Unit,
     onRefresh: () -> Unit,
-    onReset: (ArtworkKind) -> Unit
+    onReset: (ArtworkKind) -> Unit,
+    posterHistory: List<String> = emptyList(),
+    backdropHistory: List<String> = emptyList(),
+    onRestore: (ArtworkKind, String) -> Unit = { _, _ -> }
 ) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
         item {
@@ -257,11 +277,36 @@ private fun StudioOverview(
                 Text("${report.provider}: ${report.message}", color = color, fontSize = 12.sp)
             }
         }
+        if (posterHistory.isNotEmpty()) item {
+            StudioHistoryRow("Previous posters", posterHistory, 0.68f, 64.dp) { onRestore(ArtworkKind.POSTER, it) }
+        }
+        if (backdropHistory.isNotEmpty()) item {
+            StudioHistoryRow("Previous backdrops", backdropHistory, 1.65f, 120.dp) { onRestore(ArtworkKind.BACKDROP, it) }
+        }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 StudioAction("Refresh Sources", Icons.Rounded.Refresh, onRefresh)
                 StudioAction("Reset Poster", Icons.Rounded.Restore, { onReset(ArtworkKind.POSTER) })
                 StudioAction("Reset Backdrop", Icons.Rounded.Restore, { onReset(ArtworkKind.BACKDROP) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudioHistoryRow(label: String, urls: List<String>, ratio: Float, width: androidx.compose.ui.unit.Dp, onPick: (String) -> Unit) {
+    Column {
+        Text(label, color = TextBright, fontWeight = FontWeight.Bold)
+        Text("Tap one to bring it back.", color = TextMuted, fontSize = 11.sp)
+        Spacer(Modifier.height(6.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(urls) { url ->
+                Box(
+                    Modifier.width(width).aspectRatio(ratio).clip(RoundedCornerShape(10.dp)).background(Color.Black)
+                        .clickable { onPick(url) }
+                ) {
+                    AsyncImage(model = url, contentDescription = label, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                }
             }
         }
     }
