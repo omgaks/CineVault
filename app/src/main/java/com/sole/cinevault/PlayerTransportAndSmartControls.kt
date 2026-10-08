@@ -5,12 +5,14 @@ import android.graphics.Bitmap
 import android.widget.Toast
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.unit.Dp
 import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.library.VideoThumbnailHelper
 import com.sole.cinevault.segments.SegmentType
+import com.sole.cinevault.segments.seekMarkersFor
 import com.sole.cinevault.segments.SmartSegment
 import com.sole.cinevault.segments.SmartSegmentResult
 import kotlinx.coroutines.CoroutineScope
@@ -238,6 +240,7 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
         position = position,
         isDraggingSeekbar = isDraggingSeekbar,
         seed = currentVideoPath.hashCode(),
+        markers = remember(smartSegmentResult, duration) { seekMarkersFor(smartSegmentResult, duration) },
         onPreviewPositionChanged = { pos ->
             onDraggingSeekbarChanged(true)
             onShowSeekPreviewChanged(true)

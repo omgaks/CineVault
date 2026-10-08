@@ -24,6 +24,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -34,11 +35,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sole.cinevault.segments.SeekMarker
+import com.sole.cinevault.segments.SeekMarkerKind
 import com.sole.cinevault.ui.theme.*
 import kotlinx.coroutines.delay
 
 @Composable
-internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolean, seed: Int, onPreviewPositionChanged: (Long) -> Unit, onSeekFinished: (Long) -> Unit) {
+internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolean, seed: Int, onPreviewPositionChanged: (Long) -> Unit, onSeekFinished: (Long) -> Unit, markers: List<SeekMarker> = emptyList()) {
     var localPosition by remember { mutableLongStateOf(position) }
     LaunchedEffect(position, isDragging) { if (!isDragging) localPosition = position }
     val haptic = LocalHapticFeedback.current
@@ -109,8 +112,29 @@ internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolea
                 }
 
                 val tickY = cy - bloom * (size.height * 0.40f)
-                listOf(0.25f, 0.50f, 0.75f).forEach {
-                    drawCircle(color = Color.White.copy(alpha = 0.45f + 0.20f * bloom), radius = 2.2.dp.toPx(), center = Offset(size.width * it, tickY))
+                // Real markers only (intro/recap/credits bands, extra-scene rings).
+                // A film with no segment data draws nothing here.
+                markers.forEach { m ->
+                    when (m.kind) {
+                        SeekMarkerKind.SKIPPABLE, SeekMarkerKind.CREDITS -> {
+                            val x0 = size.width * m.startFraction
+                            val w = (size.width * (m.endFraction - m.startFraction)).coerceAtLeast(3.dp.toPx())
+                            val h = 3.dp.toPx()
+                            val tint = if (m.kind == SeekMarkerKind.SKIPPABLE) AmberGlow else Color.White
+                            drawRoundRect(
+                                color = tint.copy(alpha = 0.50f + 0.25f * bloom),
+                                topLeft = Offset(x0, tickY - h / 2f),
+                                size = Size(w.coerceAtMost(size.width - x0), h),
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(h / 2f, h / 2f)
+                            )
+                        }
+                        SeekMarkerKind.SCENE -> drawCircle(
+                            color = AmberCore.copy(alpha = 0.80f + 0.20f * bloom),
+                            radius = 3.4.dp.toPx(),
+                            center = Offset(size.width * m.startFraction, tickY),
+                            style = Stroke(width = 1.6.dp.toPx())
+                        )
+                    }
                 }
 
                 drawCircle(color = AmberGlow.copy(alpha = 0.22f * glow), radius = 16.dp.toPx(), center = Offset(tx, cy))

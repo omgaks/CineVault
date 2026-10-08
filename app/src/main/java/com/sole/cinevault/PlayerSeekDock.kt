@@ -9,6 +9,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.sole.cinevault.segments.SeekMarker
 import com.sole.cinevault.ui.theme.GlassSurface
 import com.sole.cinevault.ui.theme.glassPanel
 
@@ -28,6 +29,7 @@ internal fun BoxScope.PlayerSeekDock(
     seed: Int,
     onPreviewPositionChanged: (Long) -> Unit,
     onSeekFinished: (Long) -> Unit,
+    markers: List<SeekMarker> = emptyList(),
 ) {
     SeekPreviewBubble(
         isVisible = showSeekPreview,
@@ -62,7 +64,8 @@ internal fun BoxScope.PlayerSeekDock(
             isDragging = isDraggingSeekbar,
             seed = seed,
             onPreviewPositionChanged = onPreviewPositionChanged,
-            onSeekFinished = onSeekFinished
+            onSeekFinished = onSeekFinished,
+            markers = markers
         )
     }
 }

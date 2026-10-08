@@ -42,6 +42,8 @@ interface CachedVideoMetadataDao {
     suspend fun getAll(): List<CachedVideoMetadata>
     @Query("DELETE FROM cached_video_metadata")
     suspend fun clearAll()
+    @Query("DELETE FROM cached_video_metadata WHERE videoPath = :videoPath")
+    suspend fun deleteByPath(videoPath: String)
 }
 
 @Dao
@@ -85,11 +87,17 @@ suspend fun saveManualArtworkChoice(context: Context, videoPath: String, kind: A
     withContext(Dispatchers.IO) {
         val dao = CachedVideoMetadataDatabase.getInstance(context).artworkPreferenceDao()
         val existing = dao.getByPath(videoPath) ?: ArtworkPreference(videoPath = videoPath)
+        val previous = when (kind) {
+            ArtworkKind.POSTER -> existing.manualPosterUrl
+            ArtworkKind.BACKDROP -> existing.manualBackdropUrl
+        }
         val updated = when (kind) {
             ArtworkKind.POSTER -> existing.copy(manualPosterUrl = url)
             ArtworkKind.BACKDROP -> existing.copy(manualBackdropUrl = url)
         }
         dao.upsert(updated)
+        // Never a one-way door: the choice just replaced stays restorable.
+        rememberReplacedArtwork(context, videoPath, kind, previous, url)
     }
 
 suspend fun applyManualArtworkPreference(

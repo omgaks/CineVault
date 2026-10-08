@@ -136,7 +136,8 @@ fun SettingsScreen(
     // dialog was captured then silently discarded — Play did nothing.
     // Now the URL is actually passed through to whoever handles playback.
     onOpenStreamUrl: (String) -> Unit,
-    onOpenGlassesGestureTutorial: () -> Unit
+    onOpenGlassesGestureTutorial: () -> Unit,
+    onOpenLibraryTools: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var showStreamDialog by remember { mutableStateOf(false) }
@@ -412,6 +413,26 @@ fun SettingsScreen(
                             colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
                         )
                     }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            GlassSectionCard(
+                title = "Library tools",
+                subtitle = "Local artwork and match review.",
+                icon = Icons.Rounded.Collections,
+                accent = AccentAbout
+            ) {
+                TvFocusableSlot(isTelevision = isTelevision, onActivate = onOpenLibraryTools) {
+                    GlassActionRow(
+                        icon = Icons.Rounded.Collections,
+                        iconTint = AccentAbout,
+                        title = "Open Library tools",
+                        subtitle = "Import artwork kept beside your films, and fix doubtful matches",
+                        action = "OPEN",
+                        onClick = onOpenLibraryTools
+                    )
                 }
             }
 

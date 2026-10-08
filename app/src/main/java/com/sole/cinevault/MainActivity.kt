@@ -3,6 +3,9 @@ package com.sole.cinevault
 import com.sole.cinevault.library.*
 import com.sole.cinevault.collections.CollectionPageV2
 import com.sole.cinevault.collections.CollectionSource
+import com.sole.cinevault.collections.CustomCollections
+import com.sole.cinevault.collections.CustomCollectionsScreen
+import com.sole.cinevault.collections.WantlistScreen
 import com.sole.cinevault.collections.UniverseCatalog
 import com.sole.cinevault.collections.loadCollectionPageV2Enabled
 import com.sole.cinevault.network.*
@@ -392,6 +395,10 @@ sealed class Destination {
     data object NetworkHub : Destination()
     data class RemoteLibrary(val source: NetworkSource) : Destination()
     data object ShareLibrary : Destination()
+    data object LibraryTools : Destination()
+    data object Wantlist : Destination()
+    data object MyCollections : Destination()
+    data class CustomCollectionPage(val collectionId: Long, val collectionName: String) : Destination()
 }
 
 private fun validLibraryVideoEntry(item: VideoWithMetadata): Boolean =
@@ -801,6 +808,50 @@ fun CineVaultApp() {
                     )
                 }
 
+                Destination.LibraryTools -> {
+                    LibraryToolsScreen(
+                        videos = libraryVideos,
+                        onVideosUpdated = { libraryVideos = sanitizeLibraryVideos(it) },
+                        onBack = { pop() },
+                        onOpenWantlist = { push(Destination.Wantlist) },
+                        onOpenMyCollections = { push(Destination.MyCollections) },
+                    )
+                }
+
+                Destination.Wantlist -> {
+                    WantlistScreen(
+                        videos = homeVisibleVideos,
+                        onBack = { pop() },
+                        onOpenCollection = { collectionId ->
+                            val name = libraryVideos.firstOrNull { it.collectionId == collectionId }?.collectionName ?: "Collection"
+                            openNativeCollection(collectionId, name)
+                        },
+                    )
+                }
+
+                Destination.MyCollections -> {
+                    CustomCollectionsScreen(
+                        videos = homeVisibleVideos,
+                        onBack = { pop() },
+                        onOpen = { id, name -> push(Destination.CustomCollectionPage(id, name)) },
+                    )
+                }
+
+                is Destination.CustomCollectionPage -> {
+                    val allCollections by remember { CustomCollections.collections(context) }.collectAsState(initial = emptyList())
+                    val allMembers by remember { CustomCollections.members(context) }.collectAsState(initial = emptyMap())
+                    val entity = allCollections.firstOrNull { it.id == dest.collectionId }
+                    val items = if (entity == null) emptyList()
+                    else CustomCollections.resolve(entity, allMembers[entity.id].orEmpty(), homeVisibleVideos)
+                    CollectionScreen(
+                        title = entity?.name ?: dest.collectionName,
+                        items = items,
+                        onBack = { pop() },
+                        onItemClick = { item -> push(Destination.Detail(item)) },
+                        onPlayClick = { item -> push(Destination.Player(item.video, item.type, items)) }
+                    )
+                }
+
                 Destination.NetworkHub -> {
                     NetworkHubIntegratedScreen(
                         onBack = { pop() },
@@ -839,6 +890,7 @@ fun CineVaultApp() {
                             onOpenScanSources = { switchTab(1) },
                             onOpenNetworkHub = { push(Destination.NetworkHub) },
                             onOpenGlassesGestureTutorial = { push(Destination.GlassesGestureTutorial) },
+                            onOpenLibraryTools = { push(Destination.LibraryTools) },
                             // FIX: previously just switched to the Library tab and
                             // discarded the typed URL entirely — Play did nothing.
                             // Now it actually pushes a Player destination for it.
