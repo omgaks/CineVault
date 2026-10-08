@@ -50,6 +50,9 @@ interface CollectionDao {
     @Query("SELECT tmdbId FROM collection_wantlist")
     fun wantlistIds(): Flow<List<Int>>
 
+    @Query("SELECT * FROM collection_wantlist ORDER BY addedAtMs DESC")
+    fun wantlist(): Flow<List<WantlistEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun addWanted(entity: WantlistEntity)
 

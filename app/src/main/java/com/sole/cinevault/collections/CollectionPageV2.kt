@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -207,6 +208,31 @@ fun CollectionPageV2(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Rounded.ArrowBack, contentDescription = "Back", tint = TextBright, modifier = Modifier.size(22.dp))
+            }
+        }
+
+        val shareable = plan.slots.any { it.status != SlotStatus.UPCOMING }
+        if (shareable) {
+            val onShare: () -> Unit = {
+                val entries = plan.slots.filter { it.status != SlotStatus.UPCOMING }
+                    .map { ShareEntry(it.part.title, it.year, it.status == SlotStatus.OWNED) }
+                val card = ShareCardPlanner.model(model.title, entries, plan.ownedCount, plan.releasedTotal, plan.hasFullList)
+                if (!shareCollectionCard(context, card)) {
+                    android.widget.Toast.makeText(context, "Couldn't create the share image", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            TvFocusableSlot(
+                isTelevision = isTelevision,
+                modifier = Modifier.align(Alignment.TopEnd).padding(14.dp),
+                shape = CircleShape,
+                onActivate = onShare
+            ) {
+                Box(
+                    Modifier.size(48.dp).clip(CircleShape).background(GlassSurfaceStrong).clickable(onClick = onShare),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Rounded.Share, contentDescription = "Share collection", tint = TextBright, modifier = Modifier.size(22.dp))
+                }
             }
         }
     }

@@ -175,6 +175,13 @@ object CollectionRepository {
     fun wantlistIds(context: Context): Flow<Set<Int>> =
         CollectionDatabase.get(context).dao().wantlistIds().map { it.toSet() }
 
+    fun wantlist(context: Context): Flow<List<WantlistEntity>> =
+        CollectionDatabase.get(context).dao().wantlist()
+
+    suspend fun removeWanted(context: Context, tmdbId: Int) = withContext(Dispatchers.IO) {
+        CollectionDatabase.get(context).dao().removeWanted(tmdbId)
+    }
+
     suspend fun setWanted(context: Context, part: CollectionPart, collectionId: Int?, wanted: Boolean) =
         withContext(Dispatchers.IO) {
             val dao = CollectionDatabase.get(context).dao()
