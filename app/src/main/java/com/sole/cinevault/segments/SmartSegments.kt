@@ -101,20 +101,30 @@ class SmartSegmentRepository(private val context: Context) {
         val cached = dao.get(mediaKey)
         val freshEnough = cached.firstOrNull()?.fetchedAtMs?.let { System.currentTimeMillis() - it < CACHE_TTL_MS } == true
 
+        val flagCache = CreditFlagCache(context)
+        val remembered = flagCache.get(mediaKey)
+        var flags = CreditFlags(mid = remembered?.first == true, post = remembered?.second == true)
+
         if (!loadMetadataFetchEnabled(context)) {
-            return@withContext SmartSegmentResult(segments = cached.mapNotNull { it.toModel() })
+            return@withContext SmartSegmentResult(
+                segments = cached.mapNotNull { it.toModel() },
+                hasMidCreditsScene = flags.mid,
+                hasPostCreditsScene = flags.post
+            )
         }
 
-        var flags = CreditFlags()
         if (meta.type.equals("movie", true) && meta.tmdbId != null && BuildConfig.TMDB_TOKEN.isNotBlank()) {
-            flags = runCatching {
+            runCatching {
                 val keywords = TmdbClient.api.getMovieDetails(BuildConfig.TMDB_TOKEN, meta.tmdbId).keywords?.keywords.orEmpty()
                     .mapNotNull { it.name?.lowercase()?.replace(" ", "") }
                 CreditFlags(
                     mid = keywords.any { it == "duringcreditsstinger" || it == "midcreditsstinger" },
                     post = keywords.any { it == "aftercreditsstinger" || it == "postcreditsstinger" }
                 )
-            }.getOrDefault(CreditFlags())
+            }.onSuccess { fresh ->
+                flags = fresh
+                flagCache.put(mediaKey, fresh.mid, fresh.post)
+            }
         }
 
         val rows = if (freshEnough) cached else {
