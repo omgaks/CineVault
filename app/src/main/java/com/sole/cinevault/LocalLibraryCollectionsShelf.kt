@@ -10,6 +10,11 @@ import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.platform.LocalContext
+import com.sole.cinevault.collections.CollectionPlanner
+import com.sole.cinevault.collections.CollectionRepository
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.input.key.Key
@@ -29,7 +34,8 @@ private data class CollectionShelfEntry(
     val displayName: String,
     val backdropUrl: String?,
     val isCurated: Boolean,
-    val collectionId: Int?
+    val collectionId: Int?,
+    val ownedCount: Int = 0
 )
 
 internal fun LazyGridScope.LocalLibraryCollectionsShelf(
@@ -41,22 +47,25 @@ internal fun LazyGridScope.LocalLibraryCollectionsShelf(
 ) {
     if (selectedCategory != "All") return
 
-    val nativeEntries = visibleSortedVideos
+    // A TMDB collection earns a shelf card once the user owns TWO OR MORE of its
+    // films — a single owned film no longer clutters the shelf. That film's Detail
+    // page still links to the full collection page. Restricted-folder films are
+    // excluded here, matching the collection page's own owned list.
+    val countable = visibleSortedVideos.filterNot { it.type.equals("restricted", ignoreCase = true) }
+    val ownedCounts = CollectionPlanner.ownedCountsByCollection(countable)
+    val nativeEntries = countable
+        .filter { it.collectionId != null && it.collectionName != null }
         .distinctBy { it.collectionId }
-        .mapNotNull { video ->
-            val collectionId = video.collectionId
-            val collectionName = video.collectionName
-            if (collectionId == null || collectionName == null) {
-                null
-            } else {
-                CollectionShelfEntry(
-                    key = "native:$collectionId",
-                    displayName = collectionName,
-                    backdropUrl = video.backdropUrl,
-                    isCurated = false,
-                    collectionId = collectionId
-                )
-            }
+        .filter { CollectionPlanner.earnsShelfCard(ownedCounts[it.collectionId] ?: 0) }
+        .map { video ->
+            CollectionShelfEntry(
+                key = "native:${video.collectionId}",
+                displayName = video.collectionName.orEmpty(),
+                backdropUrl = video.backdropUrl,
+                isCurated = false,
+                collectionId = video.collectionId,
+                ownedCount = ownedCounts[video.collectionId] ?: 0
+            )
         }
 
     val curatedNames = visibleSortedVideos
@@ -131,11 +140,19 @@ internal fun LazyGridScope.LocalLibraryCollectionsShelf(
                             Unit
                         }
                     }
-                    TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(10.dp), onActivate = onActivate) {
+                    // Released-film total from TMDB's collection (cache-first, 7-day TTL;
+                    // honours the metadata privacy switch). Null until known.
+                    val context = LocalContext.current
+                    val total by produceState<Int?>(initialValue = null, key1 = entry.collectionId) {
+                        value = entry.collectionId?.let { CollectionRepository.releasedTotal(context, it) }
+                    }
+                    TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(18.dp), onActivate = onActivate) {
                         CollectionShelfCard(
                             title = entry.displayName,
                             backdropUrl = entry.backdropUrl,
-                            onClick = onActivate
+                            onClick = onActivate,
+                            ownedCount = if (entry.isCurated) null else entry.ownedCount,
+                            totalCount = total
                         )
                     }
                 }

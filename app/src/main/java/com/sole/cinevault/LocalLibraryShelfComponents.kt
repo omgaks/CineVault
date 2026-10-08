@@ -87,11 +87,21 @@ internal fun SheetIconButton(icon: ImageVector, tint: Color, contentDescription:
 }
 
 @Composable
-internal fun CollectionShelfCard(title: String, backdropUrl: String?, onClick: () -> Unit) {
+internal fun CollectionShelfCard(
+    title: String,
+    backdropUrl: String?,
+    onClick: () -> Unit,
+    // Collections V2: how many of this collection's films the user owns, and how
+    // many TMDB lists as released (null until known / when offline with no cache).
+    ownedCount: Int? = null,
+    totalCount: Int? = null
+) {
+    val total = totalCount?.takeIf { it > 0 }
+    val complete = ownedCount != null && total != null && ownedCount >= total
     Box(
         modifier = Modifier
-            .width(220.dp)
-            .height(110.dp)
+            .width(232.dp)
+            .height(if (ownedCount != null) 132.dp else 110.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(SpaceMid)
             .clickable { onClick() }
@@ -101,18 +111,59 @@ internal fun CollectionShelfCard(title: String, backdropUrl: String?, onClick: (
         }
         Box(
             modifier = Modifier.fillMaxSize().background(
-                Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.62f)))
+                Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.72f)))
             )
         )
-        Text(
-            text = title,
-            color = TextBright,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.align(Alignment.BottomStart).padding(12.dp)
-        )
+        if (complete) {
+            Text(
+                text = "Complete",
+                color = Color.Black,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(10.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(com.sole.cinevault.ui.theme.AmberGlow)
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            )
+        }
+        Column(
+            modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Text(
+                text = title,
+                color = TextBright,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (ownedCount != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
+                        modifier = Modifier.weight(1f).height(5.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(Color.White.copy(alpha = 0.18f))
+                    ) {
+                        if (total != null) {
+                            Box(
+                                modifier = Modifier.fillMaxHeight()
+                                    .fillMaxWidth((ownedCount.toFloat() / total).coerceIn(0f, 1f))
+                                    .background(com.sole.cinevault.ui.theme.AmberGlow)
+                            )
+                        }
+                    }
+                    Text(
+                        text = if (total != null) "$ownedCount of $total" else "$ownedCount films",
+                        color = com.sole.cinevault.ui.theme.AmberCore,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
     }
 }
 

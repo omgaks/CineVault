@@ -1,6 +1,8 @@
 package com.sole.cinevault
 
 import com.sole.cinevault.library.*
+import com.sole.cinevault.collections.CollectionPageV2
+import com.sole.cinevault.collections.loadCollectionPageV2Enabled
 import com.sole.cinevault.network.*
 import com.sole.cinevault.smb.loadSmbShares
 import com.sole.cinevault.tvmode.TelevisionModeDetector
@@ -672,14 +674,34 @@ fun CineVaultApp() {
                 }
 
                 is Destination.NativeCollectionPage -> {
-                    val items = libraryVideos.filter { it.collectionId == dest.collectionId }
-                    CollectionScreen(
-                        title = dest.collectionName,
-                        items = items,
-                        onBack = { pop() },
-                        onItemClick = { item -> push(Destination.Detail(item)) },
-                        onPlayClick = { item -> push(Destination.Player(item.video, item.type, items)) }
-                    )
+                    if (loadCollectionPageV2Enabled(context)) {
+                        // Collections V2: owned films in release order + the films you
+                        // don't own yet. homeVisibleVideos already excludes Secret and
+                        // restricted-folder content, so hidden films never count as owned.
+                        val owned = homeVisibleVideos.filter { it.collectionId == dest.collectionId }
+                        CollectionPageV2(
+                            collectionId = dest.collectionId,
+                            title = dest.collectionName,
+                            ownedItems = owned,
+                            onBack = { pop() },
+                            onItemClick = { item -> push(Destination.Detail(item)) },
+                            onPlay = { item, ordered -> push(Destination.Player(item.video, item.type, ordered)) },
+                            onSearchLibrary = { query ->
+                                sessionAppState.onSearchQueryChanged(query)
+                                switchTab(2)
+                            },
+                            isTelevision = isTelevision
+                        )
+                    } else {
+                        val items = libraryVideos.filter { it.collectionId == dest.collectionId }
+                        CollectionScreen(
+                            title = dest.collectionName,
+                            items = items,
+                            onBack = { pop() },
+                            onItemClick = { item -> push(Destination.Detail(item)) },
+                            onPlayClick = { item -> push(Destination.Player(item.video, item.type, items)) }
+                        )
+                    }
                 }
 
                 is Destination.CuratedCollectionPage -> {

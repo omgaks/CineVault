@@ -1,5 +1,9 @@
 package com.sole.cinevault
 
+import androidx.compose.material.icons.rounded.Collections
+import com.sole.cinevault.collections.loadCollectionPageV2Enabled
+import com.sole.cinevault.collections.saveCollectionPageV2Enabled
+
 import com.sole.cinevault.metadata.*
 import com.sole.cinevault.library.*
 import com.sole.cinevault.smb.*
@@ -363,6 +367,47 @@ fun SettingsScreen(
                             onCheckedChange = {
                                 metadataFetchEnabled = it
                                 saveMetadataFetchEnabled(context, it)
+                            },
+                            colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Collections — the new franchise page (owned + not-yet-owned films, in
+            // release order). Off falls back to the classic grid, exactly as before.
+            GlassSectionCard(
+                title = "Collections",
+                subtitle = "How franchise collections are shown.",
+                icon = Icons.Rounded.Collections,
+                accent = AccentAbout
+            ) {
+                var collectionPageV2 by remember { mutableStateOf(loadCollectionPageV2Enabled(context)) }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "New collection page", color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Shows the films in a franchise you don't own yet, in release order, with progress and a next-up. Turn off for the classic grid.",
+                            color = TextMuted, fontSize = 12.sp, lineHeight = 17.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    TvFocusableSlot(
+                        isTelevision = isTelevision,
+                        shape = RoundedCornerShape(50),
+                        onActivate = {
+                            collectionPageV2 = !collectionPageV2
+                            saveCollectionPageV2Enabled(context, collectionPageV2)
+                        }
+                    ) {
+                        Switch(
+                            checked = collectionPageV2,
+                            onCheckedChange = {
+                                collectionPageV2 = it
+                                saveCollectionPageV2Enabled(context, it)
                             },
                             colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
                         )
