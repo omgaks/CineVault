@@ -80,6 +80,7 @@ object CollectionPlanner {
         details: CollectionDetails?,
         ownedItems: List<VideoWithMetadata>,
         todayIso: String,
+        story: List<StoryKey>? = null,
         isFinished: (VideoWithMetadata) -> Boolean
     ): CollectionPlan {
         // One owned file per TMDB id (first wins), in the order given.
@@ -95,7 +96,7 @@ object CollectionPlanner {
         }
 
         // Status first, so upcoming films always sort after everything released.
-        val withStatus = (listed + extras).map { p ->
+        val byRelease = (listed + extras).map { p ->
             p to when {
                 ownedById.containsKey(p.tmdbId) -> SlotStatus.OWNED
                 isReleased(p.releaseDate, todayIso) -> SlotStatus.MISSING
@@ -109,6 +110,7 @@ object CollectionPlanner {
                 { it.first.title.lowercase() }
             )
         )
+        val withStatus = if (story.isNullOrEmpty()) byRelease else applyStoryOrder(byRelease, story)
         val sorted = withStatus.map { it.first }
         val statuses = withStatus.map { it.second }
 
@@ -152,8 +154,8 @@ object CollectionPlanner {
         val years = plan.slots.filter { it.status != SlotStatus.UPCOMING }.mapNotNull { it.year }
         val span = when {
             years.isEmpty() -> null
-            years.first() == years.last() -> years.first()
-            else -> "${years.first()}–${years.last()}"
+            years.min() == years.max() -> years.min()
+            else -> "${years.min()}–${years.max()}"
         }
         val films = "${plan.releasedTotal} film${if (plan.releasedTotal == 1) "" else "s"}"
         return listOfNotNull(films, span, "${plan.ownedCount} in your library").joinToString(" · ")
@@ -167,6 +169,55 @@ object CollectionPlanner {
             isStale -> "Offline copy · ${days}d old"
             days == 0L -> "Updated today"
             else -> "Updated ${days}d ago"
+        }
+    }
+
+    /**
+     * Story order: films matched by [StoryKey] go first, in the story's order; any released
+     * film the story doesn't mention follows in release order; upcoming films stay last.
+     * A key matching nothing is skipped, so a wrong entry can't hide or duplicate a film.
+     */
+    private fun applyStoryOrder(
+        byRelease: List<Pair<CollectionPart, SlotStatus>>,
+        story: List<StoryKey>
+    ): List<Pair<CollectionPart, SlotStatus>> {
+        val upcoming = byRelease.filter { it.second == SlotStatus.UPCOMING }
+        val remaining = byRelease.filter { it.second != SlotStatus.UPCOMING }.toMutableList()
+        val ordered = mutableListOf<Pair<CollectionPart, SlotStatus>>()
+        story.forEach { key ->
+            val i = remaining.indexOfFirst { key.matches(it.first) }
+            if (i >= 0) ordered += remaining.removeAt(i)
+        }
+        return ordered + remaining + upcoming
+    }
+
+    /** Several TMDB collections as one list (a "universe"): parts de-duplicated by TMDB id. */
+    fun mergeDetails(id: Int, name: String, all: List<CollectionDetails>): CollectionDetails =
+        CollectionDetails(
+            id = id,
+            name = name,
+            overview = all.firstNotNullOfOrNull { it.overview?.takeIf(String::isNotBlank) },
+            posterPath = all.firstNotNullOfOrNull { it.posterPath },
+            backdropPath = all.firstNotNullOfOrNull { it.backdropPath },
+            parts = all.flatMap { it.parts }.distinctBy { it.tmdbId }
+        )
+
+    /** One row of the release timeline. [yearLabel] is non-null only on the first row of a year. */
+    data class TimelineRow(
+        val slot: CollectionSlot,
+        val yearLabel: String?,
+        val isFirst: Boolean,
+        val isLast: Boolean
+    )
+
+    fun timelineRows(plan: CollectionPlan): List<TimelineRow> {
+        var previous: String? = null
+        val slots = plan.slots
+        return slots.mapIndexed { i, slot ->
+            val label = slot.year ?: "TBA"
+            val shown = if (label != previous) label else null
+            previous = label
+            TimelineRow(slot, shown, isFirst = i == 0, isLast = i == slots.lastIndex)
         }
     }
 

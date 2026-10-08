@@ -1,6 +1,7 @@
 package com.sole.cinevault.collections
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,28 +61,39 @@ import com.sole.cinevault.ui.responsive.cineAdaptiveTokens
 import com.sole.cinevault.ui.responsive.rememberCineWindowSizeInfo
 import com.sole.cinevault.ui.theme.AmberCore
 import com.sole.cinevault.ui.theme.AmberGlow
+import com.sole.cinevault.ui.theme.GlassPanel
 import com.sole.cinevault.ui.theme.GlassSurfaceStrong
 import com.sole.cinevault.ui.theme.SpaceBlack
 import com.sole.cinevault.ui.theme.SpaceDeep
 import com.sole.cinevault.ui.theme.TextBright
 import com.sole.cinevault.ui.theme.TextMuted
 import com.sole.cinevault.ui.theme.glassPanel
-import com.sole.cinevault.ui.theme.GlassPanel
-import androidx.compose.foundation.border
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** Where a collection page's film list comes from. */
+sealed interface CollectionSource {
+    /** One TMDB collection. */
+    data class Tmdb(val collectionId: Int) : CollectionSource
+
+    /** Several TMDB collections merged into one franchise page, with an optional story order. */
+    data class UniverseSource(val universe: Universe, val knownIds: Map<String, Int>) : CollectionSource
+
+    /** A curated group with no TMDB list (the MCU keyword group): the user's own films only. */
+    data object OwnedOnly : CollectionSource
+}
+
 /**
- * Collections V2 page: your films in release order, the ones you don't own as
- * ghost posters, progress, and a "next up". Adapts to the window through the
- * project-wide CineWindowSizeInfo / CineAdaptiveTokens (see CollectionLayout.kt).
+ * Collections V2 page: your films in release (or story) order, the ones you don't own as
+ * ghost posters, progress, a "next up", a release timeline and a marathon. Adapts to the window
+ * through the project-wide CineWindowSizeInfo / CineAdaptiveTokens (see CollectionLayout.kt).
  *
  * [ownedItems] must already exclude Secret / restricted-folder videos.
  */
 @Composable
 fun CollectionPageV2(
-    collectionId: Int,
+    source: CollectionSource,
     title: String,
     ownedItems: List<VideoWithMetadata>,
     onBack: () -> Unit,
@@ -95,10 +108,14 @@ fun CollectionPageV2(
     val tokens = cineAdaptiveTokens(info)
     val spec = collectionLayoutFor(info)
 
-    var load by remember(collectionId) { mutableStateOf<CollectionLoad?>(null) }
-    var loaded by remember(collectionId) { mutableStateOf(false) }
-    LaunchedEffect(collectionId) {
-        load = CollectionRepository.load(context, collectionId)
+    var load by remember(source) { mutableStateOf<CollectionLoad?>(null) }
+    var loaded by remember(source) { mutableStateOf(false) }
+    LaunchedEffect(source) {
+        load = when (source) {
+            is CollectionSource.Tmdb -> CollectionRepository.load(context, source.collectionId)
+            is CollectionSource.UniverseSource -> CollectionRepository.loadUniverse(context, source.universe, source.knownIds)
+            CollectionSource.OwnedOnly -> null
+        }
         loaded = true
     }
 
@@ -113,27 +130,50 @@ fun CollectionPageV2(
 
     val wanted by remember { CollectionRepository.wantlistIds(context) }.collectAsState(initial = emptySet())
     val today = remember { CollectionRepository.todayIso() }
-    val plan = remember(load, ownedItems, watched) {
-        CollectionPlanner.plan(load?.details, ownedItems, today) { (watched[it.video.path] ?: 0f) >= 0.9f }
+
+    val story = (source as? CollectionSource.UniverseSource)?.universe?.story?.takeIf { it.isNotEmpty() }
+    val isFinished: (VideoWithMetadata) -> Boolean = { (watched[it.video.path] ?: 0f) >= 0.9f }
+    val releasePlan = remember(load, ownedItems, watched) {
+        CollectionPlanner.plan(load?.details, ownedItems, today, null, isFinished)
     }
+    val storyPlan = remember(load, ownedItems, watched, story) {
+        story?.let { CollectionPlanner.plan(load?.details, ownedItems, today, it, isFinished) }
+    }
+
+    // rememberSaveable with plain strings so a rotation keeps the chosen mode.
+    var orderName by rememberSaveable { mutableStateOf("release") }
+    var viewName by rememberSaveable { mutableStateOf("posters") }
+    val orderMode = if (orderName == "story" && storyPlan != null) OrderMode.STORY else OrderMode.RELEASE
+    val viewMode = if (viewName == "timeline") ViewMode.TIMELINE else ViewMode.POSTERS
+    val plan = if (orderMode == OrderMode.STORY && storyPlan != null) storyPlan else releasePlan
+    val timelineRows = remember(releasePlan) { CollectionPlanner.timelineRows(releasePlan) }
 
     val fetchEnabled = remember { loadMetadataFetchEnabled(context) }
     val statusText = CollectionPlanner.statusLabel(
         load?.fetchedAtMs, load?.isStale == true, System.currentTimeMillis(), fetchEnabled
     )
     val notice: String? = when {
-        !loaded || plan.hasFullList -> null
+        !loaded || plan.hasFullList || source is CollectionSource.OwnedOnly -> null
         !fetchEnabled -> "Online lookups are off, so only what's in your library is shown."
         else -> "Couldn't load the full collection, so only what's in your library is shown."
     }
     val heroUrl = tmdbImageUrl(load?.details?.backdropPath, "w1280")
         ?: ownedItems.firstOrNull { !it.backdropUrl.isNullOrBlank() }?.backdropUrl
+    val wantlistCollectionId = (source as? CollectionSource.Tmdb)?.collectionId
 
     var sheetSlot by remember { mutableStateOf<CollectionSlot?>(null) }
 
+    // Every play from this page is a marathon over the list as currently ordered: the player
+    // shows its "Up next" countdown between films instead of jumping straight to the next one.
+    val startPlay: (VideoWithMetadata) -> Unit = { v ->
+        MarathonSession.start(plan.orderedOwned.map { it.video.path })
+        onPlay(v, plan.orderedOwned)
+    }
+
     val model = PageModel(
-        title = load?.details?.name ?: title,
+        title = load?.details?.name?.takeIf { source is CollectionSource.Tmdb } ?: title,
         plan = plan,
+        timelineRows = timelineRows,
         heroUrl = heroUrl,
         statusText = statusText,
         watched = watched,
@@ -142,9 +182,14 @@ fun CollectionPageV2(
         isTelevision = isTelevision,
         tokens = tokens,
         spec = spec,
+        orderMode = orderMode,
+        viewMode = viewMode,
+        hasStory = story != null && storyPlan != null,
+        onOrder = { orderName = if (it == OrderMode.STORY) "story" else "release" },
+        onView = { viewName = if (it == ViewMode.TIMELINE) "timeline" else "posters" },
         onOpenOwned = onItemClick,
-        onPlay = { v -> onPlay(v, plan.orderedOwned) },
-        onPlayInOrder = { plan.orderedOwned.firstOrNull()?.let { onPlay(it, plan.orderedOwned) } },
+        onPlay = startPlay,
+        onMarathon = { (plan.nextUp ?: plan.orderedOwned.firstOrNull())?.let(startPlay) },
         onOpenMissing = { sheetSlot = it }
     )
 
@@ -173,7 +218,7 @@ fun CollectionPageV2(
             totalReleased = plan.releasedTotal.takeIf { plan.hasFullList },
             isWanted = isWanted,
             onToggleWanted = {
-                scope.launch { CollectionRepository.setWanted(context, slot.part, collectionId, !isWanted) }
+                scope.launch { CollectionRepository.setWanted(context, slot.part, wantlistCollectionId, !isWanted) }
             },
             onSearchLibrary = {
                 sheetSlot = null
@@ -187,6 +232,7 @@ fun CollectionPageV2(
 private class PageModel(
     val title: String,
     val plan: CollectionPlan,
+    val timelineRows: List<CollectionPlanner.TimelineRow>,
     val heroUrl: String?,
     val statusText: String,
     val watched: Map<String, Float>,
@@ -195,9 +241,14 @@ private class PageModel(
     val isTelevision: Boolean,
     val tokens: CineAdaptiveTokens,
     val spec: CollectionLayoutSpec,
+    val orderMode: OrderMode,
+    val viewMode: ViewMode,
+    val hasStory: Boolean,
+    val onOrder: (OrderMode) -> Unit,
+    val onView: (ViewMode) -> Unit,
     val onOpenOwned: (VideoWithMetadata) -> Unit,
     val onPlay: (VideoWithMetadata) -> Unit,
-    val onPlayInOrder: () -> Unit,
+    val onMarathon: () -> Unit,
     val onOpenMissing: (CollectionSlot) -> Unit
 )
 
@@ -234,7 +285,7 @@ private fun SinglePane(m: PageModel) {
                     LegendRow(Modifier.padding(top = 4.dp))
                 }
             }
-            slotItems(m)
+            contentItems(m)
             item(span = { GridItemSpan(maxLineSpan) }) { Attribution(m) }
         }
         StatusChip(m.statusText, Modifier.align(Alignment.TopEnd).padding(14.dp))
@@ -272,12 +323,25 @@ private fun TwoPane(m: PageModel) {
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("In order", color = TextBright, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    val heading = when {
+                        m.viewMode == ViewMode.TIMELINE -> "Timeline"
+                        m.orderMode == OrderMode.STORY -> "In story order"
+                        else -> "In order"
+                    }
+                    Text(heading, color = TextBright, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     LegendRow()
                 }
             }
-            slotItems(m)
+            contentItems(m)
         }
+    }
+}
+
+private fun LazyGridScope.contentItems(m: PageModel) {
+    if (m.viewMode == ViewMode.TIMELINE) {
+        timelineItems(m.timelineRows, m.watched, m.wanted, m.tokens.componentGap, m.isTelevision, m.onOpenOwned, m.onOpenMissing)
+    } else {
+        slotItems(m)
     }
 }
 
@@ -322,9 +386,19 @@ private fun CollectionSummary(m: PageModel) {
             }
         }
         NextUpCard(m)
+        if (plan.hasFullList) {
+            ModeRow(
+                hasStory = m.hasStory,
+                order = m.orderMode,
+                view = m.viewMode,
+                isTelevision = m.isTelevision,
+                onOrder = m.onOrder,
+                onView = m.onView
+            )
+        }
         if (plan.orderedOwned.size >= 2) {
-            TvFocusableSlot(isTelevision = m.isTelevision, shape = RoundedCornerShape(50), onActivate = m.onPlayInOrder) {
-                GlassPill("Play in order", m.onPlayInOrder, icon = Icons.Rounded.PlayArrow)
+            TvFocusableSlot(isTelevision = m.isTelevision, shape = RoundedCornerShape(50), onActivate = m.onMarathon) {
+                GlassPill("Marathon", m.onMarathon, icon = Icons.Rounded.PlayArrow)
             }
         }
     }

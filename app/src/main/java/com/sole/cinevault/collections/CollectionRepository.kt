@@ -81,6 +81,61 @@ object CollectionRepository {
         entity.toLoad(isStale = false)
     }
 
+    // ── Universes (Slice B): several TMDB collections as one list ───────────────
+
+    private const val UNIVERSE_IDS_PREFS = "cinevault_universe_ids"
+    private const val MISS_TTL_MS = 7L * 24L * 60L * 60L * 1000L
+
+    /**
+     * A universe's collections merged into one list. Member ids come from the user's own
+     * films first ([knownIds], keyed by [UniverseCatalog.key]); the rest are looked up once
+     * by name and cached. Members that can't be resolved/loaded are skipped, so a partly
+     * known universe still shows everything we do know.
+     */
+    suspend fun loadUniverse(context: Context, universe: Universe, knownIds: Map<String, Int>): CollectionLoad? =
+        withContext(Dispatchers.IO) {
+            val app = context.applicationContext
+            val ids = LinkedHashSet<Int>()
+            for (name in universe.collections) {
+                val id = knownIds[UniverseCatalog.key(name)] ?: resolveCollectionId(app, name) ?: continue
+                ids += id
+            }
+            val loads = ids.mapNotNull { load(app, it) }
+            if (loads.isEmpty()) return@withContext null
+            CollectionLoad(
+                details = CollectionPlanner.mergeDetails(ids.first(), universe.name, loads.map { it.details }),
+                fetchedAtMs = loads.minOf { it.fetchedAtMs },
+                isStale = loads.any { it.isStale }
+            )
+        }
+
+    suspend fun universeReleasedTotal(context: Context, universe: Universe, knownIds: Map<String, Int>): Int? =
+        loadUniverse(context, universe, knownIds)?.let { CollectionPlanner.releasedCount(it.details.parts, todayIso()) }
+
+    /** Collection name -> TMDB id. Hits are cached for good; "not found" is cached for a week. */
+    private suspend fun resolveCollectionId(app: Context, name: String): Int? {
+        val prefs = app.getSharedPreferences(UNIVERSE_IDS_PREFS, Context.MODE_PRIVATE)
+        val key = UniverseCatalog.key(name)
+        val now = System.currentTimeMillis()
+        prefs.getString(key, null)?.let { saved ->
+            val parts = saved.split(":")
+            val id = parts.getOrNull(0)?.toIntOrNull() ?: 0
+            val at = parts.getOrNull(1)?.toLongOrNull() ?: 0L
+            if (id > 0) return id
+            if (now - at < MISS_TTL_MS) return null
+        }
+        if (!loadMetadataFetchEnabled(app) || BuildConfig.TMDB_TOKEN.isBlank()) return null
+        // A network failure must not poison the cache with a "not found".
+        val response = runCatching {
+            TmdbClient.api.searchCollection(tmdbAuthorizationHeader(), name)
+        }.getOrNull() ?: return null
+        val match = response.results.firstOrNull { r ->
+            r.id != null && !r.name.isNullOrBlank() && UniverseCatalog.key(r.name) == key
+        }
+        prefs.edit().putString(key, "${match?.id ?: 0}:$now").apply()
+        return match?.id
+    }
+
     /** Number of already-released films in the collection, for the shelf's "2 of 6". Cache-first. */
     suspend fun releasedTotal(context: Context, collectionId: Int): Int? =
         load(context, collectionId)?.let { CollectionPlanner.releasedCount(it.details.parts, todayIso()) }
