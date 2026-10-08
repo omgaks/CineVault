@@ -64,6 +64,17 @@
 -keep class com.sole.cinevault.metadata.TmdbExtraDetails { *; }
 -keep class com.sole.cinevault.library.CachedLibrary { *; }
 
+# Collections V2 (+ Slice B name search) — TMDB collection / missing-film sheet responses (Gson reflection).
+-keep class com.sole.cinevault.metadata.TmdbCollectionDetails { *; }
+-keep class com.sole.cinevault.metadata.TmdbVideo { *; }
+-keep class com.sole.cinevault.metadata.TmdbVideosBlock { *; }
+-keep class com.sole.cinevault.metadata.TmdbProvider { *; }
+-keep class com.sole.cinevault.metadata.TmdbRegionProviders { *; }
+-keep class com.sole.cinevault.metadata.TmdbWatchProvidersBlock { *; }
+-keep class com.sole.cinevault.metadata.TmdbMovieExtras { *; }
+-keep class com.sole.cinevault.metadata.TmdbCollectionSummary { *; }
+-keep class com.sole.cinevault.metadata.TmdbCollectionSearchResponse { *; }
+
 # ── CineVault Nearby wire models ────────────────────────────────────────
 # These classes cross the LAN JSON boundary. Keep their generic signatures
 # and members stable in release builds so R8 cannot turn a catalogue item
