@@ -162,6 +162,7 @@ class PictureEnhanceController(
         splitView = false
         badDropWindows = 0
         performance.reset()
+        live.performanceScale = 1f
         updatePerformanceSource()
         settings = PictureMemory.load(context, path) ?: PictureSettings()
         if (settings.preset != PicturePreset.OFF && settings.preset != PicturePreset.CUSTOM) {
@@ -379,6 +380,7 @@ class PictureEnhanceController(
         settings = settings.copy(preset = PicturePreset.OFF)
         persist() // forgets the saved "on" so the title opens normally next time
         live.current = PictureShaderParams.OFF
+        live.performanceScale = 1f
         try {
             player.setVideoEffects(emptyList())
         } catch (_: Throwable) {
@@ -410,9 +412,7 @@ class PictureEnhanceController(
     }
 
     private fun refreshLive() {
-        // Performance telemetry is intentionally not applied to image uniforms yet:
-        // P6's user-selected appearance must remain unchanged until shader scaling is verified.
-        performancePlan = performance.plan(settings.intensity)
+        updatePerformancePlan()
         live.current = PictureProfiles.toShaderParams(settings, comparing, isActive, splitView, splitPosition)
     }
 
@@ -424,6 +424,14 @@ class PictureEnhanceController(
 
     private fun updatePerformancePlan() {
         performancePlan = performance.plan(settings.intensity)
+        // At normal load retain the exact P6 appearance, even at low user intensity.
+        // Under pressure reduce only optional repair/reconstruction strength.
+        // Never alter user sliders, the Movie sharpen ceiling, or Media3 effects.
+        live.performanceScale = when (performancePlan.load) {
+            PictureAdaptivePerformancePolicy.Load.NORMAL -> 1f
+            PictureAdaptivePerformancePolicy.Load.ELEVATED,
+            PictureAdaptivePerformancePolicy.Load.CRITICAL -> performancePlan.repairScale
+        }
     }
 
     private fun isHdr(): Boolean {

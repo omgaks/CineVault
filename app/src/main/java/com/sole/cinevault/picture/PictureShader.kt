@@ -15,6 +15,8 @@ import androidx.media3.effect.GlShaderProgram
 class PictureLiveParams {
     @Volatile var current: PictureShaderParams = PictureShaderParams.OFF
     @Volatile var frames: Long = 0L
+    /** P7 transient workload scale; never persisted or used to change the effect list. */
+    @Volatile var performanceScale: Float = 1f
 }
 
 /** P6 single-pass enhancement: P3 repair/chroma -> Anime/Animation or Movie recovery -> CAS -> vibrance -> dither/grain. */
@@ -49,6 +51,7 @@ private class PictureShaderProgram(private val live: PictureLiveParams) :
 
     override fun drawFrame(inputTexId:Int,presentationTimeUs:Long) {
         val p=live.current
+        val performanceScale = live.performanceScale.coerceIn(0.65f, 1f)
         try {
             glProgram.use()
             glProgram.setSamplerTexIdUniform("uTexSampler",inputTexId,0)
@@ -60,8 +63,8 @@ private class PictureShaderProgram(private val live: PictureLiveParams) :
             glProgram.setFloatUniform("uGrain",p.grain)
             glProgram.setFloatUniform("uSplit",p.split)
             val adaptive=PictureAdaptiveRepairPolicy.forState(p.content,p.amount)
-            glProgram.setFloatUniform("uRepairScale",adaptive.repair)
-            glProgram.setFloatUniform("uChromaScale",adaptive.chroma)
+            glProgram.setFloatUniform("uRepairScale",adaptive.repair * performanceScale)
+            glProgram.setFloatUniform("uChromaScale",adaptive.chroma * performanceScale)
             glProgram.setFloatUniform("uSharpenGuard",adaptive.sharpenGuard)
 
             val anime=PictureAnimeEnginePolicy.forState(p.content,p.amount,sourceHeight)
@@ -69,13 +72,13 @@ private class PictureShaderProgram(private val live: PictureLiveParams) :
             glProgram.setFloatUniform("uAnimeLine",anime.lineStrength)
             glProgram.setFloatUniform("uAnimeFlat",anime.flatProtection)
             glProgram.setFloatUniform("uAnimeHalo",anime.haloGuard)
-            glProgram.setFloatUniform("uAnimeReconstruct",anime.reconstruction)
+            glProgram.setFloatUniform("uAnimeReconstruct",anime.reconstruction * performanceScale)
             glProgram.setFloatUniform("uAnimeDiagonal",anime.diagonalAssist)
             glProgram.setFloatUniform("uAnimeChromaGuard",anime.chromaEdgeGuard)
 
             val movie=PictureMovieEnginePolicy.forState(p.content,p.amount,sourceHeight)
             glProgram.setFloatUniform("uMovieEnabled",movie.enabled)
-            glProgram.setFloatUniform("uMovieDetail",movie.detailRecovery)
+            glProgram.setFloatUniform("uMovieDetail",movie.detailRecovery * performanceScale)
             glProgram.setFloatUniform("uMovieTexture",movie.textureProtection)
             glProgram.setFloatUniform("uMovieGrainProtect",movie.grainProtection)
             glProgram.setFloatUniform("uMovieSkinProtect",movie.skinProtection)
