@@ -148,3 +148,8 @@ data class TmdbMovieExtras(
     // The JSON key contains a slash, so it can't be a Kotlin property name.
     @SerializedName("watch/providers") val watchProviders: TmdbWatchProvidersBlock? = null
 )
+
+// Slice B — collection search by name (defaults keep Gson's no-arg constructor path safe).
+data class TmdbCollectionSummary(val id: Int? = null, val name: String? = null)
+
+data class TmdbCollectionSearchResponse(val results: List<TmdbCollectionSummary> = emptyList())

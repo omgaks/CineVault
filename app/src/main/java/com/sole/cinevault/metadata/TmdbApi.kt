@@ -120,6 +120,15 @@ interface TmdbApi {
         @Query("append_to_response") appendToResponse: String = "videos,watch/providers",
         @Query("language") language: String? = null
     ): TmdbMovieExtras
+
+    // Slice B: resolve a franchise's collection id from its NAME, so no TMDB ids are
+    // hardcoded in the app. Result is cached forever (ids don't change).
+    @GET("search/collection")
+    suspend fun searchCollection(
+        @Header("Authorization") bearerToken: String,
+        @Query("query") query: String,
+        @Query("language") language: String? = null
+    ): TmdbCollectionSearchResponse
 }
 
 data class TmdbExternalIds(
