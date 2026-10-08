@@ -1,5 +1,7 @@
 package com.sole.cinevault.metadata
 
+import com.google.gson.annotations.SerializedName
+
 data class TmdbMovieSearchResponse(val results: List<TmdbMovie>)
 
 data class TmdbMovie(
@@ -101,4 +103,48 @@ data class TmdbTvDetails(
     val created_by: List<TmdbCreatedBy>? = null,
     val credits: TmdbCreditsBlock? = null,
     val keywords: TmdbTvKeywordsBlock? = null
+)
+
+// ── Collections V2 ──────────────────────────────────────────────────────────
+// Every constructor parameter has a default so Kotlin emits a no-arg
+// constructor — Gson then honours the defaults instead of leaving
+// non-nullable collections null when a field is absent from the response.
+data class TmdbCollectionDetails(
+    val id: Int? = null,
+    val name: String? = null,
+    val overview: String? = null,
+    val poster_path: String? = null,
+    val backdrop_path: String? = null,
+    val parts: List<TmdbMovie> = emptyList()
+)
+
+data class TmdbVideo(
+    val key: String? = null,
+    val site: String? = null,
+    val type: String? = null,
+    val official: Boolean? = null
+)
+
+data class TmdbVideosBlock(val results: List<TmdbVideo> = emptyList())
+
+data class TmdbProvider(val provider_name: String? = null)
+
+data class TmdbRegionProviders(
+    val link: String? = null,
+    val flatrate: List<TmdbProvider>? = null,
+    val rent: List<TmdbProvider>? = null,
+    val buy: List<TmdbProvider>? = null
+)
+
+data class TmdbWatchProvidersBlock(val results: Map<String, TmdbRegionProviders>? = null)
+
+data class TmdbMovieExtras(
+    val id: Int? = null,
+    val runtime: Int? = null,
+    val overview: String? = null,
+    val vote_average: Double? = null,
+    val release_date: String? = null,
+    val videos: TmdbVideosBlock? = null,
+    // The JSON key contains a slash, so it can't be a Kotlin property name.
+    @SerializedName("watch/providers") val watchProviders: TmdbWatchProvidersBlock? = null
 )

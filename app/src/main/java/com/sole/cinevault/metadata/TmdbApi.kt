@@ -99,6 +99,27 @@ interface TmdbApi {
         @Query("append_to_response") appendToResponse: String = "credits,keywords",
         @Query("language") language: String? = null
     ): TmdbTvDetails
+
+    // ── Collections V2 ─────────────────────────────────────────────────────
+    // The full franchise list for a TMDB collection: every film it contains,
+    // owned or not. Previously CineVault stored belongs_to_collection.id but
+    // never asked TMDB what else is in that collection.
+    @GET("collection/{collection_id}")
+    suspend fun getCollection(
+        @Header("Authorization") bearerToken: String,
+        @Path("collection_id") collectionId: Int,
+        @Query("language") language: String? = null
+    ): TmdbCollectionDetails
+
+    // One round-trip for the "missing film" sheet: runtime/rating/overview
+    // plus trailer videos plus streaming providers (JustWatch data via TMDB).
+    @GET("movie/{movie_id}")
+    suspend fun getMovieExtras(
+        @Header("Authorization") bearerToken: String,
+        @Path("movie_id") movieId: Int,
+        @Query("append_to_response") appendToResponse: String = "videos,watch/providers",
+        @Query("language") language: String? = null
+    ): TmdbMovieExtras
 }
 
 data class TmdbExternalIds(
