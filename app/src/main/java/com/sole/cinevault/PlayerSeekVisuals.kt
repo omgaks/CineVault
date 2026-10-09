@@ -6,7 +6,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -35,6 +39,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sole.cinevault.segments.FilmEnvelope
+import com.sole.cinevault.segments.FilmLoudness
 import com.sole.cinevault.segments.SeekMarker
 import com.sole.cinevault.segments.SeekMarkerKind
 import com.sole.cinevault.ui.theme.*
@@ -59,6 +65,11 @@ internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolea
     var lastBarIndex by remember { mutableIntStateOf(-1) }
     fun barIndexOf(x: Float): Int = (x / barStepPx).toInt()
     val bloom by animateFloatAsState(targetValue = if (isDragging || waveformVisible) 1f else 0f, animationSpec = tween(if (isDragging || waveformVisible) 300 else 600, easing = FastOutSlowInEasing), label = "liquidBloom")
+    val scenePulse by rememberInfiniteTransition(label = "sceneDot").animateFloat(
+        initialValue = 0.40f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1300, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "sceneDotPulse"
+    )
     val glow by animateFloatAsState(targetValue = if (isDragging) 1f else 0.45f, animationSpec = tween(220), label = "seekGlow")
     fun positionFromX(x: Float, width: Float): Long { if (duration <= 0L || width <= 0f) return 0L; return (duration * (x / width).coerceIn(0f, 1f)).toLong().coerceIn(0L, duration) }
 
@@ -93,6 +104,9 @@ internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolea
                     val barW = 3.dp.toPx(); val gap = 2.2.dp.toPx(); val step = barW + gap
                     val n = (size.width / step).toInt().coerceAtLeast(1)
                     val maxH = size.height * 0.92f
+                    // Real loudness once the film has been measured; the decorative waves until then.
+                    val loud = FilmLoudness.db
+                    val realLevels = if (loud != null && FilmLoudness.seed == seed) FilmEnvelope.barLevels(loud, n) else null
                     val cr = androidx.compose.ui.geometry.CornerRadius(barW / 2f, barW / 2f)
                     for (i in 0 until n) {
                         val bx = i * step + barW / 2f
@@ -101,7 +115,9 @@ internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolea
                         val noise = ((h2 ushr 16) and 0xFFFF) / 65535f
                         val wave = 0.5f + 0.5f * kotlin.math.sin(i * 0.31f + (seed % 360) / 57.3f)
                         val wave2 = 0.5f + 0.5f * kotlin.math.sin(i * 0.071f + (seed % 13).toFloat())
-                        val amp = (0.18f + 0.82f * (0.40f * wave + 0.25f * wave2 + 0.35f * noise)).coerceIn(0.12f, 1f)
+                        val real = realLevels?.getOrNull(i) ?: -1f
+                        val amp = if (real >= 0f) (0.14f + 0.86f * real).coerceIn(0.12f, 1f)
+                            else (0.18f + 0.82f * (0.40f * wave + 0.25f * wave2 + 0.35f * noise)).coerceIn(0.12f, 1f)
                         val hgt = amp * maxH * bloom
                         val played = bx <= tx
                         val prox = 1f - (kotlin.math.abs(bx - tx) / (size.width * 0.30f)).coerceIn(0f, 1f)
@@ -131,9 +147,10 @@ internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolea
                         SeekMarkerKind.SCENE -> {
                             // A steady glowing dot: a scene is known to start here.
                             val c = Offset(size.width * m.startFraction, tickY)
-                            drawCircle(color = AmberGlow.copy(alpha = 0.22f), radius = 10.dp.toPx(), center = c)
-                            drawCircle(color = AmberGlow.copy(alpha = 0.45f), radius = 6.5.dp.toPx(), center = c)
+                            drawCircle(color = AmberGlow.copy(alpha = 0.16f * scenePulse), radius = (9f + 4f * scenePulse).dp.toPx(), center = c)
+                            drawCircle(color = AmberGlow.copy(alpha = 0.40f * scenePulse), radius = 6.5.dp.toPx(), center = c)
                             drawCircle(color = AmberCore, radius = 3.6.dp.toPx(), center = c)
+                            drawCircle(color = Color(0xFFFFF3D6).copy(alpha = 0.9f), radius = 1.5.dp.toPx(), center = c)
                         }
                     }
                 }

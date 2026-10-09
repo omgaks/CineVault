@@ -25,10 +25,12 @@ internal fun deriveSmartPlaybackSegments(
         }
         .firstOrNull { it.contains(position) }
 
-    val exactSceneSegment = result.segments.firstOrNull {
-        it.type == SegmentType.MID_CREDITS_SCENE ||
-            it.type == SegmentType.POST_CREDITS_SCENE
-    }
+    // The next scene still ahead of the viewer; after the last one has started, that last one,
+    // so "all scenes passed" is not mistaken for "no scene time known".
+    val scenes = result.segments
+        .filter { it.type == SegmentType.MID_CREDITS_SCENE || it.type == SegmentType.POST_CREDITS_SCENE }
+        .sortedBy { it.startMs }
+    val exactSceneSegment = scenes.firstOrNull { it.startMs > position } ?: scenes.lastOrNull()
 
     val creditsSegment = result.segments.firstOrNull {
         it.type == SegmentType.CREDITS

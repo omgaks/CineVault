@@ -87,7 +87,9 @@ internal fun BoxScope.PlayerSmartPlaybackOverlays(
     ) {
         PostCreditNotice(
             hasExactTimestamp = exactSceneSegment != null,
-            isMidCredits = hasMidCreditsScene && !hasPostCreditsScene,
+            isMidCredits = exactSceneSegment?.let { it.type == com.sole.cinevault.segments.SegmentType.MID_CREDITS_SCENE }
+                ?: (hasMidCreditsScene && !hasPostCreditsScene),
+            detail = com.sole.cinevault.segments.SceneDetectionStatus.note,
             confidencePercent = exactSceneSegment
                 ?.takeIf { com.sole.cinevault.segments.isDetectedSegment(it) }
                 ?.let { Math.round(it.confidence * 100f) },

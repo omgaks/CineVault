@@ -166,4 +166,78 @@ class SceneDetectorTest {
         assertNull(SceneGuessCodec.decode("100,150,1,1"))
         assertNull(SceneGuessCodec.decode("-5,50,1,1"))
     }
+
+    // ---- two scenes / film envelope ---------------------------------------------------
+
+    private val hopSec = 1000
+
+    /** Credits music with a loud-music, silent, sound pattern repeated; returns a 1 s envelope. */
+    private fun creditsEnvelope(startMs: Long, parts: List<Pair<Int, Float>>): AudioEnvelope {
+        val v = ArrayList<Float>()
+        for ((sec, level) in parts) repeat(sec) { v.add(level * (0.9f + 0.2f * ((it % 5) / 4f))) }
+        return AudioEnvelope(startMs, hopSec, v.toFloatArray())
+    }
+
+    @Test fun audioFindsTwoScenes() {
+        val start = duration - 10 * minute
+        // 2 min music, 6 s silence, 40 s scene, 90 s music, 6 s silence, 60 s scene.
+        val env = creditsEnvelope(start, listOf(120 to 0.1f, 6 to 0.0005f, 40 to 0.08f, 90 to 0.1f, 6 to 0.0005f, 60 to 0.08f))
+        val found = SceneDetector.fromAudioAll(env, start, duration)
+        assertEquals(2, found.size)
+        assertTrue(found[0].startMs < found[1].startMs)
+    }
+
+    @Test fun combineAllKeepsOneWhenOneFlag() {
+        val audio = listOf(SceneCandidate(1_000_000L, 50), SceneCandidate(1_500_000L, 40))
+        val g = SceneDetector.combineAll(audio, emptyList(), hasMid = false, hasPost = true)
+        assertEquals(1, g.size)
+        assertEquals(1_500_000L, g[0].startMs) // post-credit: the latest of the near-best
+    }
+
+    @Test fun combineAllKeepsTwoWhenBothFlagged() {
+        val audio = listOf(SceneCandidate(1_000_000L, 55), SceneCandidate(1_500_000L, 60))
+        val subs = listOf(SceneCandidate(1_003_000L, 60))
+        val g = SceneDetector.combineAll(audio, subs, hasMid = true, hasPost = true)
+        assertEquals(2, g.size)
+        assertTrue(g[0].startMs < g[1].startMs)
+        assertTrue(g[0].usedAudio && g[0].usedSubtitles) // confirmed by both
+    }
+
+    @Test fun combineAllEmpty() {
+        assertTrue(SceneDetector.combineAll(emptyList(), emptyList(), true, true).isEmpty())
+    }
+
+    @Test fun subtitlesAllFindsTwoGaps() {
+        val out = ArrayList<SubtitleLine>()
+        for (t in 5 until 8000 step 4) out.add(SubtitleLine(t * 1000L, t * 1000L + 2000L, "a $t"))
+        out.add(SubtitleLine(8200_000L, 8203_000L, "scene one"))
+        out.add(SubtitleLine(8500_000L, 8503_000L, "scene two"))
+        val found = SceneDetector.fromSubtitlesAll(out, duration, hasMid = true, hasPost = true)
+        assertEquals(2, found.size)
+    }
+
+    // ---- FilmEnvelope -----------------------------------------------------------------
+
+    @Test fun envelopeCodecRoundTrips() {
+        val db = floatArrayOf(-60f, Float.NaN, -12.4f, 3f)
+        val back = FilmEnvelope.decode(FilmEnvelope.encode(db))
+        assertEquals(-60f, back[0], 0.3f)
+        assertTrue(back[1].isNaN())
+        assertEquals(-12.4f, back[2], 0.3f)
+        assertEquals(3f, back[3], 0.3f)
+    }
+
+    @Test fun barLevelsMarkUnmeasuredAndOrderLoudness() {
+        val db = FloatArray(100) { if (it < 50) -20f else if (it < 80) -50f else Float.NaN }
+        val bars = FilmEnvelope.barLevels(db, 10)
+        assertTrue(bars[0] > bars[6])      // loud before quiet
+        assertEquals(-1f, bars[9], 0f)     // not measured yet
+        assertTrue(bars[0] in 0f..1f)
+    }
+
+    @Test fun isMeasuredChecksRange() {
+        val db = floatArrayOf(-10f, -10f, Float.NaN, -10f)
+        assertTrue(FilmEnvelope.isMeasured(db, 0, 2))
+        assertTrue(!FilmEnvelope.isMeasured(db, 0, 4))
+    }
 }

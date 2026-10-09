@@ -267,6 +267,7 @@ fun VideoPlayerScreen(
     val smartSegmentRepository = remember { SmartSegmentRepository(context.applicationContext) }
     var smartSegmentResult by remember { mutableStateOf(SmartSegmentResult()) }
     val sceneDetectionRunner = remember { SceneDetectionRunner(context.applicationContext) }
+    val filmLoudnessScanner = remember { FilmLoudnessScanner(context.applicationContext) }
 
     // Slice 66: zoom/pan, seek-preview and edge-swipe gesture state now
     // live in one stable holder shared by the gesture and controls layers.
@@ -878,6 +879,13 @@ fun VideoPlayerScreen(
 
         // A film flagged as having a scene after the credits but with no exact time: work out
         // a likely start from audio + subtitles and show it with a confidence percentage.
+        PlayerFilmLoudnessEffect(
+            scanner = filmLoudnessScanner,
+            filePath = currentVideo.path,
+            duration = duration,
+            seed = currentVideo.path.hashCode()
+        )
+
         PlayerSceneDetectionEffect(
             runner = sceneDetectionRunner,
             filePath = currentVideo.path,
