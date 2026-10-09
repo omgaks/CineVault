@@ -37,7 +37,7 @@ class PictureHdrRoutingIntegrationTest {
 
     @Test fun unknownTransferIsProtected() = assertEquals(
         PictureHdrPolicy.Route.HDR_PASSTHROUGH,
-        PictureHdrRouting.decide(format(C.COLOR_TRANSFER_UNSPECIFIED)).route,
+        PictureHdrRouting.decide(format(Format.NO_VALUE)).route,
     )
 
     @Test fun missingMetadataPreservesLegacyBehavior() = assertEquals(
