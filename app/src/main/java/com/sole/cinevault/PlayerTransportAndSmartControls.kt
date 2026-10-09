@@ -112,7 +112,7 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
     // appeared for them. When none exists, estimate where the credits begin: the last 7% of the
     // film, clamped to 4-10 minutes. Good enough for "stay, there is a scene after the credits".
     val creditsStartMs: Long? = creditsSegment?.startMs
-        ?: duration.takeIf { it > 0L }?.let { it - (it * 7 / 100).coerceIn(4 * 60_000L, 10 * 60_000L) }
+        ?: com.sole.cinevault.segments.SceneDetector.estimatedCreditsStartMs(duration)
 
     val creditNoticeWanted =
         !isCurrentTvShow &&

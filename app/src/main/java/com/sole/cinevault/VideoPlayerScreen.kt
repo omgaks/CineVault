@@ -266,6 +266,7 @@ fun VideoPlayerScreen(
     var autoPlayEnabled by remember { mutableStateOf(true) }
     val smartSegmentRepository = remember { SmartSegmentRepository(context.applicationContext) }
     var smartSegmentResult by remember { mutableStateOf(SmartSegmentResult()) }
+    val sceneDetectionRunner = remember { SceneDetectionRunner(context.applicationContext) }
 
     // Slice 66: zoom/pan, seek-preview and edge-swipe gesture state now
     // live in one stable holder shared by the gesture and controls layers.
@@ -874,6 +875,19 @@ fun VideoPlayerScreen(
         val creditsSegment = episodeRuntime.creditsSegment
         val showPrevNextButtons = episodeRuntime.showPrevNextButtons
         val hasNextVideo = episodeRuntime.hasNextVideo
+
+        // A film flagged as having a scene after the credits but with no exact time: work out
+        // a likely start from audio + subtitles and show it with a confidence percentage.
+        PlayerSceneDetectionEffect(
+            runner = sceneDetectionRunner,
+            filePath = currentVideo.path,
+            isTvEpisode = isCurrentTvShow,
+            result = smartSegmentResult,
+            position = position,
+            duration = duration,
+            subtitleUri = trackUi.originalUri,
+            onResult = { smartSegmentResult = it }
+        )
 
         PlayerVideoSurface(
             player = exoPlayer,
