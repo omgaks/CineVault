@@ -327,6 +327,9 @@ private fun TwoPane(m: PageModel) {
                 Box(Modifier.fillMaxSize().background(SpaceDeep))
             } else {
                 CollectionHero(m.heroUrl, Modifier.fillMaxSize())
+                // The title and Next up card sit high on this tall poster, where the hero's own
+                // fade is still light - a flat scrim keeps the text readable on bright art.
+                Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.62f)))
             }
             Column(
                 modifier = Modifier.fillMaxSize()
@@ -451,26 +454,48 @@ private fun NextUpCard(m: PageModel) {
     val poster = next.posterUrl?.takeIf { it.isNotBlank() } ?: tmdbImageUrl(slot?.part?.posterPath)
     val play = { m.onPlay(next) }
 
-    Row(
+    androidx.compose.foundation.layout.BoxWithConstraints(
         Modifier.fillMaxWidth()
             .glassPanel(20.dp, GlassSurfaceStrong)
             .border(1.dp, AmberGlow.copy(alpha = 0.55f), RoundedCornerShape(20.dp))
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(12.dp)
     ) {
-        Box(Modifier.size(width = 52.dp, height = 78.dp).clip(RoundedCornerShape(10.dp)).background(SpaceDeep)) {
-            if (poster != null) {
-                AsyncImage(model = poster, contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        // In a narrow pane (tablet side panel) the title was squeezed to a word per line by the
+        // Resume button; below this width the button drops under the text instead.
+        val stacked = maxWidth < 300.dp
+        val posterBox: @Composable () -> Unit = {
+            Box(Modifier.size(width = 52.dp, height = 78.dp).clip(RoundedCornerShape(10.dp)).background(SpaceDeep)) {
+                if (poster != null) {
+                    AsyncImage(model = poster, contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                }
             }
         }
-        Column(Modifier.weight(1f)) {
-            Text("NEXT UP", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
-            Text(next.title, color = TextBright, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(line, color = TextMuted, fontSize = 12.sp)
+        val texts: @Composable (Modifier) -> Unit = { mod ->
+            Column(mod) {
+                Text("NEXT UP", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
+                Text(next.title, color = TextBright, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(line, color = TextMuted, fontSize = 12.sp)
+            }
         }
-        TvFocusableSlot(isTelevision = m.isTelevision, shape = RoundedCornerShape(50), onActivate = play) {
-            AmberPill(if (pct > 0f) "Resume" else "Play", play)
+        val button: @Composable () -> Unit = {
+            TvFocusableSlot(isTelevision = m.isTelevision, shape = RoundedCornerShape(50), onActivate = play) {
+                AmberPill(if (pct > 0f) "Resume" else "Play", play)
+            }
+        }
+        if (stacked) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    posterBox()
+                    texts(Modifier.weight(1f))
+                }
+                button()
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                posterBox()
+                texts(Modifier.weight(1f))
+                button()
+            }
         }
     }
 }
