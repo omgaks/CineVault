@@ -59,7 +59,14 @@ fun SmartSkipPill(segment: SmartSegment, remainingMs: Long, onClick: () -> Unit)
 }
 
 @Composable
-fun PostCreditNotice(hasExactTimestamp: Boolean, isMidCredits: Boolean, onJump: (() -> Unit)?) {
+fun PostCreditNotice(
+    hasExactTimestamp: Boolean,
+    isMidCredits: Boolean,
+    onJump: (() -> Unit)?,
+    // Set when the time is CineVault's own guess rather than a timestamp from a data source.
+    confidencePercent: Int? = null,
+    evidence: String? = null
+) {
     Column(
         modifier = Modifier.widthIn(min = 230.dp, max = 310.dp)
             .glassPanel(22.dp, GlassSurfaceStrong)
@@ -71,14 +78,18 @@ fun PostCreditNotice(hasExactTimestamp: Boolean, isMidCredits: Boolean, onJump: 
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            if (hasExactTimestamp) "One scene remains — jump to it now."
-            else "Stay—one scene remains after the credits.",
+            when {
+                hasExactTimestamp && confidencePercent != null ->
+                    "A scene likely starts ahead" + (evidence?.let { " (from $it)" } ?: "") + "."
+                hasExactTimestamp -> "One scene remains — jump to it now."
+                else -> "Stay—one scene remains after the credits."
+            },
             color = TextBright, fontSize = 12.sp
         )
         if (hasExactTimestamp && onJump != null) {
             Spacer(Modifier.height(10.dp))
             Text(
-                "SKIP TO SCENE", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Black,
+                if (confidencePercent != null) "SKIP TO SCENE · $confidencePercent%" else "SKIP TO SCENE", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Black,
                 modifier = Modifier.clip(RoundedCornerShape(18.dp)).background(AmberCore)
                     .clickable(onClick = onJump).padding(horizontal = 13.dp, vertical = 8.dp)
             )
