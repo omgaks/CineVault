@@ -142,7 +142,8 @@ class PictureEnhanceController(
                 settings = saved
                 if (saved.preset != PicturePreset.CUSTOM) lastPreset = saved.preset
                 refreshLive()
-                installPipeline(restart = false)
+                // Defer until Media3 exposes a verified SDR video format.
+                // Installing before format detection can attach an SDR-only shader to HDR.
             }
         }
         evaluateAvailability()
@@ -154,6 +155,14 @@ class PictureEnhanceController(
         detected = PictureContentDetector.detect(fileName, genres)
         if (path == currentPath) return
         currentPath = path
+        // A retained SDR effect must never be carried into a different title.
+        // The new title is prepared by its own session owner.
+        if (pipelineInstalled) {
+            live.current = PictureShaderParams.OFF
+            try { player.setVideoEffects(emptyList()) } catch (_: Throwable) { }
+            pipelineInstalled = false
+        }
+        failureHandled = false
         lockedReason = null
         note = null
         comparing = false
@@ -447,12 +456,36 @@ class PictureEnhanceController(
                 if (reason == null) PictureAvailability.Available else PictureAvailability.Unavailable(reason)
             if (next != availability) availability = next
         }
+        if (pipelineInstalled && player.videoFormat != null &&
+            PictureHdrRouting.decide(player.videoFormat!!).route ==
+                PictureHdrPolicy.Route.HDR_PASSTHROUGH
+        ) {
+            // Only at an SDR -> protected HDR boundary: detach the incompatible
+            // shader and reprepare once, preserving position and playback intent.
+            val snapshot = PictureHdrRecoveryPolicy.snapshot(
+                player.currentPosition, player.playWhenReady
+            )
+            try {
+                live.current = PictureShaderParams.OFF
+                player.setVideoEffects(emptyList())
+                pipelineInstalled = false
+                player.stop()
+                player.prepare()
+                player.seekTo(snapshot.positionMs)
+                player.playWhenReady = snapshot.playWhenReady
+            } catch (_: Throwable) {
+                pipelineInstalled = false
+                setupFailed = true
+                availability = PictureAvailability.Unavailable("HDR passthrough recovery failed")
+            }
+        }
         applyEffects()
     }
 
     private fun applyEffects() {
         refreshLive() // values must be ready before the first frame reaches the shader
-        if (isActive && !pipelineInstalled && !failureHandled) {
+        // Fail closed while transfer metadata is unavailable: never assume SDR.
+        if (isActive && player.videoFormat != null && !pipelineInstalled && !failureHandled) {
             installPipeline(restart = true)
         }
     }
