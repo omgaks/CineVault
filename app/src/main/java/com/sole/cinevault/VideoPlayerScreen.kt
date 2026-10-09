@@ -165,7 +165,10 @@ fun VideoPlayerScreen(
     var subIconX by remember { mutableFloatStateOf(0f) }
     var clusterHeightPx by remember { mutableFloatStateOf(0f) }
 
-    var currentVideo by remember { mutableStateOf(video) }
+    // A new movie opened from the library can reuse this composable instance.
+    // Key the initial selection to the incoming path, while retaining in-player
+    // previous/next navigation until the parent supplies a different title.
+    var currentVideo by remember(video.path) { mutableStateOf(video) }
     var currentMediaType by remember { mutableStateOf(mediaType) }
 
     // FIX: preserve the device's real starting music volume instead of
