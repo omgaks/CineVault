@@ -8,6 +8,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
@@ -127,7 +130,20 @@ internal fun LazyGridScope.LocalLibraryCollectionsShelf(
             Spacer(modifier = Modifier.height(10.dp))
 
             val focusManager = LocalFocusManager.current
+            val shelfState = rememberLazyListState(
+                initialFirstVisibleItemIndex = LibraryScrollState.shelfIndex
+                    .coerceIn(0, (collectionShelf.size - 1).coerceAtLeast(0)),
+                initialFirstVisibleItemScrollOffset = LibraryScrollState.shelfOffset
+            )
+            LaunchedEffect(shelfState) {
+                snapshotFlow { shelfState.firstVisibleItemIndex to shelfState.firstVisibleItemScrollOffset }
+                    .collect { (i, o) ->
+                        LibraryScrollState.shelfIndex = i
+                        LibraryScrollState.shelfOffset = o
+                    }
+            }
             LazyRow(
+                state = shelfState,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.then(
                     if (isTelevision) {

@@ -314,7 +314,8 @@ private fun SinglePane(m: PageModel) {
             contentItems(m)
             item(span = { GridItemSpan(maxLineSpan) }) { Attribution(m) }
         }
-        StatusChip(m.statusText, Modifier.align(Alignment.TopEnd).padding(14.dp))
+        // Leave room for the share button that sits in the same top-right corner.
+        StatusChip(m.statusText, Modifier.align(Alignment.TopEnd).padding(top = 14.dp, end = 70.dp))
     }
 }
 
