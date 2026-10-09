@@ -128,12 +128,13 @@ internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolea
                                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(h / 2f, h / 2f)
                             )
                         }
-                        SeekMarkerKind.SCENE -> drawCircle(
-                            color = AmberCore.copy(alpha = 0.80f + 0.20f * bloom),
-                            radius = 3.4.dp.toPx(),
-                            center = Offset(size.width * m.startFraction, tickY),
-                            style = Stroke(width = 1.6.dp.toPx())
-                        )
+                        SeekMarkerKind.SCENE -> {
+                            // A steady glowing dot: a scene is known to start here.
+                            val c = Offset(size.width * m.startFraction, tickY)
+                            drawCircle(color = AmberGlow.copy(alpha = 0.22f), radius = 10.dp.toPx(), center = c)
+                            drawCircle(color = AmberGlow.copy(alpha = 0.45f), radius = 6.5.dp.toPx(), center = c)
+                            drawCircle(color = AmberCore, radius = 3.6.dp.toPx(), center = c)
+                        }
                     }
                 }
 

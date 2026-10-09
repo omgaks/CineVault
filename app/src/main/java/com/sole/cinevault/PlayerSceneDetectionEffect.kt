@@ -20,7 +20,7 @@ private fun SmartSegment.isScene() =
 /**
  * For a film flagged as having a scene after the credits but with no exact time, works out a
  * likely start from audio and subtitles and adds it to the segments, with its confidence.
- * A remembered guess is applied straight away; fresh analysis starts two minutes before the
+ * A remembered guess is applied straight away; fresh analysis starts five minutes before the
  * credits so it never competes with the film's own decoding earlier on.
  */
 @Composable
@@ -43,7 +43,7 @@ internal fun PlayerSceneDetectionEffect(
     val creditsStart = result.segments.firstOrNull { it.type == SegmentType.CREDITS }?.startMs
         ?: SceneDetector.estimatedCreditsStartMs(duration)
     val eligible = !isTvEpisode && flagged && !hasAnyScene && duration >= 10 * 60_000L && creditsStart != null
-    val near = creditsStart != null && position >= creditsStart - 120_000L
+    val near = creditsStart != null && position >= creditsStart - 300_000L
 
     val key = "$filePath|$duration"
     val attempted = remember(key) { BooleanArray(1) }

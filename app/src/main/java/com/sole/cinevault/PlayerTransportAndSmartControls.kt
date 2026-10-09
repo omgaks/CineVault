@@ -28,6 +28,8 @@ import kotlinx.coroutines.launch
  * smart-playback overlays. No player state is owned here; all mutations are
  * routed back through callbacks or existing coordinators.
  */
+private const val NOTICE_LEAD_MS = 120_000L
+
 @Composable
 internal fun BoxScope.PlayerTransportAndSmartControls(
     context: Context,
@@ -117,7 +119,7 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
     val creditNoticeWanted =
         !isCurrentTvShow &&
             creditsStartMs != null &&
-            position >= creditsStartMs &&
+            position >= creditsStartMs - NOTICE_LEAD_MS &&
             (
                 smartSegmentResult.hasMidCreditsScene ||
                     smartSegmentResult.hasPostCreditsScene
@@ -127,13 +129,17 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
                     position < exactSceneSegment.startMs
             )
 
-    // Without an exact scene time we cannot tell when the scene has played, so the notice is a
-    // heads-up for a few seconds when the credits begin, then gets out of the way for good
-    // (it used to stay up through the scene itself).
+    // The notice is a heads-up that starts two minutes before the credits and then gets out of
+    // the way after a short time (it used to stay up through the scene itself). A scene time we
+    // have only guessed also expires, but the timer restarts when the guess arrives so its
+    // SKIP TO SCENE button is shown. A time from a data source stays until the scene starts.
     var creditNoticeExpired by remember(duration) { mutableStateOf(false) }
-    LaunchedEffect(creditNoticeWanted, exactSceneSegment == null) {
-        if (creditNoticeWanted && exactSceneSegment == null) {
-            delay(15_000)
+    val sceneTimeIsGuess = exactSceneSegment == null ||
+        com.sole.cinevault.segments.isDetectedSegment(exactSceneSegment)
+    LaunchedEffect(creditNoticeWanted, exactSceneSegment?.startMs) {
+        creditNoticeExpired = false
+        if (creditNoticeWanted && sceneTimeIsGuess) {
+            delay(20_000)
             creditNoticeExpired = true
         }
     }

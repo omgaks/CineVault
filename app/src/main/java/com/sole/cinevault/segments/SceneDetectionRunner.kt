@@ -41,6 +41,7 @@ class SceneDetectionRunner(context: Context) {
         val audio = runCatching { audioCandidate(filePath, durationMs, creditsStartMs, hasPost) }.getOrNull()
         val subtitles = runCatching { subtitleCandidate(subtitleUri, durationMs, hasPost) }.getOrNull()
         val guess = SceneDetector.combine(audio, subtitles)
+        android.util.Log.i("SceneDetect", "path=$filePath audio=$audio subtitles=$subtitles (uri=$subtitleUri) -> $guess")
         if (guess != null) prefs.edit().putString(key, SceneGuessCodec.encode(guess)).apply()
         guess
     }
