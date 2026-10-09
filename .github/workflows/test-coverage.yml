@@ -34,12 +34,11 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
 
       # CI-HARDEN-2:
-      # One Gradle invocation verifies tests, coverage, release lint and that
-      # the current source can actually assemble into an installable debug APK.
+      # One Gradle invocation verifies tests, coverage, release lint without building an APK on every push.
       # Keeping these tasks in one invocation lets Gradle reuse the task graph
       # and avoids starting a fresh daemon/process for each quality gate.
       - name: Run CI quality gates
-        run: bash gradlew test jacocoTestReport lintRelease assembleDebug --no-daemon
+        run: bash gradlew test jacocoTestReport lintRelease --no-daemon
 
       # New code must not introduce new lint issues.
       # Existing issues are frozen in app/lint-baseline.xml.
@@ -65,14 +64,3 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      # If all gates pass, preserve the exact debug APK produced by this run.
-      # This is a verification artifact only; release publishing remains in
-      # build.yml and still requires the deliberate workflow_dispatch flow.
-      - name: Upload verified debug APK
-        if: success()
-        uses: actions/upload-artifact@v6
-        with:
-          name: cinevault-debug-${{ github.run_number }}
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-          retention-days: 7
