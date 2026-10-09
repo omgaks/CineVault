@@ -5,6 +5,10 @@ import android.graphics.Bitmap
 import android.widget.Toast
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -110,7 +114,7 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
     val creditsStartMs: Long? = creditsSegment?.startMs
         ?: duration.takeIf { it > 0L }?.let { it - (it * 7 / 100).coerceIn(4 * 60_000L, 10 * 60_000L) }
 
-    val creditNoticeVisible =
+    val creditNoticeWanted =
         !isCurrentTvShow &&
             creditsStartMs != null &&
             position >= creditsStartMs &&
@@ -122,6 +126,18 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
                 exactSceneSegment == null ||
                     position < exactSceneSegment.startMs
             )
+
+    // Without an exact scene time we cannot tell when the scene has played, so the notice is a
+    // heads-up for a few seconds when the credits begin, then gets out of the way for good
+    // (it used to stay up through the scene itself).
+    var creditNoticeExpired by remember(duration) { mutableStateOf(false) }
+    LaunchedEffect(creditNoticeWanted, exactSceneSegment == null) {
+        if (creditNoticeWanted && exactSceneSegment == null) {
+            delay(15_000)
+            creditNoticeExpired = true
+        }
+    }
+    val creditNoticeVisible = creditNoticeWanted && !creditNoticeExpired
 
     PlayerSmartPlaybackOverlays(
         sidePadding = sidePadding,
