@@ -140,6 +140,10 @@ enum class LibrarySortOption(val label: String) {
 object LibraryScrollState {
     var index: Int = 0
     var offset: Int = 0
+    // Collections shelf (horizontal row) position, so coming back from a collection page
+    // lands on the card you opened instead of the first one.
+    var shelfIndex: Int = 0
+    var shelfOffset: Int = 0
     var category: String = "All"
     var sort: LibrarySortOption = LibrarySortOption.TITLE_AZ
     var gridMode: Boolean = true
