@@ -2,7 +2,20 @@ package com.sole.cinevault.segments
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -65,33 +78,86 @@ fun PostCreditNotice(
     onJump: (() -> Unit)?,
     // Set when the time is CineVault's own guess rather than a timestamp from a data source.
     confidencePercent: Int? = null,
-    evidence: String? = null
+    evidence: String? = null,
+    // Why no time could be found, when that is the case.
+    detail: String? = null
 ) {
+    val pulse by rememberInfiniteTransition(label = "noticeDot").animateFloat(
+        initialValue = 0.35f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1300, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "noticeDotPulse"
+    )
     Column(
-        modifier = Modifier.widthIn(min = 230.dp, max = 310.dp)
-            .glassPanel(22.dp, GlassSurfaceStrong)
+        modifier = Modifier.widthIn(min = 240.dp, max = 320.dp)
+            .glassPanel(24.dp, GlassSurfaceStrong)
             .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
-        Text(
-            if (isMidCredits) "MID-CREDITS SCENE" else "POST-CREDIT SCENE",
-            color = AmberCore, fontSize = 12.sp, fontWeight = FontWeight.Black
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            when {
-                hasExactTimestamp && confidencePercent != null ->
-                    "A scene likely starts ahead" + (evidence?.let { " (from $it)" } ?: "") + "."
-                hasExactTimestamp -> "One scene remains — jump to it now."
-                else -> "Stay—one scene remains after the credits."
-            },
-            color = TextBright, fontSize = 12.sp
-        )
-        if (hasExactTimestamp && onJump != null) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // A steady, glowing dot: the same one that marks the scene on the seek bar.
+            Box(
+                modifier = Modifier.size(18.dp).drawBehind {
+                    drawCircle(AmberGlow.copy(alpha = 0.20f * pulse), radius = size.minDimension / 2f)
+                    drawCircle(AmberGlow.copy(alpha = 0.45f * pulse), radius = size.minDimension / 3.2f)
+                    drawCircle(AmberCore, radius = size.minDimension / 6f)
+                }
+            )
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(
+                    if (isMidCredits) "MID-CREDITS SCENE" else "POST-CREDIT SCENE",
+                    color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.2.sp
+                )
+                Text(
+                    when {
+                        hasExactTimestamp && confidencePercent != null -> "A scene likely starts ahead"
+                        hasExactTimestamp -> "One scene remains \u2014 jump to it now"
+                        else -> "Stay \u2014 one scene remains after the credits"
+                    },
+                    color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+
+        if (hasExactTimestamp && confidencePercent != null) {
             Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier.weight(1f).height(5.dp).clip(RoundedCornerShape(3.dp))
+                        .background(Color.White.copy(alpha = 0.12f))
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(confidencePercent.coerceIn(0, 100) / 100f).height(5.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(Brush.horizontalGradient(listOf(AmberCore, AmberGlow)))
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Text("$confidencePercent% sure", color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+            evidence?.let {
+                Spacer(Modifier.height(3.dp))
+                Text("from $it", color = TextBright.copy(alpha = 0.60f), fontSize = 10.sp)
+            }
+        }
+
+        if (hasExactTimestamp && onJump != null) {
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.clip(RoundedCornerShape(20.dp))
+                    .background(Brush.horizontalGradient(listOf(AmberCore, AmberGlow)))
+                    .clickable(onClick = onJump)
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("SKIP TO SCENE", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Black)
+            }
+        } else if (!hasExactTimestamp && detail != null) {
+            Spacer(Modifier.height(6.dp))
             Text(
-                if (confidencePercent != null) "SKIP TO SCENE · $confidencePercent%" else "SKIP TO SCENE", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Black,
-                modifier = Modifier.clip(RoundedCornerShape(18.dp)).background(AmberCore)
-                    .clickable(onClick = onJump).padding(horizontal = 13.dp, vertical = 8.dp)
+                "Couldn't pin the time. $detail",
+                color = TextBright.copy(alpha = 0.55f), fontSize = 10.sp, lineHeight = 13.sp
             )
         }
     }

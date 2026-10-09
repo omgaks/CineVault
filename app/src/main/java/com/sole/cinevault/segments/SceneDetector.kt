@@ -1,6 +1,7 @@
 package com.sole.cinevault.segments
 
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.min
@@ -82,32 +83,31 @@ object SceneDetector {
     private fun db(v: Float): Float = (20.0 * log10(v.toDouble() + 1e-6)).toFloat()
 
     /**
-     * Looks for "quiet for a few seconds, then sound that carries on" inside the credits and
-     * scores each such moment. Returns the best (the latest of the near-best for a post-credit
-     * scene, the earliest for a mid-credit one).
+     * Every "quiet for a few seconds, then sound that carries on" moment inside the credits,
+     * each with a score 0..1. [searchFromMs] is where looking starts.
      */
-    fun fromAudio(
+    private fun audioCandidates(
         env: AudioEnvelope,
         creditsStartMs: Long,
         durationMs: Long,
-        preferLatest: Boolean
-    ): SceneCandidate? {
+        searchFromMs: Long
+    ): List<Pair<Long, Double>> {
         val n = env.rms.size
-        if (n < 40 || durationMs <= 0L) return null
+        if (n < 40 || durationMs <= 0L) return emptyList()
         val hop = env.hopMs
         val levels = FloatArray(n) { db(env.rms[it]) }
 
         // Reference loudness: the credits' own music near their start.
         val refFrom = indexAt(env, creditsStartMs).coerceIn(0, n - 1)
         val refTo = min(n, refFrom + 120_000 / hop)
-        if (refTo - refFrom < 10) return null
+        if (refTo - refFrom < 10) return emptyList()
         val reference = median(levels.copyOfRange(refFrom, refTo))
-        if (reference < -60f) return null // the credits are effectively silent: nothing to compare to
+        if (reference < -60f) return emptyList() // the credits are effectively silent
         val quietBelow = reference - 18f
 
-        val minSilenceHops = (MIN_SILENCE_MS / hop).toInt()
+        val minSilenceHops = max(1, ceil(MIN_SILENCE_MS.toDouble() / hop).toInt())
         val candidates = ArrayList<Pair<Long, Double>>() // time, score 0..1
-        var i = refFrom + 40_000 / hop // skip the first seconds: the film's own ending tail
+        var i = indexAt(env, searchFromMs).coerceIn(0, n)
         while (i < n) {
             if (levels[i] >= quietBelow) { i++; continue }
             var j = i
@@ -118,7 +118,7 @@ object SceneDetector {
                 val remaining = durationMs - onsetMs
                 if (remaining >= MIN_SCENE_REMAINING_MS) {
                     val after = levels.copyOfRange(j, min(n, j + 20_000 / hop))
-                    if (after.size >= 12) {
+                    if (after.size >= 12 * 500 / hop) {
                         val loudShare = after.count { it >= quietBelow + 6f }.toDouble() / after.size
                         val contrast = (after.average() - levels.copyOfRange(i, j).average())
                         val gapScore = min(1.0, (silentHops * hop / 1000.0 - 2.5) / 8.0)
@@ -135,12 +135,47 @@ object SceneDetector {
             }
             i = max(j, i + 1)
         }
+        return candidates
+    }
+
+    // Audio alone cannot be certain: it caps at 70%.
+    private fun audioConfidence(score: Double) = (score * 100.0 * 0.95).toInt().coerceIn(20, 70)
+
+    /** The single best audio moment (latest of the near-best for a post-credit scene, else earliest). */
+    fun fromAudio(
+        env: AudioEnvelope,
+        creditsStartMs: Long,
+        durationMs: Long,
+        preferLatest: Boolean
+    ): SceneCandidate? {
+        val candidates = audioCandidates(env, creditsStartMs, durationMs, creditsStartMs + 40_000L)
         if (candidates.isEmpty()) return null
         val best = candidates.maxOf { it.second }
         val near = candidates.filter { it.second >= best - 0.10 }
         val pick = if (preferLatest) near.maxBy { it.first } else near.minBy { it.first }
-        // Audio alone cannot be certain: it caps at 70%.
-        return SceneCandidate(pick.first, (pick.second * 100.0 * 0.95).toInt().coerceIn(20, 70))
+        return SceneCandidate(pick.first, audioConfidence(pick.second))
+    }
+
+    /**
+     * Up to [max] separate audio moments, for films with both a mid- and a post-credit scene.
+     * Needs a loudness record that covers the credits; [searchFromMs] starts a little before them
+     * because a mid-credit scene can begin almost as the credits do.
+     */
+    fun fromAudioAll(
+        env: AudioEnvelope,
+        creditsStartMs: Long,
+        durationMs: Long,
+        max: Int = 2,
+        searchFromMs: Long = creditsStartMs - 30_000L
+    ): List<SceneCandidate> {
+        val strongest = audioCandidates(env, creditsStartMs, durationMs, searchFromMs)
+            .sortedByDescending { it.second }
+        val kept = ArrayList<Pair<Long, Double>>()
+        for (c in strongest) {
+            if (kept.size >= max) break
+            if (kept.none { abs(it.first - c.first) < 60_000L }) kept.add(c)
+        }
+        return kept.sortedBy { it.first }.map { SceneCandidate(it.first, audioConfidence(it.second)) }
     }
 
     // --- Subtitles ------------------------------------------------------------------------
@@ -151,6 +186,36 @@ object SceneDetector {
         RegexOption.IGNORE_CASE
     )
 
+    private data class SubtitleGap(val startMs: Long, val gapMs: Long)
+
+    private fun subtitleGaps(lines: List<SubtitleLine>, durationMs: Long, maxRemainingMs: Long): List<SubtitleGap> {
+        if (durationMs <= 0L) return emptyList()
+        val windowStart = durationMs - 16 * 60_000L
+        val speech = lines
+            .filter { !adLine.containsMatchIn(it.text) && it.startMs in 0 until durationMs }
+            .sortedBy { it.startMs }
+        if (speech.size < 20) return emptyList() // too few lines to trust "silence" - e.g. forced subs only
+        val out = ArrayList<SubtitleGap>()
+        for (k in 1 until speech.size) {
+            val start = speech[k].startMs
+            val remaining = durationMs - start
+            if (start < windowStart) continue
+            if (remaining < MIN_SCENE_REMAINING_MS || remaining > maxRemainingMs) continue
+            val gap = start - speech[k - 1].endMs
+            if (gap >= MIN_SUBTITLE_GAP_MS) out.add(SubtitleGap(start, gap))
+        }
+        return out
+    }
+
+    private fun subtitleCandidate(g: SubtitleGap, durationMs: Long): SceneCandidate {
+        val gapSec = g.gapMs / 1000.0
+        var conf = 45 + min(30.0, (gapSec - 75.0) / 5.0)
+        if (durationMs - g.startMs > 6 * 60_000L) conf -= 10 // mid-credit territory: less certain
+        // Scenes begin a few seconds before the first spoken line.
+        val start = max(g.startMs - 2_500L, g.startMs - g.gapMs)
+        return SceneCandidate(start, conf.toInt().coerceIn(20, 80))
+    }
+
     /**
      * The first dialogue after the longest silent stretch near the end. Credits have no
      * dialogue, so a line that appears after minutes of nothing is almost always the scene.
@@ -160,35 +225,20 @@ object SceneDetector {
         durationMs: Long,
         hasPost: Boolean
     ): SceneCandidate? {
-        if (durationMs <= 0L) return null
         val maxRemaining = if (hasPost) 6 * 60_000L else 14 * 60_000L
-        val windowStart = durationMs - 16 * 60_000L
-        val speech = lines
-            .filter { !adLine.containsMatchIn(it.text) && it.startMs in 0 until durationMs }
-            .sortedBy { it.startMs }
-        if (speech.size < 20) return null // too few lines to trust "silence" - e.g. forced subs only
+        val best = subtitleGaps(lines, durationMs, maxRemaining).maxByOrNull { it.gapMs } ?: return null
+        return subtitleCandidate(best, durationMs)
+    }
 
-        var bestGap = 0L
-        var bestStart = -1L
-        for (k in 1 until speech.size) {
-            val prevEnd = speech[k - 1].endMs
-            val start = speech[k].startMs
-            val remaining = durationMs - start
-            if (start < windowStart) continue
-            if (remaining < MIN_SCENE_REMAINING_MS || remaining > maxRemaining) continue
-            val gap = start - prevEnd
-            if (gap >= MIN_SUBTITLE_GAP_MS && gap > bestGap) {
-                bestGap = gap
-                bestStart = start
-            }
-        }
-        if (bestStart < 0) return null
-        val gapSec = bestGap / 1000.0
-        var conf = 45 + min(30.0, (gapSec - 75.0) / 5.0)
-        if (durationMs - bestStart > 6 * 60_000L) conf -= 10 // mid-credit territory: less certain
-        // Scenes begin a few seconds before the first spoken line.
-        val start = max(bestStart - 2_500L, bestStart - bestGap)
-        return SceneCandidate(start, conf.toInt().coerceIn(20, 80))
+    /** Every long silent stretch near the end, for films that may have two scenes. */
+    fun fromSubtitlesAll(
+        lines: List<SubtitleLine>,
+        durationMs: Long,
+        hasMid: Boolean,
+        hasPost: Boolean
+    ): List<SceneCandidate> {
+        val maxRemaining = if (hasPost && !hasMid) 6 * 60_000L else 14 * 60_000L
+        return subtitleGaps(lines, durationMs, maxRemaining).map { subtitleCandidate(it, durationMs) }
     }
 
     // --- Combining -------------------------------------------------------------------------
@@ -218,6 +268,52 @@ object SceneDetector {
         }
         val only = audio ?: subtitles!!
         return SceneGuess(only.startMs, only.confidence, usedAudio = audio != null, usedSubtitles = subtitles != null)
+    }
+
+    /**
+     * Fuses the lists from both signals into at most as many scenes as TMDB says the film has
+     * (one when it flags one kind, two when it flags both). A subtitle gap and an audio moment
+     * within 15 s of each other confirm one another. A lone audio moment is trusted less when
+     * the subtitles had something to say elsewhere. Result is in film order.
+     */
+    fun combineAll(
+        audio: List<SceneCandidate>,
+        subtitles: List<SceneCandidate>,
+        hasMid: Boolean,
+        hasPost: Boolean
+    ): List<SceneGuess> {
+        val limit = max(1, (if (hasMid) 1 else 0) + (if (hasPost) 1 else 0))
+        val audioUsed = BooleanArray(audio.size)
+        val all = ArrayList<SceneGuess>()
+        for (s in subtitles) {
+            val match = audio.indices
+                .filter { !audioUsed[it] && abs(audio[it].startMs - s.startMs) <= AGREE_WITHIN_MS }
+                .minByOrNull { abs(audio[it].startMs - s.startMs) }
+            if (match != null) {
+                audioUsed[match] = true
+                combine(audio[match], s)?.let { all.add(it) }
+            } else {
+                all.add(SceneGuess(s.startMs, s.confidence, usedAudio = false, usedSubtitles = true))
+            }
+        }
+        val penalty = if (subtitles.isNotEmpty()) 15 else 0
+        audio.forEachIndexed { i, a ->
+            if (!audioUsed[i]) all.add(SceneGuess(a.startMs, (a.confidence - penalty).coerceAtLeast(10), usedAudio = true, usedSubtitles = false))
+        }
+        if (all.isEmpty()) return emptyList()
+
+        if (limit == 1) {
+            val best = all.maxOf { it.confidence }
+            val near = all.filter { it.confidence >= best - 10 }
+            val pick = if (hasPost && !hasMid) near.maxBy { it.startMs } else near.minBy { it.startMs }
+            return listOf(pick)
+        }
+        val kept = ArrayList<SceneGuess>()
+        for (g in all.sortedByDescending { it.confidence }) {
+            if (kept.size >= limit) break
+            if (kept.none { abs(it.startMs - g.startMs) < 60_000L }) kept.add(g)
+        }
+        return kept.sortedBy { it.startMs }
     }
 
     // --- helpers ---------------------------------------------------------------------------
