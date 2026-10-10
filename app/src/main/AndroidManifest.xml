@@ -19,6 +19,8 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Voice (beta): only asked for when the person switches Voice on in Settings. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- Android TV / Google TV support. Both remain optional so phone/tablet
          installation and the existing mobile launcher are unaffected. -->
@@ -27,6 +29,9 @@
         android:required="false" />
     <uses-feature
         android:name="android.hardware.touchscreen"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.microphone"
         android:required="false" />
 
     <application

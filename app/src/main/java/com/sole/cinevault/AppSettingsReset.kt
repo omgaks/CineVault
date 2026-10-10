@@ -17,6 +17,7 @@ internal val RESETTABLE_CINEVAULT_PREFERENCE_FILES = listOf(
     "cinevault_glasses_settings",
     "cinevault_glasses_calibration",
     "cinevault_metadata_settings",
+    "cinevault_voice",
 )
 
 internal fun resetCineVaultSettings(context: Context) {
