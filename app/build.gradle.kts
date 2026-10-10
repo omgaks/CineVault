@@ -51,6 +51,33 @@ android {
         }
     }
 
+    // Optional native FFmpeg container integration. Supply an Android arm64
+    // FFmpeg SDK yourself; normal CI and APK builds remain unchanged.
+    val ffmpegRoot = providers.gradleProperty("cinevaultFfmpegRoot")
+        .orNull
+        ?.takeIf { it.isNotBlank() }
+    if (ffmpegRoot != null) {
+        require(file("$ffmpegRoot/include/libavformat/avformat.h").isFile) {
+            "cinevaultFfmpegRoot must contain include/libavformat/avformat.h"
+        }
+        require(file("$ffmpegRoot/lib/libavformat.so").isFile &&
+                file("$ffmpegRoot/lib/libavutil.so").isFile) {
+            "cinevaultFfmpegRoot must contain lib/libavformat.so and lib/libavutil.so"
+        }
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
+            }
+        }
+        defaultConfig {
+            externalNativeBuild {
+                cmake {
+                    arguments += "-DFFMPEG_ROOT=$ffmpegRoot"
+                }
+            }
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
