@@ -638,8 +638,12 @@ fun LocalVideoLibraryScreen(
                 .distinct()
                 .sortedBy { it.lowercase() }
         }
-        val lastScanCache by produceState<CachedLibrary?>(initialValue = null, context, LibraryScanController.isScanning) {
-            value = loadLibraryCache(context)
+        // Formatted inside the producer (not in the composable body) so lint
+        // does not flag a non-observable locale read.
+        val lastScanText by produceState<String?>(initialValue = null, context, LibraryScanController.isScanning) {
+            value = loadLibraryCache(context)?.let {
+                java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(it.timestamp))
+            }
         }
         val panelNow = openPanel
         if (panelNow != null && panelClosesOnOutsideTap(panelNow)) {
@@ -699,9 +703,7 @@ fun LocalVideoLibraryScreen(
                             isScanning = LibraryScanController.isScanning,
                             status = LibraryScanController.status,
                             upToDate = scanUpToDate,
-                            lastScan = lastScanCache?.let {
-                                java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(it.timestamp))
-                            },
+                            lastScan = lastScanText,
                             onScan = { permissionLauncher.launch(permission) }
                         )
                     }
