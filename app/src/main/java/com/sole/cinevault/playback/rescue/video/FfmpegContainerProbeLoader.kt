@@ -22,6 +22,32 @@ internal object FfmpegContainerProbeLoader {
      * One-frame RGBA bridge for rendering experiments. Never call on the UI
      * thread; this is a synchronous bounded decode and not a video player.
      */
+    /**
+     * Bounded RGBA batch with frame timestamps. Missing entries indicate EOF.
+     * The native decoder is reopened per call; this is not streaming playback.
+     */
+    fun decodeRgbaFrameBatch(path: String, maxFrames: Int): Result<List<TimedRgbaFrame>> = runCatching {
+        require(path.isNotBlank()) { "File path is required" }
+        require(maxFrames in 1..8) { "maxFrames must be 1..8" }
+        check(loaded) { "Native FFmpeg decoder not installed" }
+        val items = FfmpegContainerProbe().decodeRgbaFrameBatch(path, maxFrames)
+        buildList {
+            for (index in 0 until maxFrames) {
+                val metadata = items[index * 2] as? LongArray ?: break
+                val pixels = items[index * 2 + 1] as? ByteArray
+                    ?: error("Missing frame pixels")
+                require(metadata.size == 3)
+                val width = metadata[0].toInt()
+                val height = metadata[1].toInt()
+                require(width > 0 && height > 0)
+                require(pixels.size.toLong() == width.toLong() * height * 4L)
+                add(TimedRgbaFrame(metadata[2], RgbaFrame(width, height, pixels)))
+            }
+        }
+    }
+
+    data class TimedRgbaFrame(val presentationTimeMs: Long, val image: RgbaFrame)
+
     fun decodeFirstRgbaFrame(path: String): Result<RgbaFrame> = runCatching {
         require(path.isNotBlank()) { "File path is required" }
         check(loaded) { "Native FFmpeg decoder not installed" }
