@@ -101,9 +101,9 @@ internal fun HeroCard() {
     ) {
         Column(modifier = Modifier.align(Alignment.CenterStart)) {
             Text(text = "CineVault", color = TextBright, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            Text(text = "Premium Media Experience", color = AmberCore, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text(text = "Premium Media Experience", color = AmberCore, fontSize = CineType.Caption, fontWeight = FontWeight.SemiBold)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(text = "Your personal cinema archive.", color = TextMuted, fontSize = 12.sp)
+            Text(text = "Your personal cinema archive.", color = TextMuted, fontSize = CineType.Caption)
         }
         Box(
             modifier = Modifier.align(Alignment.CenterEnd).size(78.dp),
@@ -152,8 +152,8 @@ internal fun GlassSectionCard(title: String, subtitle: String, icon: ImageVector
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column {
-                Text(text = title, color = TextBright, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                Text(text = subtitle, color = TextMuted, fontSize = 12.sp)
+                Text(text = title, color = TextBright, fontSize = CineType.Title, fontWeight = FontWeight.Bold)
+                Text(text = subtitle, color = TextMuted, fontSize = CineType.Caption)
             }
         }
         Spacer(modifier = Modifier.height(14.dp))
@@ -176,10 +176,10 @@ internal fun GlassActionRow(icon: ImageVector, iconTint: Color = AmberCore, titl
         }
         Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, color = TextBright, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Text(text = subtitle, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = title, color = TextBright, fontSize = CineType.Title, fontWeight = FontWeight.Bold)
+            Text(text = subtitle, color = TextMuted, fontSize = CineType.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text(text = action, color = iconTint, fontSize = 11.sp, fontWeight = FontWeight.Black)
+        Text(text = action, color = iconTint, fontSize = CineType.Caption, fontWeight = FontWeight.Black)
     }
 }
 
@@ -281,7 +281,7 @@ internal fun FolderNamePill(name: String, accent: Color, onLongPress: () -> Unit
         ) {
             Icon(imageVector = settingsFolderIconFor(name), contentDescription = null, tint = accent, modifier = Modifier.size(26.dp))
             Spacer(modifier = Modifier.height(8.dp))
-            Text(text = name, color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+            Text(text = name, color = TextBright, fontSize = CineType.Caption, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
         }
     }
 }
@@ -306,8 +306,8 @@ internal fun SmbShareRow(share: SmbShare, onEdit: () -> Unit, onDelete: () -> Un
         Icon(imageVector = Icons.Rounded.Dns, contentDescription = null, tint = AccentNetwork, modifier = Modifier.size(17.dp))
         Spacer(modifier = Modifier.width(9.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = share.displayName, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(text = "${share.host}/${share.shareName}", color = TextMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = share.displayName, color = TextBright, fontSize = CineType.Label, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = "${share.host}/${share.shareName}", color = TextMuted, fontSize = CineType.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         TvFocusableSlot(isTelevision = isTelevision, shape = CircleShape, onActivate = onEdit) {
             IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
@@ -362,7 +362,7 @@ internal fun SignatureFooter() {
             Text(
                 text = "Crafting CineVault since May 2026",
                 color = TextMuted,
-                fontSize = 12.sp,
+                fontSize = CineType.Caption,
                 fontWeight = FontWeight.Medium,
                 letterSpacing = 0.3.sp,
                 textAlign = TextAlign.Center
