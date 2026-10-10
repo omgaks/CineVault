@@ -103,8 +103,6 @@ fun HomeScreen(
     ForceCineVaultBrightness()
 
     val context = LocalContext.current
-    var continueMode by remember { mutableStateOf("List") }
-    var featuredMode by remember { mutableStateOf("Grid") }
 
     // Storage permission for the big Scan Library button below — starts the
     // real scan via LibraryScanController on grant, then navigates to
@@ -122,14 +120,9 @@ fun HomeScreen(
             loadPlaybackPosition(context, it.video.path) > 15_000L
         }.take(12)
 
-    // FEATURE: was a single fixed pick (continueWatching's top backdrop,
-    // falling back to the library's first) — same image every time Home
-    // opens, however large the library actually is. Now builds a shuffled
-    // pool from every video with a backdrop/poster and rotates through it
-    // on a timer, so the hero banner stays fresh across visits instead of
-    // just showing whatever happens to be first. Shuffled once per
-    // composition (remember(videos), not on every recomposition) so the
-    // rotation order stays stable and doesn't re-shuffle mid-view.
+    // The hero banner rotates through every video that has a backdrop/poster.
+    // Shuffled once per composition (remember(videos)) so the order stays
+    // stable and doesn't re-shuffle mid-view.
     val heroCandidates = remember(videos) {
         videos.mapNotNull { it.backdropUrl ?: it.posterUrl }.distinct().shuffled()
     }
@@ -143,6 +136,14 @@ fun HomeScreen(
     }
     val heroImage = heroCandidates.getOrNull(heroIndex)
 
+    // Greeting: time of day plus the optional name from Settings. Re-read
+    // each time Home appears, so a name changed in Settings shows at once.
+    val greetingName = remember { loadDisplayName(context) }
+    val nowHour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
+    val dateLabel = remember {
+        java.text.SimpleDateFormat("EEE d MMM", java.util.Locale.getDefault()).format(java.util.Date()).uppercase()
+    }
+
     // Restores scroll position from HomeScrollState so returning from Detail
     // (or switching tabs and back) lands where you left off, not the top.
     val homeListState = rememberLazyListState(
@@ -154,216 +155,196 @@ fun HomeScreen(
             .collect { (i, o) -> HomeScrollState.index = i; HomeScrollState.offset = o }
     }
 
-    // FIX: wraps the LazyColumn specifically to capture the REAL,
-    // reliable viewport height. A BoxWithConstraints placed inside a
-    // LazyColumn item (which FreshInstallWelcomeContent used to rely on
-    // for its own height-aware sizing) doesn't give a trustworthy
-    // maxHeight — LazyColumn items are measured with effectively
-    // unbounded height by design, since that's what lets the column
-    // scroll. This outer one, wrapping the LazyColumn itself, sees the
-    // actual on-screen space instead.
+    // Wraps the LazyColumn to capture the REAL viewport size: it drives the
+    // fresh-install layout height, the hero height and how many poster
+    // columns fit. Nothing here depends on the device, only on the window.
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val screenMaxHeight = maxHeight
+        val contentWidthDp = maxWidth.value - 32f
+        val widthClass = cineWidthClassFor(maxWidth.value.toInt())
+        val isWide = widthClass != CineWidthClass.Compact
+        val heroHeight = (maxWidth * 0.62f).coerceIn(230.dp, 380.dp)
+        val posterColumns = adaptiveColumnCount(contentWidthDp)
+
         androidx.compose.foundation.lazy.LazyColumn(
-        state = homeListState,
-        modifier = Modifier
-            .fillMaxSize()
-            .background(SpaceBlack)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        contentPadding = PaddingValues(bottom = 30.dp)
-    ) {
-        if (videos.isNotEmpty()) {
-        item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(260.dp)
-                    .clip(RoundedCornerShape(30.dp))
-                    .background(SpaceMid)
-            ) {
-                Crossfade(targetState = heroImage, animationSpec = tween(900), label = "heroImageCrossfade") { image ->
-                    if (image != null) {
-                        AsyncImage(
-                            model = image,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            alpha = 0.98f,
-                            modifier = Modifier.fillMaxSize()
+            state = homeListState,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(SpaceBlack)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(26.dp),
+            contentPadding = PaddingValues(bottom = 30.dp)
+        ) {
+            if (videos.isNotEmpty()) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "$dateLabel \u00B7 ${homeDayPart(nowHour)}",
+                            color = AmberCore,
+                            fontFamily = PlexMonoFamily,
+                            fontSize = CineType.Caption,
+                            letterSpacing = 1.6.sp
+                        )
+                        Text(
+                            text = homeGreeting(nowHour, greetingName),
+                            color = TextBright,
+                            fontFamily = NewsreaderFamily,
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                            fontSize = CineType.Display
                         )
                     }
                 }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color(0x66000000),
-                                    SpaceBlack.copy(alpha = 0.85f)
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(heroHeight)
+                            .clip(RoundedCornerShape(30.dp))
+                            .background(SpaceMid)
+                    ) {
+                        Crossfade(targetState = heroImage, animationSpec = tween(900), label = "heroImageCrossfade") { image ->
+                            if (image != null) {
+                                AsyncImage(
+                                    model = image,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    alpha = 0.98f,
+                                    modifier = Modifier.fillMaxSize()
                                 )
-                            )
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.Transparent,
+                                            Color(0x66000000),
+                                            SpaceBlack.copy(alpha = 0.85f)
+                                        )
+                                    )
+                                )
                         )
-                )
 
-                // LOGO FIX: removed the 80.dp background square (Color.Black alpha 0.38f
-                // + RoundedCornerShape container) that was sitting behind the logo. The
-                // logo now renders directly with a soft drop-shadow for contrast against
-                // varying hero backdrops, instead of a visible box.
-                Image(
-                    painter = painterResource(id = R.drawable.cinevault_circle_logo),
-                    contentDescription = "CineVault Logo",
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(14.dp)
-                        .size(56.dp)
-                        .shadow(elevation = 10.dp, shape = CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
-                )
+                        Image(
+                            painter = painterResource(id = R.drawable.cinevault_circle_logo),
+                            contentDescription = "CineVault Logo",
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(14.dp)
+                                .size(56.dp)
+                                .shadow(elevation = 10.dp, shape = CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
+                        )
 
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(24.dp)
-                ) {
-                    Text(
-                        text = "Your Cinema Library",
-                        color = TextBright,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(modifier = Modifier.height(5.dp))
-
-                    Text(
-                        text = "Movies • TV Shows • Local Playback",
-                        color = TextMuted,
-                        fontSize = 14.sp
-                    )
-
-                    if (videos.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Button(
-                            onClick = onScanRequest,
-                            shape = RoundedCornerShape(40.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = AmberGlow.copy(alpha = 0.90f),
-                                contentColor = Color.Black
-                            )
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(24.dp)
                         ) {
-                            Text("Open Library", fontWeight = FontWeight.Bold)
+                            Text(
+                                text = "Your Cinema Library",
+                                color = TextBright,
+                                fontFamily = NewsreaderFamily,
+                                fontSize = CineType.Display
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Movies \u2022 TV Shows \u2022 Local Playback",
+                                color = TextMuted,
+                                fontSize = CineType.Label
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+                            CineButton(text = "Open Library", onClick = onScanRequest)
                         }
                     }
                 }
-            }
-        }
 
-        if (continueWatching.isNotEmpty()) {
-            item {
-                ContinueWatchingSection(
-                    items = continueWatching,
-                    mode = continueMode,
-                    onModeChange = { continueMode = it },
-                    onItemClick = onItemClick,
-                    // "See All" — sets Library's remembered category to
-                    // Continue Watching (LocalVideoLibraryScreen.kt reads
-                    // this on init) then reuses the same nav action the
-                    // hero card's own "Open Library" button already calls,
-                    // rather than threading a brand new navigation callback
-                    // through MainActivity.kt for this alone.
-                    onSeeAll = {
-                        LibraryScrollState.category = "Continue Watching"
-                        onScanRequest()
+                item {
+                    HomeTonightSection(
+                        videos = videos,
+                        dayPart = homeDayPart(nowHour),
+                        isWide = isWide,
+                        onItemClick = onItemClick,
+                        onPlayClick = onPlayClick
+                    )
+                }
+
+                if (continueWatching.isNotEmpty()) {
+                    item {
+                        ContinueWatchingSection(
+                            items = continueWatching,
+                            onItemClick = onItemClick,
+                            // "See All" — sets Library's remembered category to
+                            // Continue Watching (LocalVideoLibraryScreen.kt reads
+                            // this on init) then reuses the same nav action the
+                            // hero card's own "Open Library" button already calls.
+                            onSeeAll = {
+                                LibraryScrollState.category = "Continue Watching"
+                                onScanRequest()
+                            }
+                        )
                     }
-                )
-            }
-        }
-        }
+                }
 
-        if (videos.isNotEmpty()) {
-            item {
-                FeaturedLibrarySection(
-                    items = videos.take(18),
-                    mode = featuredMode,
-                    onModeChange = { featuredMode = it },
-                    onItemClick = onItemClick,
-                    onPlayClick = onPlayClick
-                )
-            }
-        } else {
-            item {
-                FreshInstallWelcomeContent(
-                    availableHeight = screenMaxHeight,
-                    onScanLibrary = { scanPermissionLauncher.launch(scanPermission) },
-                    onChooseFolder = onScanRequest,
-                    onConnectSmb = onScanRequest,
-                    onOpenStream = onScanRequest
-                )
+                item {
+                    FreshInLibrarySection(
+                        items = videos.take(posterColumns * 3),
+                        columns = posterColumns,
+                        onItemClick = onItemClick,
+                        onPlayClick = onPlayClick
+                    )
+                }
+            } else {
+                item {
+                    FreshInstallWelcomeContent(
+                        availableHeight = screenMaxHeight,
+                        onScanLibrary = { scanPermissionLauncher.launch(scanPermission) },
+                        onChooseFolder = onScanRequest,
+                        onConnectSmb = onScanRequest,
+                        onOpenStream = onScanRequest
+                    )
+                }
             }
         }
-    }
     }
 }
 
-// ── Continue Watching — screenshot style: clean card, timestamps at the
-//    corners, thin progress line at the bottom edge, title BELOW the card ──
+// ── Fresh in your library — poster grid whose column count comes from the
+//    window width (never from the device), posters keep their 2:3 shape. ──
 @Composable
-fun FeaturedLibrarySection(
+fun FreshInLibrarySection(
     items: List<VideoWithMetadata>,
-    mode: String,
-    onModeChange: (String) -> Unit,
+    columns: Int,
     onItemClick: (VideoWithMetadata) -> Unit,
     onPlayClick: (VideoWithMetadata) -> Unit = {}
 ) {
-    Column {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+    val safeColumns = columns.coerceAtLeast(2)
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "Featured From Your Library",
+                text = "Fresh in your library",
                 color = TextBright,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
+                fontFamily = NewsreaderFamily,
+                fontSize = CineType.Section,
                 modifier = Modifier.weight(1f)
             )
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(GlassSurface)
-                    .padding(3.dp),
-                horizontalArrangement = Arrangement.spacedBy(3.dp)
-            ) {
-                SmallToggleChip(text = "Grid", selected = mode == "Grid", onClick = { onModeChange("Grid") })
-                SmallToggleChip(text = "List", selected = mode == "List", onClick = { onModeChange("List") })
-            }
+            CineBadge(text = "NEW", gel = GelMint)
         }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        if (mode == "Grid") {
-            val gridItems = items.take(9)
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                gridItems.chunked(3).forEach { rowItems ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        rowItems.forEach { item ->
-                            Box(modifier = Modifier.weight(1f)) {
-                                LibraryGridCard(item = item, onClick = { onItemClick(item) }, onPlayClick = onPlayClick)
-                            }
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            items.chunked(safeColumns).forEach { rowItems ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    rowItems.forEach { item ->
+                        Box(modifier = Modifier.weight(1f)) {
+                            LibraryGridCard(item = item, onClick = { onItemClick(item) }, onPlayClick = onPlayClick)
                         }
-                        repeat(3 - rowItems.size) { Spacer(modifier = Modifier.weight(1f)) }
                     }
-                }
-            }
-        } else {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items.take(10).forEach { item ->
-                    LibraryCard(item = item, onClick = { onItemClick(item) })
+                    repeat(safeColumns - rowItems.size) { Spacer(modifier = Modifier.weight(1f)) }
                 }
             }
         }
@@ -378,7 +359,7 @@ fun HomeRow(
 ) {
     val context = LocalContext.current
     Column {
-        Text(text = title, color = TextBright, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text(text = title, color = TextBright, fontSize = CineType.Section, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(14.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             items(items) { item ->
@@ -401,7 +382,7 @@ fun HomeRow(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(text = item.title, color = TextBright, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
                     if (item.subtitle.isNotBlank()) {
-                        Text(text = item.subtitle, color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(text = item.subtitle, color = TextMuted, fontSize = CineType.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }

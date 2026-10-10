@@ -87,201 +87,224 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.sole.cinevault.ui.theme.*
 
+/**
+ * Continue watching as a film strip: a dark reel with sprocket holes, one
+ * frame per film, a progress ring and the time left. Each frame is at least
+ * 156dp wide and the reel scrolls sideways.
+ */
 @Composable
 fun ContinueWatchingSection(
     items: List<VideoWithMetadata>,
-    mode: String,
-    onModeChange: (String) -> Unit,
     onItemClick: (VideoWithMetadata) -> Unit,
     onSeeAll: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
-    Column {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Bottom
         ) {
             Text(
-                text = "Continue Watching",
+                text = "Continue",
                 color = TextBright,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
+                fontFamily = NewsreaderFamily,
+                fontSize = CineType.Section,
                 modifier = Modifier.weight(1f)
             )
-
+            Text(
+                text = "${items.size} IN PROGRESS",
+                color = TextFaint,
+                fontFamily = PlexMonoFamily,
+                fontSize = CineType.Caption,
+                letterSpacing = 1.4.sp
+            )
             // Only worth showing when there's actually more to see than the
-            // 12-item cap this row already renders — a "See All" that takes
-            // you somewhere with nothing new is worse than no button.
+            // 12-item cap this row already renders.
             if (items.size >= 12) {
                 Text(
-                    text = "See All",
+                    text = "See all",
                     color = AmberCore,
-                    fontSize = 12.sp,
+                    fontSize = CineType.Caption,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable { onSeeAll() }.padding(horizontal = 6.dp, vertical = 4.dp)
+                    modifier = Modifier
+                        .clickable { onSeeAll() }
+                        .heightIn(min = 48.dp)
+                        .padding(horizontal = 10.dp, vertical = 14.dp)
                 )
-            }
-
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(GlassSurface)
-                    .padding(3.dp),
-                horizontalArrangement = Arrangement.spacedBy(3.dp)
-            ) {
-                SmallToggleChip(text = "List", selected = mode == "List", onClick = { onModeChange("List") })
-                SmallToggleChip(text = "Grid", selected = mode == "Grid", onClick = { onModeChange("Grid") })
             }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
-
-        if (mode == "List") {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color(0xFF0A0C12))
+                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
+                .padding(bottom = 12.dp)
+        ) {
+            FilmStripHoles()
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+            ) {
                 items(items) { item ->
                     val positionMs = loadPlaybackPosition(context, item.video.path)
                     val durationMs = loadDuration(context, item.video.path)
                     val watchedPercent = getWatchedPercent(context, item)
+                    val minutesLeft = if (durationMs > positionMs) ((durationMs - positionMs) / 60_000L).toInt() else 0
 
-                    Column(modifier = Modifier.width(250.dp).clickable { onItemClick(item) }) {
-                        // ── FIX: composite card instead of bare force-crop ──
-                        // Previously: val image = item.backdropUrl ?: item.episodeStill ?: item.posterUrl
-                        // then ONE AsyncImage with ContentScale.Crop over the
-                        // whole 250x140 landscape box. When there was no
-                        // backdrop/still, a portrait poster got crushed into
-                        // that landscape shape — title text and faces sliced
-                        // off. Now: real landscape art (backdrop/still) still
-                        // crops exactly as before (unchanged, no regression).
-                        // Only when falling back to a PORTRAIT poster do we
-                        // switch to a composite layout — poster shown in full
-                        // on the right, same poster blurred+scaled as ambient
-                        // fill on the left. No second network fetch; same
-                        // posterUrl used twice.
-                        val landscapeImage = item.backdropUrl ?: item.episodeStill
-                        val fallbackPoster = item.posterUrl
-
+                    Column(
+                        modifier = Modifier.width(160.dp).clickable { onItemClick(item) },
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(140.dp)
-                                .clip(RoundedCornerShape(20.dp))
+                                .aspectRatio(1.6f)
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(SpaceMid)
                         ) {
-                            if (!landscapeImage.isNullOrBlank()) {
-                                AsyncImage(
-                                    model = landscapeImage,
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            } else if (!fallbackPoster.isNullOrBlank()) {
-                                Row(modifier = Modifier.fillMaxSize()) {
-                                    // Left: ambient fill — same poster image,
-                                    // scaled + blurred (API 31+) or just
-                                    // scaled + darkened (below API 31).
-                                    Box(modifier = Modifier.weight(1.35f).fillMaxHeight()) {
-                                        AsyncImage(
-                                            model = fallbackPoster,
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .graphicsLayer {
-                                                    scaleX = 1.4f; scaleY = 1.4f
-                                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                                        renderEffect = android.graphics.RenderEffect
-                                                            .createBlurEffect(
-                                                                40f, 40f,
-                                                                android.graphics.Shader.TileMode.CLAMP
-                                                            )
-                                                            .asComposeRenderEffect()
-                                                    }
-                                                }
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .background(Color.Black.copy(alpha = 0.35f))
-                                        )
-                                    }
-                                    // Right: the real poster, uncropped —
-                                    // title logo and face stay intact.
-                                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                                        AsyncImage(
-                                            model = fallbackPoster,
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Fit,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Scrim just behind the timestamps — unchanged
+                            ContinueArt(item)
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .fillMaxWidth()
-                                    .height(44.dp)
-                                    .background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.60f))))
+                                    .height(52.dp)
+                                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE605060A))))
                             )
-
-                            Text(
-                                text = formatClock(positionMs),
-                                color = TextBright, fontSize = CineType.Caption, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 8.dp)
-                            )
-                            if (durationMs > 0L) {
-                                Text(
-                                    text = formatClock(durationMs),
-                                    color = TextMuted, fontSize = CineType.Caption, fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 10.dp, bottom = 8.dp)
-                                )
-                            }
-
-                            // Thin progress line hugging the bottom edge — unchanged
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .fillMaxWidth()
-                                    .height(3.dp)
-                                    .background(Color.White.copy(alpha = 0.18f))
-                            ) {
-                                Box(modifier = Modifier.fillMaxWidth(watchedPercent.coerceIn(0f, 1f)).fillMaxHeight().background(AmberGlow))
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = item.title,
-                            color = TextBright, fontSize = CineType.Caption, fontWeight = FontWeight.SemiBold,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
-        } else {
-            val gridItems = items.take(6)
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                gridItems.chunked(3).forEach { rowItems ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        rowItems.forEach { item ->
-                            val watchedPercent = getWatchedPercent(context, item)
-                            ResumePosterBox(
-                                item = item,
-                                modifier = Modifier.weight(1f),
+                            ProgressRing(
                                 progress = watchedPercent,
-                                onClick = { onItemClick(item) }
+                                modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 8.dp)
                             )
                         }
-                        repeat(3 - rowItems.size) { Spacer(modifier = Modifier.weight(1f)) }
+                        Column(modifier = Modifier.padding(horizontal = 2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = item.title,
+                                color = TextBright,
+                                fontSize = CineType.Label,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = if (minutesLeft > 0) "${formatBudgetMinutes(minutesLeft)} LEFT" else formatClock(positionMs),
+                                color = TextMuted,
+                                fontFamily = PlexMonoFamily,
+                                fontSize = CineType.Caption
+                            )
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+/** The row of sprocket holes along the top of the reel. */
+@Composable
+private fun FilmStripHoles() {
+    androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxWidth().height(14.dp)) {
+        val holeW = 8.dp.toPx()
+        val holeH = 5.dp.toPx()
+        val step = 20.dp.toPx()
+        var x = 4.dp.toPx()
+        while (x < size.width) {
+            drawRoundRect(
+                color = Color.White.copy(alpha = 0.16f),
+                topLeft = androidx.compose.ui.geometry.Offset(x, 4.dp.toPx()),
+                size = androidx.compose.ui.geometry.Size(holeW, holeH),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.5.dp.toPx())
+            )
+            x += step
+        }
+    }
+}
+
+/** A small ring that fills as the film is watched. */
+@Composable
+private fun ProgressRing(progress: Float, modifier: Modifier = Modifier) {
+    val clamped = progress.coerceIn(0f, 1f)
+    androidx.compose.foundation.Canvas(modifier = modifier.size(30.dp)) {
+        val strokeWidth = 2.4.dp.toPx()
+        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(
+            width = strokeWidth,
+            cap = androidx.compose.ui.graphics.StrokeCap.Round
+        )
+        val inset = strokeWidth
+        val arcSize = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
+        val topLeft = androidx.compose.ui.geometry.Offset(inset, inset)
+        drawCircle(color = Color(0x99050608))
+        drawArc(
+            color = Color.White.copy(alpha = 0.20f),
+            startAngle = 0f,
+            sweepAngle = 360f,
+            useCenter = false,
+            topLeft = topLeft,
+            size = arcSize,
+            style = stroke
+        )
+        drawArc(
+            color = AmberCore,
+            startAngle = -90f,
+            sweepAngle = 360f * clamped,
+            useCenter = false,
+            topLeft = topLeft,
+            size = arcSize,
+            style = stroke
+        )
+    }
+}
+
+/**
+ * The picture for one reel frame. Real landscape art (backdrop or still) fills
+ * the frame. If only a portrait poster exists, it is shown whole on the right
+ * with the same poster blurred as ambient fill on the left, so faces and title
+ * art are never sliced off.
+ */
+@Composable
+private fun ContinueArt(item: VideoWithMetadata) {
+    val landscapeImage = item.backdropUrl ?: item.episodeStill
+    val fallbackPoster = item.posterUrl
+    if (!landscapeImage.isNullOrBlank()) {
+        AsyncImage(
+            model = landscapeImage,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+    } else if (!fallbackPoster.isNullOrBlank()) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.weight(1.35f).fillMaxHeight()) {
+                AsyncImage(
+                    model = fallbackPoster,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = 1.4f; scaleY = 1.4f
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                renderEffect = android.graphics.RenderEffect
+                                    .createBlurEffect(40f, 40f, android.graphics.Shader.TileMode.CLAMP)
+                                    .asComposeRenderEffect()
+                            }
+                        }
+                )
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
+            }
+            Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                AsyncImage(
+                    model = fallbackPoster,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+    } else {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null, tint = TextFaint, modifier = Modifier.size(30.dp))
         }
     }
 }

@@ -115,7 +115,7 @@ private fun rememberWelcomeDimensions(isTablet: Boolean, isLandscape: Boolean, m
         val base = when {
             isTablet && isLandscape -> WelcomeDimensions(
                 horizontalPadding = 56.dp, heroSize = 84.dp,
-                headingSize = 20.sp, taglineSize = 11.sp, bodySize = 10.sp,
+                headingSize = 20.sp, taglineSize = CineType.Caption, bodySize = CineType.Caption,
                 primaryButtonHeight = 40.dp, sourceTileHeight = 42.dp, tileIconSize = 24.dp,
                 contentMaxWidth = 680.dp, sectionGap = 6.dp
             )
@@ -127,13 +127,13 @@ private fun rememberWelcomeDimensions(isTablet: Boolean, isLandscape: Boolean, m
             )
             isLandscape -> WelcomeDimensions(
                 horizontalPadding = 20.dp, heroSize = 48.dp,
-                headingSize = 13.sp, taglineSize = 9.sp, bodySize = 9.sp,
+                headingSize = 13.sp, taglineSize = CineType.Caption, bodySize = CineType.Caption,
                 primaryButtonHeight = 32.dp, sourceTileHeight = 32.dp, tileIconSize = 18.dp,
                 contentMaxWidth = 460.dp, sectionGap = 3.dp
             )
             else -> WelcomeDimensions(
                 horizontalPadding = 20.dp, heroSize = 90.dp,
-                headingSize = 19.sp, taglineSize = 12.sp, bodySize = 11.sp,
+                headingSize = 19.sp, taglineSize = 12.sp, bodySize = CineType.Caption,
                 primaryButtonHeight = 44.dp, sourceTileHeight = 48.dp, tileIconSize = 26.dp,
                 contentMaxWidth = 460.dp, sectionGap = 6.dp
             )
@@ -188,7 +188,7 @@ private fun AmberSourceTile(
         Spacer(modifier = Modifier.width(10.dp))
         Column {
             Text(text = title, color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-            Text(text = subtitle, color = TextMuted, fontSize = 10.sp, maxLines = 1)
+            Text(text = subtitle, color = TextMuted, fontSize = CineType.Caption, maxLines = 1)
         }
     }
 }
@@ -241,7 +241,7 @@ internal fun FreshInstallWelcomeContent(
                 ) {
                     Icon(imageVector = Icons.Filled.Shield, contentDescription = null, tint = AmberCore, modifier = Modifier.size(12.dp))
                     Spacer(modifier = Modifier.width(5.dp))
-                    Text(text = "Private · Local-first", color = TextBright, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                    Text(text = "Private · Local-first", color = TextBright, fontSize = CineType.Caption, fontWeight = FontWeight.SemiBold)
                 }
             }
 
@@ -311,7 +311,7 @@ internal fun FreshInstallWelcomeContent(
                         ) {
                             Icon(imageVector = Icons.Filled.Star, contentDescription = null, tint = AmberCore, modifier = Modifier.size(10.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(text = label, color = AmberCore, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text(text = label, color = AmberCore, fontSize = CineType.Caption, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -354,7 +354,7 @@ internal fun FreshInstallWelcomeContent(
                     Text(text = "Scan My Library", color = TextBright, fontSize = if (isTablet) 18.sp else 16.sp, fontWeight = FontWeight.Black)
                 }
                 Spacer(modifier = Modifier.height(6.dp))
-                Text(text = "Usually takes less than a minute", color = TextMuted, fontSize = 11.sp)
+                Text(text = "Usually takes less than a minute", color = TextMuted, fontSize = CineType.Caption)
 
                 Spacer(modifier = Modifier.height(dims.sectionGap))
 
