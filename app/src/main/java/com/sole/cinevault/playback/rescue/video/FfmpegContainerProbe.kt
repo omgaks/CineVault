@@ -10,6 +10,7 @@ package com.sole.cinevault.playback.rescue.video
 internal class FfmpegContainerProbe {
     external fun probeLocalFile(path: String): String
     external fun decodeFirstVideoFrame(path: String): String
+    external fun decodeRgbaFrameBatch(path: String, maxFrames: Int): Array<Any?>
     external fun decodeFirstRgbaFrame(path: String, dimensions: IntArray): ByteArray
     external fun decodeVideoFrames(path: String, maxFrames: Int): String
 }

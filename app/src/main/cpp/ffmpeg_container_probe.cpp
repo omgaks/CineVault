@@ -341,3 +341,140 @@ done:
     if (!pixels && !env->ExceptionCheck()) throwIo(env, error);
     return pixels;
 }
+
+/**
+ * Decode a bounded batch into RGBA frames with presentation timestamps.
+ * JNI returns Object[] of long[3] metadata and byte[] pixels in alternating
+ * slots. This is a bridge, not yet a persistent streaming decoder.
+ */
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_com_sole_cinevault_playback_rescue_video_FfmpegContainerProbe_decodeRgbaFrameBatch(
+    JNIEnv* env, jobject, jstring pathString, jint requestedFrames) {
+    if (!pathString || requestedFrames < 1 || requestedFrames > 8) {
+        throwIo(env, "Path required and frame batch must be 1..8");
+        return nullptr;
+    }
+    const char* chars = env->GetStringUTFChars(pathString, nullptr);
+    if (!chars) return nullptr;
+    std::string path(chars);
+    env->ReleaseStringUTFChars(pathString, chars);
+    AVFormatContext* format = nullptr;
+    AVCodecContext* decoder = nullptr;
+    AVPacket* packet = nullptr;
+    AVFrame* frame = nullptr;
+    SwsContext* scaler = nullptr;
+    jobjectArray output = nullptr;
+    std::string error;
+    int result = avformat_open_input(&format, path.c_str(), nullptr, nullptr);
+    if (result < 0) { throwIo(env, "Open failed: " + avError(result)); return nullptr; }
+    avformat_find_stream_info(format, nullptr);
+    {
+        int stream = av_find_best_stream(format, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+        if (stream < 0) { error = "No video stream"; goto done_batch; }
+        const AVCodec* codec = avcodec_find_decoder(format->streams[stream]->codecpar->codec_id);
+        if (!codec) { error = "Video decoder unavailable"; goto done_batch; }
+        decoder = avcodec_alloc_context3(codec);
+        if (!decoder) { error = "Decoder allocation failed"; goto done_batch; }
+        result = avcodec_parameters_to_context(decoder, format->streams[stream]->codecpar);
+        if (result < 0) { error = avError(result); goto done_batch; }
+        result = avcodec_open2(decoder, codec, nullptr);
+        if (result < 0) { error = avError(result); goto done_batch; }
+        packet = av_packet_alloc();
+        frame = av_frame_alloc();
+        if (!packet || !frame) { error = "Frame allocation failed"; goto done_batch; }
+        jclass objectClass = env->FindClass("java/lang/Object");
+        if (!objectClass) goto done_batch;
+        output = env->NewObjectArray(requestedFrames * 2, objectClass, nullptr);
+        env->DeleteLocalRef(objectClass);
+        if (!output) goto done_batch;
+        int decoded = 0;
+        int64_t totalBytes = 0;
+        bool flushing = false;
+        // Drain all ready frames after each packet; bounded reads and output.
+        for (int reads = 0; reads < 8192 && decoded < requestedFrames && error.empty(); ++reads) {
+            if (!flushing) {
+                result = av_read_frame(format, packet);
+                if (result == AVERROR_EOF) {
+                    flushing = true;
+                    avcodec_send_packet(decoder, nullptr);
+                } else if (result < 0) {
+                    error = "Packet read failed: " + avError(result);
+                    break;
+                } else {
+                    if (packet->stream_index == stream) {
+                        result = avcodec_send_packet(decoder, packet);
+                        if (result == AVERROR(EAGAIN)) {
+                            // Drain below; never silently discard packet.
+                            error = "Decoder backpressure requires persistent packet queue";
+                        } else if (result < 0) {
+                            error = "Send packet failed: " + avError(result);
+                        }
+                    }
+                    av_packet_unref(packet);
+                }
+            }
+            while (error.empty() && decoded < requestedFrames) {
+                result = avcodec_receive_frame(decoder, frame);
+                if (result == AVERROR(EAGAIN) || result == AVERROR_EOF) break;
+                if (result < 0) { error = "Receive frame failed: " + avError(result); break; }
+                const int w = frame->width, h = frame->height;
+                const int64_t bytes = static_cast<int64_t>(w) * h * 4;
+                if (w <= 0 || h <= 0 || w > 4096 || h > 4096 ||
+                    bytes > 64 * 1024 * 1024 || totalBytes + bytes > 64 * 1024 * 1024) {
+                    error = "RGBA batch exceeds 64 MiB safety limit";
+                    break;
+                }
+                scaler = sws_getCachedContext(scaler, w, h,
+                    static_cast<AVPixelFormat>(frame->format),
+                    w, h, AV_PIX_FMT_RGBA, SWS_BILINEAR, nullptr, nullptr, nullptr);
+                if (!scaler) { error = "RGBA scaler unavailable"; break; }
+                std::vector<uint8_t> rgba(static_cast<size_t>(bytes));
+                uint8_t* dst[4] = {rgba.data(), nullptr, nullptr, nullptr};
+                int lines[4] = {w * 4, 0, 0, 0};
+                if (sws_scale(scaler, frame->data, frame->linesize, 0, h, dst, lines) != h) {
+                    error = "RGBA conversion failed";
+                    break;
+                }
+                int64_t pts = frame->best_effort_timestamp;
+                if (pts == AV_NOPTS_VALUE) pts = 0;
+                int64_t ptsMs = av_rescale_q(pts, format->streams[stream]->time_base, AVRational{1, 1000});
+                jlong metadata[3] = {w, h, std::max<int64_t>(0, ptsMs)};
+                jlongArray meta = env->NewLongArray(3);
+                jbyteArray data = env->NewByteArray(static_cast<jsize>(bytes));
+                if (!meta || !data) {
+                    if (meta) env->DeleteLocalRef(meta);
+                    if (data) env->DeleteLocalRef(data);
+                    break;
+                }
+                env->SetLongArrayRegion(meta, 0, 3, metadata);
+                env->SetByteArrayRegion(data, 0, static_cast<jsize>(bytes),
+                    reinterpret_cast<const jbyte*>(rgba.data()));
+                if (!env->ExceptionCheck()) {
+                    env->SetObjectArrayElement(output, decoded * 2, meta);
+                    env->SetObjectArrayElement(output, decoded * 2 + 1, data);
+                }
+                env->DeleteLocalRef(meta);
+                env->DeleteLocalRef(data);
+                if (env->ExceptionCheck()) break;
+                totalBytes += bytes;
+                ++decoded;
+                av_frame_unref(frame);
+            }
+            if (flushing || env->ExceptionCheck()) break;
+        }
+        if (decoded == 0 && error.empty() && !env->ExceptionCheck()) {
+            error = "No decodable video frames";
+        }
+    }
+done_batch:
+    sws_freeContext(scaler);
+    av_frame_free(&frame);
+    av_packet_free(&packet);
+    avcodec_free_context(&decoder);
+    avformat_close_input(&format);
+    if (!error.empty() && !env->ExceptionCheck()) {
+        throwIo(env, error);
+        return nullptr;
+    }
+    return output;
+}
