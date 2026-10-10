@@ -70,6 +70,31 @@ class PlaybackRecoveryPolicyTest {
     }
 
     @Test
+    fun malformedMkvContainerDoesNotRetryOrSwitchVideoDecoder() {
+        val decision = decidePlaybackRecovery(
+            errorCode = PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+            currentRetryCount = 0,
+            engineMode = PlaybackEngineMode.HARDWARE,
+            softwareFallbackAvailable = true,
+        )
+
+        assertEquals(PlaybackRecoveryAction.FAIL, decision.action)
+        assertEquals(0, decision.nextRetryCount)
+    }
+
+    @Test
+    fun unsupportedContainerDoesNotSwitchVideoDecoder() {
+        val decision = decidePlaybackRecovery(
+            errorCode = PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+            currentRetryCount = 0,
+            engineMode = PlaybackEngineMode.HARDWARE,
+            softwareFallbackAvailable = true,
+        )
+
+        assertEquals(PlaybackRecoveryAction.FAIL, decision.action)
+    }
+
+    @Test
     fun unrelatedPermanentFailureDoesNotTriggerSoftwareFallback() {
         val decision = decidePlaybackRecovery(
             errorCode = PlaybackException.ERROR_CODE_IO_NO_PERMISSION,
