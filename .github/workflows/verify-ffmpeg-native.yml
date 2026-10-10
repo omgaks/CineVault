@@ -1,0 +1,54 @@
+name: Verify optional native FFmpeg integration
+
+# Explicit opt-in: no APK build or release, and no automatic FFmpeg download.
+on:
+  workflow_dispatch:
+    inputs:
+      ffmpeg_tag:
+        description: 'Audited FFmpeg release tag'
+        required: true
+        default: 'n7.1.1'
+
+permissions:
+  contents: read
+
+jobs:
+  native-ffmpeg:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Fetch explicitly selected FFmpeg release source
+        env:
+          FFMPEG_TAG: ${{ inputs.ffmpeg_tag }}
+        run: |
+          case "$FFMPEG_TAG" in
+            n7.1.1|n7.1.2) ;;
+            *) echo "Unsupported tag; use an audited allowlisted release" >&2; exit 1 ;;
+          esac
+          git clone --depth 1 --branch "$FFMPEG_TAG" https://github.com/FFmpeg/FFmpeg.git /tmp/cinevault-ffmpeg
+          git -C /tmp/cinevault-ffmpeg rev-parse HEAD
+      - name: Build native FFmpeg ARM64 libraries
+        run: bash scripts/build-ffmpeg-arm64.sh /tmp/cinevault-ffmpeg
+      - name: Validate FFmpeg runtime libraries
+        run: |
+          set -eu
+          SDK="$GITHUB_WORKSPACE/.native/ffmpeg/arm64-v8a"
+          for lib in avformat avcodec avutil; do
+            test -s "$SDK/lib/lib$lib.so"
+          done
+          find "$SDK/lib" -name '*.so' -printf '%f\n'
+      - name: Compile CineVault optional JNI decoder (no APK)
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:externalNativeBuildDebug \
+            -PcinevaultFfmpegRoot="$GITHUB_WORKSPACE/.native/ffmpeg/arm64-v8a" \
+            --no-daemon
