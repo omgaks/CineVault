@@ -135,6 +135,9 @@ fun shareCollectionCard(context: Context, model: ShareCardModel): Boolean = runC
     val send = Intent(Intent.ACTION_SEND).apply {
         type = "image/png"
         putExtra(Intent.EXTRA_STREAM, uri)
+        // The clip data is what the share sheet reads to draw the preview picture.
+        clipData = android.content.ClipData.newRawUri("Collection card", uri)
+        putExtra(Intent.EXTRA_TITLE, "Collection card")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(Intent.createChooser(send, "Share collection").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
