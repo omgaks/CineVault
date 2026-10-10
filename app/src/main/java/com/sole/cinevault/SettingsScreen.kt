@@ -89,12 +89,12 @@ internal val AshSignatureFont = FontFamily(
 )
 
 // ── Accent palette for section icon chips (keeps amber as the anchor, adds variety) ──
-internal val AccentNetwork = Color(0xFF6FC3FF)
-private val AccentStream = Color(0xFFC792FF)
-private val AccentSupport = Color(0xFFFF6E8C)
-private val AccentAbout = Color(0xFFE8C77A)
-private val AccentPrivacy = Color(0xFF8FD9A8)
-private val AccentReset = Color(0xFFFFB74D)
+internal val AccentNetwork = GelSky
+private val AccentStream = GelViolet
+private val AccentSupport = GelRose
+private val AccentAbout = GelGold
+private val AccentPrivacy = GelMint
+private val AccentReset = GelCoral
 
 // Distinct color per folder pill — cycled by position so every added folder
 // reads as visually its own thing rather than a uniform list.
@@ -123,18 +123,22 @@ internal fun settingsFolderIconFor(displayName: String): ImageVector {
     }
 }
 
+
+private enum class SettingsGroup(val title: String, val icon: ImageVector, val gel: Color) {
+    Library("Library", Icons.Rounded.Folder, GelRose),
+    Network("Network", Icons.Rounded.Dns, GelSky),
+    Playback("Playback", Icons.Filled.MusicNote, GelViolet),
+    Tutorial("Tutorial", Icons.Filled.Info, GelGold),
+    You("You & app", Icons.Filled.Favorite, GelMint)
+}
+
 @Composable
 fun SettingsScreen(
     // No longer used by any section in this screen (Scan Manager, the only
-    // thing that called it, was removed — it just opened Library and did
-    // nothing else). Left in the signature rather than removed, since
-    // removing it would also require an edit to MainActivity.kt's call site
-    // for no real benefit.
+    // thing that called it, was removed). Left in the signature so the
+    // MainActivity.kt call site does not need to change.
     onOpenScanSources: () -> Unit,
     onOpenNetworkHub: () -> Unit,
-    // FIX: previously took no argument, so the URL typed into the Stream
-    // dialog was captured then silently discarded — Play did nothing.
-    // Now the URL is actually passed through to whoever handles playback.
     onOpenStreamUrl: (String) -> Unit,
     onOpenGlassesGestureTutorial: () -> Unit,
     onOpenLibraryTools: () -> Unit = {}
@@ -143,29 +147,29 @@ fun SettingsScreen(
     var showStreamDialog by remember { mutableStateOf(false) }
     var showCrashLog by remember { mutableStateOf(false) }
     var showResetSettingsConfirm by remember { mutableStateOf(false) }
+    var showTutorial by remember { mutableStateOf(false) }
+    var showNameDialog by remember { mutableStateOf(false) }
+    var selectedGroup by remember { mutableStateOf(SettingsGroup.You) }
 
     var smbShares by remember { mutableStateOf(loadSmbShares(context)) }
     var showSmbDialog by remember { mutableStateOf(false) }
     var editingShare by remember { mutableStateOf<SmbShare?>(null) }
 
-    // FIX: these dialogs are plain full-screen overlays with no connection to
-    // the system back gesture — Settings is the bottom of the nav stack, so
-    // without this, swiping back while a dialog is open fell through to
-    // Android's default behavior (closing the app) instead of dismissing
-    // the dialog and returning to Settings.
+    // Switch and name state lives here (not inside each card) so a Reset can
+    // refresh every switch straight away, and so switching panes on a tablet
+    // never loses state.
+    var metadataFetchEnabled by remember { mutableStateOf(loadMetadataFetchEnabled(context)) }
+    var collectionPageV2 by remember { mutableStateOf(loadCollectionPageV2Enabled(context)) }
+    var displayName by remember { mutableStateOf(loadDisplayName(context)) }
+
+    // Back always closes the front-most window first (Tutorial has its own
+    // handler inside the hub).
     BackHandler(enabled = showStreamDialog) { showStreamDialog = false }
     BackHandler(enabled = showCrashLog) { showCrashLog = false }
     BackHandler(enabled = showResetSettingsConfirm) { showResetSettingsConfirm = false }
     BackHandler(enabled = showSmbDialog) { showSmbDialog = false; editingShare = null }
+    BackHandler(enabled = showNameDialog) { showNameDialog = false }
 
-    // Select Folder — the general "Add Media Folder" picker (and the whole
-    // Media Library section) was removed entirely: it saved folders but
-    // nothing ever scanned them, so it did nothing in practice. This picker
-    // already does everything that one was supposed to, and actually works
-    // — it scans with its own rules (no duration/size floor, no personal-
-    // video filename filter), groups as one poster card in Library, stays
-    // out of Home/Continue Watching, and only downloads subtitles when you
-    // manually tap Download inside the player.
     var restrictedFolders by remember { mutableStateOf(loadRestrictedFolders(context)) }
     var folderPendingRemoval by remember { mutableStateOf<RestrictedFolder?>(null) }
     val restrictedFolderPicker = rememberLauncherForActivityResult(
@@ -180,326 +184,351 @@ fun SettingsScreen(
     }
     BackHandler(enabled = folderPendingRemoval != null) { folderPendingRemoval = null }
 
-    // Phase 13 of TV support: Settings is the most heterogeneous screen
-    // covered so far — toggle switches, icon-button rows, long-press-only
-    // pills, and modal dialogs all in one scroll. Scope for this phase:
-    // the main scrollable body plus the two dialogs fully defined in THIS
-    // file (crash log viewer, folder removal confirm). StreamUrlDialog.kt
-    // and smb/SmbShareDialog.kt are separate files not yet opened or
-    // verified — deliberately left for their own pass rather than edited
-    // blind here.
     val isTelevision = remember { TelevisionModeDetector.isRunningOnTelevision(context) }
     val focusManager = LocalFocusManager.current
+    val twoPane = rememberCineWidthClass() == CineWidthClass.Expanded
 
-    Box(modifier = Modifier.fillMaxSize().background(SpaceBlack)) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp)
-                .then(
-                    if (isTelevision) {
-                        Modifier.onKeyEvent { keyEvent ->
-                            if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
-                            when (keyEvent.key) {
-                                Key.DirectionUp -> {
-                                    focusManager.moveFocus(FocusDirection.Up)
-                                    true
-                                }
-                                Key.DirectionDown -> {
-                                    focusManager.moveFocus(FocusDirection.Down)
-                                    true
-                                }
-                                Key.DirectionLeft -> {
-                                    focusManager.moveFocus(FocusDirection.Left)
-                                    true
-                                }
-                                Key.DirectionRight -> {
-                                    focusManager.moveFocus(FocusDirection.Right)
-                                    true
-                                }
-                                else -> false
-                            }
-                        }
-                    } else {
-                        Modifier
-                    }
-                )
+    val tvKeys: Modifier = if (isTelevision) {
+        Modifier.onKeyEvent { keyEvent ->
+            if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
+            when (keyEvent.key) {
+                Key.DirectionUp -> { focusManager.moveFocus(FocusDirection.Up); true }
+                Key.DirectionDown -> { focusManager.moveFocus(FocusDirection.Down); true }
+                Key.DirectionLeft -> { focusManager.moveFocus(FocusDirection.Left); true }
+                Key.DirectionRight -> { focusManager.moveFocus(FocusDirection.Right); true }
+                else -> false
+            }
+        }
+    } else {
+        Modifier
+    }
+
+    // ── Sections. Each is one card; the layout below decides where they go. ──
+
+    val quickSwitchesSection: @Composable () -> Unit = {
+        GlassSectionCard(
+            title = "Quick switches",
+            subtitle = "Two common choices, one tap each.",
+            icon = Icons.Rounded.Lock,
+            accent = AccentPrivacy
         ) {
-            // Header text removed — "Settings" was redundant with the
-            // bottom-nav tab already showing which screen this is.
-
-            HeroCard()
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // D16-S6: Network is now a first-class destination. Existing SMB
-            // configuration remains supported, but discovery, future protocols and
-            // privacy-first CineVault sharing now have one consistent home.
-            GlassSectionCard(
-                title = "Network",
-                subtitle = "Sources, nearby devices and private library sharing.",
-                icon = Icons.Rounded.Dns,
-                accent = AccentNetwork
-            ) {
-                TvFocusableSlot(isTelevision = isTelevision, onActivate = onOpenNetworkHub) {
-                    GlassActionRow(
-                        icon = Icons.Rounded.Dns,
-                        iconTint = AccentNetwork,
-                        title = "Open Network Hub",
-                        subtitle = "SMB, nearby devices, media servers, web sources & sharing",
-                        action = "OPEN",
-                        onClick = onOpenNetworkHub
-                    )
+            SettingsSwitchRow(
+                title = "Fetch online metadata",
+                description = "Posters, ratings, cast and genres from TMDB/OMDB. Off uses only what is already saved. Nothing new is looked up.",
+                checked = metadataFetchEnabled,
+                isTelevision = isTelevision,
+                onCheckedChange = {
+                    metadataFetchEnabled = it
+                    saveMetadataFetchEnabled(context, it)
                 }
-                if (smbShares.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = "${smbShares.size} SMB share${if (smbShares.size == 1) "" else "s"} already saved.",
-                        color = TextFaint,
-                        fontSize = 12.sp,
-                        lineHeight = 17.sp
-                    )
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            SettingsSwitchRow(
+                title = "New collection page",
+                description = "Shows films in a franchise you don't own yet, in release order, with progress and a next-up. Off gives the classic grid.",
+                checked = collectionPageV2,
+                isTelevision = isTelevision,
+                onCheckedChange = {
+                    collectionPageV2 = it
+                    saveCollectionPageV2Enabled(context, it)
                 }
+            )
+        }
+    }
+
+    val nameSection: @Composable () -> Unit = {
+        GlassSectionCard(
+            title = "Your name",
+            subtitle = "Used in the Home greeting. Stays on this device.",
+            icon = Icons.Rounded.Edit,
+            accent = AccentAbout
+        ) {
+            TvFocusableSlot(isTelevision = isTelevision, onActivate = { showNameDialog = true }) {
+                GlassActionRow(
+                    icon = Icons.Rounded.Edit,
+                    iconTint = AccentAbout,
+                    title = if (displayName.isBlank()) "Add your name" else displayName,
+                    subtitle = if (displayName.isBlank()) "Optional" else "Tap to change",
+                    action = "EDIT"
+                ) { showNameDialog = true }
             }
+        }
+    }
 
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // Stream Player — opens the stream dialog right here instead of redirecting
-            GlassSectionCard(title = "Stream Player", subtitle = "Play direct online video links.", icon = Icons.Rounded.Language, accent = AccentStream) {
-                TvFocusableSlot(isTelevision = isTelevision, onActivate = { showStreamDialog = true }) {
-                    GlassActionRow(icon = Icons.Rounded.Language, iconTint = AccentStream, title = "Stream URL", subtitle = "Play MP4 / M3U8 / WEBM links instantly", action = "OPEN") { showStreamDialog = true }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(text = "For direct video links only. Torrent/magnet links are not supported.", color = TextFaint, fontSize = 12.sp, lineHeight = 17.sp)
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // G6B-3: Glasses help/practice entry. The tutorial itself uses
-            // the same head-gesture detector as playback and clearly falls
-            // back to touchpad guidance when no external sensor is exposed.
-            GlassSectionCard(
-                title = "Glasses Mode",
-                subtitle = "Learn the controls and practice supported head gestures.",
-                icon = Icons.Filled.Info,
-                accent = AccentAbout
-            ) {
+    val tutorialSection: @Composable () -> Unit = {
+        GlassSectionCard(
+            title = "Tutorial",
+            subtitle = "Short guides to every part of CineVault.",
+            icon = Icons.Filled.Info,
+            accent = AccentAbout
+        ) {
+            TvFocusableSlot(isTelevision = isTelevision, onActivate = { showTutorial = true }) {
                 GlassActionRow(
                     icon = Icons.Filled.Info,
                     iconTint = AccentAbout,
-                    title = "Glasses controls & gesture practice",
-                    subtitle = "Touchpad, emergency return, nod and shake",
+                    title = "Open Tutorial",
+                    subtitle = "${TUTORIAL_GUIDES.size} guides: gestures, studios, glasses, network, TV and more",
                     action = "OPEN"
-                ) { onOpenGlassesGestureTutorial() }
+                ) { showTutorial = true }
             }
+        }
+    }
 
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // Select Folder — pills glow with the exact same recipe as the
-            // player's breathing play button (see rememberPlayButtonStyleGlow
-            // below), just re-colored per pill instead of amber-only.
-            // Layout changed from a vertical Column to a wrapping FlowRow —
-            // previously each folder pill stacked on its own line, which
-            // grew the card's height fast with more than a couple of
-            // folders added. Now they flow left-to-right and wrap onto a
-            // new line only when they run out of horizontal room, same
-            // reading direction as every other chip/pill row in the app
-            // (categories, genres, tech badges).
-            GlassSectionCard(title = "Select Folder", subtitle = "Kept out of Home & Continue Watching. Visible in Library and Search only.", icon = Icons.Rounded.Folder, accent = AccentSupport) {
-                TvFocusableSlot(isTelevision = isTelevision, shape = CircleShape, onActivate = { restrictedFolderPicker.launch(null) }) {
-                    AddFolderGlowPill { restrictedFolderPicker.launch(null) }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                if (restrictedFolders.isEmpty()) {
-                    Text(text = "No folder added yet.", color = TextMuted, fontSize = 14.sp)
-                } else {
-                    androidx.compose.foundation.layout.FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        restrictedFolders.forEachIndexed { index, folder ->
-                            // FolderNamePill handles its own TV focus/activation
-                            // internally now (SettingsVisualComponents.kt) — no
-                            // outer wrap needed here, unlike most of this project.
-                            FolderNamePill(
-                                name = folder.displayName,
-                                accent = FolderPillPalette[index % FolderPillPalette.size],
-                                onLongPress = { folderPendingRemoval = folder }
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(text = "Touch and hold a folder to remove it. After adding a folder, go to Library and rescan to pull its files in.", color = TextFaint, fontSize = 12.sp, lineHeight = 17.sp)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // Privacy — metadata fetch toggle. Off means no more TMDB/OMDB
-            // network calls from here on (search, ratings, or the upgrade
-            // path that runs even on a cache hit if some fields are
-            // missing) — whatever's already cached keeps showing, nothing
-            // new gets looked up. Read fresh from prefs on entry, saved
-            // immediately on toggle — no separate Save button, matching
-            // every other setting on this screen.
-            GlassSectionCard(title = "Privacy", subtitle = "Control what CineVault sends over the network.", icon = Icons.Rounded.Lock, accent = AccentPrivacy) {
-                var metadataFetchEnabled by remember { mutableStateOf(loadMetadataFetchEnabled(context)) }
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "Fetch online metadata", color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Posters, ratings, cast, and genres from TMDB/OMDB. Turning this off uses only what's already cached for each video — nothing new is looked up.",
-                            color = TextMuted, fontSize = 12.sp, lineHeight = 17.sp
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    TvFocusableSlot(
-                        isTelevision = isTelevision,
-                        shape = RoundedCornerShape(50),
-                        onActivate = {
-                            metadataFetchEnabled = !metadataFetchEnabled
-                            saveMetadataFetchEnabled(context, metadataFetchEnabled)
-                        }
-                    ) {
-                        Switch(
-                            checked = metadataFetchEnabled,
-                            onCheckedChange = {
-                                metadataFetchEnabled = it
-                                saveMetadataFetchEnabled(context, it)
-                            },
-                            colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // Collections — the new franchise page (owned + not-yet-owned films, in
-            // release order). Off falls back to the classic grid, exactly as before.
-            GlassSectionCard(
-                title = "Collections",
-                subtitle = "How franchise collections are shown.",
-                icon = Icons.Rounded.Collections,
-                accent = AccentAbout
-            ) {
-                var collectionPageV2 by remember { mutableStateOf(loadCollectionPageV2Enabled(context)) }
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "New collection page", color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Shows the films in a franchise you don't own yet, in release order, with progress and a next-up. Turn off for the classic grid.",
-                            color = TextMuted, fontSize = 12.sp, lineHeight = 17.sp
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    TvFocusableSlot(
-                        isTelevision = isTelevision,
-                        shape = RoundedCornerShape(50),
-                        onActivate = {
-                            collectionPageV2 = !collectionPageV2
-                            saveCollectionPageV2Enabled(context, collectionPageV2)
-                        }
-                    ) {
-                        Switch(
-                            checked = collectionPageV2,
-                            onCheckedChange = {
-                                collectionPageV2 = it
-                                saveCollectionPageV2Enabled(context, it)
-                            },
-                            colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            GlassSectionCard(
-                title = "Library tools",
-                subtitle = "Local artwork and match review.",
-                icon = Icons.Rounded.Collections,
-                accent = AccentAbout
-            ) {
-                TvFocusableSlot(isTelevision = isTelevision, onActivate = onOpenLibraryTools) {
-                    GlassActionRow(
-                        icon = Icons.Rounded.Collections,
-                        iconTint = AccentAbout,
-                        title = "Open Library tools",
-                        subtitle = "Import artwork kept beside your films, and fix doubtful matches",
-                        action = "OPEN",
-                        onClick = onOpenLibraryTools
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            GlassSectionCard(
-                title = "Reset Settings",
-                subtitle = "Restore CineVault preferences to their defaults.",
-                icon = Icons.Rounded.RestartAlt,
-                accent = AccentReset
-            ) {
-                val onResetClick = { showResetSettingsConfirm = true }
-                TvFocusableSlot(isTelevision = isTelevision, onActivate = onResetClick) {
-                    GlassActionRow(
-                        icon = Icons.Rounded.RestartAlt,
-                        iconTint = AccentReset,
-                        title = "Reset CineVault settings",
-                        subtitle = "Keeps your library, history, favourites, folders and subtitle files",
-                        action = "RESET",
-                        onClick = onResetClick
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // Support
-            GlassSectionCard(title = "Support CineVault", subtitle = "A small thank you keeps the vault alive.", icon = Icons.Filled.Favorite, accent = AccentSupport) {
-                val onCoffeeClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.buymeacoffee.com/"))) }
-                TvFocusableSlot(isTelevision = isTelevision, onActivate = onCoffeeClick) {
-                    GlassActionRow(icon = Icons.Filled.Favorite, iconTint = AccentSupport, title = "Buy me a coffee", subtitle = "Optional support / donate button", action = "\u2665", onClick = onCoffeeClick)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // About — rewritten to actually describe what CineVault does
-            // today instead of the generic launch-era copy.
-            GlassSectionCard(title = "About", subtitle = "Premium local cinema experience.", icon = Icons.Filled.Info, accent = AccentAbout) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = Icons.Filled.Info, contentDescription = null, tint = AccentAbout, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(text = "CineVault v2.0", color = TextBright, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Your personal cinema, built from the ground up. Play straight from local storage, a USB drive, or a NAS over SMB — with real decoding for DTS, TrueHD and the formats most players choke on. TMDB and OMDB automatically bring in posters, cast, genres, collections, and IMDb/Rotten Tomatoes ratings for everything you own. A cinematic glass-and-amber design throughout, gesture-driven playback, and a private Select Folder space that stays exactly that.",
-                    color = TextMuted, fontSize = 13.sp, lineHeight = 19.sp
+    val networkSection: @Composable () -> Unit = {
+        GlassSectionCard(
+            title = "Network",
+            subtitle = "Sources, nearby devices and private library sharing.",
+            icon = Icons.Rounded.Dns,
+            accent = AccentNetwork
+        ) {
+            TvFocusableSlot(isTelevision = isTelevision, onActivate = onOpenNetworkHub) {
+                GlassActionRow(
+                    icon = Icons.Rounded.Dns,
+                    iconTint = AccentNetwork,
+                    title = "Open Network Hub",
+                    subtitle = "SMB, nearby devices, media servers, web sources & sharing",
+                    action = "OPEN",
+                    onClick = onOpenNetworkHub
                 )
-                Spacer(modifier = Modifier.height(14.dp))
-                TvFocusableSlot(isTelevision = isTelevision, onActivate = { showCrashLog = true }) {
-                    GlassActionRow(
-                        icon = Icons.Filled.Info, iconTint = AccentAbout,
-                        title = "View Crash Log", subtitle = "For diagnosing crashes — screenshot and share",
-                        action = "OPEN"
-                    ) { showCrashLog = true }
+            }
+            if (smbShares.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "${smbShares.size} SMB share${if (smbShares.size == 1) "" else "s"} already saved.",
+                    color = TextFaint,
+                    fontSize = CineType.Caption,
+                    lineHeight = 17.sp
+                )
+            }
+        }
+    }
+
+    val streamSection: @Composable () -> Unit = {
+        GlassSectionCard(title = "Stream a link", subtitle = "Play direct online video links.", icon = Icons.Rounded.Language, accent = AccentStream) {
+            TvFocusableSlot(isTelevision = isTelevision, onActivate = { showStreamDialog = true }) {
+                GlassActionRow(icon = Icons.Rounded.Language, iconTint = AccentStream, title = "Stream URL", subtitle = "Play MP4 / M3U8 / WEBM links instantly", action = "OPEN") { showStreamDialog = true }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = "For direct video links only. Torrent/magnet links are not supported.", color = TextFaint, fontSize = CineType.Caption, lineHeight = 17.sp)
+        }
+    }
+
+    val glassesSection: @Composable () -> Unit = {
+        GlassSectionCard(
+            title = "Glasses Mode",
+            subtitle = "Learn the controls and practice supported head gestures.",
+            icon = Icons.Filled.Info,
+            accent = AccentAbout
+        ) {
+            GlassActionRow(
+                icon = Icons.Filled.Info,
+                iconTint = AccentAbout,
+                title = "Glasses controls & gesture practice",
+                subtitle = "Touchpad, emergency return, nod and shake",
+                action = "OPEN"
+            ) { onOpenGlassesGestureTutorial() }
+        }
+    }
+
+    val playerPointerSection: @Composable () -> Unit = {
+        GlassSectionCard(
+            title = "Player settings",
+            subtitle = "Subtitles, audio and picture live in the player.",
+            icon = Icons.Filled.MusicNote,
+            accent = GelViolet
+        ) {
+            Text(
+                text = "Open any film and use the controls inside the player to change subtitles, audio and picture. Reset below puts those choices back to defaults.",
+                color = TextMuted,
+                fontSize = CineType.Label,
+                lineHeight = 19.sp
+            )
+        }
+    }
+
+    val foldersSection: @Composable () -> Unit = {
+        GlassSectionCard(title = "Select folders", subtitle = "Kept out of Home & Continue Watching. Still visible in Library and Search.", icon = Icons.Rounded.Folder, accent = AccentSupport) {
+            TvFocusableSlot(isTelevision = isTelevision, shape = CircleShape, onActivate = { restrictedFolderPicker.launch(null) }) {
+                AddFolderGlowPill { restrictedFolderPicker.launch(null) }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            if (restrictedFolders.isEmpty()) {
+                Text(text = "No folder added yet.", color = TextMuted, fontSize = CineType.Label)
+            } else {
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    restrictedFolders.forEachIndexed { index, folder ->
+                        FolderNamePill(
+                            name = folder.displayName,
+                            accent = FolderPillPalette[index % FolderPillPalette.size],
+                            onLongPress = { folderPendingRemoval = folder }
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(text = "Touch and hold a folder to remove it. After adding a folder, go to Library and rescan to pull its files in.", color = TextFaint, fontSize = CineType.Caption, lineHeight = 17.sp)
+            }
+        }
+    }
+
+    val libraryToolsSection: @Composable () -> Unit = {
+        GlassSectionCard(
+            title = "Library tools",
+            subtitle = "Local artwork and match review.",
+            icon = Icons.Rounded.Collections,
+            accent = AccentAbout
+        ) {
+            TvFocusableSlot(isTelevision = isTelevision, onActivate = onOpenLibraryTools) {
+                GlassActionRow(
+                    icon = Icons.Rounded.Collections,
+                    iconTint = AccentAbout,
+                    title = "Open Library tools",
+                    subtitle = "Import artwork kept beside your films, and fix doubtful matches",
+                    action = "OPEN",
+                    onClick = onOpenLibraryTools
+                )
+            }
+        }
+    }
+
+    val secretHelpSection: @Composable () -> Unit = {
+        GlassSectionCard(
+            title = "Secret folder",
+            subtitle = "A locked Library category for private films.",
+            icon = Icons.Rounded.Lock,
+            accent = AccentPrivacy
+        ) {
+            Text(
+                text = "Open Library and choose the Secret category. It opens with your fingerprint or PIN and locks again when you leave. This is different from Select folders above, which only hides a folder from Home.",
+                color = TextMuted,
+                fontSize = CineType.Label,
+                lineHeight = 19.sp
+            )
+        }
+    }
+
+    val resetSection: @Composable () -> Unit = {
+        GlassSectionCard(
+            title = "Reset Settings",
+            subtitle = "Restore CineVault preferences to their defaults.",
+            icon = Icons.Rounded.RestartAlt,
+            accent = AccentReset
+        ) {
+            val onResetClick = { showResetSettingsConfirm = true }
+            TvFocusableSlot(isTelevision = isTelevision, onActivate = onResetClick) {
+                GlassActionRow(
+                    icon = Icons.Rounded.RestartAlt,
+                    iconTint = AccentReset,
+                    title = "Reset CineVault settings",
+                    subtitle = "Keeps your library, history, favourites, folders and subtitle files",
+                    action = "RESET",
+                    onClick = onResetClick
+                )
+            }
+        }
+    }
+
+    val supportSection: @Composable () -> Unit = {
+        GlassSectionCard(title = "Support CineVault", subtitle = "A small thank you keeps the vault alive.", icon = Icons.Filled.Favorite, accent = AccentSupport) {
+            val onCoffeeClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.buymeacoffee.com/"))) }
+            TvFocusableSlot(isTelevision = isTelevision, onActivate = onCoffeeClick) {
+                GlassActionRow(icon = Icons.Filled.Favorite, iconTint = AccentSupport, title = "Buy me a coffee", subtitle = "Optional support / donate button", action = "♥", onClick = onCoffeeClick)
+            }
+        }
+    }
+
+    val aboutSection: @Composable () -> Unit = {
+        GlassSectionCard(title = "About", subtitle = "Premium local cinema experience.", icon = Icons.Filled.Info, accent = AccentAbout) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(imageVector = Icons.Filled.Info, contentDescription = null, tint = AccentAbout, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(text = "CineVault v${appVersionName(context)}", color = TextBright, fontSize = CineType.Body, fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Your personal cinema, built from the ground up. Play straight from local storage, a USB drive, or a NAS over SMB, with real decoding for DTS, TrueHD and the formats most players choke on. TMDB and OMDB automatically bring in posters, cast, genres, collections, and IMDb/Rotten Tomatoes ratings for everything you own. A cinematic glass-and-amber design throughout, gesture-driven playback, and a private Select Folder space that stays exactly that.",
+                color = TextMuted, fontSize = CineType.Label, lineHeight = 19.sp
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+            TvFocusableSlot(isTelevision = isTelevision, onActivate = { showCrashLog = true }) {
+                GlassActionRow(
+                    icon = Icons.Filled.Info, iconTint = AccentAbout,
+                    title = "View Crash Log", subtitle = "Copy it or share it with the developer",
+                    action = "OPEN"
+                ) { showCrashLog = true }
+            }
+        }
+    }
+
+    val sectionsByGroup: Map<SettingsGroup, List<@Composable () -> Unit>> = mapOf(
+        SettingsGroup.Library to listOf(foldersSection, libraryToolsSection, secretHelpSection),
+        SettingsGroup.Network to listOf(networkSection, streamSection),
+        SettingsGroup.Playback to listOf(glassesSection, playerPointerSection),
+        SettingsGroup.Tutorial to listOf(tutorialSection),
+        SettingsGroup.You to listOf(quickSwitchesSection, nameSection, resetSection, supportSection, aboutSection)
+    )
+    val phoneOrder: List<@Composable () -> Unit> = listOf(
+        quickSwitchesSection, nameSection, tutorialSection, networkSection, streamSection,
+        foldersSection, libraryToolsSection, secretHelpSection, glassesSection, playerPointerSection,
+        resetSection, supportSection, aboutSection
+    )
+
+    Box(modifier = Modifier.fillMaxSize().background(SpaceBlack)) {
+        if (twoPane) {
+            Row(modifier = Modifier.fillMaxSize().then(tvKeys)) {
+                Column(
+                    modifier = Modifier
+                        .width(260.dp)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState())
+                        .padding(start = 20.dp, top = 20.dp, end = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(text = "Settings", color = TextBright, fontFamily = NewsreaderFamily, fontSize = CineType.Display)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    SettingsGroup.values().forEach { group ->
+                        SettingsGroupItem(
+                            group = group,
+                            selected = group == selectedGroup,
+                            onClick = { selectedGroup = group }
+                        )
+                    }
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState())
+                        .padding(start = 12.dp, top = 20.dp, end = 24.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp)
+                ) {
+                    sectionsByGroup[selectedGroup].orEmpty().forEach { section -> section() }
+                    Spacer(modifier = Modifier.height(90.dp))
                 }
             }
-
-            Spacer(modifier = Modifier.height(30.dp))
-
-            SignatureFooter()
-
-            Spacer(modifier = Modifier.height(90.dp))
+        } else {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 720.dp)
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(20.dp)
+                        .then(tvKeys),
+                    verticalArrangement = Arrangement.spacedBy(18.dp)
+                ) {
+                    HeroCard()
+                    phoneOrder.forEach { section -> section() }
+                    SignatureFooter()
+                    // Room for the floating dock.
+                    Spacer(modifier = Modifier.height(110.dp))
+                }
+            }
         }
 
-        // Stream URL dialog — opens right here in Settings
+        // Stream URL dialog
         if (showStreamDialog) {
             StreamUrlDialog(
                 onDismiss = { showStreamDialog = false },
@@ -524,11 +553,10 @@ fun SettingsScreen(
             )
         }
 
-        // Crash log viewer — reads the file installCrashLogger() writes to
-        // (MainActivity.kt). Scrollable text so it can be screenshotted in
-        // pieces if it's long; Clear empties the file for a fresh start.
+        // Crash log: Copy and Share keep it open. Clear asks twice.
         if (showCrashLog) {
             val logText = remember(showCrashLog) { readCrashLog(context) }
+            var confirmClear by remember(showCrashLog) { mutableStateOf(false) }
             val closeLogFocusRequester = remember { FocusRequester() }
             if (isTelevision) {
                 LaunchedEffect(showCrashLog) {
@@ -542,36 +570,39 @@ fun SettingsScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth(0.92f)
-                        .heightIn(max = 480.dp)
+                        .widthIn(max = 560.dp)
+                        .heightIn(max = 520.dp)
                         .glassPanel(cornerRadius = 24.dp, fill = SpaceMid.copy(alpha = 0.98f))
                         .clickable(enabled = false) { }
                         .padding(18.dp)
                 ) {
-                    Text(text = "Crash Log", color = TextBright, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "Crash Log", color = TextBright, fontSize = CineType.Title, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        CineCloseButton(onClick = { showCrashLog = false })
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
                     Box(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
                         Text(
                             text = logText.ifBlank { "No crashes logged yet." },
-                            color = TextMuted, fontSize = 11.sp, lineHeight = 16.sp,
+                            color = TextMuted, fontSize = CineType.Caption, lineHeight = 16.sp,
                             fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
                         )
                     }
                     Spacer(modifier = Modifier.height(14.dp))
-                    // FIX: added Copy — the log text wasn't selectable, so
-                    // there was no way to get it out of the dialog other
-                    // than a screenshot (useless for a bug report someone
-                    // needs to read and paste elsewhere, e.g. into a chat
-                    // with Claude). Copies straight to the clipboard via
-                    // ClipboardManager, independent of whether in-app text
-                    // selection works at all. Placed first/leftmost since
-                    // it's the action this dialog gets opened for most.
                     val onCopyClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         clipboard.setPrimaryClip(ClipData.newPlainText("CineVault Crash Log", logText.ifBlank { "No crashes logged yet." }))
                         Toast.makeText(context, "Crash log copied", Toast.LENGTH_SHORT).show()
                     }
-                    val onCloseLogClick = { showCrashLog = false }
-                    val onClearLogClick = { clearCrashLog(context); showCrashLog = false }
+                    val onShareClick = { shareCrashReport(context, logText) }
+                    val onClearLogClick = {
+                        if (confirmClear) {
+                            clearCrashLog(context)
+                            showCrashLog = false
+                        } else {
+                            confirmClear = true
+                        }
+                    }
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.then(
@@ -579,14 +610,8 @@ fun SettingsScreen(
                                 Modifier.onKeyEvent { keyEvent ->
                                     if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
                                     when (keyEvent.key) {
-                                        Key.DirectionLeft -> {
-                                            focusManager.moveFocus(FocusDirection.Left)
-                                            true
-                                        }
-                                        Key.DirectionRight -> {
-                                            focusManager.moveFocus(FocusDirection.Right)
-                                            true
-                                        }
+                                        Key.DirectionLeft -> { focusManager.moveFocus(FocusDirection.Left); true }
+                                        Key.DirectionRight -> { focusManager.moveFocus(FocusDirection.Right); true }
                                         else -> false
                                     }
                                 }
@@ -595,22 +620,17 @@ fun SettingsScreen(
                             }
                         )
                     ) {
-                        TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(50), onActivate = onCopyClick) {
-                            Text(
-                                text = "Copy", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
-                                modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore).clickable(onClick = onCopyClick).padding(horizontal = 16.dp, vertical = 9.dp)
-                            )
+                        TvFocusableSlot(isTelevision = isTelevision, focusRequester = closeLogFocusRequester, shape = RoundedCornerShape(50), onActivate = onShareClick) {
+                            CineButton(text = "Share", onClick = onShareClick)
                         }
-                        TvFocusableSlot(isTelevision = isTelevision, focusRequester = closeLogFocusRequester, shape = RoundedCornerShape(50), onActivate = onCloseLogClick) {
-                            Text(
-                                text = "Close", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                                modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable(onClick = onCloseLogClick).padding(horizontal = 16.dp, vertical = 9.dp)
-                            )
+                        TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(50), onActivate = onCopyClick) {
+                            CineButton(text = "Copy", onClick = onCopyClick, style = CineButtonStyle.Secondary)
                         }
                         TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(50), onActivate = onClearLogClick) {
-                            Text(
-                                text = "Clear Log", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
-                                modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFFFF5252)).clickable(onClick = onClearLogClick).padding(horizontal = 16.dp, vertical = 9.dp)
+                            CineButton(
+                                text = if (confirmClear) "Tap again to clear" else "Clear log",
+                                onClick = onClearLogClick,
+                                style = CineButtonStyle.Danger
                             )
                         }
                     }
@@ -618,54 +638,51 @@ fun SettingsScreen(
             }
         }
 
+        // Reset: risky, so buttons only. A stray tap outside does nothing.
         if (showResetSettingsConfirm) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.62f))
-                    .clickable { showResetSettingsConfirm = false },
+                    .clickable(enabled = false) { },
                 contentAlignment = Alignment.Center
             ) {
                 Column(
                     modifier = Modifier
-                        .width(330.dp)
+                        .fillMaxWidth(0.92f)
+                        .widthIn(max = 360.dp)
                         .glassPanel(cornerRadius = 24.dp, fill = SpaceMid.copy(alpha = 0.98f))
-                        .clickable(enabled = false) { }
                         .padding(20.dp)
                 ) {
-                    Text(text = "Reset CineVault settings?", color = TextBright, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text(text = "Reset CineVault settings?", color = TextBright, fontSize = CineType.Title, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Subtitle, audio, display and privacy preferences will return to defaults. Your library, watch history, favourites, selected folders, downloaded subtitles and AI subtitles will stay untouched.",
-                        color = TextMuted, fontSize = 13.sp, lineHeight = 18.sp
+                        text = "Subtitle, audio, glasses and display preferences, plus the Fetch online metadata and New collection page switches, will return to defaults. Your library, watch history, favourites, selected folders, your name, downloaded subtitles and AI subtitles stay untouched.",
+                        color = TextMuted, fontSize = CineType.Label, lineHeight = 19.sp
                     )
                     Spacer(modifier = Modifier.height(18.dp))
                     val onCancelReset = { showResetSettingsConfirm = false }
                     val onConfirmReset = {
                         resetCineVaultSettings(context)
+                        // Re-read so the switches show their new state at once.
+                        metadataFetchEnabled = loadMetadataFetchEnabled(context)
+                        collectionPageV2 = loadCollectionPageV2Enabled(context)
                         showResetSettingsConfirm = false
                         Toast.makeText(context, "CineVault settings reset", Toast.LENGTH_SHORT).show()
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(50), onActivate = onCancelReset) {
-                            Text(
-                                text = "Cancel", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                                modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable(onClick = onCancelReset).padding(horizontal = 16.dp, vertical = 9.dp)
-                            )
+                            CineButton(text = "Cancel", onClick = onCancelReset, style = CineButtonStyle.Secondary)
                         }
                         TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(50), onActivate = onConfirmReset) {
-                            Text(
-                                text = "Reset", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
-                                modifier = Modifier.clip(RoundedCornerShape(50)).background(AccentReset).clickable(onClick = onConfirmReset).padding(horizontal = 16.dp, vertical = 9.dp)
-                            )
+                            CineButton(text = "Reset", onClick = onConfirmReset, style = CineButtonStyle.Danger)
                         }
                     }
                 }
             }
         }
 
-        // Folder-removal confirmation — replaces the old inline delete icon.
-        // Long-press a pill instead; this is the "are you sure" step for it.
+        // Folder removal: risky, so buttons only.
         val target = folderPendingRemoval
         if (target != null) {
             val cancelFocusRequester = remember { FocusRequester() }
@@ -675,21 +692,21 @@ fun SettingsScreen(
                 }
             }
             Box(
-                modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f)).clickable { folderPendingRemoval = null },
+                modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f)).clickable(enabled = false) { },
                 contentAlignment = Alignment.Center
             ) {
                 Column(
                     modifier = Modifier
-                        .width(290.dp)
+                        .fillMaxWidth(0.92f)
+                        .widthIn(max = 340.dp)
                         .glassPanel(cornerRadius = 24.dp, fill = SpaceMid.copy(alpha = 0.98f))
-                        .clickable(enabled = false) { }
                         .padding(20.dp)
                 ) {
-                    Text(text = "Remove this folder?", color = TextBright, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text(text = "Remove this folder?", color = TextBright, fontSize = CineType.Title, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "\"${target.displayName}\" will be removed from Select Folder. The files themselves aren't touched.",
-                        color = TextMuted, fontSize = 13.sp, lineHeight = 18.sp
+                        text = "\"${target.displayName}\" will be removed from Select folders. The files themselves aren't touched.",
+                        color = TextMuted, fontSize = CineType.Label, lineHeight = 19.sp
                     )
                     Spacer(modifier = Modifier.height(18.dp))
                     val onCancelClick = { folderPendingRemoval = null }
@@ -705,14 +722,8 @@ fun SettingsScreen(
                                 Modifier.onKeyEvent { keyEvent ->
                                     if (keyEvent.type != KeyEventType.KeyUp) return@onKeyEvent false
                                     when (keyEvent.key) {
-                                        Key.DirectionLeft -> {
-                                            focusManager.moveFocus(FocusDirection.Left)
-                                            true
-                                        }
-                                        Key.DirectionRight -> {
-                                            focusManager.moveFocus(FocusDirection.Right)
-                                            true
-                                        }
+                                        Key.DirectionLeft -> { focusManager.moveFocus(FocusDirection.Left); true }
+                                        Key.DirectionRight -> { focusManager.moveFocus(FocusDirection.Right); true }
                                         else -> false
                                     }
                                 }
@@ -722,20 +733,140 @@ fun SettingsScreen(
                         )
                     ) {
                         TvFocusableSlot(isTelevision = isTelevision, focusRequester = cancelFocusRequester, shape = RoundedCornerShape(50), onActivate = onCancelClick) {
-                            Text(
-                                text = "Cancel", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                                modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable(onClick = onCancelClick).padding(horizontal = 16.dp, vertical = 9.dp)
-                            )
+                            CineButton(text = "Cancel", onClick = onCancelClick, style = CineButtonStyle.Secondary)
                         }
                         TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(50), onActivate = onRemoveClick) {
-                            Text(
-                                text = "Remove", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black,
-                                modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xFFFF5252)).clickable(onClick = onRemoveClick).padding(horizontal = 16.dp, vertical = 9.dp)
-                            )
+                            CineButton(text = "Remove", onClick = onRemoveClick, style = CineButtonStyle.Danger)
                         }
                     }
                 }
             }
+        }
+
+        if (showNameDialog) {
+            SettingsNameDialog(
+                initial = displayName,
+                onSave = { raw ->
+                    saveDisplayName(context, raw)
+                    displayName = loadDisplayName(context)
+                    showNameDialog = false
+                },
+                onDismiss = { showNameDialog = false }
+            )
+        }
+
+        if (showTutorial) {
+            TutorialHubScreen(
+                onClose = { showTutorial = false },
+                onTry = { destination ->
+                    showTutorial = false
+                    when (destination) {
+                        TutorialTry.GlassesPractice -> onOpenGlassesGestureTutorial()
+                        TutorialTry.NetworkHub -> onOpenNetworkHub()
+                        TutorialTry.None -> Unit
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsSwitchRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    isTelevision: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, color = TextBright, fontSize = CineType.Body, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(text = description, color = TextMuted, fontSize = CineType.Caption, lineHeight = 17.sp)
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        TvFocusableSlot(
+            isTelevision = isTelevision,
+            shape = RoundedCornerShape(50),
+            onActivate = { onCheckedChange(!checked) }
+        ) {
+            CineToggle(checked = checked, onCheckedChange = onCheckedChange, showLabel = true)
+        }
+    }
+}
+
+@Composable
+private fun SettingsGroupItem(group: SettingsGroup, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .cineCard(radius = 26.dp, gel = if (selected) group.gel else null)
+            .background(if (selected) group.gel.copy(alpha = 0.12f) else Color.Transparent)
+            .clickable(role = androidx.compose.ui.semantics.Role.Tab, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(imageVector = group.icon, contentDescription = null, tint = group.gel, modifier = Modifier.size(22.dp))
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = group.title,
+            color = if (selected) group.gel else TextBright,
+            fontSize = CineType.Body,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+/**
+ * "Your name" window. Typing never loses words: a tap outside only closes it
+ * when nothing has been changed. The close button is always top right.
+ */
+@Composable
+private fun SettingsNameDialog(initial: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.62f))
+            .clickable { if (text == initial) onDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .widthIn(max = 360.dp)
+                .glassPanel(cornerRadius = 24.dp, fill = SpaceMid.copy(alpha = 0.98f))
+                .clickable(enabled = false) { }
+                .padding(20.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "Your name", color = TextBright, fontSize = CineType.Title, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                CineCloseButton(onClick = onDismiss)
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Shown in the Home greeting. Leave it empty for no name.",
+                color = TextMuted, fontSize = CineType.Label, lineHeight = 19.sp
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+            androidx.compose.material3.OutlinedTextField(
+                value = text,
+                onValueChange = { text = it.take(MAX_DISPLAY_NAME_LENGTH) },
+                singleLine = true,
+                placeholder = { Text("Your first name") },
+                modifier = Modifier.fillMaxWidth(),
+                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = AmberCore,
+                    unfocusedBorderColor = Color.Gray,
+                    cursorColor = AmberCore
+                )
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            CineButton(text = "Save", onClick = { onSave(text) })
         }
     }
 }
