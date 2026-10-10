@@ -103,3 +103,94 @@ class VoiceCommandParserTest {
         assertEquals(VoiceResult.NoWakeWord, parseVoiceCommand("delete this movie"))
     }
 }
+
+class VoiceTitlesAndWakePhraseTest {
+    private fun cmd(text: String, wake: Boolean = false): VoiceCommand? =
+        (parseVoiceCommand(text, wake) as? VoiceResult.Command)?.command
+
+    @Test fun newWakePhraseWorksInEveryForm() {
+        assertEquals(VoiceCommand.Pause, cmd("hey cinevault pause"))
+        assertEquals(VoiceCommand.Pause, cmd("Hey Cine Vault, pause"))
+        assertEquals(VoiceCommand.Pause, cmd("cinevault pause"))
+        assertEquals(VoiceCommand.Pause, cmd("hey sine vault pause"))
+        assertEquals(VoiceCommand.Pause, cmd("hey vault pause"))
+        assertEquals(VoiceResult.NoWakeWord, parseVoiceCommand("pause"))
+    }
+
+    @Test fun wakeAlreadyHeardDoesNotNeedItAgain() {
+        assertEquals(VoiceCommand.Pause, cmd("pause", wake = true))
+        assertEquals(VoiceCommand.Pause, cmd("hey cinevault pause", wake = true))
+        assertEquals(VoiceCommand.PlayTitle("avengers endgame"), cmd("play avengers endgame", wake = true))
+    }
+
+    @Test fun playWithNameIsATitleButBarePlayStillResumes() {
+        assertEquals(VoiceCommand.PlayTitle("avengers endgame"), cmd("hey cinevault play avengers endgame"))
+        assertEquals(VoiceCommand.PlayTitle("avengers endgame"), cmd("hey cinevault play the movie avengers endgame"))
+        assertEquals(VoiceCommand.PlayTitle("dark knight"), cmd("hey cinevault watch dark knight"))
+        assertEquals(VoiceCommand.PlayTitle("dune part two"), cmd("hey cinevault put on dune part two"))
+        assertEquals(VoiceCommand.Play, cmd("hey cinevault play"))
+        assertEquals(VoiceCommand.Play, cmd("hey cinevault play it"))
+        assertEquals(VoiceCommand.Play, cmd("hey cinevault play from the start"))
+    }
+
+    @Test fun controlsStillBeatTitlesWhenTheyAreControls() {
+        assertEquals(VoiceCommand.NextEpisode, cmd("hey cinevault play next"))
+        assertEquals(VoiceCommand.NextEpisode, cmd("hey cinevault next episode"))
+        assertEquals(VoiceCommand.SpeedTo(2.0f), cmd("hey cinevault play at 2x"))
+    }
+
+    @Test fun titlesWithControlWordsStayTitles() {
+        assertEquals(VoiceCommand.PlayTitle("next karate kid"), cmd("hey cinevault play the next karate kid"))
+        assertEquals(VoiceCommand.PlayTitle("speed 2"), cmd("hey cinevault play speed 2"))
+        assertEquals(VoiceCommand.PlayTitle("fast and furious"), cmd("hey cinevault play fast and furious"))
+    }
+
+    @Test fun riskyWordsStillBlockedEvenInTitles() {
+        assertEquals(VoiceResult.NeedsScreen("delete"), parseVoiceCommand("hey cinevault play delete"))
+    }
+}
+
+class VoiceTitleMatcherTest {
+    private fun film(title: String) = TitleCandidate(title.lowercase(), title)
+    private val library = listOf(
+        film("Avengers: Endgame"), film("Avengers: Infinity War"), film("Avengers: Age of Ultron"),
+        film("The Avengers"), film("Dune"), film("Dune: Part Two"), film("Speed"), film("Speed 2: Cruise Control"),
+        film("The Dark Knight"), film("Se7en"), film("Iron Man 2"), film("Toy Story 3")
+    )
+
+    @Test fun exactAndNearTitlesPlayDirectly() {
+        assertEquals(TitleChoice.Play(film("Avengers: Endgame")), chooseTitle("avengers endgame", library))
+        assertEquals(TitleChoice.Play(film("Avengers: Endgame")), chooseTitle("avengers end game", library))
+        assertEquals(TitleChoice.Play(film("The Dark Knight")), chooseTitle("dark knight", library))
+        assertEquals(TitleChoice.Play(film("Iron Man 2")), chooseTitle("iron man two", library))
+        assertEquals(TitleChoice.Play(film("Toy Story 3")), chooseTitle("toy story three", library))
+    }
+
+    @Test fun smallMishearingsAreForgiven() {
+        assertEquals(TitleChoice.Play(film("Avengers: Infinity War")), chooseTitle("avenger's infinity war", library))
+        assertEquals(TitleChoice.Play(film("The Dark Knight")), chooseTitle("the dark night", library))
+    }
+
+    @Test fun ambiguousNamesGiveAPickListNeverAGuess() {
+        val r = chooseTitle("avengers", library.filter { it.title != "The Avengers" })
+        assertTrue(r is TitleChoice.Choose)
+        val options = (r as TitleChoice.Choose).options.map { it.title }
+        assertTrue("Avengers: Endgame" in options && "Avengers: Infinity War" in options)
+        assertTrue(options.size <= 5)
+    }
+
+    @Test fun anExactTitleWinsEvenWhenSequelsExist() {
+        assertEquals(TitleChoice.Play(film("The Avengers")), chooseTitle("avengers", library))
+    }
+
+    @Test fun shorterExactTitleBeatsLongerSequel() {
+        assertEquals(TitleChoice.Play(film("Dune")), chooseTitle("dune", library))
+        assertEquals(TitleChoice.Play(film("Dune: Part Two")), chooseTitle("dune part two", library))
+        assertEquals(TitleChoice.Play(film("Speed")), chooseTitle("speed", library))
+    }
+
+    @Test fun unknownTitlesAreNotFound() {
+        assertEquals(TitleChoice.NotFound, chooseTitle("completely unknown picture", library))
+        assertEquals(TitleChoice.NotFound, chooseTitle("anything", emptyList()))
+    }
+}

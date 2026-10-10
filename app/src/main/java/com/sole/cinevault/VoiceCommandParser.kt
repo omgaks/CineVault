@@ -24,6 +24,8 @@ internal sealed interface VoiceCommand {
     object ExitPlayer : VoiceCommand
 
     /** Positive skips forward, negative skips back. */
+    /** "play Avengers Endgame": the words after "play", to be matched against the library. */
+    data class PlayTitle(val query: String) : VoiceCommand
     data class SkipSeconds(val seconds: Int) : VoiceCommand
     data class JumpToMs(val positionMs: Long) : VoiceCommand
     data class VolumeBy(val percent: Int) : VoiceCommand
@@ -42,11 +44,24 @@ internal sealed interface VoiceResult {
     data class NotUnderstood(val heard: String) : VoiceResult
 }
 
-internal const val VOICE_WAKE_WORD = "vault"
+internal const val VOICE_WAKE_WORD = "hey cinevault"
 
-/** Speech recognisers often hear "vault" as one of these. Only valid at the very start. */
-private val WAKE_WORDS = setOf("vault", "fault", "volt", "bolt")
+/**
+ * Every spoken form of a wake phrase we accept, so changing the chosen wake
+ * word never breaks parsing. Recognisers often split or mishear the name, so
+ * common variants are listed. Only valid at the very start.
+ */
+private val WAKE_PHRASES: List<List<String>> = listOf(
+    listOf("cinevault"), listOf("cine", "vault"), listOf("sinevault"), listOf("sine", "vault"),
+    listOf("cinema", "vault"), listOf("vault"), listOf("fault"), listOf("volt"), listOf("bolt")
+)
 private val WAKE_PREFIXES = setOf("hey", "ok", "okay")
+/** Words that only ever mean "go to the next/previous one". Anything else means it is part of a title. */
+private val NAVIGATION_WORDS = setOf(
+    "next", "previous", "episode", "one", "track", "video", "file", "please", "play", "skip", "go", "to", "the", "movie"
+)
+private val TITLE_LEAD_WORDS = setOf("the", "movie", "film", "show", "series", "me", "some")
+private val PLAY_CONTROL_WORDS = setOf("from", "again", "it", "this", "that")
 private val LEADING_FILLER = listOf(
     listOf("please"), listOf("can", "you"), listOf("could", "you"), listOf("would", "you"), listOf("just")
 )
@@ -62,9 +77,13 @@ private const val MAX_SPEED = 2.0f
 
 // ── Public entry point ────────────────────────────────────────────────────
 
-internal fun parseVoiceCommand(heard: String): VoiceResult {
+/**
+ * [wakeAlreadyHeard] is true when the wake-word listener already caught the
+ * wake phrase, so the transcript that follows may not repeat it.
+ */
+internal fun parseVoiceCommand(heard: String, wakeAlreadyHeard: Boolean = false): VoiceResult {
     val all = tokenize(heard)
-    val afterWake = stripWakeWord(all) ?: return VoiceResult.NoWakeWord
+    val afterWake = stripWakeWord(all) ?: if (wakeAlreadyHeard) all else return VoiceResult.NoWakeWord
     val t = stripFiller(afterWake)
     if (t.isEmpty()) return VoiceResult.NotUnderstood(heard.trim())
 
@@ -87,8 +106,10 @@ private fun tokenize(raw: String): List<String> =
 
 private fun stripWakeWord(t: List<String>): List<String>? {
     if (t.isEmpty()) return null
-    if (t[0] in WAKE_WORDS) return t.drop(1)
-    if (t[0] in WAKE_PREFIXES && t.size > 1 && t[1] in WAKE_WORDS) return t.drop(2)
+    val body = if (t[0] in WAKE_PREFIXES) t.drop(1) else t
+    for (phrase in WAKE_PHRASES) {
+        if (body.size >= phrase.size && body.take(phrase.size) == phrase) return body.drop(phrase.size)
+    }
     return null
 }
 
@@ -233,8 +254,10 @@ private fun matchCommand(t: List<String>): VoiceCommand? {
         }
     }
 
-    if ("next" in words) return VoiceCommand.NextEpisode
-    if ("previous" in words) return VoiceCommand.PreviousEpisode
+    if (words.all { it in NAVIGATION_WORDS }) {
+        if ("next" in words) return VoiceCommand.NextEpisode
+        if ("previous" in words) return VoiceCommand.PreviousEpisode
+    }
 
     // "go to 45 minutes", "jump to one hour five"
     if (first in setOf("go", "jump", "skip", "seek") && t.getOrNull(1) == "to") {
@@ -262,7 +285,9 @@ private fun matchCommand(t: List<String>): VoiceCommand? {
     skipCommand(t, first, words)?.let { return it }
 
     return when (first) {
-        "play", "resume", "continue", "start", "unpause" -> VoiceCommand.Play
+        "play", "watch" -> playOrTitle(t.drop(1))
+        "put" -> if (t.getOrNull(1) == "on") playOrTitle(t.drop(2)).takeIf { it != VoiceCommand.Play } else null
+        "resume", "continue", "start", "unpause" -> VoiceCommand.Play
         "pause", "stop", "freeze" -> VoiceCommand.Pause
         "hold" -> if (t.getOrNull(1) == "on") VoiceCommand.Pause else null
         "exit", "close", "leave", "quit" -> VoiceCommand.ExitPlayer
@@ -294,6 +319,8 @@ private fun speedCommand(t: List<String>, words: Set<String>): VoiceCommand? {
     val sawSpeedWord = "speed" in words || "faster" in words || "slower" in words
     val xToken = t.firstOrNull { it.length > 1 && it.endsWith("x") && DIGITS.matches(it.dropLast(1)) }
     if (!sawSpeedWord && xToken == null) return null
+    // "play Speed 2" is a film, "play at 2x" is a speed.
+    if ((t.first() == "play" || t.first() == "watch") && "at" !in words && xToken == null) return null
     if ("normal" in words) return VoiceCommand.SpeedTo(1.0f)
     if ("faster" in words) return VoiceCommand.SpeedBy(SPEED_STEP)
     if ("slower" in words) return VoiceCommand.SpeedBy(-SPEED_STEP)
@@ -312,4 +339,12 @@ private fun skipCommand(t: List<String>, first: String, words: Set<String>): Voi
     val seconds = if (amountMs != null) (amountMs / 1000).toInt() else DEFAULT_SKIP_SECONDS
     val clamped = seconds.coerceIn(1, MAX_SKIP_SECONDS)
     return VoiceCommand.SkipSeconds(if (backward) -clamped else clamped)
+}
+
+/** Bare "play" resumes. "play <something>" asks for a film by name. */
+private fun playOrTitle(after: List<String>): VoiceCommand {
+    var rest = after
+    while (rest.isNotEmpty() && rest.first() in TITLE_LEAD_WORDS) rest = rest.drop(1)
+    if (rest.isEmpty() || rest.first() in PLAY_CONTROL_WORDS) return VoiceCommand.Play
+    return VoiceCommand.PlayTitle(rest.joinToString(" "))
 }
