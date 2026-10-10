@@ -136,3 +136,102 @@ cleanup:
     avformat_close_input(&format);
     return env->NewStringUTF(outcome.c_str());
 }
+
+/**
+ * Decode a bounded sequence of video frames with FFmpeg.
+ * Reports decoded frame count and dimensions. No pixels are rendered yet.
+ * Bounded packet reads protect diagnostics against malformed inputs.
+ */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_sole_cinevault_playback_rescue_video_FfmpegContainerProbe_decodeVideoFrames(
+    JNIEnv* env, jobject, jstring pathString, jint requestedFrames) {
+    if (!pathString || requestedFrames < 1 || requestedFrames > 300) {
+        throwIo(env, "Path required and frame limit must be 1..300");
+        return nullptr;
+    }
+    const char* chars = env->GetStringUTFChars(pathString, nullptr);
+    if (!chars) return nullptr;
+    std::string path(chars);
+    env->ReleaseStringUTFChars(pathString, chars);
+    if (path.empty()) { throwIo(env, "Empty file path"); return nullptr; }
+
+    AVFormatContext* format = nullptr;
+    AVCodecContext* decoder = nullptr;
+    AVPacket* packet = nullptr;
+    AVFrame* frame = nullptr;
+    std::string outcome;
+    int decoded = 0;
+    int width = 0, height = 0;
+    int64_t lastPts = AV_NOPTS_VALUE;
+    int err = avformat_open_input(&format, path.c_str(), nullptr, nullptr);
+    if (err < 0) { throwIo(env, "Open failed: " + avError(err)); return nullptr; }
+    avformat_find_stream_info(format, nullptr);
+    {
+        int stream = av_find_best_stream(format, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+        if (stream < 0) { outcome = "No usable video stream: " + avError(stream); goto cleanup; }
+        const AVCodecParameters* params = format->streams[stream]->codecpar;
+        const AVCodec* codec = avcodec_find_decoder(params->codec_id);
+        if (!codec) { outcome = "No FFmpeg video decoder"; goto cleanup; }
+        decoder = avcodec_alloc_context3(codec);
+        if (!decoder) { outcome = "Decoder allocation failed"; goto cleanup; }
+        err = avcodec_parameters_to_context(decoder, params);
+        if (err < 0) { outcome = "Decoder configuration: " + avError(err); goto cleanup; }
+        err = avcodec_open2(decoder, codec, nullptr);
+        if (err < 0) { outcome = "Decoder open: " + avError(err); goto cleanup; }
+        packet = av_packet_alloc();
+        frame = av_frame_alloc();
+        if (!packet || !frame) { outcome = "Packet/frame allocation failed"; goto cleanup; }
+
+        // Drain all ready frames per packet; codecs can output several frames
+        // from a single packet and may buffer frames internally.
+        auto drain = [&]() {
+            while (decoded < requestedFrames) {
+                int result = avcodec_receive_frame(decoder, frame);
+                if (result == AVERROR(EAGAIN) || result == AVERROR_EOF) return;
+                if (result < 0) { outcome = "Decode error: " + avError(result); return; }
+                ++decoded;
+                width = frame->width;
+                height = frame->height;
+                lastPts = frame->best_effort_timestamp;
+                av_frame_unref(frame);
+            }
+        };
+        for (int read = 0; read < 8192 && decoded < requestedFrames && outcome.empty(); ++read) {
+            err = av_read_frame(format, packet);
+            if (err < 0) {
+                if (err == AVERROR_EOF) {
+                    avcodec_send_packet(decoder, nullptr);
+                    drain();
+                } else {
+                    outcome = "Packet read error: " + avError(err);
+                }
+                break;
+            }
+            if (packet->stream_index == stream) {
+                err = avcodec_send_packet(decoder, packet);
+                if (err == AVERROR(EAGAIN)) {
+                    drain();
+                    if (outcome.empty()) err = avcodec_send_packet(decoder, packet);
+                }
+                if (err < 0 && err != AVERROR(EAGAIN)) {
+                    outcome = "Packet decode error: " + avError(err);
+                } else if (outcome.empty()) {
+                    drain();
+                }
+            }
+            av_packet_unref(packet);
+        }
+    }
+    if (outcome.empty()) outcome = "ok";
+    outcome += ";decodedFrames=" + std::to_string(decoded) +
+        ";width=" + std::to_string(width) +
+        ";height=" + std::to_string(height) +
+        ";lastPts=" + std::to_string(lastPts);
+
+cleanup:
+    av_frame_free(&frame);
+    av_packet_free(&packet);
+    avcodec_free_context(&decoder);
+    avformat_close_input(&format);
+    return env->NewStringUTF(outcome.c_str());
+}
