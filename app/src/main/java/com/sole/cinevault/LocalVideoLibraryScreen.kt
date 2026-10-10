@@ -147,6 +147,7 @@ object LibraryScrollState {
     var category: String = "All"
     var sort: LibrarySortOption = LibrarySortOption.TITLE_AZ
     var gridMode: Boolean = true
+    var viewMode: LibraryViewMode = LibraryViewMode.Grid
 }
 
 // ── Folder type icon heuristic ────────────────────────────────────────────
@@ -173,11 +174,14 @@ fun LocalVideoLibraryScreen(
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
 
-    var selectedCategory by remember { mutableStateOf(LibraryScrollState.category) }
-    var isGridMode by remember { mutableStateOf(LibraryScrollState.gridMode) }
+    var selectedCategory by remember { mutableStateOf(normalizeLibraryCategory(LibraryScrollState.category)) }
+    var viewMode by remember { mutableStateOf(LibraryScrollState.viewMode) }
     var sortOption by remember { mutableStateOf(LibraryScrollState.sort) }
-    var sortMenuExpanded by remember { mutableStateOf(false) }
-    var toolsMenuExpanded by remember { mutableStateOf(false) }
+    // Which pill card is open (one at a time), plus the little state the Scan
+    // card needs to say "Up to date" for two seconds after a scan finishes.
+    var openPanel by remember { mutableStateOf<LibraryPanel?>(null) }
+    var scanWasRunning by remember { mutableStateOf(false) }
+    var scanUpToDate by remember { mutableStateOf(false) }
     var secretUnlocked by remember { mutableStateOf(false) }
     var hiddenPaths by remember { mutableStateOf<Set<String>>(loadSecretVideoPaths(context)) }
     var hiddenFolders by remember { mutableStateOf<Set<String>>(loadSecretFolderPaths(context)) }
@@ -205,10 +209,30 @@ fun LocalVideoLibraryScreen(
         snapshotFlow { gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset }
             .collect { (i, o) -> LibraryScrollState.index = i; LibraryScrollState.offset = o }
     }
-    LaunchedEffect(selectedCategory, sortOption, isGridMode) {
+    LaunchedEffect(selectedCategory, sortOption, viewMode) {
         LibraryScrollState.category = selectedCategory
         LibraryScrollState.sort = sortOption
-        LibraryScrollState.gridMode = isGridMode
+        LibraryScrollState.viewMode = viewMode
+        LibraryScrollState.gridMode = viewMode == LibraryViewMode.Grid
+    }
+
+    // Back always closes the front-most window first.
+    androidx.activity.compose.BackHandler(enabled = openPanel != null) { openPanel = null }
+
+    // A scan keeps running when its card is closed. When it finishes and the
+    // card is still open, show "Up to date" and close it after two seconds.
+    LaunchedEffect(LibraryScanController.isScanning) {
+        if (LibraryScanController.isScanning) {
+            scanWasRunning = true
+        } else if (scanWasRunning) {
+            scanWasRunning = false
+            if (openPanel == LibraryPanel.Scan && LibraryScanController.lastError == null) {
+                scanUpToDate = true
+                delay(2000)
+                if (openPanel == LibraryPanel.Scan) openPanel = null
+                scanUpToDate = false
+            }
+        }
     }
 
     fun openSecretFolder() {
@@ -405,7 +429,7 @@ fun LocalVideoLibraryScreen(
         LibraryScanController.start(context, onVideosLoaded)
     }
 
-    val categories = listOf("All", "Continue Watching", "Movies", "TV Shows", "Folders", "Downloads", "Favorites", "Duplicates", "Secret")
+    val categories = LIBRARY_CATEGORIES
 
     val sortedVideos = remember(videos, sortOption) {
         when (sortOption) {
@@ -455,7 +479,6 @@ fun LocalVideoLibraryScreen(
         "TV Shows" -> emptyList()
         "Folders" -> emptyList()
         "Duplicates" -> emptyList()
-        "Downloads" -> visibleSortedVideos.filter { !it.type.equals("movie", ignoreCase = true) && !it.type.equals("tv", ignoreCase = true) && !it.type.equals("restricted", ignoreCase = true) }
         "Movies" -> visibleSortedVideos.filter { it.type.equals("movie", ignoreCase = true) }
         else -> visibleSortedVideos.filter { !it.type.equals("tv", ignoreCase = true) && !it.type.equals("restricted", ignoreCase = true) }
     }
@@ -479,19 +502,9 @@ fun LocalVideoLibraryScreen(
     val focusManager = LocalFocusManager.current
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(SpaceBlack)) {
-        // ── Adaptive grid columns ─────────────────────────────────────────
-        // Was a hardcoded GridCells.Fixed(3) regardless of device or
-        // orientation — meaning the Xiaomi Pad 7 in landscape got the exact
-        // same column count as a phone, wasting real screen space. Floor is
-        // kept at 3 (never regresses below the original phone behavior);
-        // only bumps UP as more width becomes available. Width-based rather
-        // than strictly landscape-gated, since a tablet in PORTRAIT (e.g.
-        // ~820dp) still has plenty of room to deserve more than 3 too.
-        val gridColumns = when {
-            maxWidth >= 900.dp -> 5   // large tablet landscape
-            maxWidth >= 700.dp -> 4   // tablet portrait / smaller tablet landscape
-            else -> 3                 // phone — unchanged from before
-        }
+        // Columns come from the window width alone (never the device): posters
+        // stay at least 100dp wide, so a phone gets 3 and a big tablet gets more.
+        val gridColumns = libraryColumnsFor(maxWidth.value)
 
         LazyVerticalGrid(
             state = gridState,
@@ -527,34 +540,13 @@ fun LocalVideoLibraryScreen(
                         Modifier
                     }
                 ),
-            horizontalArrangement = Arrangement.spacedBy(18.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
             contentPadding = PaddingValues(top = 16.dp, bottom = 28.dp)
         ) {
+            // Room for the floating pill that sits on top of the grid.
             item(span = { GridItemSpan(maxLineSpan) }) {
-                LocalLibraryHeader(
-                    categories = categories,
-                    selectedCategory = selectedCategory,
-                    onCategorySelected = { category ->
-                        if (category == "Secret") openSecretFolder() else selectedCategory = category
-                    },
-                    sortOption = sortOption,
-                    sortMenuExpanded = sortMenuExpanded,
-                    onSortMenuExpandedChange = { sortMenuExpanded = it },
-                    onSortSelected = { option -> sortOption = option },
-                    isGridMode = isGridMode,
-                    onToggleGridMode = { isGridMode = !isGridMode },
-                    isScanning = LibraryScanController.isScanning,
-                    scanStatus = LibraryScanController.status,
-                    onRefresh = {
-                        scope.launch { clearLibraryCache(context) }
-                        onVideosLoaded(emptyList())
-                        LibraryScanController.status = "Cache cleared. Scan again."
-                    },
-                    onScan = { permissionLauncher.launch(permission) },
-                    context = context,
-                    isTelevision = isTelevision
-                )
+                Spacer(modifier = Modifier.height(64.dp))
             }
 
             LocalLibraryCollectionsShelf(
@@ -577,12 +569,6 @@ fun LocalVideoLibraryScreen(
                 }
             )
 
-            LocalLibraryGenresShelf(
-                selectedCategory = selectedCategory,
-                visibleSortedVideos = visibleSortedVideos,
-                onGenreClick = onGenreClick
-            )
-
             LocalLibrarySecretLockedSection(
                 selectedCategory = selectedCategory,
                 secretUnlocked = secretUnlocked,
@@ -594,7 +580,7 @@ fun LocalVideoLibraryScreen(
                 videoFolders = videoFolders,
                 expandedFolders = expandedFolders,
                 onExpandedFoldersChange = { expandedFolders = it },
-                isGridMode = isGridMode,
+                isGridMode = viewMode == LibraryViewMode.Grid,
                 gridColumns = gridColumns,
                 onItemClick = onItemClick,
                 onPlayClick = onPlayClick,
@@ -634,12 +620,95 @@ fun LocalVideoLibraryScreen(
             LocalLibraryVideoItemsSection(
                 selectedCategory = selectedCategory,
                 filteredVideos = filteredVideos,
-                isGridMode = isGridMode,
+                viewMode = viewMode,
                 onItemClick = onItemClick,
                 onPlayClick = onPlayClick,
                 onItemLongPress = { openContextSheet(it) },
                 isTelevision = isTelevision
             )
+        }
+
+        // ── Floating pill and its cards ───────────────────────────────────
+        // Tapping outside closes the card, except for Refresh, which only
+        // responds to its own buttons so a stray touch can never clear the library.
+        val genreNames = remember(visibleSortedVideos) {
+            visibleSortedVideos
+                .flatMap { it.genres }
+                .map { normalizeGenreName(it) }
+                .distinct()
+                .sortedBy { it.lowercase() }
+        }
+        // Formatted inside the producer (not in the composable body) so lint
+        // does not flag a non-observable locale read.
+        val lastScanText by produceState<String?>(initialValue = null, context, LibraryScanController.isScanning) {
+            value = loadLibraryCache(context)?.let {
+                java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(it.timestamp))
+            }
+        }
+        val panelNow = openPanel
+        if (panelNow != null && panelClosesOnOutsideTap(panelNow)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null
+                    ) { openPanel = null }
+            )
+        }
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .widthIn(max = 640.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            LibraryPill(
+                openPanel = panelNow,
+                viewMode = viewMode,
+                isScanning = LibraryScanController.isScanning,
+                onToggle = { panel -> openPanel = if (openPanel == panel) null else panel }
+            )
+            if (panelNow != null) {
+                LibraryPanelCard(panel = panelNow, onClose = { openPanel = null }) {
+                    when (panelNow) {
+                        LibraryPanel.Category -> LibraryCategoryPanel(selected = selectedCategory) { category ->
+                            if (category == "Secret") openSecretFolder() else selectedCategory = category
+                            openPanel = null
+                        }
+                        LibraryPanel.Genre -> LibraryGenrePanel(genres = genreNames) { genre ->
+                            openPanel = null
+                            onGenreClick(genre)
+                        }
+                        LibraryPanel.Sort -> LibrarySortPanel(selected = sortOption) { option ->
+                            sortOption = option
+                            openPanel = null
+                        }
+                        LibraryPanel.View -> LibraryViewPanel(selected = viewMode) { mode ->
+                            viewMode = mode
+                            openPanel = null
+                        }
+                        LibraryPanel.Refresh -> LibraryRefreshPanel(
+                            onCancel = { openPanel = null },
+                            onConfirm = {
+                                scope.launch { clearLibraryCache(context) }
+                                onVideosLoaded(emptyList())
+                                openPanel = LibraryPanel.Scan
+                                permissionLauncher.launch(permission)
+                            }
+                        )
+                        LibraryPanel.Scan -> LibraryScanPanel(
+                            isScanning = LibraryScanController.isScanning,
+                            status = LibraryScanController.status,
+                            upToDate = scanUpToDate,
+                            lastScan = lastScanText,
+                            onScan = { permissionLauncher.launch(permission) }
+                        )
+                    }
+                }
+            }
         }
 
         // ── Persistent error banner — slides down from the top rather than
