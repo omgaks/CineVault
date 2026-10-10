@@ -471,6 +471,19 @@ fun SettingsScreen(
                     }
                 )
             }
+            if (VoiceRuntime.enabled) {
+                Spacer(modifier = Modifier.height(16.dp))
+                SettingsSwitchRow(
+                    title = "Show microphone button",
+                    description = "The gold microphone on Home, Library and the player. If the wake word works well for you, switch this off. Saying \"Hey CineVault\" still opens the Listening card.",
+                    checked = VoiceRuntime.showMic,
+                    isTelevision = isTelevision,
+                    onCheckedChange = {
+                        VoiceRuntime.showMic = it
+                        saveVoiceShowMic(context, it)
+                    }
+                )
+            }
             Spacer(modifier = Modifier.height(16.dp))
             SettingsSwitchRow(
                 title = "Show what I heard",

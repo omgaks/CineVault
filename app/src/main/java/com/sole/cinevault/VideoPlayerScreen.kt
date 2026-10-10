@@ -410,6 +410,64 @@ fun VideoPlayerScreen(
     val playbackNavigationCoordinator = sessionCoordinators.navigation
     val subtitleSearchCoordinator = sessionCoordinators.subtitleSearch
 
+    // Voice (beta): lets spoken commands drive this player. See VoicePlayerLogic.
+    var voiceMuted by remember { mutableStateOf(false) }
+    val latestOnBack by rememberUpdatedState(onBack)
+    val voiceController = remember(exoPlayer) {
+        VoicePlayerController(
+            apply = { command ->
+                when (command) {
+                    VoiceCommand.Play -> { exoPlayer.play(); "Playing" }
+                    VoiceCommand.Pause -> { exoPlayer.pause(); "Paused" }
+                    VoiceCommand.Mute -> { voiceMuted = true; exoPlayer.volume = 0f; "Muted" }
+                    VoiceCommand.Unmute -> { voiceMuted = false; exoPlayer.volume = 1f; "Sound on" }
+                    VoiceCommand.NextEpisode -> { playbackNavigationCoordinator.playNext(); "Next" }
+                    VoiceCommand.PreviousEpisode -> { playbackNavigationCoordinator.playPrevious(); "Previous" }
+                    VoiceCommand.SubtitlesOn -> { coreUi.subtitlesEnabled = true; "Subtitles on" }
+                    VoiceCommand.SubtitlesOff -> { coreUi.subtitlesEnabled = false; "Subtitles off" }
+                    VoiceCommand.FitScreen -> { gestureUi.isZoomMode = false; "Fit to screen" }
+                    VoiceCommand.FillScreen -> { gestureUi.isZoomMode = true; "Fill the screen" }
+                    VoiceCommand.ExitPlayer -> { latestOnBack(); "Closed" }
+                    is VoiceCommand.SkipSeconds -> {
+                        exoPlayer.seekTo(seekTargetMs(exoPlayer.currentPosition, exoPlayer.duration.coerceAtLeast(0L), command.seconds * 1000L))
+                        if (command.seconds >= 0) "Skipped forward ${command.seconds} seconds" else "Skipped back ${-command.seconds} seconds"
+                    }
+                    is VoiceCommand.JumpToMs -> {
+                        exoPlayer.seekTo(jumpTargetMs(command.positionMs, exoPlayer.duration.coerceAtLeast(0L)))
+                        "Jumped to ${formatListened(command.positionMs)}"
+                    }
+                    is VoiceCommand.VolumeBy, is VoiceCommand.VolumeTo -> {
+                        val target = volumeTargetPercent(chromeUi.volumePercent, command)!!
+                        chromeUi.volumePercent = target
+                        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, playerSystemVolumeIndex(target, maxVol), 0)
+                        "Volume $target%"
+                    }
+                    is VoiceCommand.BrightnessBy, is VoiceCommand.BrightnessTo -> {
+                        val target = brightnessTargetPercent(chromeUi.brightnessPercent, command)!!
+                        chromeUi.brightnessPercent = target
+                        activity?.window?.attributes = activity?.window?.attributes?.apply {
+                            screenBrightness = playerWindowBrightness(target)
+                        }
+                        "Brightness $target%"
+                    }
+                    is VoiceCommand.SpeedTo, is VoiceCommand.SpeedBy -> {
+                        val target = speedTarget(exoPlayer.playbackParameters.speed, command)!!
+                        playerSessionActionsCoordinator.setPlaybackSpeed(target)
+                        "Speed ${target}x"
+                    }
+                    is VoiceCommand.PlayTitle -> null
+                }
+            },
+            duck = { on -> exoPlayer.volume = if (on) DUCK_VOLUME else if (voiceMuted) 0f else 1f },
+            controlsVisible = { chromeUi.showControls }
+        )
+    }
+    DisposableEffect(voiceController) {
+        VoicePlayerRegistry.current = voiceController
+        onDispose { if (VoicePlayerRegistry.current === voiceController) VoicePlayerRegistry.current = null }
+    }
+
     fun playCurrentVideoWithSubtitle(
         subtitleUri: Uri? = null,
         resumePosition: Long = 0L,

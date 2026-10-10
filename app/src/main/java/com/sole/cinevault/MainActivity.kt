@@ -1066,11 +1066,13 @@ fun CineVaultApp() {
             }
             VoiceTalkHost(
                 films = talkFilms,
-                buttonVisible = !isPlayerActive && !isTelevision && current is Destination.Tab &&
-                    (activeTabIndex == 0 || activeTabIndex == 1),
+                buttonVisible = (isPlayerActive && !isTelevision && VoicePlayerRegistry.current != null) ||
+                    (!isPlayerActive && !isTelevision && current is Destination.Tab &&
+                        (activeTabIndex == 0 || activeTabIndex == 1)),
                 onPlay = { key ->
                     homeVisibleVideos.firstOrNull { it.video.path == key }?.let { item ->
-                        push(Destination.Player(item.video, item.type, libraryVideos))
+                        val target = Destination.Player(item.video, item.type, libraryVideos)
+                        if (isPlayerActive) replaceTop(target) else push(target)
                     }
                 }
             )

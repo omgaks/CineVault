@@ -51,6 +51,7 @@ private sealed interface TalkUi {
     object Listening : TalkUi
     object Transcribing : TalkUi
     object NoModel : TalkUi
+    data class Done(val heard: String?, val text: String) : TalkUi
     data class Message(val heard: String?, val text: String, val tone: Color = TextMuted) : TalkUi
     data class Pick(val heard: String?, val options: List<TitleCandidate>) : TalkUi
 }
@@ -101,7 +102,7 @@ internal fun BoxScope.VoiceTalkHost(
                             ui = TalkUi.Transcribing
                             val text = runCatching { VoiceTranscriber.transcribe(context, samples) }.getOrNull()
                             if (mine == token) {
-                                ui = if (text == null) {
+                                val next: TalkUi? = if (text == null) {
                                     TalkUi.Message(null, "The speech model could not start. Try again, or re-download it in Settings.", GelRose)
                                 } else {
                                     val heard = cleanTranscript(text)
@@ -114,11 +115,27 @@ internal fun BoxScope.VoiceTalkHost(
                                         is TalkOutcome.PickFilm -> TalkUi.Pick(heard, o.options)
                                         is TalkOutcome.FilmNotFound -> TalkUi.Message(heard, "I couldn't find \"${o.query}\" in your library.")
                                         is TalkOutcome.NeedsScreen -> TalkUi.Message(heard, "For safety, do that on screen. Voice never ${o.action}s anything.")
-                                        is TalkOutcome.PlayerCommand -> TalkUi.Message(heard, "Understood: ${o.description}. Player voice controls come in the next update.")
+                                        is TalkOutcome.PlayerCommand -> {
+                                            val command = o.command
+                                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                                if (mine == token) {
+                                                    val controller = VoicePlayerRegistry.current
+                                                    ui = if (controller == null) {
+                                                        TalkUi.Message(heard, "Understood: ${o.description}. Open a film first, then try again.")
+                                                    } else {
+                                                        val done = controller.apply(command)
+                                                        if (done != null) TalkUi.Done(heard, done)
+                                                        else TalkUi.Message(heard, "I can't do \"${o.description}\" right now.")
+                                                    }
+                                                }
+                                            }
+                                            null
+                                        }
                                         is TalkOutcome.NotUnderstood -> TalkUi.Message(heard, "I didn't understand that. Try \"play\" and a film name.")
                                         TalkOutcome.Silence -> TalkUi.Message(null, "I didn't hear anything. Tap the microphone and try again.")
                                     }
                                 }
+                                if (next != null) ui = next
                             }
                         }
                     }
@@ -140,7 +157,7 @@ internal fun BoxScope.VoiceTalkHost(
             TalkUi.Idle, is TalkUi.Message, is TalkUi.Pick, TalkUi.NoModel ->
                 if (hasMicrophonePermission(context)) startListening()
                 else micLauncher.launch(Manifest.permission.RECORD_AUDIO)
-            TalkUi.Transcribing -> Unit
+            TalkUi.Transcribing, is TalkUi.Done -> Unit
         }
     }
 
@@ -148,6 +165,25 @@ internal fun BoxScope.VoiceTalkHost(
     DisposableEffect(Unit) { onDispose { token++; session?.cancel(); VoiceRuntime.talkActive = false } }
     val allowed = VoiceRuntime.enabled && buttonVisible
     LaunchedEffect(allowed) { if (!allowed) close() }
+
+    // A finished command shows its result for a moment, then the card goes away.
+    val doneState = ui as? TalkUi.Done
+    LaunchedEffect(doneState) {
+        if (doneState != null) { kotlinx.coroutines.delay(1800); if (ui === doneState) close() }
+    }
+
+    // The film gets quieter while the microphone is listening.
+    val talking = VoiceRuntime.talkActive
+    LaunchedEffect(talking, VoicePlayerRegistry.current) { VoicePlayerRegistry.current?.duck(talking) }
+
+    // Saying the wake word opens the Listening card, same as tapping the microphone.
+    var handledWake by remember { mutableStateOf(VoiceRuntime.wakeRequest) }
+    LaunchedEffect(VoiceRuntime.wakeRequest) {
+        if (VoiceRuntime.wakeRequest != handledWake) {
+            handledWake = VoiceRuntime.wakeRequest
+            if (allowed && ui == TalkUi.Idle && hasMicrophonePermission(context)) startListening()
+        }
+    }
 
     if (ui != TalkUi.Idle) {
         BackHandler { close() }
@@ -183,6 +219,13 @@ internal fun BoxScope.VoiceTalkHost(
                                     .clip(CircleShape)
                                     .background(GelGold)
                             )
+                        }
+                        is TalkUi.Done -> {
+                            if (showHeard && state.heard != null) {
+                                Text("I heard: \"${state.heard}\"", color = TextBright, fontSize = CineType.Body)
+                                Spacer(Modifier.height(6.dp))
+                            }
+                            Text(state.text, color = GelMint, fontSize = CineType.Title, fontWeight = FontWeight.SemiBold)
                         }
                         TalkUi.Transcribing ->
                             Text("Working it out…", color = GelGold, fontSize = CineType.Title, fontWeight = FontWeight.SemiBold)
@@ -229,13 +272,16 @@ internal fun BoxScope.VoiceTalkHost(
         }
     }
 
-    if (VoiceRuntime.enabled && (buttonVisible || ui != TalkUi.Idle)) {
+    val micShown = VoiceRuntime.showMic || !VoiceRuntime.wakeListening
+    val inPlayer = VoicePlayerRegistry.current != null
+    val playerChrome = !inPlayer || VoicePlayerRegistry.current?.controlsVisible?.invoke() == true
+    if (VoiceRuntime.enabled && micShown && ((buttonVisible && playerChrome) || ui != TalkUi.Idle)) {
         val listening = ui == TalkUi.Listening
         Box(
             modifier = Modifier
-                .align(Alignment.BottomEnd)
+                .align(if (inPlayer) Alignment.CenterEnd else Alignment.BottomEnd)
                 .safeDrawingPadding()
-                .padding(end = 16.dp, bottom = 96.dp)
+                .padding(end = 16.dp, bottom = if (inPlayer) 0.dp else 96.dp)
                 .size(56.dp)
                 .clip(CircleShape)
                 .background(if (listening) GelCoral else GelGold)

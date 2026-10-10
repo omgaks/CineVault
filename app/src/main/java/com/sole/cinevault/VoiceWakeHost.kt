@@ -92,6 +92,7 @@ internal fun VoiceWakeHost() {
                     atMs = System.currentTimeMillis()
                 )
                 VoiceRuntime.statsVersion++
+                VoiceRuntime.wakeRequest++
             },
             onStatus = { listening, error ->
                 VoiceRuntime.isListening = listening
