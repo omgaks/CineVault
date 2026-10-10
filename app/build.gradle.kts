@@ -68,7 +68,7 @@ android {
             }
         }
         sourceSets.getByName("main").jniLibs.srcDir(
-            layout.buildDirectory.dir("generated/ffmpegJniLibs")
+            file("$buildDir/generated/ffmpegJniLibs")
         )
         val stageFfmpegRuntime by tasks.registering(Copy::class) {
             from(ffmpegNativeLibs) {
