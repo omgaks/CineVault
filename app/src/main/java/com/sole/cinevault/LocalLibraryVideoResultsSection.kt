@@ -81,7 +81,7 @@ internal fun LazyGridScope.LocalLibraryEmptyStateSection(
 internal fun LazyGridScope.LocalLibraryVideoItemsSection(
     selectedCategory: String,
     filteredVideos: List<VideoWithMetadata>,
-    isGridMode: Boolean,
+    viewMode: LibraryViewMode,
     onItemClick: (VideoWithMetadata) -> Unit,
     onPlayClick: (VideoWithMetadata) -> Unit,
     onItemLongPress: (VideoWithMetadata) -> Unit,
@@ -114,32 +114,50 @@ internal fun LazyGridScope.LocalLibraryVideoItemsSection(
     // both are laid out inside these shared composables, not as call-site
     // siblings, and restructuring components used in four other files was
     // judged too risky for this pass.
-    if (isGridMode) {
-        items(
-            items = filteredVideos,
-            key = { it.video.path }
-        ) { item ->
-            TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(10.dp), onActivate = { onItemClick(item) }) {
-                LibraryGridCard(
-                    item = item,
-                    onClick = { onItemClick(item) },
-                    onPlayClick = onPlayClick,
-                    onLongPress = { onItemLongPress(it) }
-                )
+    when (viewMode) {
+        LibraryViewMode.Grid -> {
+            items(
+                items = filteredVideos,
+                key = { it.video.path }
+            ) { item ->
+                TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(10.dp), onActivate = { onItemClick(item) }) {
+                    LibraryGridCard(
+                        item = item,
+                        onClick = { onItemClick(item) },
+                        onPlayClick = onPlayClick,
+                        onLongPress = { onItemLongPress(it) }
+                    )
+                }
             }
         }
-    } else {
-        items(
-            items = filteredVideos,
-            key = { it.video.path },
-            span = { GridItemSpan(maxLineSpan) }
-        ) { item ->
-            TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(10.dp), onActivate = { onItemClick(item) }) {
-                LibraryCard(
-                    item = item,
-                    onClick = { onItemClick(item) },
-                    onLongPress = { onItemLongPress(it) }
-                )
+        LibraryViewMode.Details -> {
+            items(
+                items = filteredVideos,
+                key = { it.video.path },
+                span = { GridItemSpan(maxLineSpan) }
+            ) { item ->
+                TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(22.dp), onActivate = { onItemClick(item) }) {
+                    LibraryDetailsRow(
+                        item = item,
+                        onClick = { onItemClick(item) },
+                        onLongPress = { onItemLongPress(it) }
+                    )
+                }
+            }
+        }
+        LibraryViewMode.Compact -> {
+            items(
+                items = filteredVideos,
+                key = { it.video.path },
+                span = { GridItemSpan(maxLineSpan) }
+            ) { item ->
+                TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(14.dp), onActivate = { onItemClick(item) }) {
+                    LibraryCompactRow(
+                        item = item,
+                        onClick = { onItemClick(item) },
+                        onLongPress = { onItemLongPress(it) }
+                    )
+                }
             }
         }
     }
