@@ -18,6 +18,13 @@ internal object FfmpegContainerProbeLoader {
 
     fun isAvailable(): Boolean = loaded
 
+    fun decodeVideoFrames(path: String, maxFrames: Int): Result<String> = runCatching {
+        require(path.isNotBlank()) { "File path is required" }
+        require(maxFrames in 1..300) { "maxFrames must be between 1 and 300" }
+        check(loaded) { "Native FFmpeg decoder not installed" }
+        FfmpegContainerProbe().decodeVideoFrames(path, maxFrames)
+    }
+
     fun decodeFirstVideoFrame(path: String): Result<String> = runCatching {
         require(path.isNotBlank()) { "File path is required" }
         check(loaded) { "Native FFmpeg decoder not installed" }
