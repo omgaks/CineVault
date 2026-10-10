@@ -229,13 +229,13 @@ fun ContinueWatchingSection(
 
                             Text(
                                 text = formatClock(positionMs),
-                                color = TextBright, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                                color = TextBright, fontSize = CineType.Caption, fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 10.dp, bottom = 8.dp)
                             )
                             if (durationMs > 0L) {
                                 Text(
                                     text = formatClock(durationMs),
-                                    color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                                    color = TextMuted, fontSize = CineType.Caption, fontWeight = FontWeight.SemiBold,
                                     modifier = Modifier.align(Alignment.BottomEnd).padding(end = 10.dp, bottom = 8.dp)
                                 )
                             }
@@ -255,7 +255,7 @@ fun ContinueWatchingSection(
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = item.title,
-                            color = TextBright, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                            color = TextBright, fontSize = CineType.Caption, fontWeight = FontWeight.SemiBold,
                             maxLines = 1, overflow = TextOverflow.Ellipsis
                         )
                     }
@@ -328,7 +328,7 @@ internal fun ResumePosterBox(
             RatingBadgeStack(item = item, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
         }
         Spacer(modifier = Modifier.height(5.dp))
-        Text(text = item.title, color = TextBright, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(text = item.title, color = TextBright, fontSize = CineType.Caption, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -361,7 +361,7 @@ internal fun SmallToggleChip(text: String, selected: Boolean, onClick: () -> Uni
             .padding(horizontal = 12.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = text, color = if (selected) Color.Black else TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text(text = text, color = if (selected) Color.Black else TextMuted, fontSize = CineType.Caption, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -389,59 +389,25 @@ internal fun QuickPlayButton(onClick: () -> Unit) {
 
 @Composable
 internal fun ImdbCornerChip(value: String, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.Black.copy(alpha = 0.62f))
-            .padding(horizontal = 5.dp, vertical = 3.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier.clip(RoundedCornerShape(3.dp)).background(Color(0xFFF5C518)).padding(horizontal = 3.dp, vertical = 1.dp)
-        ) {
-            Text(text = "IMDb", color = Color.Black, fontSize = 6.sp, fontWeight = FontWeight.Black)
-        }
-        Spacer(modifier = Modifier.width(3.dp))
-        Text(text = value, color = TextBright, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-    }
+    RatingLogoChip(logo = R.drawable.ic_imdb, description = "IMDb", value = value, modifier = modifier)
 }
 
 @Composable
 internal fun TmdbCornerChip(value: String, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.Black.copy(alpha = 0.62f))
-            .padding(horizontal = 5.dp, vertical = 3.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Image(painter = painterResource(R.drawable.ic_tmdb), contentDescription = "TMDB", modifier = Modifier.height(8.dp), contentScale = ContentScale.Fit)
-        Spacer(modifier = Modifier.width(3.dp))
-        Text(text = value, color = TextBright, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-    }
+    RatingLogoChip(logo = R.drawable.ic_tmdb, description = "TMDB", value = value, modifier = modifier)
 }
 
 @Composable
 internal fun RottenTomatoesCornerChip(value: String, modifier: Modifier = Modifier) {
     val percent = value.replace("%", "").trim().toIntOrNull() ?: 0
     val isFresh = percent >= 60
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.Black.copy(alpha = 0.62f))
-            .padding(horizontal = 5.dp, vertical = 3.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Image(
-            painter = painterResource(R.drawable.ic_rotten_tomatoes),
-            contentDescription = "Rotten Tomatoes",
-            modifier = Modifier.height(9.dp),
-            contentScale = ContentScale.Fit,
-            colorFilter = if (!isFresh) androidx.compose.ui.graphics.ColorFilter.tint(Color(0xFF8BC34A)) else null
-        )
-        Spacer(modifier = Modifier.width(3.dp))
-        Text(text = value, color = TextBright, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-    }
+    RatingLogoChip(
+        logo = R.drawable.ic_rotten_tomatoes,
+        description = "Rotten Tomatoes",
+        value = value,
+        modifier = modifier,
+        tint = if (isFresh) null else Color(0xFF8BC34A)
+    )
 }
 
 // Shared vertical stack of whichever rating badges the item actually has —
@@ -468,7 +434,7 @@ internal fun CornerChip(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
         color = TextBright,
-        fontSize = 8.sp,
+        fontSize = CineType.Caption,
         fontWeight = FontWeight.Bold,
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))

@@ -54,3 +54,20 @@ val AmberEmber = Color(0xFF6E4A10)  // outer falloff of glows
 val TextBright = Color(0xFFF5F3EE)  // warm white — softer than pure white on glass
 val TextMuted  = Color(0xFFA8A6A0)  // secondary text
 val TextFaint  = Color(0xFF6B6A66)  // timestamps, hints
+
+// ------------------------------------------------------------
+// V3 — THE SIX GELS (the accent colours already used in Settings,
+// brightened slightly). Amber stays the identity: actions, progress,
+// whatever is active. A gel lights ONE rim / ring / chip / glow per card,
+// never a big fill. Never use colour as the only signal.
+// ------------------------------------------------------------
+val GelGold   = Color(0xFFFFC94D)
+val GelSky    = Color(0xFF6FC3FF)
+val GelViolet = Color(0xFFC792FF)
+val GelRose   = Color(0xFFFF6E8C)
+val GelMint   = Color(0xFF7CE0C3)
+val GelCoral  = Color(0xFFFF9F6E)
+
+// Cards in the design kit: dark blue-grey at 55%, edge at 9% white.
+val CineGlassFill = Color(0x8C141822)
+val CineGlassEdge = Color(0x17FFFFFF)
