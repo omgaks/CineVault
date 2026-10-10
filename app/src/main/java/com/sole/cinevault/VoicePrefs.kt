@@ -9,6 +9,7 @@ private const val VOICE_PREFS = "cinevault_voice"
 private const val KEY_ENABLED = "enabled"
 private const val KEY_SHOW_HEARD = "show_heard"
 private const val KEY_PHRASES = "wake_phrases"
+private const val KEY_WAKE_LISTENING = "wake_listening"
 
 /**
  * Voice (beta) settings. Off by default. "cinevault_voice" is in the Reset list,
@@ -19,6 +20,13 @@ internal fun loadVoiceEnabled(context: Context): Boolean =
 
 internal fun loadVoiceShowHeard(context: Context): Boolean =
     context.getSharedPreferences(VOICE_PREFS, Context.MODE_PRIVATE).getBoolean(KEY_SHOW_HEARD, true)
+
+internal fun loadVoiceWakeListening(context: Context): Boolean =
+    context.getSharedPreferences(VOICE_PREFS, Context.MODE_PRIVATE).getBoolean(KEY_WAKE_LISTENING, true)
+
+internal fun saveVoiceWakeListening(context: Context, value: Boolean) {
+    context.getSharedPreferences(VOICE_PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_WAKE_LISTENING, value).apply()
+}
 
 internal fun loadVoicePhraseIds(context: Context): Set<String> {
     val saved = context.getSharedPreferences(VOICE_PREFS, Context.MODE_PRIVATE).getStringSet(KEY_PHRASES, null)
@@ -47,6 +55,10 @@ internal data class VoiceHeardEvent(val text: String, val atMs: Long)
 internal object VoiceRuntime {
     var enabled by mutableStateOf(false)
     var showHeard by mutableStateOf(true)
+    /** "Always listen for the wake word". Only matters while Voice control is on. */
+    var wakeListening by mutableStateOf(true)
+    /** True while a tap-to-talk is running, so the wake listener lets go of the microphone. */
+    var talkActive by mutableStateOf(false)
     var phraseIds by mutableStateOf(defaultWakePhraseIds())
     var lastHeard by mutableStateOf<VoiceHeardEvent?>(null)
     var lastError by mutableStateOf<String?>(null)
@@ -58,6 +70,7 @@ internal object VoiceRuntime {
     fun loadFrom(context: Context) {
         enabled = loadVoiceEnabled(context)
         showHeard = loadVoiceShowHeard(context)
+        wakeListening = loadVoiceWakeListening(context)
         phraseIds = loadVoicePhraseIds(context)
     }
 }

@@ -425,13 +425,13 @@ fun SettingsScreen(
         @Suppress("UNUSED_VARIABLE") val readoutTick = VoiceRuntime.statsVersion
         GlassSectionCard(
             title = "Voice (beta)",
-            subtitle = "Say \"Hey CineVault\" while the app is open.",
+            subtitle = "Tap the microphone and say \"play Avengers Endgame\", or say \"Hey CineVault\".",
             icon = Icons.Filled.Mic,
             accent = GelMint
         ) {
             SettingsSwitchRow(
                 title = "Voice control",
-                description = "Off by default. Listens only while CineVault is open and the screen is on. Heard on this phone only. Nothing is recorded or sent. For now it only notices the wake word, so you can test how well it hears you.",
+                description = "Off by default. Adds a microphone button on Home and Library. Tap it and say what to play. Needs the free speech model that subtitle generation uses. Everything is heard on this phone only. Nothing is recorded or sent.",
                 checked = VoiceRuntime.enabled,
                 isTelevision = isTelevision,
                 onCheckedChange = { on ->
@@ -458,10 +458,23 @@ fun SettingsScreen(
                     lineHeight = 17.sp
                 )
             }
+            if (VoiceRuntime.enabled) {
+                Spacer(modifier = Modifier.height(16.dp))
+                SettingsSwitchRow(
+                    title = "Always listen for the wake word",
+                    description = "While CineVault is open and the screen is on, listen for \"Hey CineVault\". Switch this off to use only the microphone button.",
+                    checked = VoiceRuntime.wakeListening,
+                    isTelevision = isTelevision,
+                    onCheckedChange = {
+                        VoiceRuntime.wakeListening = it
+                        saveVoiceWakeListening(context, it)
+                    }
+                )
+            }
             Spacer(modifier = Modifier.height(16.dp))
             SettingsSwitchRow(
                 title = "Show what I heard",
-                description = "A small note on screen each time the wake word is heard.",
+                description = "Shows the words it heard on the microphone card, and a small note when the wake word is heard.",
                 checked = VoiceRuntime.showHeard,
                 isTelevision = isTelevision,
                 onCheckedChange = {

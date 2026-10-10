@@ -51,6 +51,14 @@ private fun editDistance(a: String, b: String): Int {
     return prev[b.length]
 }
 
+/** How many letters may differ when the whole spoken title is compared with a title. */
+private fun allowedEdits(length: Int): Int = when {
+    length >= 12 -> 3
+    length >= 8 -> 2
+    length >= 5 -> 1
+    else -> 0
+}
+
 /** How well one spoken word matches one title word, 0.0 to 1.0. */
 private fun wordSimilarity(spoken: String, title: String): Double = when {
     spoken == title -> 1.0
@@ -69,7 +77,7 @@ internal fun scoreTitle(spoken: String, title: String): Int {
     val qJoined = q.joinToString("")
     val tJoined = t.joinToString("")
     if (qJoined == tJoined) return 100
-    val closeJoined = qJoined.length >= 5 && editDistance(qJoined, tJoined) <= (tJoined.length * 0.15).toInt()
+    val closeJoined = qJoined.length >= 5 && editDistance(qJoined, tJoined) <= allowedEdits(tJoined.length)
     val containedJoined = qJoined.length >= 5 && tJoined.contains(qJoined)
 
     var matchedWeight = 0.0

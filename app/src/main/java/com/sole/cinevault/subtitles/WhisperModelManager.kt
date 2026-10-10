@@ -395,7 +395,7 @@ object WhisperModelManager {
     fun recommendedThreadCount(): Int =
         Runtime.getRuntime().availableProcessors().coerceIn(2, 6)
 
-    fun createRecognizer(context: Context): OfflineRecognizer? {
+    fun createRecognizer(context: Context, language: String = ""): OfflineRecognizer? {
         val id = selectedModel(context)
         val verified = synchronized(verifiedThisProcess) {
             if (id in verifiedThisProcess) true
@@ -414,7 +414,7 @@ object WhisperModelManager {
                 whisper = OfflineWhisperModelConfig(
                     encoder = "${dir.absolutePath}/${s.prefix}-encoder.int8.onnx",
                     decoder = "${dir.absolutePath}/${s.prefix}-decoder.int8.onnx",
-                    language = "",
+                    language = language,
                     task = "transcribe",
                 ),
                 tokens = "${dir.absolutePath}/${s.prefix}-tokens.txt",
