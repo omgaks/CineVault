@@ -57,6 +57,27 @@ android {
         .orNull
         ?.takeIf { it.isNotBlank() }
     if (ffmpegRoot != null) {
+        // The CMake imported .so files are linked, but Android packaging must
+        // also receive their runtime dependencies. Stage the SDK libraries as
+        // native JNI libs for this opt-in build only.
+        val ffmpegNativeLibs = file("$ffmpegRoot/lib")
+        val ffmpegRequired = listOf("libavformat.so", "libavcodec.so", "libavutil.so")
+        ffmpegRequired.forEach { library ->
+            require(file("$ffmpegRoot/lib/$library").isFile) {
+                "Missing FFmpeg native runtime dependency: $library"
+            }
+        }
+        sourceSets.getByName("main").jniLibs.srcDir(
+            layout.buildDirectory.dir("generated/ffmpegJniLibs")
+        )
+        val stageFfmpegRuntime by tasks.registering(Copy::class) {
+            from(ffmpegNativeLibs) {
+                include("libav*.so", "libsw*.so")
+            }
+            into(layout.buildDirectory.dir("generated/ffmpegJniLibs/arm64-v8a"))
+        }
+        tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders") }
+            .configureEach { dependsOn(stageFfmpegRuntime) }
         require(file("$ffmpegRoot/include/libavformat/avformat.h").isFile) {
             "cinevaultFfmpegRoot must contain include/libavformat/avformat.h"
         }
