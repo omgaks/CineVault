@@ -1,6 +1,7 @@
 package com.sole.cinevault
 
 import android.Manifest
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -70,6 +71,7 @@ internal fun BoxScope.VoiceTalkHost(
     val context = LocalContext.current
     var ui by remember { mutableStateOf<TalkUi>(TalkUi.Idle) }
     var session by remember { mutableStateOf<VoiceTalkSession?>(null) }
+    var androidSession by remember { mutableStateOf<VoiceAndroidSession?>(null) }
     var token by remember { mutableStateOf(0) }
     var level by remember { mutableStateOf(0f) }
     val showHeard = VoiceRuntime.showHeard
@@ -78,16 +80,81 @@ internal fun BoxScope.VoiceTalkHost(
         token++
         session?.cancel()
         session = null
+        androidSession?.cancel()
+        androidSession = null
         ui = TalkUi.Idle
         VoiceRuntime.talkActive = false
     }
 
+    /** Words (or null) are in. Works out what to do. Same for every engine. */
+    fun handleText(text: String?, mine: Int, filmsNow: List<TitleCandidate>) {
+        if (mine != token) return
+        val next: TalkUi? = if (text == null) {
+                TalkUi.Message(null, "The speech model could not start. Try again, or re-download it in Settings.", GelRose)
+            } else {
+                val heard = cleanTranscript(text)
+                when (val o = resolveTalk(text, filmsNow)) {
+                    is TalkOutcome.PlayFilm -> {
+                        val key = o.film.key
+                        android.os.Handler(android.os.Looper.getMainLooper()).post { onPlay(key) }
+                        close(); TalkUi.Idle
+                    }
+                    is TalkOutcome.PickFilm -> TalkUi.Pick(heard, o.options)
+                    is TalkOutcome.FilmNotFound -> TalkUi.Message(heard, "I couldn't find \"${o.query}\" in your library.")
+                    is TalkOutcome.NeedsScreen -> TalkUi.Message(heard, "For safety, do that on screen. Voice never ${o.action}s anything.")
+                    is TalkOutcome.PlayerCommand -> {
+                        val command = o.command
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            if (mine == token) {
+                                val controller = VoicePlayerRegistry.current
+                                ui = if (controller == null) {
+                                    TalkUi.Message(heard, "Understood: ${o.description}. Open a film first, then try again.")
+                                } else {
+                                    val done = controller.apply(command)
+                                    if (done != null) TalkUi.Done(heard, done)
+                                    else TalkUi.Message(heard, "I can't do \"${o.description}\" right now.")
+                                }
+                            }
+                        }
+                        null
+                    }
+                    is TalkOutcome.NotUnderstood -> TalkUi.Message(heard, "I didn't understand that. Try \"play\" and a film name.")
+                    TalkOutcome.Silence -> TalkUi.Message(null, "I didn't hear anything. Tap the microphone and try again.")
+                }
+            }
+            if (next != null) ui = next
+    }
+
     fun startListening() {
-        if (!VoiceTranscriber.isReady(context)) { ui = TalkUi.NoModel; return }
+        val choice = chooseEngine(VoiceRuntime.engine, androidOnDeviceSpeechReady(context), VoiceTranscriber.isReady(context))
+        if (choice is EngineChoice.Unavailable) {
+            ui = if (choice.reason == "NO_WHISPER_MODEL") TalkUi.NoModel else TalkUi.Message(null, choice.reason, GelRose)
+            return
+        }
         val mine = ++token
         VoiceRuntime.talkActive = true
         ui = TalkUi.Listening
         val filmsNow = films
+        if (choice is EngineChoice.UseAndroid && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val a = VoiceAndroidSession(
+                context = context.applicationContext,
+                onLevel = { level = it },
+                onFinished = { text, code ->
+                    if (mine == token) {
+                        androidSession = null
+                        VoiceRuntime.talkActive = false
+                        when {
+                            code == 6 || code == 7 -> ui = TalkUi.Message(null, describeAndroidSpeechError(code))
+                            code != null -> ui = TalkUi.Message(null, describeAndroidSpeechError(code), GelRose)
+                            else -> handleText(text ?: "", mine, filmsNow)
+                        }
+                    }
+                }
+            )
+            androidSession = a
+            a.start()
+            return
+        }
         val s = VoiceTalkSession(
             context = context.applicationContext,
             onLevel = { level = it },
@@ -101,42 +168,7 @@ internal fun BoxScope.VoiceTalkHost(
                         else -> {
                             ui = TalkUi.Transcribing
                             val text = runCatching { VoiceTranscriber.transcribe(context, samples) }.getOrNull()
-                            if (mine == token) {
-                                val next: TalkUi? = if (text == null) {
-                                    TalkUi.Message(null, "The speech model could not start. Try again, or re-download it in Settings.", GelRose)
-                                } else {
-                                    val heard = cleanTranscript(text)
-                                    when (val o = resolveTalk(text, filmsNow)) {
-                                        is TalkOutcome.PlayFilm -> {
-                                            val key = o.film.key
-                                            android.os.Handler(android.os.Looper.getMainLooper()).post { onPlay(key) }
-                                            close(); TalkUi.Idle
-                                        }
-                                        is TalkOutcome.PickFilm -> TalkUi.Pick(heard, o.options)
-                                        is TalkOutcome.FilmNotFound -> TalkUi.Message(heard, "I couldn't find \"${o.query}\" in your library.")
-                                        is TalkOutcome.NeedsScreen -> TalkUi.Message(heard, "For safety, do that on screen. Voice never ${o.action}s anything.")
-                                        is TalkOutcome.PlayerCommand -> {
-                                            val command = o.command
-                                            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                                if (mine == token) {
-                                                    val controller = VoicePlayerRegistry.current
-                                                    ui = if (controller == null) {
-                                                        TalkUi.Message(heard, "Understood: ${o.description}. Open a film first, then try again.")
-                                                    } else {
-                                                        val done = controller.apply(command)
-                                                        if (done != null) TalkUi.Done(heard, done)
-                                                        else TalkUi.Message(heard, "I can't do \"${o.description}\" right now.")
-                                                    }
-                                                }
-                                            }
-                                            null
-                                        }
-                                        is TalkOutcome.NotUnderstood -> TalkUi.Message(heard, "I didn't understand that. Try \"play\" and a film name.")
-                                        TalkOutcome.Silence -> TalkUi.Message(null, "I didn't hear anything. Tap the microphone and try again.")
-                                    }
-                                }
-                                if (next != null) ui = next
-                            }
+                            handleText(text, mine, filmsNow)
                         }
                     }
                 }
@@ -153,7 +185,7 @@ internal fun BoxScope.VoiceTalkHost(
 
     fun onMicTap() {
         when (ui) {
-            TalkUi.Listening -> session?.stopNow()
+            TalkUi.Listening -> { session?.stopNow(); androidSession?.stopNow() }
             TalkUi.Idle, is TalkUi.Message, is TalkUi.Pick, TalkUi.NoModel ->
                 if (hasMicrophonePermission(context)) startListening()
                 else micLauncher.launch(Manifest.permission.RECORD_AUDIO)
@@ -162,7 +194,7 @@ internal fun BoxScope.VoiceTalkHost(
     }
 
     // Leaving the screen (or switching Voice off) always lets go of the microphone.
-    DisposableEffect(Unit) { onDispose { token++; session?.cancel(); VoiceRuntime.talkActive = false } }
+    DisposableEffect(Unit) { onDispose { token++; session?.cancel(); androidSession?.cancel(); VoiceRuntime.talkActive = false } }
     val allowed = VoiceRuntime.enabled && buttonVisible
     LaunchedEffect(allowed) { if (!allowed) close() }
 

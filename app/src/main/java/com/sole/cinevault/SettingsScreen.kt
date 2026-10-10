@@ -431,7 +431,7 @@ fun SettingsScreen(
         ) {
             SettingsSwitchRow(
                 title = "Voice control",
-                description = "Off by default. Adds a microphone button on Home and Library. Tap it and say what to play. Needs the free speech model that subtitle generation uses. Everything is heard on this phone only. Nothing is recorded or sent.",
+                description = "Off by default. Adds a microphone button on Home and Library. Tap it and say what to play. Uses your phone's built-in offline recogniser, or the free speech model that subtitle generation uses (see Speech engine below). Everything is heard on this phone only. Nothing is recorded or sent.",
                 checked = VoiceRuntime.enabled,
                 isTelevision = isTelevision,
                 onCheckedChange = { on ->
@@ -494,6 +494,46 @@ fun SettingsScreen(
                     VoiceRuntime.showHeard = it
                     saveVoiceShowHeard(context, it)
                 }
+            )
+            Spacer(modifier = Modifier.height(18.dp))
+            Text("Speech engine", color = TextBright, fontSize = CineType.Body, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Which recogniser turns your voice into words. Both work offline and nothing leaves this phone.",
+                color = TextMuted,
+                fontSize = CineType.Caption,
+                lineHeight = 17.sp
+            )
+            SpeechEngine.values().forEach { engine ->
+                Spacer(modifier = Modifier.height(12.dp))
+                val selected = VoiceRuntime.engine == engine
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .border(1.dp, if (selected) GelGold else Color(0x33FFFFFF), RoundedCornerShape(16.dp))
+                        .clickable {
+                            VoiceRuntime.engine = engine
+                            saveVoiceEngine(context, engine)
+                        }
+                        .padding(14.dp)
+                ) {
+                    Text(
+                        text = (if (selected) "● " else "○ ") + engine.label,
+                        color = if (selected) GelGold else TextBright,
+                        fontSize = CineType.Body,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(engine.description, color = TextMuted, fontSize = CineType.Caption, lineHeight = 17.sp)
+                }
+            }
+            Text(
+                text = if (androidOnDeviceSpeechReady(context)) "This phone: Android's offline recogniser is ready." else "This phone: Android's offline recogniser is not available, so Whisper is used.",
+                color = TextMuted,
+                fontSize = CineType.Caption,
+                lineHeight = 17.sp,
+                modifier = Modifier.padding(top = 10.dp)
             )
             Spacer(modifier = Modifier.height(18.dp))
             Text("Wake phrases", color = TextBright, fontSize = CineType.Body, fontWeight = FontWeight.SemiBold)
