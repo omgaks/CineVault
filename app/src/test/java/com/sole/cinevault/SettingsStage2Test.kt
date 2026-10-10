@@ -40,8 +40,8 @@ class SettingsStage2Test {
     }
 
     @Test
-    fun onlyVoiceIsComingSoon() {
-        assertEquals(listOf("voice"), TUTORIAL_GUIDES.filter { it.comingSoon }.map { it.id })
+    fun noGuideIsComingSoonAnyMore() {
+        assertEquals(emptyList<String>(), TUTORIAL_GUIDES.filter { it.comingSoon }.map { it.id })
     }
 
     @Test

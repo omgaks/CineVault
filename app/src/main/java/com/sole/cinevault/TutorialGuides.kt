@@ -152,11 +152,13 @@ internal val TUTORIAL_GUIDES: List<TutorialGuide> = listOf(
         tagline = "Control playback by speaking",
         gelIndex = 4,
         steps = listOf(
-            "Voice control is being built as a beta.",
-            "It will listen for a wake word only while a film is open and the screen is on.",
-            "Risky commands such as delete will always need a tap on screen."
+            "Turn it on in Settings → Voice (beta). It is off until you do, and the microphone is only asked for then.",
+            "Tap the gold microphone on Home, Library or the player, then say what you want. Try \"play Avengers Endgame\" or \"skip back 30 seconds\".",
+            "Or say \"Hey CineVault\" and then your command. The Listening card opens by itself.",
+            "If several films fit, you get a short list to tap. It never guesses.",
+            "You can say: pause, play, mute, volume up, brightness down, faster, subtitles off, fill the screen, next episode, go to 1 hour 5 minutes.",
+            "Risky commands such as delete are never done by voice. Do those on screen."
         ),
-        tip = "This guide will fill in when Voice ships.",
-        comingSoon = true
+        tip = "Everything is heard on this phone only and nothing is recorded or sent. Pick the Speech engine in Settings → Voice."
     )
 )

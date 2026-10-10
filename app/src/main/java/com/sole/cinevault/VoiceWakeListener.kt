@@ -21,6 +21,7 @@ private const val WINDOW_SAMPLES = 512
 private const val WINDOW_MS = 32
 private const val PRE_ROLL_WINDOWS = 16          // about half a second of audio before speech starts
 private const val COOLDOWN_MS = 2000L
+private const val RECENT_WINDOWS = 80            // about 2.5 seconds
 private const val MODEL_FOLDER = "voice_kws_v1"
 private val MODEL_FILES = listOf("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt", "keywords.txt")
 
@@ -135,6 +136,7 @@ internal class VoiceWakeListener(
 
             val gate = VoiceGate()
             val preRoll = ArrayDeque<FloatArray>()
+            val recent = ArrayDeque<FloatArray>()      // about 2.5 s of the latest sound, for the speech check
             val shorts = ShortArray(WINDOW_SAMPLES)
             val stats = VoiceRuntime.stats
             var wasOpen = false
@@ -149,6 +151,8 @@ internal class VoiceWakeListener(
                 }
                 if (read < WINDOW_SAMPLES) break
                 val window = FloatArray(WINDOW_SAMPLES) { shorts[it] / 32768f }
+                recent.addLast(window)
+                while (recent.size > RECENT_WINDOWS) recent.removeFirst()
 
                 val tStart = System.nanoTime()
                 val probability = vad.compute(window)
@@ -188,6 +192,9 @@ internal class VoiceWakeListener(
                             lastWakeAt = now
                             val phrase = phraseForKeywordName(result.keyword)
                             if (phrase != null) stats.addHear(phrase.id)
+                            val snapshot = FloatArray(recent.size * WINDOW_SAMPLES)
+                            recent.forEachIndexed { i, w -> System.arraycopy(w, 0, snapshot, i * WINDOW_SAMPLES, WINDOW_SAMPLES) }
+                            VoiceRuntime.wakeAudio = snapshot
                             onWake(phrase, result.keyword)
                         }
                     }

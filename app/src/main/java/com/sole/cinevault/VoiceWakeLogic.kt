@@ -97,6 +97,10 @@ internal class VoiceStats {
     var gatedMs: Long = 0; private set
     var processingNs: Long = 0; private set
     private val hears = linkedMapOf<String, Int>()
+    var confirmed: Int = 0; private set
+    var rejected: Int = 0; private set
+    fun addConfirm() { confirmed++ }
+    fun addReject() { rejected++ }
 
     fun addListened(ms: Int) { listenedMs += ms }
     fun addGated(ms: Int) { gatedMs += ms }
@@ -114,7 +118,7 @@ internal class VoiceStats {
         if (listenedMs <= 0) 0.0 else gatedMs.toDouble() / listenedMs
 
     fun reset() {
-        listenedMs = 0; gatedMs = 0; processingNs = 0; hears.clear()
+        listenedMs = 0; gatedMs = 0; processingNs = 0; hears.clear(); confirmed = 0; rejected = 0
     }
 }
 
