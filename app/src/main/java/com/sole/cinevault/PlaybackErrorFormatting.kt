@@ -82,9 +82,15 @@ internal fun friendlyPlaybackErrorForCode(
         PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ->
             "This device can't decode this file's video or audio format."
 
-        PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ->
+            "The video container could not be parsed. If this is an MKV still " +
+                "downloading, finish the download and retry. VLC may play " +
+                "recoverable portions of an incomplete file, but CineVault's " +
+                "Media3 parser may reject it. If the download is complete, " +
+                "the container may be damaged or incompatible."
+
         PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED ->
-            "This file appears to be corrupted or incomplete."
+            "This stream's manifest is malformed or incomplete."
 
         PlaybackException.ERROR_CODE_TIMEOUT ->
             "Timed out trying to start playback."
