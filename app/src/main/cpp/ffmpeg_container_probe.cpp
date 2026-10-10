@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <string>
 #include <algorithm>
+#include <vector>
 
 // Native MKV probe/demux foundation. Compiled only when a verified FFmpeg
 // Android SDK is provided; no dependency is silently downloaded at build time.
@@ -9,6 +10,8 @@ extern "C" {
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/error.h>
+#include <libswscale/swscale.h>
+#include <libavutil/imgutils.h>
 }
 
 namespace {
@@ -234,4 +237,107 @@ cleanup:
     avcodec_free_context(&decoder);
     avformat_close_input(&format);
     return env->NewStringUTF(outcome.c_str());
+}
+
+// Decode a single frame into a tightly packed RGBA buffer for the Kotlin
+// rendering bridge. This is not a continuous playback loop.
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_sole_cinevault_playback_rescue_video_FfmpegContainerProbe_decodeFirstRgbaFrame(
+    JNIEnv* env, jobject, jstring pathString, jintArray dimensions) {
+    if (!pathString || !dimensions || env->GetArrayLength(dimensions) < 2) {
+        throwIo(env, "Path and two-element dimensions array required");
+        return nullptr;
+    }
+    const char* chars = env->GetStringUTFChars(pathString, nullptr);
+    if (!chars) return nullptr;
+    std::string path(chars);
+    env->ReleaseStringUTFChars(pathString, chars);
+    if (path.empty()) { throwIo(env, "Empty path"); return nullptr; }
+
+    AVFormatContext* format = nullptr;
+    AVCodecContext* decoder = nullptr;
+    AVPacket* packet = nullptr;
+    AVFrame* frame = nullptr;
+    SwsContext* scaler = nullptr;
+    jbyteArray pixels = nullptr;
+    std::string error;
+    int result = avformat_open_input(&format, path.c_str(), nullptr, nullptr);
+    if (result < 0) { throwIo(env, "Open failed: " + avError(result)); return nullptr; }
+    avformat_find_stream_info(format, nullptr);
+    {
+        const int stream = av_find_best_stream(format, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+        if (stream < 0) { error = "No video stream"; goto done; }
+        const AVCodec* codec = avcodec_find_decoder(format->streams[stream]->codecpar->codec_id);
+        if (!codec) { error = "Video decoder unavailable"; goto done; }
+        decoder = avcodec_alloc_context3(codec);
+        if (!decoder) { error = "Decoder allocation failed"; goto done; }
+        result = avcodec_parameters_to_context(decoder, format->streams[stream]->codecpar);
+        if (result < 0) { error = avError(result); goto done; }
+        result = avcodec_open2(decoder, codec, nullptr);
+        if (result < 0) { error = avError(result); goto done; }
+        packet = av_packet_alloc();
+        frame = av_frame_alloc();
+        if (!packet || !frame) { error = "Frame allocation failed"; goto done; }
+
+        for (int read = 0; read < 2048 && !pixels; ++read) {
+            result = av_read_frame(format, packet);
+            if (result < 0) {
+                if (result == AVERROR_EOF) {
+                    avcodec_send_packet(decoder, nullptr);
+                    result = avcodec_receive_frame(decoder, frame);
+                    if (result != 0) break;
+                } else {
+                    error = "Packet read failed: " + avError(result);
+                    break;
+                }
+            } else {
+                if (packet->stream_index == stream) {
+                    result = avcodec_send_packet(decoder, packet);
+                    if (result == AVERROR(EAGAIN)) {
+                        avcodec_receive_frame(decoder, frame);
+                        result = avcodec_send_packet(decoder, packet);
+                    }
+                    if (result >= 0) result = avcodec_receive_frame(decoder, frame);
+                } else {
+                    result = AVERROR(EAGAIN);
+                }
+                av_packet_unref(packet);
+                if (result != 0) continue;
+            }
+            const int width = frame->width;
+            const int height = frame->height;
+            // Limit allocation to 64 MiB, even for malformed dimensions.
+            if (width <= 0 || height <= 0 || width > 4096 || height > 4096 ||
+                static_cast<int64_t>(width) * height * 4 > 64 * 1024 * 1024) {
+                error = "Decoded frame exceeds safe RGBA limits";
+                break;
+            }
+            scaler = sws_getContext(width, height, static_cast<AVPixelFormat>(frame->format),
+                                    width, height, AV_PIX_FMT_RGBA, SWS_BILINEAR,
+                                    nullptr, nullptr, nullptr);
+            if (!scaler) { error = "RGBA converter unavailable"; break; }
+            std::vector<uint8_t> rgba(static_cast<size_t>(width) * height * 4);
+            uint8_t* dst[4] = {rgba.data(), nullptr, nullptr, nullptr};
+            int lines[4] = {width * 4, 0, 0, 0};
+            result = sws_scale(scaler, frame->data, frame->linesize, 0, height, dst, lines);
+            if (result != height) { error = "RGBA conversion failed"; break; }
+            pixels = env->NewByteArray(static_cast<jsize>(rgba.size()));
+            if (!pixels) break;
+            env->SetByteArrayRegion(pixels, 0, static_cast<jsize>(rgba.size()),
+                                    reinterpret_cast<const jbyte*>(rgba.data()));
+            if (env->ExceptionCheck()) { pixels = nullptr; break; }
+            jint size[2] = {width, height};
+            env->SetIntArrayRegion(dimensions, 0, 2, size);
+            break;
+        }
+    }
+    if (!pixels && error.empty()) error = "No decodable frame within packet limit";
+done:
+    sws_freeContext(scaler);
+    av_frame_free(&frame);
+    av_packet_free(&packet);
+    avcodec_free_context(&decoder);
+    avformat_close_input(&format);
+    if (!pixels && !env->ExceptionCheck()) throwIo(env, error);
+    return pixels;
 }
