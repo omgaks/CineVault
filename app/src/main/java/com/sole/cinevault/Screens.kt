@@ -51,9 +51,6 @@ import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -136,6 +133,13 @@ fun ForceCineVaultBrightness() {
     }
 }
 
+/**
+ * The floating glass dock from the design kit. A rounded pill sits above
+ * the content; the active tab opens into an amber pill with its label.
+ * It handles the system gesture/navigation bar itself, and never grows
+ * wider than 520dp so it stays a pill on tablets (a side rail for wide
+ * windows comes with the navigation shell).
+ */
 @Composable
 fun CineBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
     val tabs = listOf(
@@ -144,69 +148,61 @@ fun CineBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
         Triple(Icons.Filled.Search, "Search", 2),
         Triple(Icons.Filled.Settings, "Settings", 3)
     )
-
-    // FIX: was a flat NavigationBar with a solid containerColor — no
-    // glass or glow treatment at all. Kept NavigationBar itself rather
-    // than replacing it with a fully custom layout, since it handles
-    // system bottom-bar insets (gesture nav areas etc.) automatically —
-    // that's real, easy-to-silently-break behavior not worth risking for
-    // a purely visual change. Instead layered a glowing amber gradient
-    // line along the top edge (matching the reference image) and made
-    // the container itself semi-transparent so it reads as glass sitting
-    // over the content behind it, rather than a flat opaque bar. Size
-    // and placement both unchanged.
-    Box {
-        Box(
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
             modifier = Modifier
+                .widthIn(max = 520.dp)
                 .fillMaxWidth()
-                .height(1.5.dp)
-                .align(Alignment.TopCenter)
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(Color.Transparent, AmberGlow.copy(alpha = 0.9f), AmberCore, AmberGlow.copy(alpha = 0.9f), Color.Transparent)
-                    )
-                )
-        )
-        NavigationBar(
-            containerColor = SpaceDeep.copy(alpha = 0.88f),
-            tonalElevation = 0.dp
+                .height(68.dp)
+                .clip(CircleShape)
+                .background(SpaceMid.copy(alpha = 0.86f))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceAround
         ) {
             tabs.forEach { (icon, label, index) ->
                 val selected = selectedTab == index
-                NavigationBarItem(
-                    selected = selected,
-                    onClick = { onTabSelected(index) },
-                    label = {
+                val tabShape = CircleShape
+                Row(
+                    modifier = Modifier
+                        .height(48.dp)
+                        .widthIn(min = 48.dp)
+                        .clip(tabShape)
+                        .then(
+                            if (selected) Modifier
+                                .background(AmberCore.copy(alpha = 0.14f))
+                                .border(1.dp, AmberCore.copy(alpha = 0.5f), tabShape)
+                            else Modifier
+                        )
+                        .clickable(role = androidx.compose.ui.semantics.Role.Tab) { onTabSelected(index) }
+                        .padding(horizontal = if (selected) 18.dp else 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = label,
+                        tint = if (selected) AmberCore else TextMuted,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    if (selected) {
+                        Spacer(Modifier.width(8.dp))
                         Text(
                             text = label,
-                            color = if (selected) AmberGlow else TextFaint,
-                            fontSize = 11.sp,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                            color = AmberCore,
+                            fontSize = CineType.Label,
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1
                         )
-                    },
-                    icon = {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                imageVector = icon,
-                                contentDescription = label,
-                                tint = if (selected) AmberGlow else TextFaint,
-                                modifier = Modifier.size(22.dp)
-                            )
-                            if (selected) {
-                                Spacer(Modifier.height(3.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .size(4.dp)
-                                        .clip(RoundedCornerShape(50))
-                                        .background(AmberGlow)
-                                )
-                            }
-                        }
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        indicatorColor = Color.Transparent
-                    )
-                )
+                    }
+                }
             }
         }
     }
@@ -326,7 +322,7 @@ fun LibraryGridCard(
         Text(
             text = item.title,
             color = TextBright,
-            fontSize = 11.sp,
+            fontSize = CineType.Caption,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             fontWeight = FontWeight.SemiBold
@@ -336,7 +332,7 @@ fun LibraryGridCard(
             Text(
                 text = item.subtitle,
                 color = TextMuted,
-                fontSize = 9.sp,
+                fontSize = CineType.Caption,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -384,7 +380,7 @@ fun LibraryCard(
                 Spacer(modifier = Modifier.height(8.dp))
                 ProgressBar(progress = watchedPercent)
                 Spacer(modifier = Modifier.height(5.dp))
-                Text(text = "${(watchedPercent * 100).toInt().coerceIn(1, 99)}% watched", color = AmberGlow, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Text(text = "${(watchedPercent * 100).toInt().coerceIn(1, 99)}% watched", color = AmberGlow, fontSize = CineType.Caption, fontWeight = FontWeight.SemiBold)
             }
 
             if ((item.rating ?: 0.0) > 0.0) {
