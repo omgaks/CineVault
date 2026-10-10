@@ -45,8 +45,11 @@ jobs:
           for lib in avformat avcodec avutil swscale; do
             test -s "$SDK/lib/lib$lib.so"
           done
-          find "$SDK/lib" -name '*.so' -printf '%f\n'\n          test -s "$SDK/include/libswscale/swscale.h"
-      # Includes the RGBA JNI entry points; standard Kotlin CI does not compile these.\n      - name: Compile CineVault optional JNI decoder (no APK)
+          find "$SDK/lib" -name '*.so' -printf '%f 
+' 
+          test -s "$SDK/include/libswscale/swscale.h"
+      # Includes the RGBA JNI entry points; standard Kotlin CI does not compile these. 
+      - name: Compile CineVault optional JNI decoder (no APK)
         run: |
           chmod +x gradlew
           ./gradlew :app:externalNativeBuildDebug \
