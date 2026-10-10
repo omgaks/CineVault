@@ -149,7 +149,7 @@ internal fun HomeTonightSection(
                     }
                     if (measured.size < videos.count { it.type != "tv" }) {
                         Text(
-                            text = "Counting ${measured.size} films whose length is known.",
+                            text = "Based on ${measured.size} of ${videos.count { it.type != "tv" }} films whose length CineVault knows. Open a film once and it joins in.",
                             color = TextFaint,
                             fontSize = CineType.Caption
                         )

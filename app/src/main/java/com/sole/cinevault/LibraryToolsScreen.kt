@@ -247,8 +247,8 @@ fun LibraryToolsScreen(
                         if (p.item.type == "movie") {
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                "FIX", color = AmberCore, fontSize = 12.sp, fontWeight = FontWeight.Black,
-                                modifier = Modifier.clickable { fixing = p.item }.padding(8.dp)
+                                "FIX MATCH", color = AmberCore, fontSize = 12.sp, fontWeight = FontWeight.Black,
+                                modifier = Modifier.clickable { fixing = p.item }.padding(horizontal = 10.dp, vertical = 14.dp)
                             )
                         }
                     }
