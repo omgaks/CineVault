@@ -44,12 +44,13 @@ Java_com_sole_cinevault_playback_rescue_video_FfmpegContainerProbe_probeLocalFil
         throwIo(env, "FFmpeg open failed: " + avError(result));
         return nullptr;
     }
+    // Incomplete MKV files may still expose usable track headers even if
+    // scanning later packets fails. Report that limitation rather than
+    // throwing away the successfully opened container.
     result = avformat_find_stream_info(ctx, nullptr);
-    if (result < 0) {
-        avformat_close_input(&ctx);
-        throwIo(env, "FFmpeg stream probe failed: " + avError(result));
-        return nullptr;
-    }
+    const bool streamInfoComplete = result >= 0;
+    const std::string streamInfoError =
+        streamInfoComplete ? "" : avError(result);
 
     int video = av_find_best_stream(ctx, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
     int audio = av_find_best_stream(ctx, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
@@ -57,7 +58,9 @@ Java_com_sole_cinevault_playback_rescue_video_FfmpegContainerProbe_probeLocalFil
     std::string report = "video=" + std::to_string(video) +
         ";audio=" + std::to_string(audio) +
         ";durationMs=" + std::to_string(duration) +
-        ";format=" + (ctx->iformat && ctx->iformat->name ? ctx->iformat->name : "unknown");
+        ";format=" + (ctx->iformat && ctx->iformat->name ? ctx->iformat->name : "unknown") +
+        ";streamInfoComplete=" + (streamInfoComplete ? "true" : "false") +
+        ";streamInfoError=" + streamInfoError;
     avformat_close_input(&ctx);
     return env->NewStringUTF(report.c_str());
 }
