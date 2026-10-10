@@ -430,6 +430,24 @@ fun CineVaultApp() {
     var showGlassesFirstRunTutorial by remember {
         mutableStateOf(false)
     }
+    // First-run Onboarding: only a brand-new install sees it. Decided once,
+    // off the main thread, after the saved library has been looked at.
+    var showOnboarding by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        val show = withContext(Dispatchers.IO) {
+            val done = isOnboardingDone(context)
+            if (done) false else {
+                val hasLibrary = loadLibraryCache(context)?.videos?.isNotEmpty() == true
+                val hasName = loadDisplayName(context).isNotBlank()
+                val should = shouldShowOnboarding(done, hasLibrary, hasName)
+                // An existing user is marked done so this never reconsiders.
+                if (!should) markOnboardingDone(context)
+                should
+            }
+        }
+        showOnboarding = show
+    }
+
     LaunchedEffect(glassesDisplay.isConnected) {
         if (glassesDisplay.isConnected && !hasSeenGlassesFirstRunTutorial(context)) {
             showGlassesFirstRunTutorial = true
@@ -1039,6 +1057,16 @@ fun CineVaultApp() {
             )
         }
       }
+    }
+
+    if (showOnboarding) {
+        OnboardingScreen(
+            onVideosLoaded = { loadedVideos ->
+                libraryVideos = sanitizeLibraryVideos(loadedVideos)
+                scope.launch { saveLibraryCache(context = context, videos = sanitizeLibraryVideos(loadedVideos)) }
+            },
+            onFinished = { showOnboarding = false }
+        )
     }
 
     GlassesFirstRunTutorial(
