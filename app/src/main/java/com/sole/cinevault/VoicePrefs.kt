@@ -77,6 +77,8 @@ internal object VoiceRuntime {
     var talkActive by mutableStateOf(false)
     /** "Show microphone button". The wake word can start listening without it. */
     var engine by mutableStateOf(SpeechEngine.Auto)
+    /** The last moment or so of sound before the wake word fired, so the phrase can be checked. */
+    var wakeAudio: FloatArray? = null
     var showMic by mutableStateOf(true)
     /** Counts wake-word hits. The talk host starts listening when this goes up. */
     var wakeRequest by androidx.compose.runtime.mutableIntStateOf(0)

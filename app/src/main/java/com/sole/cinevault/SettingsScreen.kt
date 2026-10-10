@@ -499,7 +499,7 @@ fun SettingsScreen(
             Text("Speech engine", color = TextBright, fontSize = CineType.Body, fontWeight = FontWeight.SemiBold)
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Which recogniser turns your voice into words. Both work offline and nothing leaves this phone.",
+                text = "Which recogniser turns your voice into words. Both work offline and nothing leaves this phone. After the wake word, Whisper double-checks you really said it, if it is downloaded.",
                 color = TextMuted,
                 fontSize = CineType.Caption,
                 lineHeight = 17.sp
@@ -576,6 +576,7 @@ fun SettingsScreen(
             Text("Speech-like sound present: ${formatPercent(stats.speechShare())} of that time", color = TextMuted, fontSize = CineType.Label)
             Text("Wake-word work: ${formatPercent(stats.processingShare())} of one processor core", color = TextMuted, fontSize = CineType.Label)
             Text("Wake word heard: ${stats.totalHears} times", color = TextMuted, fontSize = CineType.Label)
+            Text("Confirmed by the speech check: ${stats.confirmed}, turned away: ${stats.rejected}", color = TextMuted, fontSize = CineType.Label)
             VoiceWakePhrase.values().filter { stats.hearsFor(it.id) > 0 }.forEach { phrase ->
                 Text("   ${phrase.label}: ${stats.hearsFor(phrase.id)}", color = TextFaint, fontSize = CineType.Caption)
             }

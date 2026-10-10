@@ -52,7 +52,7 @@ private sealed interface TalkUi {
     object Listening : TalkUi
     object Transcribing : TalkUi
     object NoModel : TalkUi
-    data class Done(val heard: String?, val text: String) : TalkUi
+    data class Done(val heard: String?, val text: String, val tone: Color = GelMint) : TalkUi
     data class Message(val heard: String?, val text: String, val tone: Color = TextMuted) : TalkUi
     data class Pick(val heard: String?, val options: List<TitleCandidate>) : TalkUi
 }
@@ -87,13 +87,37 @@ internal fun BoxScope.VoiceTalkHost(
     }
 
     /** Words (or null) are in. Works out what to do. Same for every engine. */
-    fun handleText(text: String?, mine: Int, filmsNow: List<TitleCandidate>) {
+    fun handleText(rawText: String?, mine: Int, filmsNow: List<TitleCandidate>, wakeMode: Boolean = false) {
         if (mine != token) return
-        val next: TalkUi? = if (text == null) {
+        var text = rawText
+        if (wakeMode) {
+            // The wake word was heard by the detector. Check the words say it too.
+            val heardAll = text?.let { cleanTranscript(it) }
+            val rest = heardAll?.let { stripWakePhrase(it, VoiceRuntime.phraseIds) }
+            if (rest == null) {
+                VoiceRuntime.stats.addReject()
+                VoiceRuntime.statsVersion++
+                if (VoiceRuntime.showHeard && heardAll != null) {
+                    ui = TalkUi.Done(null, "Not the wake word. I heard \"$heardAll\".", TextMuted)
+                } else {
+                    close()
+                }
+                return
+            }
+            VoiceRuntime.stats.addConfirm()
+            VoiceRuntime.statsVersion++
+            if (rest.isBlank()) {
+                ui = TalkUi.Message(null, "Yes? I heard the wake word but no command. Tap the microphone and say it, like \"play Dune\".")
+                return
+            }
+            text = rest
+        }
+        val textNow = text
+        val next: TalkUi? = if (textNow == null) {
                 TalkUi.Message(null, "The speech model could not start. Try again, or re-download it in Settings.", GelRose)
             } else {
-                val heard = cleanTranscript(text)
-                when (val o = resolveTalk(text, filmsNow)) {
+                val heard = cleanTranscript(textNow)
+                when (val o = resolveTalk(textNow, filmsNow)) {
                     is TalkOutcome.PlayFilm -> {
                         val key = o.film.key
                         android.os.Handler(android.os.Looper.getMainLooper()).post { onPlay(key) }
@@ -125,8 +149,11 @@ internal fun BoxScope.VoiceTalkHost(
             if (next != null) ui = next
     }
 
-    fun startListening() {
-        val choice = chooseEngine(VoiceRuntime.engine, androidOnDeviceSpeechReady(context), VoiceTranscriber.isReady(context))
+    fun startListening(wakeAudio: FloatArray? = null) {
+        // After the wake word, Whisper double-checks the phrase if it is downloaded.
+        val checkWake = wakeAudio != null && VoiceTranscriber.isReady(context)
+        val choice = if (checkWake) EngineChoice.UseWhisper
+        else chooseEngine(VoiceRuntime.engine, androidOnDeviceSpeechReady(context), VoiceTranscriber.isReady(context))
         if (choice is EngineChoice.Unavailable) {
             ui = if (choice.reason == "NO_WHISPER_MODEL") TalkUi.NoModel else TalkUi.Message(null, choice.reason, GelRose)
             return
@@ -157,6 +184,7 @@ internal fun BoxScope.VoiceTalkHost(
         }
         val s = VoiceTalkSession(
             context = context.applicationContext,
+            prefix = if (checkWake) wakeAudio else null,
             onLevel = { level = it },
             onFinished = { samples, error ->
                 if (mine == token) {
@@ -168,7 +196,7 @@ internal fun BoxScope.VoiceTalkHost(
                         else -> {
                             ui = TalkUi.Transcribing
                             val text = runCatching { VoiceTranscriber.transcribe(context, samples) }.getOrNull()
-                            handleText(text, mine, filmsNow)
+                            handleText(text, mine, filmsNow, wakeMode = checkWake)
                         }
                     }
                 }
@@ -213,7 +241,9 @@ internal fun BoxScope.VoiceTalkHost(
     LaunchedEffect(VoiceRuntime.wakeRequest) {
         if (VoiceRuntime.wakeRequest != handledWake) {
             handledWake = VoiceRuntime.wakeRequest
-            if (allowed && ui == TalkUi.Idle && hasMicrophonePermission(context)) startListening()
+            val heardBefore = VoiceRuntime.wakeAudio
+            VoiceRuntime.wakeAudio = null
+            if (allowed && ui == TalkUi.Idle && hasMicrophonePermission(context)) startListening(heardBefore)
         }
     }
 
@@ -257,7 +287,7 @@ internal fun BoxScope.VoiceTalkHost(
                                 Text("I heard: \"${state.heard}\"", color = TextBright, fontSize = CineType.Body)
                                 Spacer(Modifier.height(6.dp))
                             }
-                            Text(state.text, color = GelMint, fontSize = CineType.Title, fontWeight = FontWeight.SemiBold)
+                            Text(state.text, color = state.tone, fontSize = CineType.Title, fontWeight = FontWeight.SemiBold)
                         }
                         TalkUi.Transcribing ->
                             Text("Working it out…", color = GelGold, fontSize = CineType.Title, fontWeight = FontWeight.SemiBold)

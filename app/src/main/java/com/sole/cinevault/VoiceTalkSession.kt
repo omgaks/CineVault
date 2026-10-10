@@ -19,6 +19,8 @@ private const val TALK_WINDOW = 512
  */
 internal class VoiceTalkSession(
     private val context: Context,
+    /** Sound from just before the wake word fired, put in front of the recording. */
+    private val prefix: FloatArray? = null,
     private val onLevel: (Float) -> Unit,
     private val onFinished: (samples: FloatArray?, error: String?) -> Unit
 ) {
@@ -90,9 +92,12 @@ internal class VoiceTalkSession(
                 }
             }
             // Tapping the button to finish early keeps what was said so far.
-            if (all.isNotEmpty() && (spoke || stopRequested)) {
-                val out = FloatArray(all.size * TALK_WINDOW)
-                all.forEachIndexed { i, w -> System.arraycopy(w, 0, out, i * TALK_WINDOW, TALK_WINDOW) }
+            val head = prefix ?: FloatArray(0)
+            val recorded = if (all.isNotEmpty() && (spoke || stopRequested)) all.size * TALK_WINDOW else 0
+            if (head.isNotEmpty() || recorded > 0) {
+                val out = FloatArray(head.size + recorded)
+                System.arraycopy(head, 0, out, 0, head.size)
+                if (recorded > 0) all.forEachIndexed { i, w -> System.arraycopy(w, 0, out, head.size + i * TALK_WINDOW, TALK_WINDOW) }
                 result = out
             }
         } catch (t: Throwable) {
