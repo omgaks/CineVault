@@ -18,6 +18,22 @@ internal object FfmpegContainerProbeLoader {
 
     fun isAvailable(): Boolean = loaded
 
+    /**
+     * One-frame RGBA bridge for rendering experiments. Never call on the UI
+     * thread; this is a synchronous bounded decode and not a video player.
+     */
+    fun decodeFirstRgbaFrame(path: String): Result<RgbaFrame> = runCatching {
+        require(path.isNotBlank()) { "File path is required" }
+        check(loaded) { "Native FFmpeg decoder not installed" }
+        val dimensions = IntArray(2)
+        val pixels = FfmpegContainerProbe().decodeFirstRgbaFrame(path, dimensions)
+        require(dimensions[0] > 0 && dimensions[1] > 0)
+        require(pixels.size.toLong() == dimensions[0].toLong() * dimensions[1] * 4)
+        RgbaFrame(dimensions[0], dimensions[1], pixels)
+    }
+
+    data class RgbaFrame(val width: Int, val height: Int, val rgba: ByteArray)
+
     fun decodeVideoFrames(path: String, maxFrames: Int): Result<String> = runCatching {
         require(path.isNotBlank()) { "File path is required" }
         require(maxFrames in 1..300) { "maxFrames must be between 1 and 300" }
