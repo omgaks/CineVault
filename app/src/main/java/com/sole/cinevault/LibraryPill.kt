@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.TheaterComedy
 import androidx.compose.material.icons.filled.TrackChanges
@@ -44,6 +45,7 @@ import com.sole.cinevault.ui.theme.*
 private data class PillTool(val panel: LibraryPanel, val icon: ImageVector, val gel: Color)
 
 private fun gelFor(panel: LibraryPanel): Color = when (panel) {
+    LibraryPanel.Search -> GelGold
     LibraryPanel.Category -> GelSky
     LibraryPanel.Genre -> GelViolet
     LibraryPanel.Sort -> GelMint
@@ -71,6 +73,7 @@ internal fun LibraryPill(
         LibraryViewMode.Compact -> Icons.Filled.ViewList
     }
     val tools = listOf(
+        PillTool(LibraryPanel.Search, Icons.Filled.Search, gelFor(LibraryPanel.Search)),
         PillTool(LibraryPanel.Category, Icons.Filled.Category, gelFor(LibraryPanel.Category)),
         PillTool(LibraryPanel.Genre, Icons.Filled.TheaterComedy, gelFor(LibraryPanel.Genre)),
         PillTool(LibraryPanel.Sort, Icons.Filled.SwapVert, gelFor(LibraryPanel.Sort)),

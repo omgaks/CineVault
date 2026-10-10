@@ -145,7 +145,6 @@ fun CineBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
     val tabs = listOf(
         Triple(Icons.Filled.Home, "Home", 0),
         Triple(Icons.Filled.List, "Library", 1),
-        Triple(Icons.Filled.Search, "Search", 2),
         Triple(Icons.Filled.Settings, "Settings", 3)
     )
     Box(
@@ -203,6 +202,66 @@ fun CineBottomBar(selectedTab: Int, onTabSelected: (Int) -> Unit) {
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * The dock on wide or landscape windows: the same three places, stacked on the
+ * left edge. Each item is 56dp tall with its name underneath, so it reads
+ * without relying on colour.
+ */
+@Composable
+fun CineSideRail(selectedTab: Int, onTabSelected: (Int) -> Unit) {
+    val tabs = listOf(
+        Triple(Icons.Filled.Home, "Home", 0),
+        Triple(Icons.Filled.List, "Library", 1),
+        Triple(Icons.Filled.Settings, "Settings", 3)
+    )
+    Column(
+        modifier = Modifier
+            .fillMaxHeight()
+            .width(84.dp)
+            .background(SpaceMid.copy(alpha = 0.92f))
+            .border(1.dp, Color.White.copy(alpha = 0.08f))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        tabs.forEach { (icon, label, index) ->
+            val selected = selectedTab == index
+            Column(
+                modifier = Modifier
+                    .width(72.dp)
+                    .heightIn(min = 56.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .then(
+                        if (selected) Modifier
+                            .background(AmberCore.copy(alpha = 0.14f))
+                            .border(1.dp, AmberCore.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
+                        else Modifier
+                    )
+                    .clickable(role = androidx.compose.ui.semantics.Role.Tab) { onTabSelected(index) }
+                    .padding(vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (selected) AmberCore else TextMuted,
+                    modifier = Modifier.size(22.dp)
+                )
+                Text(
+                    text = label,
+                    color = if (selected) AmberCore else TextMuted,
+                    fontSize = CineType.Caption,
+                    fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Normal,
+                    maxLines = 1
+                )
             }
         }
     }

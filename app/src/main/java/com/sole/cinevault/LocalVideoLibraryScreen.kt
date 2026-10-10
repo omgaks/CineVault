@@ -148,6 +148,9 @@ object LibraryScrollState {
     var sort: LibrarySortOption = LibrarySortOption.TITLE_AZ
     var gridMode: Boolean = true
     var viewMode: LibraryViewMode = LibraryViewMode.Grid
+    // Search words survive leaving Library and coming back.
+    var searchQuery: String = ""
+    var searchRecents: List<String> = emptyList()
 }
 
 // ── Folder type icon heuristic ────────────────────────────────────────────
@@ -179,7 +182,15 @@ fun LocalVideoLibraryScreen(
     var sortOption by remember { mutableStateOf(LibraryScrollState.sort) }
     // Which pill card is open (one at a time), plus the little state the Scan
     // card needs to say "Up to date" for two seconds after a scan finishes.
-    var openPanel by remember { mutableStateOf<LibraryPanel?>(null) }
+    // A search asked for from another screen opens the Search card pre-filled.
+    val requestedSearch = remember { LibrarySearchRequest.pending.also { LibrarySearchRequest.pending = null } }
+    var searchQuery by remember { mutableStateOf(requestedSearch ?: LibraryScrollState.searchQuery) }
+    var searchFilters by remember { mutableStateOf(SearchFilters()) }
+    var searchSort by remember { mutableStateOf(LibrarySearchSort.BestMatch) }
+    var searchRecents by remember { mutableStateOf(LibraryScrollState.searchRecents) }
+    var openPanel by remember { mutableStateOf<LibraryPanel?>(if (requestedSearch != null) LibraryPanel.Search else null) }
+    var mainCopyChoices by remember { mutableStateOf(loadMainCopyChoices(context)) }
+    var manageCopiesMainPath by remember { mutableStateOf<String?>(null) }
     var scanWasRunning by remember { mutableStateOf(false) }
     var scanUpToDate by remember { mutableStateOf(false) }
     var secretUnlocked by remember { mutableStateOf(false) }
@@ -468,19 +479,70 @@ fun LocalVideoLibraryScreen(
     // duplicate detection has no business surfacing anything from Secret
     // outside of it, same boundary every other category already respects.
     val duplicateGroups = remember(visibleSortedVideos) { findDuplicateGroups(context, visibleSortedVideos) }
+    // Copies of the same film are folded behind the best one. Nothing is deleted.
+    val foldPlan = remember(duplicateGroups, mainCopyChoices) {
+        planDuplicateFold(
+            duplicateGroups.map { group ->
+                group.videos.map { CopyInfo(it.video.path, it.video.name, File(it.video.path).length()) }
+            },
+            mainCopyChoices
+        )
+    }
+    val foldedVideos = remember(visibleSortedVideos, foldPlan) {
+        visibleSortedVideos.filter { it.video.path !in foldPlan.hiddenPaths }
+    }
+    val copyCounts = remember(foldPlan) { foldPlan.groupsByMain.mapValues { it.value.size } }
+
+    val searching = searchQuery.isNotBlank() || searchFilters.anyOn
+    val searchResults = remember(foldedVideos, searchQuery, searchFilters, searchSort, favoritePaths) {
+        if (!searching) emptyList() else {
+            val scored = foldedVideos.mapNotNull { v ->
+                val hit = if (searchQuery.isBlank()) SearchHit(SearchMatch.Title, 0) else searchDocument(
+                    SearchDoc(
+                        title = v.title,
+                        fileName = v.video.name,
+                        cast = v.cast.map { it.name },
+                        director = v.director,
+                        genres = v.genres,
+                        year = extractYearFromName(v.video.name)
+                    ),
+                    searchQuery
+                ) ?: return@mapNotNull null
+                val ok = passesSearchFilters(
+                    filters = searchFilters,
+                    isFilm = v.type.equals("movie", ignoreCase = true),
+                    rating = v.rating,
+                    fileName = v.video.name,
+                    watched = loadPlaybackPosition(context, v.video.path) > 15_000L,
+                    favourite = favoritePaths.contains(v.video.path)
+                )
+                if (ok) v to hit else null
+            }
+            when (searchSort) {
+                LibrarySearchSort.BestMatch -> scored.sortedWith(compareBy({ it.second.rank }, { it.first.title.lowercase() }))
+                LibrarySearchSort.TitleAz -> scored.sortedBy { it.first.title.lowercase() }
+                LibrarySearchSort.Rating -> scored.sortedByDescending { it.first.rating ?: 0.0 }
+            }
+        }
+    }
+    val matchTags = remember(searchResults, searchQuery) {
+        if (searchQuery.isBlank()) emptyMap() else searchResults.associate { it.first.video.path to it.second.matchedBy.label }
+    }
+    // While searching the shelves step aside and results take the page.
+    val shownCategory = if (searching && selectedCategory != "Secret") "Search" else selectedCategory
 
     val filteredVideos = when (selectedCategory) {
         "Secret" -> if (secretUnlocked) secretVideos.filter { it.video.path !in secretGroupedPaths } else emptyList()
-        "Favorites" -> favoriteVideos
+        "Search" -> searchResults.map { it.first }
+        "Favorites" -> favoriteVideos.filter { it.video.path !in foldPlan.hiddenPaths }
         // Same 15-second threshold Home's own Continue Watching row uses —
         // kept identical on purpose so "See All" from Home shows exactly
         // the same set, just not capped to 12.
-        "Continue Watching" -> visibleSortedVideos.filter { loadPlaybackPosition(context, it.video.path) > 15_000L }
+        "Continue Watching" -> foldedVideos.filter { loadPlaybackPosition(context, it.video.path) > 15_000L }
         "TV Shows" -> emptyList()
         "Folders" -> emptyList()
-        "Duplicates" -> emptyList()
-        "Movies" -> visibleSortedVideos.filter { it.type.equals("movie", ignoreCase = true) }
-        else -> visibleSortedVideos.filter { !it.type.equals("tv", ignoreCase = true) && !it.type.equals("restricted", ignoreCase = true) }
+        "Movies" -> foldedVideos.filter { it.type.equals("movie", ignoreCase = true) }
+        else -> foldedVideos.filter { !it.type.equals("tv", ignoreCase = true) && !it.type.equals("restricted", ignoreCase = true) }
     }
 
     val tvGroups = groupTvShows(sortedVideos.filter { it.type.equals("tv", ignoreCase = true) && !hiddenPaths.contains(it.video.path) && !videoIsInsideSecretFolder(it, hiddenFolders) })
@@ -550,14 +612,14 @@ fun LocalVideoLibraryScreen(
             }
 
             LocalLibraryCollectionsShelf(
-                selectedCategory = selectedCategory,
+                selectedCategory = shownCategory,
                 visibleSortedVideos = visibleSortedVideos,
                 onNativeCollectionClick = onNativeCollectionClick,
                 onCuratedCollectionClick = onCuratedCollectionClick
             )
 
             LocalLibraryTvAndFoldersShelf(
-                selectedCategory = selectedCategory,
+                selectedCategory = shownCategory,
                 visibleSortedVideos = visibleSortedVideos,
                 tvGroups = tvGroups,
                 context = context,
@@ -576,7 +638,7 @@ fun LocalVideoLibraryScreen(
             )
 
             LocalLibraryFoldersSection(
-                selectedCategory = selectedCategory,
+                selectedCategory = shownCategory,
                 videoFolders = videoFolders,
                 expandedFolders = expandedFolders,
                 onExpandedFoldersChange = { expandedFolders = it },
@@ -590,14 +652,8 @@ fun LocalVideoLibraryScreen(
                 }
             )
 
-            LocalLibraryDuplicatesSection(
-                selectedCategory = selectedCategory,
-                duplicateGroups = duplicateGroups,
-                onDeleteCopy = { copy -> deleteVideoFile(copy) }
-            )
-
             LocalLibraryEmptyStateSection(
-                selectedCategory = selectedCategory,
+                selectedCategory = shownCategory,
                 isScanning = LibraryScanController.isScanning,
                 filteredVideos = filteredVideos,
                 tvGroupsEmpty = tvGroups.isEmpty(),
@@ -618,13 +674,16 @@ fun LocalVideoLibraryScreen(
             )
 
             LocalLibraryVideoItemsSection(
-                selectedCategory = selectedCategory,
+                selectedCategory = shownCategory,
                 filteredVideos = filteredVideos,
                 viewMode = viewMode,
                 onItemClick = onItemClick,
                 onPlayClick = onPlayClick,
                 onItemLongPress = { openContextSheet(it) },
-                isTelevision = isTelevision
+                isTelevision = isTelevision,
+                copyCounts = copyCounts,
+                onManageCopies = { manageCopiesMainPath = it.video.path },
+                matchTags = matchTags
             )
         }
 
@@ -674,7 +733,24 @@ fun LocalVideoLibraryScreen(
             if (panelNow != null) {
                 LibraryPanelCard(panel = panelNow, onClose = { openPanel = null }) {
                     when (panelNow) {
+                        LibraryPanel.Search -> LibrarySearchPanel(
+                            query = searchQuery,
+                            onQueryChange = { searchQuery = it; LibraryScrollState.searchQuery = it },
+                            onSubmit = {
+                                searchRecents = pushRecentSearch(searchRecents, searchQuery)
+                                LibraryScrollState.searchRecents = searchRecents
+                                openPanel = null
+                            },
+                            filters = searchFilters,
+                            onFiltersChange = { searchFilters = it },
+                            sort = searchSort,
+                            onSortChange = { searchSort = it },
+                            recents = searchRecents,
+                            libraryEmpty = videos.isEmpty(),
+                            resultCount = searchResults.size
+                        )
                         LibraryPanel.Category -> LibraryCategoryPanel(selected = selectedCategory) { category ->
+                            searchQuery = ""; LibraryScrollState.searchQuery = ""; searchFilters = SearchFilters()
                             if (category == "Secret") openSecretFolder() else selectedCategory = category
                             openPanel = null
                         }
@@ -726,6 +802,28 @@ fun LocalVideoLibraryScreen(
             modifier = Modifier.align(Alignment.TopCenter).padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             bannerError?.let { err -> ErrorBanner(state = err, onDismiss = { activeError = null; LibraryScanController.lastError = null }) }
+        }
+
+        manageCopiesMainPath?.let { mainPath ->
+            val groupPaths = foldPlan.groupsByMain[mainPath]
+            if (groupPaths == null) {
+                manageCopiesMainPath = null
+            } else {
+                ManageCopiesSheet(
+                    copies = groupPaths.mapNotNull { path -> videos.firstOrNull { it.video.path == path } },
+                    mainPath = mainPath,
+                    onMakeMain = { chosen ->
+                        mainCopyChoices = withMainCopy(mainCopyChoices, chosen.video.path, groupPaths)
+                        saveMainCopyChoices(context, mainCopyChoices)
+                        manageCopiesMainPath = null
+                    },
+                    onDelete = { target ->
+                        manageCopiesMainPath = null
+                        deleteVideoFile(target)
+                    },
+                    onClose = { manageCopiesMainPath = null }
+                )
+            }
         }
 
         LibraryItemContextSheet(
