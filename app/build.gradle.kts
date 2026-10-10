@@ -61,7 +61,8 @@ android {
             "cinevaultFfmpegRoot must contain include/libavformat/avformat.h"
         }
         require(file("$ffmpegRoot/lib/libavformat.so").isFile &&
-                file("$ffmpegRoot/lib/libavutil.so").isFile) {
+                file("$ffmpegRoot/lib/libavutil.so").isFile &&
+                file("$ffmpegRoot/lib/libavcodec.so").isFile) {
             "cinevaultFfmpegRoot must contain lib/libavformat.so and lib/libavutil.so"
         }
         externalNativeBuild {

@@ -18,6 +18,12 @@ internal object FfmpegContainerProbeLoader {
 
     fun isAvailable(): Boolean = loaded
 
+    fun decodeFirstVideoFrame(path: String): Result<String> = runCatching {
+        require(path.isNotBlank()) { "File path is required" }
+        check(loaded) { "Native FFmpeg decoder not installed" }
+        FfmpegContainerProbe().decodeFirstVideoFrame(path)
+    }
+
     fun probeLocalFile(path: String): Result<String> = runCatching {
         require(path.isNotBlank()) { "File path is required" }
         check(loaded) { "Native FFmpeg container probe not installed" }
