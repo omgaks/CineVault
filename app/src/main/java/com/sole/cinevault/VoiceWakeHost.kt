@@ -79,7 +79,8 @@ internal fun VoiceWakeHost() {
 
     val enabled = VoiceRuntime.enabled
     val micAllowed = remember(enabled, visible) { hasMicrophonePermission(context) }
-    val shouldListen = enabled && micAllowed && visible && screenOn
+    val shouldListen = enabled && micAllowed && visible && screenOn &&
+        VoiceRuntime.wakeListening && !VoiceRuntime.talkActive
 
     val listener = remember {
         VoiceWakeListener(

@@ -1055,6 +1055,25 @@ fun CineVaultApp() {
                     push(Destination.RemoteLibrary(source))
                 },
             )
+
+            // Voice (beta): tap-to-talk microphone on Home and Library.
+            val talkFilms = remember(homeVisibleVideos) {
+                homeVisibleVideos
+                    .filter { it.type != "tv" && it.title.isNotBlank() }
+                    .groupBy { it.title.trim().lowercase() }
+                    .map { (_, copies) -> copies.maxByOrNull { qualityRank(it.video.name) }!! }
+                    .map { TitleCandidate(it.video.path, it.title.trim()) }
+            }
+            VoiceTalkHost(
+                films = talkFilms,
+                buttonVisible = !isPlayerActive && !isTelevision && current is Destination.Tab &&
+                    (activeTabIndex == 0 || activeTabIndex == 1),
+                onPlay = { key ->
+                    homeVisibleVideos.firstOrNull { it.video.path == key }?.let { item ->
+                        push(Destination.Player(item.video, item.type, libraryVideos))
+                    }
+                }
+            )
         }
       }
     }
