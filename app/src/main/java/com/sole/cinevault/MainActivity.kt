@@ -53,6 +53,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.ui.theme.CineVaultTheme
+import com.sole.cinevault.ui.theme.usesSideRail
 import com.sole.cinevault.glasses.display.CineVaultTabletSessionHost
 import com.sole.cinevault.glasses.display.LocalCineVaultComposeAppState
 import com.sole.cinevault.glasses.display.CineVaultNavigationKeyFactory
@@ -586,19 +587,27 @@ fun CineVaultApp() {
         }
     }
 
+    // Wide or landscape windows get a side rail instead of the bottom dock.
+    val windowConfig = androidx.compose.ui.platform.LocalConfiguration.current
+    val useSideRail = usesSideRail(windowConfig.screenWidthDp, windowConfig.screenHeightDp)
+
     Scaffold(
         containerColor = Color(0xFF080808),
         bottomBar = {
-            if (!isPlayerActive) {
+            if (!isPlayerActive && !useSideRail) {
                 CineBottomBar(activeTabIndex) { tab -> switchTab(tab) }
             }
         }
     ) { padding ->
 
+      Row(modifier = Modifier.fillMaxSize().padding(padding)) {
+        if (!isPlayerActive && useSideRail) {
+            CineSideRail(activeTabIndex) { tab -> switchTab(tab) }
+        }
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
+                .weight(1f)
+                .fillMaxHeight()
         ) {
             when (val dest = current) {
                 is Destination.Player -> {
@@ -706,8 +715,8 @@ fun CineVaultApp() {
                             onItemClick = { item -> push(Destination.Detail(item)) },
                             onPlay = { item, ordered -> push(Destination.Player(item.video, item.type, ordered)) },
                             onSearchLibrary = { query ->
-                                sessionAppState.onSearchQueryChanged(query)
-                                switchTab(2)
+                                LibrarySearchRequest.pending = query
+                                switchTab(1)
                             },
                             isTelevision = isTelevision
                         )
@@ -745,8 +754,8 @@ fun CineVaultApp() {
                             onItemClick = { item -> push(Destination.Detail(item)) },
                             onPlay = { item, ordered -> push(Destination.Player(item.video, item.type, ordered)) },
                             onSearchLibrary = { query ->
-                                sessionAppState.onSearchQueryChanged(query)
-                                switchTab(2)
+                                LibrarySearchRequest.pending = query
+                                switchTab(1)
                             },
                             isTelevision = isTelevision
                         )
@@ -767,8 +776,8 @@ fun CineVaultApp() {
                             onItemClick = { item -> push(Destination.Detail(item)) },
                             onPlay = { item, ordered -> push(Destination.Player(item.video, item.type, ordered)) },
                             onSearchLibrary = { query ->
-                                sessionAppState.onSearchQueryChanged(query)
-                                switchTab(2)
+                                LibrarySearchRequest.pending = query
+                                switchTab(1)
                             },
                             isTelevision = isTelevision
                         )
@@ -1029,6 +1038,7 @@ fun CineVaultApp() {
                 },
             )
         }
+      }
     }
 
     GlassesFirstRunTutorial(

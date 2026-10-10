@@ -33,7 +33,6 @@ internal fun LazyGridScope.LocalLibraryEmptyStateSection(
 ) {
     val shouldShowEmptyState =
         selectedCategory != "Folders" &&
-            selectedCategory != "Duplicates" &&
             !isScanning &&
             filteredVideos.isEmpty() &&
             tvGroupsEmpty &&
@@ -70,6 +69,7 @@ internal fun LazyGridScope.LocalLibraryEmptyStateSection(
                     subtitle = when (selectedCategory) {
                         "Continue Watching" -> "Videos you've started watching will show up here."
                         "Favorites" -> "Tap the heart on anything to add it here."
+                        "Search" -> "No matches. Try fewer words or clear a filter."
                         else -> "Try a different category, or rescan your library."
                     }
                 )
@@ -85,7 +85,10 @@ internal fun LazyGridScope.LocalLibraryVideoItemsSection(
     onItemClick: (VideoWithMetadata) -> Unit,
     onPlayClick: (VideoWithMetadata) -> Unit,
     onItemLongPress: (VideoWithMetadata) -> Unit,
-    isTelevision: Boolean = false
+    isTelevision: Boolean = false,
+    copyCounts: Map<String, Int> = emptyMap(),
+    onManageCopies: (VideoWithMetadata) -> Unit = {},
+    matchTags: Map<String, String> = emptyMap()
 ) {
     if (filteredVideos.isEmpty() || selectedCategory == "Folders") return
 
@@ -93,11 +96,11 @@ internal fun LazyGridScope.LocalLibraryVideoItemsSection(
         Text(
             text = when (selectedCategory) {
                 "Movies" -> "Movies"
-                "Downloads" -> "Downloads"
+                "Search" -> "Results"
                 "Favorites" -> "Favorites"
                 "Secret" -> "Secret Folder"
                 "Continue Watching" -> "Continue Watching"
-                else -> "Movies & Downloads"
+                else -> "Movies & Videos"
             },
             color = TextBright,
             fontSize = 22.sp,
@@ -120,13 +123,16 @@ internal fun LazyGridScope.LocalLibraryVideoItemsSection(
                 items = filteredVideos,
                 key = { it.video.path }
             ) { item ->
-                TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(10.dp), onActivate = { onItemClick(item) }) {
+                ItemWithBadges(item, copyCounts, onManageCopies, matchTags) {
+                    TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(10.dp), onActivate = { onItemClick(item) }) {
                     LibraryGridCard(
                         item = item,
                         onClick = { onItemClick(item) },
                         onPlayClick = onPlayClick,
                         onLongPress = { onItemLongPress(it) }
                     )
+                }
+
                 }
             }
         }
@@ -136,12 +142,15 @@ internal fun LazyGridScope.LocalLibraryVideoItemsSection(
                 key = { it.video.path },
                 span = { GridItemSpan(maxLineSpan) }
             ) { item ->
-                TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(22.dp), onActivate = { onItemClick(item) }) {
+                ItemWithBadges(item, copyCounts, onManageCopies, matchTags) {
+                    TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(22.dp), onActivate = { onItemClick(item) }) {
                     LibraryDetailsRow(
                         item = item,
                         onClick = { onItemClick(item) },
                         onLongPress = { onItemLongPress(it) }
                     )
+                }
+
                 }
             }
         }
@@ -151,14 +160,49 @@ internal fun LazyGridScope.LocalLibraryVideoItemsSection(
                 key = { it.video.path },
                 span = { GridItemSpan(maxLineSpan) }
             ) { item ->
-                TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(14.dp), onActivate = { onItemClick(item) }) {
+                ItemWithBadges(item, copyCounts, onManageCopies, matchTags) {
+                    TvFocusableSlot(isTelevision = isTelevision, shape = RoundedCornerShape(14.dp), onActivate = { onItemClick(item) }) {
                     LibraryCompactRow(
                         item = item,
                         onClick = { onItemClick(item) },
                         onLongPress = { onItemLongPress(it) }
                     )
                 }
+
+                }
             }
+        }
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun ItemWithBadges(
+    item: VideoWithMetadata,
+    copyCounts: Map<String, Int>,
+    onManageCopies: (VideoWithMetadata) -> Unit,
+    matchTags: Map<String, String>,
+    content: @androidx.compose.runtime.Composable () -> Unit
+) {
+    androidx.compose.foundation.layout.Box {
+        content()
+        val tag = matchTags[item.video.path]
+        if (tag != null) {
+            CineBadge(
+                text = tag,
+                gel = GelGold,
+                modifier = Modifier.align(androidx.compose.ui.Alignment.TopStart).padding(6.dp)
+            )
+        }
+        val copies = copyCounts[item.video.path]
+        if (copies != null && copies > 1) {
+            CineBadge(
+                text = "$copies copies",
+                gel = GelSky,
+                modifier = Modifier
+                    .align(androidx.compose.ui.Alignment.TopEnd)
+                    .padding(6.dp)
+                    .clickable { onManageCopies(item) }
+            )
         }
     }
 }
