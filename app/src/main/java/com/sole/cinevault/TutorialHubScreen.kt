@@ -45,7 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.ui.theme.*
 
-private val TutorialGels = listOf(GelGold, GelSky, GelViolet, GelRose, GelMint, GelCoral)
+internal val TutorialGels = listOf(GelGold, GelSky, GelViolet, GelRose, GelMint, GelCoral)
 
 private const val TUTORIAL_PREFS = "cinevault_tutorial"
 private const val KEY_SEEN = "seen_guides"
