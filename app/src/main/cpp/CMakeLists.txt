@@ -9,10 +9,12 @@ endif()
 
 add_library(avformat SHARED IMPORTED)
 add_library(avutil SHARED IMPORTED)
+add_library(avcodec SHARED IMPORTED)
 set_target_properties(avformat PROPERTIES IMPORTED_LOCATION "${FFMPEG_ROOT}/lib/libavformat.so")
 set_target_properties(avutil PROPERTIES IMPORTED_LOCATION "${FFMPEG_ROOT}/lib/libavutil.so")
+set_target_properties(avcodec PROPERTIES IMPORTED_LOCATION "${FFMPEG_ROOT}/lib/libavcodec.so")
 
 add_library(cinevault_container_probe SHARED ffmpeg_container_probe.cpp)
 target_include_directories(cinevault_container_probe PRIVATE "${FFMPEG_ROOT}/include")
 target_compile_features(cinevault_container_probe PRIVATE cxx_std_17)
-target_link_libraries(cinevault_container_probe PRIVATE avformat avutil log)
+target_link_libraries(cinevault_container_probe PRIVATE avformat avcodec avutil log)
