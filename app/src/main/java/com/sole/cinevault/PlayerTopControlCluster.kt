@@ -12,6 +12,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -45,6 +50,9 @@ internal fun BoxScope.PlayerTopControlCluster(
     onClusterHeightMeasured: (Float) -> Unit,
 ) {
     if (isLandscape) {
+        // The title never runs under the icon cluster on the right (CONNECT and friends).
+        var clusterWidthPx by remember { mutableStateOf(0) }
+        val reserve = with(LocalDensity.current) { clusterWidthPx.toDp() } + sidePadding + 62.dp + 12.dp
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -68,7 +76,7 @@ internal fun BoxScope.PlayerTopControlCluster(
                 exit = fadeOut(animationSpec = tween(160)),
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .padding(horizontal = 96.dp)
+                    .padding(start = 96.dp, end = maxOf(96.dp, reserve))
             ) {
                 NowPlayingTitlePill(text = title, fontSize = 13.sp)
             }
@@ -86,7 +94,10 @@ internal fun BoxScope.PlayerTopControlCluster(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = sidePadding + 62.dp)
-                    .onGloballyPositioned { onClusterHeightMeasured(it.size.height.toFloat()) }
+                    .onGloballyPositioned {
+                        clusterWidthPx = it.size.width
+                        onClusterHeightMeasured(it.size.height.toFloat())
+                    }
             )
         }
     } else {
