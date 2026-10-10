@@ -11,8 +11,10 @@ internal sealed interface TalkOutcome {
     data class FilmNotFound(val query: String) : TalkOutcome
     /** A risky request. It is never run by voice. */
     data class NeedsScreen(val action: String) : TalkOutcome
-    /** Understood, but it controls the player, which arrives in the next update. */
-    data class PlayerCommand(val description: String) : TalkOutcome
+    /** A command for the open player. */
+    data class PlayerCommand(val command: VoiceCommand) : TalkOutcome {
+        val description: String get() = describeCommand(command)
+    }
     data class NotUnderstood(val heard: String) : TalkOutcome
     /** Nothing was said, or only noise. */
     object Silence : TalkOutcome
@@ -76,7 +78,7 @@ internal fun resolveTalk(transcript: String, films: List<TitleCandidate>): TalkO
         is VoiceResult.NeedsScreen -> TalkOutcome.NeedsScreen(result.action)
         is VoiceResult.Command -> when (val c = result.command) {
             is VoiceCommand.PlayTitle -> titleOutcome(c.query, films)
-            else -> TalkOutcome.PlayerCommand(describeCommand(c))
+            else -> TalkOutcome.PlayerCommand(c)
         }
         is VoiceResult.NotUnderstood, VoiceResult.NoWakeWord -> {
             when (val choice = chooseTitle(cleaned, films)) {

@@ -47,9 +47,9 @@ class VoiceTalkLogicTest {
     }
 
     @Test fun controlsAreUnderstoodButWaitForThePlayer() {
-        assertEquals(TalkOutcome.PlayerCommand("skip back 30 seconds"), resolveTalk("skip back 30 seconds", library))
-        assertEquals(TalkOutcome.PlayerCommand("pause"), resolveTalk("pause", library))
-        assertEquals(TalkOutcome.PlayerCommand("volume up 10"), resolveTalk("volume up", library))
+        assertEquals(TalkOutcome.PlayerCommand(VoiceCommand.SkipSeconds(-30)), resolveTalk("skip back 30 seconds", library))
+        assertEquals(TalkOutcome.PlayerCommand(VoiceCommand.Pause), resolveTalk("pause", library))
+        assertEquals(TalkOutcome.PlayerCommand(VoiceCommand.VolumeBy(10)), resolveTalk("volume up", library))
     }
 
     @Test fun volumeUpIsNotTheFilmUp() {
