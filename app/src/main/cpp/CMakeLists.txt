@@ -16,7 +16,7 @@ set_target_properties(avutil PROPERTIES IMPORTED_LOCATION "${FFMPEG_ROOT}/lib/li
 set_target_properties(avcodec PROPERTIES IMPORTED_LOCATION "${FFMPEG_ROOT}/lib/libavcodec.so")
 set_target_properties(swscale PROPERTIES IMPORTED_LOCATION "${FFMPEG_ROOT}/lib/libswscale.so")
 
-add_library(cinevault_container_probe SHARED ffmpeg_container_probe.cpp)
+add_library(cinevault_container_probe SHARED ffmpeg_container_probe.cpp ffmpeg_native_decoder_session.cpp)
 target_include_directories(cinevault_container_probe PRIVATE "${FFMPEG_ROOT}/include")
 target_compile_features(cinevault_container_probe PRIVATE cxx_std_17)
 target_link_libraries(cinevault_container_probe PRIVATE avformat avcodec avutil swscale log)
