@@ -14,6 +14,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
@@ -91,41 +92,55 @@ internal fun BoxScope.PlayerBottomTransportDock(
         ) + fadeOut(animationSpec = tween(140)),
         modifier = Modifier.align(Alignment.BottomCenter)
     ) {
+        BoxWithConstraints {
+        // Shrink the row a little on a narrow screen so every button is visible.
+        val fit = transportFitFactor(
+            availableDp = maxWidth.value - 2 * sidePadding.value,
+            smallButtonDp = smallButton.value,
+            playButtonDp = playButton.value,
+            smallButtonCount = if (showPrevNextButtons) 8 else 7,
+            spacingDp = 7 * scale,
+            extraGapDp = 4 * scale,
+            sidePaddingDp = 12 * scale
+        )
+        val sb = smallButton * fit
+        val pb = playButton * fit
+        val sc = scale * fit
         Row(
             modifier = Modifier
                 .padding(bottom = bottomDockPadding, start = sidePadding, end = sidePadding)
                 .glassPanel(cornerRadius = 42.dp, fill = GlassSurfaceStrong)
-                .padding(horizontal = (12 * scale).dp, vertical = (6 * scale).dp)
+                .padding(horizontal = (12 * sc).dp, vertical = (6 * sc).dp)
                 .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy((7 * scale).dp),
+            horizontalArrangement = Arrangement.spacedBy((7 * sc).dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            BackIconButton(size = smallButton, onClick = onBack)
-            GlassTransportButton(icon = Icons.Rounded.Replay10, size = smallButton, onClick = onReplay10)
-            FrostedPlayButton(isPlaying = isPlaying, isEnded = isVideoEnded, size = playButton, onClick = onPlayPause)
-            GlassTransportButton(icon = Icons.Rounded.Forward10, size = smallButton, onClick = onForward10)
+            BackIconButton(size = sb, onClick = onBack)
+            GlassTransportButton(icon = Icons.Rounded.Replay10, size = sb, onClick = onReplay10)
+            FrostedPlayButton(isPlaying = isPlaying, isEnded = isVideoEnded, size = pb, onClick = onPlayPause)
+            GlassTransportButton(icon = Icons.Rounded.Forward10, size = sb, onClick = onForward10)
 
             if (showPrevNextButtons) {
                 IconCircle(
                     icon = Icons.Rounded.SkipNext,
-                    size = smallButton,
+                    size = sb,
                     tint = if (hasNextVideo) TextBright else TextMuted.copy(alpha = 0.35f),
                     onClick = onNext
                 )
             }
 
-            Spacer(modifier = Modifier.width((4 * scale).dp))
+            Spacer(modifier = Modifier.width((4 * sc).dp))
 
             IconCircle(
                 icon = Icons.Rounded.AllInclusive,
-                size = smallButton,
+                size = sb,
                 tint = if (autoPlayEnabled) AmberCore else TextMuted.copy(alpha = 0.6f),
                 onClick = onToggleAutoplay
             )
 
             IconCircle(
                 icon = Icons.Rounded.Audiotrack,
-                size = smallButton,
+                size = sb,
                 tint = if (showAudioSelector) AmberCore else TextBright,
                 modifier = Modifier.onGloballyPositioned {
                     onAudioCenterMeasured(it.positionInRoot().x + it.size.width / 2f)
@@ -135,7 +150,7 @@ internal fun BoxScope.PlayerBottomTransportDock(
 
             IconCircle(
                 icon = Icons.Filled.Equalizer,
-                size = smallButton,
+                size = sb,
                 tint = TextBright,
                 onClick = onAudioFxClick,
             )
@@ -145,7 +160,7 @@ internal fun BoxScope.PlayerBottomTransportDock(
             // their own stream guards elsewhere.
             Box(
                 modifier = Modifier
-                    .size(smallButton)
+                    .size(sb)
                     .clip(RoundedCornerShape(20.dp))
                     .background(GlassSurface)
                     .background(
@@ -173,9 +188,10 @@ internal fun BoxScope.PlayerBottomTransportDock(
                     imageVector = Icons.Rounded.Subtitles,
                     contentDescription = if (isStreamMedia) "Network subtitle controls" else "Subtitle controls",
                     tint = if (showSubtitleActive) AmberCore else TextBright,
-                    modifier = Modifier.size(smallButton * 0.44f)
+                    modifier = Modifier.size(sb * 0.44f)
                 )
             }
+        }
         }
     }
 }
