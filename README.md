@@ -282,7 +282,7 @@ Core technologies and services used by CineVault include:
 - **Media3 / ExoPlayer**
 - **Jellyfin Media3 FFmpeg decoder extension**
 - **jcifs-ng**
-- **Silero VAD / sherpa-onnx**
+- **Silero VAD / sherpa-onnx** (including the sherpa-onnx keyword-spotting zipformer model, Apache-2.0, used for the optional Voice wake word)
 - **TMDB**
 - **OMDb**
 - **OpenSubtitles**

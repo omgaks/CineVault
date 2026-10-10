@@ -12,7 +12,8 @@ design.
 - CineVault does not include advertising, analytics, behavioral-tracking, or
   third-party crash-reporting SDKs.
 - CineVault does not upload the contents of local videos or SMB videos.
-- CineVault does not access contacts, camera, microphone, or location.
+- CineVault does not access contacts, camera, or location.
+- CineVault uses the microphone only if you switch on the optional Voice (beta) feature in Settings, which is off by default. While it is on, audio is analysed on your phone to notice the wake word, only while CineVault is open and the screen is on. Audio is never recorded, stored or sent anywhere.
 - CineVault does not sell user data or share it with advertising networks or
   data brokers.
 

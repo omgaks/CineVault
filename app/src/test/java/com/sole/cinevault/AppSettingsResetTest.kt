@@ -11,6 +11,7 @@ class AppSettingsResetTest {
         assertTrue("cinevault_subtitle_profiles" in RESETTABLE_CINEVAULT_PREFERENCE_FILES)
         assertTrue("cinevault_audio_fx" in RESETTABLE_CINEVAULT_PREFERENCE_FILES)
         assertTrue("cinevault_metadata_settings" in RESETTABLE_CINEVAULT_PREFERENCE_FILES)
+        assertTrue("cinevault_voice" in RESETTABLE_CINEVAULT_PREFERENCE_FILES)
     }
 
     @Test

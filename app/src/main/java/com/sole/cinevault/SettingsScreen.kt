@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Edit
@@ -409,6 +410,124 @@ fun SettingsScreen(
         }
     }
 
+    val voiceSection: @Composable () -> Unit = {
+        var micDenied by remember { mutableStateOf(false) }
+        val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                VoiceRuntime.enabled = true
+                saveVoiceEnabled(context, true)
+                micDenied = false
+            } else {
+                micDenied = true
+            }
+        }
+        // Reading this makes the readout below redraw as the numbers change.
+        @Suppress("UNUSED_VARIABLE") val readoutTick = VoiceRuntime.statsVersion
+        GlassSectionCard(
+            title = "Voice (beta)",
+            subtitle = "Say \"Hey CineVault\" while the app is open.",
+            icon = Icons.Filled.Mic,
+            accent = GelMint
+        ) {
+            SettingsSwitchRow(
+                title = "Voice control",
+                description = "Off by default. Listens only while CineVault is open and the screen is on. Heard on this phone only. Nothing is recorded or sent. For now it only notices the wake word, so you can test how well it hears you.",
+                checked = VoiceRuntime.enabled,
+                isTelevision = isTelevision,
+                onCheckedChange = { on ->
+                    when {
+                        !on -> {
+                            VoiceRuntime.enabled = false
+                            saveVoiceEnabled(context, false)
+                        }
+                        hasMicrophonePermission(context) -> {
+                            VoiceRuntime.enabled = true
+                            saveVoiceEnabled(context, true)
+                            micDenied = false
+                        }
+                        else -> micLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                    }
+                }
+            )
+            if (micDenied) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Voice needs the microphone. Allow it in Android Settings, then switch Voice on again.",
+                    color = GelRose,
+                    fontSize = CineType.Caption,
+                    lineHeight = 17.sp
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            SettingsSwitchRow(
+                title = "Show what I heard",
+                description = "A small note on screen each time the wake word is heard.",
+                checked = VoiceRuntime.showHeard,
+                isTelevision = isTelevision,
+                onCheckedChange = {
+                    VoiceRuntime.showHeard = it
+                    saveVoiceShowHeard(context, it)
+                }
+            )
+            Spacer(modifier = Modifier.height(18.dp))
+            Text("Wake phrases", color = TextBright, fontSize = CineType.Body, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Tick one or more. If one doesn't work for you, tick another. At least one stays on.",
+                color = TextMuted,
+                fontSize = CineType.Caption,
+                lineHeight = 17.sp
+            )
+            VoiceWakePhrase.values().forEach { phrase ->
+                Spacer(modifier = Modifier.height(14.dp))
+                SettingsSwitchRow(
+                    title = phrase.label,
+                    description = phrase.description,
+                    checked = phrase.id in VoiceRuntime.phraseIds,
+                    isTelevision = isTelevision,
+                    onCheckedChange = { on ->
+                        val next = if (on) VoiceRuntime.phraseIds + phrase.id else VoiceRuntime.phraseIds - phrase.id
+                        if (next.isNotEmpty()) {
+                            VoiceRuntime.phraseIds = next
+                            saveVoicePhraseIds(context, next)
+                        }
+                    }
+                )
+            }
+            Spacer(modifier = Modifier.height(18.dp))
+            Text("Readout", color = TextBright, fontSize = CineType.Body, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(6.dp))
+            val stats = VoiceRuntime.stats
+            val status = when {
+                !VoiceRuntime.enabled -> "Voice is off."
+                VoiceRuntime.isListening -> "Listening now."
+                VoiceRuntime.lastError != null -> "Couldn't start: ${VoiceRuntime.lastError}"
+                else -> "Waiting. It listens when CineVault is open and the screen is on."
+            }
+            Text(status, color = if (VoiceRuntime.lastError != null && !VoiceRuntime.isListening) GelRose else TextMuted, fontSize = CineType.Label)
+            Spacer(modifier = Modifier.height(6.dp))
+            Text("Listened: ${formatListened(stats.listenedMs)}", color = TextMuted, fontSize = CineType.Label)
+            Text("Speech-like sound present: ${formatPercent(stats.speechShare())} of that time", color = TextMuted, fontSize = CineType.Label)
+            Text("Wake-word work: ${formatPercent(stats.processingShare())} of one processor core", color = TextMuted, fontSize = CineType.Label)
+            Text("Wake word heard: ${stats.totalHears} times", color = TextMuted, fontSize = CineType.Label)
+            VoiceWakePhrase.values().filter { stats.hearsFor(it.id) > 0 }.forEach { phrase ->
+                Text("   ${phrase.label}: ${stats.hearsFor(phrase.id)}", color = TextFaint, fontSize = CineType.Caption)
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            TvFocusableSlot(
+                isTelevision = isTelevision,
+                shape = RoundedCornerShape(50),
+                onActivate = { stats.reset(); VoiceRuntime.statsVersion++ }
+            ) {
+                CineButton(
+                    text = "Reset readout",
+                    onClick = { stats.reset(); VoiceRuntime.statsVersion++ },
+                    style = CineButtonStyle.Secondary
+                )
+            }
+        }
+    }
+
     val resetSection: @Composable () -> Unit = {
         GlassSectionCard(
             title = "Reset Settings",
@@ -465,13 +584,13 @@ fun SettingsScreen(
     val sectionsByGroup: Map<SettingsGroup, List<@Composable () -> Unit>> = mapOf(
         SettingsGroup.Library to listOf(foldersSection, libraryToolsSection, secretHelpSection),
         SettingsGroup.Network to listOf(networkSection, streamSection),
-        SettingsGroup.Playback to listOf(glassesSection, playerPointerSection),
+        SettingsGroup.Playback to listOf(glassesSection, playerPointerSection, voiceSection),
         SettingsGroup.Tutorial to listOf(tutorialSection),
         SettingsGroup.You to listOf(quickSwitchesSection, nameSection, resetSection, supportSection, aboutSection)
     )
     val phoneOrder: List<@Composable () -> Unit> = listOf(
         quickSwitchesSection, nameSection, tutorialSection, networkSection, streamSection,
-        foldersSection, libraryToolsSection, secretHelpSection, glassesSection, playerPointerSection,
+        foldersSection, libraryToolsSection, secretHelpSection, glassesSection, playerPointerSection, voiceSection,
         resetSection, supportSection, aboutSection
     )
 
@@ -667,6 +786,7 @@ fun SettingsScreen(
                         // Re-read so the switches show their new state at once.
                         metadataFetchEnabled = loadMetadataFetchEnabled(context)
                         collectionPageV2 = loadCollectionPageV2Enabled(context)
+                        VoiceRuntime.loadFrom(context)
                         showResetSettingsConfirm = false
                         Toast.makeText(context, "CineVault settings reset", Toast.LENGTH_SHORT).show()
                     }

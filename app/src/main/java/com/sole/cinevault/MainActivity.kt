@@ -1059,6 +1059,10 @@ fun CineVaultApp() {
       }
     }
 
+    // Voice (beta): off unless switched on in Settings. See VoiceWakeHost.
+    LaunchedEffect(Unit) { VoiceRuntime.loadFrom(context) }
+    VoiceWakeHost()
+
     if (showOnboarding) {
         OnboardingScreen(
             onVideosLoaded = { loadedVideos ->
