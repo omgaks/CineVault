@@ -42,6 +42,15 @@
 # Gson reflection, so they have no exposure to this class of issue.
 -keep class com.sole.cinevault.metadata.TmdbMovieSearchResponse { *; }
 -keep class com.sole.cinevault.metadata.TmdbMovie { *; }
+# Artwork Studio poster lists (TMDB images + Fanart.tv). These were missing,
+# so the release build renamed them and Retrofit/Gson failed with a
+# ClassCastException ("No poster results" on device).
+-keep class com.sole.cinevault.metadata.TmdbImagesResponse { *; }
+-keep class com.sole.cinevault.metadata.TmdbImage { *; }
+-keep class com.sole.cinevault.metadata.FanartImage { *; }
+-keep class com.sole.cinevault.metadata.FanartMovieResponse { *; }
+-keep class com.sole.cinevault.metadata.FanartTvResponse { *; }
+-keep,allowobfuscation interface com.sole.cinevault.metadata.FanartApi
 -keep class com.sole.cinevault.metadata.TmdbTvSearchResponse { *; }
 -keep class com.sole.cinevault.metadata.TmdbTvShow { *; }
 -keep class com.sole.cinevault.metadata.TmdbCreditsResponse { *; }
