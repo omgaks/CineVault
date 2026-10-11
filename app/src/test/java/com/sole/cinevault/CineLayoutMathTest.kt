@@ -40,7 +40,7 @@ class CineLayoutMathTest {
     @Test fun sideRailForWideOrLandscapeWindows() {
         assertFalse(usesSideRail(390, 844))
         assertTrue(usesSideRail(844, 390))   // phone landscape
-        assertTrue(usesSideRail(800, 1280))  // tablet portrait
+        assertFalse(usesSideRail(800, 1280)) // tablet portrait keeps the bottom dock
         assertTrue(usesSideRail(1280, 800))
     }
 }
