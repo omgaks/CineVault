@@ -23,6 +23,7 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
         override fun surfaceDestroyed(holder: SurfaceHolder) { stop() }
     }
 
+    @Synchronized
     fun bind(playerView: PlayerView?) {
         val next = (playerView?.videoSurfaceView as? SurfaceView)?.holder
         if (holder === next) return
@@ -59,11 +60,15 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
         return true
     }
 
+    /** Refuse a second handoff while a previous worker is still shutting down. */
+    fun isRunning(): Boolean = worker != null
+
     fun pause() { playback?.pause() }
     fun resume() { playback?.resume() }
     fun seekTo(positionMs: Long) { playback?.seekTo(positionMs) }
     fun stop() { playback?.stop() }
 
+    @Synchronized
     override fun close() {
         stop()
         holder?.removeCallback(callback)
