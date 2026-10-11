@@ -54,6 +54,7 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
         this.playback = playback
         worker = Thread({
             try {
+                if (playback !== this.playback) return@Thread
                 playback.play(path, surface)
             } catch (error: Throwable) {
                 onFailure(error)

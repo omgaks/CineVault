@@ -37,7 +37,9 @@ internal class FfmpegNativeVideoPlayback(
     /** Runs on a background thread and closes its decoder even on failure. */
     fun play(path: String, surface: Surface): Stats {
         require(surface.isValid) { "Video surface is unavailable" }
-        stopped.set(false)
+        // Never clear a stop requested between worker creation and entry.
+        // A playback instance is single-use; a new rescue attempt gets a new instance.
+        if (stopped.get()) return Stats(presented = 0, dropped = 0)
         var presented = 0
         var dropped = 0
         var originPts: Long? = null
