@@ -80,17 +80,12 @@ internal class FfmpegNativeVideoPlayback(
                         originClock += (clockMs() - started).coerceAtLeast(0L)
                         pauseStarted = null
                     }
-                    // Both the audio clock and decoded frame PTS are absolute media
-                    // positions; convert audio to the same origin-relative timeline.
-                    // If audio is unavailable or still behind the new seek origin, use
-                    // the monotonic clock instead of stalling the video forever.
-                    // Otherwise use the monotonic video clock.
-                    val audioPosition = audioPositionMs?.invoke()
-                    val position = if (audioPosition != null && audioPosition >= originPts) {
-                        (audioPosition - originPts).coerceAtLeast(0L)
-                    } else {
-                        (clockMs() - originClock).coerceAtLeast(0L)
-                    }
+                    val position = FfmpegVideoClockPosition.resolve(
+                        originPtsMs = originPts,
+                        originClockMs = originClock,
+                        nowMs = clockMs(),
+                        audioPositionMs = audioPositionMs?.invoke(),
+                    )
                     when (scheduler.decide(relativePts, position)) {
                         FfmpegVideoFrameScheduleDecision.WAIT -> sleepMs(5L)
                         FfmpegVideoFrameScheduleDecision.DROP_LATE -> {
