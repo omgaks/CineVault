@@ -430,7 +430,8 @@ fun VideoPlayerScreen(
                     VoiceCommand.ExitPlayer -> { latestOnBack(); "Closed" }
                     is VoiceCommand.SkipSeconds -> {
                         exoPlayer.seekTo(seekTargetMs(exoPlayer.currentPosition, exoPlayer.duration.coerceAtLeast(0L), command.seconds * 1000L))
-                        if (command.seconds >= 0) "Skipped forward ${command.seconds} seconds" else "Skipped back ${-command.seconds} seconds"
+                        val at = formatListened(exoPlayer.currentPosition)
+                        if (command.seconds >= 0) "Skipped forward ${command.seconds} seconds (now $at)" else "Skipped back ${-command.seconds} seconds (now $at)"
                     }
                     is VoiceCommand.JumpToMs -> {
                         exoPlayer.seekTo(jumpTargetMs(command.positionMs, exoPlayer.duration.coerceAtLeast(0L)))
@@ -440,8 +441,11 @@ fun VideoPlayerScreen(
                         val target = volumeTargetPercent(chromeUi.volumePercent, command)!!
                         chromeUi.volumePercent = target
                         val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, playerSystemVolumeIndex(target, maxVol), 0)
-                        "Volume $target%"
+                        val wanted = playerSystemVolumeIndex(target, maxVol)
+                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, wanted, 0)
+                        // Report what the phone really did, so a failure is visible on the card.
+                        val actual = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                        if (actual == wanted) "Volume $target%" else "Phone kept volume at $actual of $maxVol"
                     }
                     is VoiceCommand.BrightnessBy, is VoiceCommand.BrightnessTo -> {
                         val target = brightnessTargetPercent(chromeUi.brightnessPercent, command)!!
