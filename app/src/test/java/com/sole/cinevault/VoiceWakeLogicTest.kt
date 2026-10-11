@@ -75,4 +75,23 @@ class VoiceWakeLogicTest {
         assertEquals("0.5%", formatPercent(0.005))
         assertEquals("12%", formatPercent(0.12))
     }
+
+    @Test fun autoGainLiftsQuietMicButNeverAttenuates() {
+        val g = VoiceAutoGain()
+        var gain = 1f
+        repeat(2000) { gain = g.gainFor(0.02f) }
+        assertTrue("quiet mic should be amplified, got $gain", gain > 5f)
+        val loud = VoiceAutoGain()
+        var loudGain = 0f
+        repeat(50) { loudGain = loud.gainFor(0.9f) }
+        assertEquals(1f, loudGain, 0.001f)
+    }
+
+    @Test fun peakTracksLoudestAndResets() {
+        val stats = VoiceStats()
+        stats.addPeak(0.1f); stats.addPeak(0.4f); stats.addPeak(0.2f)
+        assertEquals(0.4f, stats.peak, 0.0001f)
+        stats.reset()
+        assertEquals(0f, stats.peak, 0f)
+    }
 }
