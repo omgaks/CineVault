@@ -15,8 +15,8 @@ import androidx.media3.ui.PlayerView
 @OptIn(UnstableApi::class)
 internal class FfmpegNativeSurfaceBinding : AutoCloseable {
     private var holder: SurfaceHolder? = null
-    private var playback: FfmpegNativeVideoPlayback? = null
-    private var worker: Thread? = null
+    @Volatile private var playback: FfmpegNativeVideoPlayback? = null
+    @Volatile private var worker: Thread? = null
     private val callback = object : SurfaceHolder.Callback {
         override fun surfaceCreated(holder: SurfaceHolder) = Unit
         override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
@@ -36,6 +36,7 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
      * Called only after Media3 relinquishes the surface during a verified rescue
      * handoff. Does not automatically change player ownership or audio routing.
      */
+    @Synchronized
     fun start(path: String, playback: FfmpegNativeVideoPlayback, onFailure: (Throwable) -> Unit): Boolean {
         val surface: Surface = holder?.surface ?: return false
         if (!surface.isValid || worker != null || path.isBlank()) return false
@@ -46,8 +47,13 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
             } catch (error: Throwable) {
                 onFailure(error)
             } finally {
-                this.playback = null
-                worker = null
+                // An older worker must never erase a newer rescue session.
+                synchronized(this@FfmpegNativeSurfaceBinding) {
+                    if (worker === Thread.currentThread()) {
+                        this.playback = null
+                        worker = null
+                    }
+                }
             }
         }, "CineVault-FFmpeg-Video").apply { start() }
         return true
