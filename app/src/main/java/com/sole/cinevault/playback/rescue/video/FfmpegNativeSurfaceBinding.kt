@@ -38,9 +38,19 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
      * handoff. Does not automatically change player ownership or audio routing.
      */
     @Synchronized
-    fun start(path: String, playback: FfmpegNativeVideoPlayback, onFailure: (Throwable) -> Unit): Boolean {
+    fun start(
+        path: String,
+        playback: FfmpegNativeVideoPlayback,
+        onFailure: (Throwable) -> Unit,
+        resumePositionMs: Long = 0L,
+        playWhenReady: Boolean = true,
+    ): Boolean {
         val surface: Surface = holder?.surface ?: return false
-        if (!surface.isValid || worker != null || path.isBlank()) return false
+        if (!surface.isValid || worker != null || path.isBlank() || resumePositionMs < 0L) return false
+        // Prime the decoder worker before it starts so the first frame is
+        // sought to the previous Media3 position and pause state is preserved.
+        if (resumePositionMs > 0L) playback.seekTo(resumePositionMs)
+        if (!playWhenReady) playback.pause()
         this.playback = playback
         worker = Thread({
             try {
