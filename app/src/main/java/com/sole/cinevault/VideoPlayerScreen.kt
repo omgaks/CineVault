@@ -328,6 +328,13 @@ fun VideoPlayerScreen(
     val audioFxController = remember { AudioFxController(context) }
     var showAudioFxDashboard by remember { mutableStateOf(false) }
 
+    // Observe the real video Surface; native rescue never takes ownership until
+    // the Media3 handoff explicitly relinquishes it.
+    val ffmpegSurfaceBinding = remember { com.sole.cinevault.playback.rescue.video.FfmpegNativeSurfaceBinding() }
+    DisposableEffect(ffmpegSurfaceBinding) {
+        onDispose { ffmpegSurfaceBinding.close() }
+    }
+
     var localPlayerView by remember { mutableStateOf<PlayerView?>(null) }
     val glasses = rememberPlayerGlassesMode(
         localPlayerView = localPlayerView,
@@ -966,6 +973,7 @@ fun VideoPlayerScreen(
             videoOffsetX = gestureUi.videoOffsetX,
             videoOffsetY = gestureUi.videoOffsetY,
             onPlayerViewChanged = { pv ->
+                ffmpegSurfaceBinding.bind(pv)
                 localPlayerView = pv
                 studioUi.playerView = pv
             },
