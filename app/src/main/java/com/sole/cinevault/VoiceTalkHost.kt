@@ -149,10 +149,10 @@ internal fun BoxScope.VoiceTalkHost(
             if (next != null) ui = next
     }
 
-    fun startListening(wakeAudio: FloatArray? = null) {
+    fun startListening(wakeAudio: FloatArray? = null, forceWhisper: Boolean = false) {
         // After the wake word, Whisper double-checks the phrase if it is downloaded.
         val checkWake = wakeAudio != null && VoiceTranscriber.isReady(context)
-        val choice = if (checkWake) EngineChoice.UseWhisper
+        val choice = if (checkWake || (forceWhisper && VoiceTranscriber.isReady(context))) EngineChoice.UseWhisper
         else chooseEngine(VoiceRuntime.engine, androidOnDeviceSpeechReady(context), VoiceTranscriber.isReady(context))
         if (choice is EngineChoice.Unavailable) {
             ui = if (choice.reason == "NO_WHISPER_MODEL") TalkUi.NoModel else TalkUi.Message(null, choice.reason, GelRose)
@@ -171,6 +171,10 @@ internal fun BoxScope.VoiceTalkHost(
                         androidSession = null
                         VoiceRuntime.talkActive = false
                         when {
+                            // Auto mode: this phone's speech pack is missing, so use Whisper instead.
+                            code != null && code in setOf(1, 2, 11, 12, 13) &&
+                                VoiceRuntime.engine == SpeechEngine.Auto &&
+                                VoiceTranscriber.isReady(context) -> startListening(forceWhisper = true)
                             code == 6 || code == 7 -> ui = TalkUi.Message(null, describeAndroidSpeechError(code))
                             code != null -> ui = TalkUi.Message(null, describeAndroidSpeechError(code), GelRose)
                             else -> handleText(text ?: "", mine, filmsNow)
