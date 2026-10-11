@@ -85,6 +85,7 @@ internal fun PlayerRuntimeEffects(
         resumePosition: Long,
         subtitleUri: Uri?,
     ) -> Unit,
+    onMalformedContainerRescueRequested: (Long, Boolean) -> Boolean = { _, _ -> false },
     onPositionChanged: (Long) -> Unit,
     onDurationChanged: (Long) -> Unit,
     onBufferingSpinnerChanged: (Boolean) -> Unit,
@@ -200,6 +201,7 @@ internal fun PlayerRuntimeEffects(
         onShowControls = onShowControlsAndTopBar,
         onRetryPlayback = onRetryPlayback,
         onSoftwareFallbackRequested = onSoftwareFallbackRequested,
+        onMalformedContainerRescueRequested = onMalformedContainerRescueRequested,
     )
 
     PlayerTimelineEffects(

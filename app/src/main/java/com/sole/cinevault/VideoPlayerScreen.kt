@@ -722,6 +722,11 @@ fun VideoPlayerScreen(
                 subtitleUri = subtitleUri,
             )
         },
+        // Native rescue remains opt-in until the audio/control handoff is ready.
+        // Eligibility is evaluated here against the actual active video path.
+        onMalformedContainerRescueRequested = { _, _ ->
+            false
+        },
         onPositionChanged = { position = it },
         onDurationChanged = { duration = it },
         onBufferingSpinnerChanged = { playbackHealth.showBufferingSpinner = it },
