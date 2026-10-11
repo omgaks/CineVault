@@ -133,13 +133,16 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
     // the way after a short time (it used to stay up through the scene itself). A scene time we
     // have only guessed also expires, but the timer restarts when the guess arrives so its
     // SKIP TO SCENE button is shown. A time from a data source stays until the scene starts.
-    var creditNoticeExpired by remember(duration) { mutableStateOf(false) }
+    // Not keyed on duration: a duration that settles late would silently reset this to false
+    // without restarting the timer below, and the card would then stay up for ever.
+    var creditNoticeExpired by remember { mutableStateOf(false) }
     val sceneTimeIsGuess = exactSceneSegment == null ||
         com.sole.cinevault.segments.isDetectedSegment(exactSceneSegment)
     LaunchedEffect(creditNoticeWanted, exactSceneSegment?.startMs) {
         creditNoticeExpired = false
-        if (creditNoticeWanted && sceneTimeIsGuess) {
-            delay(20_000)
+        if (creditNoticeWanted) {
+            // A known scene time stays longer (until the scene starts, or 60 s); a guess goes sooner.
+            delay(if (sceneTimeIsGuess) 20_000 else 60_000)
             creditNoticeExpired = true
         }
     }
