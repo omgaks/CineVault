@@ -163,7 +163,7 @@ fun HomeScreen(
         val contentWidthDp = maxWidth.value - 32f
         val widthClass = cineWidthClassFor(maxWidth.value.toInt())
         val isWide = widthClass != CineWidthClass.Compact
-        val heroHeight = (maxWidth * 0.62f).coerceIn(230.dp, 380.dp)
+        val heroHeight = (maxWidth * 0.62f).coerceIn(230.dp, 380.dp).coerceAtMost(screenMaxHeight * 0.45f).coerceAtLeast(150.dp)
         val posterColumns = adaptiveColumnCount(contentWidthDp)
 
         androidx.compose.foundation.lazy.LazyColumn(
@@ -176,25 +176,6 @@ fun HomeScreen(
             contentPadding = PaddingValues(bottom = 30.dp)
         ) {
             if (videos.isNotEmpty()) {
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "$dateLabel \u00B7 ${homeDayPart(nowHour)}",
-                            color = AmberCore,
-                            fontFamily = PlexMonoFamily,
-                            fontSize = CineType.Caption,
-                            letterSpacing = 1.6.sp
-                        )
-                        Text(
-                            text = homeGreeting(nowHour, greetingName),
-                            color = TextBright,
-                            fontFamily = NewsreaderFamily,
-                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                            fontSize = CineType.Display
-                        )
-                    }
-                }
-
                 item {
                     Box(
                         modifier = Modifier
@@ -245,19 +226,20 @@ fun HomeScreen(
                                 .padding(24.dp)
                         ) {
                             Text(
-                                text = "Your Cinema Library",
+                                text = "$dateLabel \u00B7 ${homeDayPart(nowHour)}",
+                                color = AmberCore,
+                                fontFamily = PlexMonoFamily,
+                                fontSize = CineType.Caption,
+                                letterSpacing = 1.6.sp
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = homeGreeting(nowHour, greetingName),
                                 color = TextBright,
                                 fontFamily = NewsreaderFamily,
+                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
                                 fontSize = CineType.Display
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Movies \u2022 TV Shows \u2022 Local Playback",
-                                color = TextMuted,
-                                fontSize = CineType.Label
-                            )
-                            Spacer(modifier = Modifier.height(14.dp))
-                            CineButton(text = "Open Library", onClick = onScanRequest)
                         }
                     }
                 }
