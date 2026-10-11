@@ -9,9 +9,8 @@ import java.util.concurrent.atomic.AtomicLong
  * Synchronous continuous native-video presentation loop.
  *
  * The caller supplies a worker thread and owns the Surface. Stop is cooperative;
- * do not close the decoder concurrently with nextFrame(). Audio, seeking and
- * Media3 rescue activation is not wired here. An optional audio clock can
- * govern video frame pacing once the host audio renderer is connected.
+ * do not close the decoder concurrently with nextFrame(). An optional audio
+ * clock can govern frame pacing; Media3 rescue activation is not wired here.
  */
 internal class FfmpegNativeVideoPlayback(
     private val clockMs: () -> Long = SystemClock::elapsedRealtime,
@@ -81,11 +80,12 @@ internal class FfmpegNativeVideoPlayback(
                         originClock += (clockMs() - started).coerceAtLeast(0L)
                         pauseStarted = null
                     }
-                    // Prefer the audio clock when the host supplies a valid position.
+                    // Both the audio clock and decoded frame PTS are absolute media
+                    // positions; convert audio to the same origin-relative timeline.
                     // Otherwise use the monotonic video clock.
                     val audioPosition = audioPositionMs?.invoke()
                     val position = if (audioPosition != null && audioPosition >= 0L) {
-                        audioPosition
+                        (audioPosition - originPts).coerceAtLeast(0L)
                     } else {
                         (clockMs() - originClock).coerceAtLeast(0L)
                     }
