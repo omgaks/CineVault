@@ -722,9 +722,23 @@ fun VideoPlayerScreen(
                 subtitleUri = subtitleUri,
             )
         },
-        // Native rescue remains opt-in until the audio/control handoff is ready.
-        // Eligibility is evaluated here against the actual active video path.
+        // Evaluate the real source and native decoder availability before any
+        // surface takeover. Actual activation remains disabled until Media3
+        // audio and control ownership are transferred safely.
         onMalformedContainerRescueRequested = { _, _ ->
+            val nativeEligible =
+                com.sole.cinevault.playback.rescue.video.FfmpegNativeRescueEligibility.shouldAttempt(
+                    errorCode = androidx.media3.common.PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+                    localPath = currentVideo.path,
+                    nativeLibraryAvailable =
+                        com.sole.cinevault.playback.rescue.video.FfmpegContainerProbeLoader.isAvailable(),
+                    alreadyAttempted = ffmpegSurfaceBinding.isRunning(),
+                )
+            if (nativeEligible) {
+                // Do not claim the error: Media3 recovery remains in charge
+                // until the full native audio/video handoff is installed.
+                ffmpegSurfaceBinding.stop()
+            }
             false
         },
         onPositionChanged = { position = it },
