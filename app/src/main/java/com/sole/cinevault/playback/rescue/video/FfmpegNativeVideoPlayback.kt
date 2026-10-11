@@ -10,12 +10,14 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * The caller supplies a worker thread and owns the Surface. Stop is cooperative;
  * do not close the decoder concurrently with nextFrame(). Audio, seeking and
- * Media3 rescue activation are intentionally reserved for Slice 2.
+ * Media3 rescue activation is not wired here. An optional audio clock can
+ * govern video frame pacing once the host audio renderer is connected.
  */
 internal class FfmpegNativeVideoPlayback(
     private val clockMs: () -> Long = SystemClock::elapsedRealtime,
     private val sleepMs: (Long) -> Unit = Thread::sleep,
     private val scheduler: FfmpegVideoFrameScheduler = FfmpegVideoFrameScheduler(),
+    private val audioPositionMs: (() -> Long?)? = null,
 ) {
     private val stopped = AtomicBoolean(false)
     private val paused = AtomicBoolean(false)
@@ -37,7 +39,6 @@ internal class FfmpegNativeVideoPlayback(
     fun play(path: String, surface: Surface): Stats {
         require(surface.isValid) { "Video surface is unavailable" }
         stopped.set(false)
-        pendingSeekMs.set(NO_SEEK)
         var presented = 0
         var dropped = 0
         var originPts: Long? = null
@@ -80,7 +81,14 @@ internal class FfmpegNativeVideoPlayback(
                         originClock += (clockMs() - started).coerceAtLeast(0L)
                         pauseStarted = null
                     }
-                    val position = (clockMs() - originClock).coerceAtLeast(0L)
+                    // Prefer the audio clock when the host supplies a valid position.
+                    // Otherwise use the monotonic video clock.
+                    val audioPosition = audioPositionMs?.invoke()
+                    val position = if (audioPosition != null && audioPosition >= 0L) {
+                        audioPosition
+                    } else {
+                        (clockMs() - originClock).coerceAtLeast(0L)
+                    }
                     when (scheduler.decide(relativePts, position)) {
                         FfmpegVideoFrameScheduleDecision.WAIT -> sleepMs(5L)
                         FfmpegVideoFrameScheduleDecision.DROP_LATE -> {
