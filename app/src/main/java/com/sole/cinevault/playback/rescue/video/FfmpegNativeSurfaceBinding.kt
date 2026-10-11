@@ -1,6 +1,7 @@
 package com.sole.cinevault.playback.rescue.video
 
 import android.view.Surface
+import androidx.annotation.OptIn
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.media3.common.util.UnstableApi
@@ -11,7 +12,7 @@ import androidx.media3.ui.PlayerView
  * A future rescue handoff must detach Media3 before starting native presentation.
  * Surface destruction stops native decoding before the underlying Surface is reused.
  */
-@UnstableApi
+@OptIn(UnstableApi::class)
 internal class FfmpegNativeSurfaceBinding : AutoCloseable {
     private var holder: SurfaceHolder? = null
     private var playback: FfmpegNativeVideoPlayback? = null
