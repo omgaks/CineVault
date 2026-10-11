@@ -134,7 +134,7 @@ internal fun HeroCard() {
 
 // ── Glass section card with a glowing accent icon chip in the header ────────
 @Composable
-internal fun GlassSectionCard(title: String, subtitle: String, icon: ImageVector, accent: Color, content: @Composable ColumnScope.() -> Unit) {
+internal fun GlassSectionCard(title: String, subtitle: String, icon: ImageVector, accent: Color, showHeader: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth()
             .shadow(14.dp, RoundedCornerShape(24.dp), ambientColor = accent.copy(alpha = 0.25f), spotColor = accent.copy(alpha = 0.35f))
@@ -142,6 +142,7 @@ internal fun GlassSectionCard(title: String, subtitle: String, icon: ImageVector
             .border(1.dp, accent.copy(alpha = 0.22f), RoundedCornerShape(24.dp))
             .padding(16.dp)
     ) {
+        if (showHeader) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier.size(42.dp).clip(RoundedCornerShape(14.dp))
@@ -157,6 +158,7 @@ internal fun GlassSectionCard(title: String, subtitle: String, icon: ImageVector
             }
         }
         Spacer(modifier = Modifier.height(14.dp))
+        }
         content()
     }
 }
@@ -177,7 +179,7 @@ internal fun GlassActionRow(icon: ImageVector, iconTint: Color = AmberCore, titl
         Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(text = title, color = TextBright, fontSize = CineType.Title, fontWeight = FontWeight.Bold)
-            Text(text = subtitle, color = TextMuted, fontSize = CineType.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = subtitle, color = TextMuted, fontSize = CineType.Caption, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         Text(text = action, color = iconTint, fontSize = CineType.Caption, fontWeight = FontWeight.Black)
     }
