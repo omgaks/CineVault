@@ -3,6 +3,7 @@ package com.sole.cinevault.playback.rescue.video
 import android.os.SystemClock
 import android.view.Surface
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Synchronous continuous native-video presentation loop.
@@ -18,6 +19,7 @@ internal class FfmpegNativeVideoPlayback(
 ) {
     private val stopped = AtomicBoolean(false)
     private val paused = AtomicBoolean(false)
+    private val pendingSeekMs = AtomicLong(NO_SEEK)
 
     data class Stats(val presented: Int, val dropped: Int)
 
@@ -25,10 +27,17 @@ internal class FfmpegNativeVideoPlayback(
     fun resume() { paused.set(false) }
     fun stop() { stopped.set(true) }
 
+    /** Queues a seek; native decoder access remains confined to the playback worker. */
+    fun seekTo(positionMs: Long) {
+        require(positionMs >= 0L)
+        pendingSeekMs.set(positionMs)
+    }
+
     /** Runs on a background thread and closes its decoder even on failure. */
     fun play(path: String, surface: Surface): Stats {
         require(surface.isValid) { "Video surface is unavailable" }
         stopped.set(false)
+        pendingSeekMs.set(NO_SEEK)
         var presented = 0
         var dropped = 0
         var originPts: Long? = null
@@ -36,6 +45,13 @@ internal class FfmpegNativeVideoPlayback(
         var pauseStarted: Long? = null
         FfmpegNativeDecoderSession.open(path).use { decoder ->
             while (!stopped.get()) {
+                val seek = pendingSeekMs.getAndSet(NO_SEEK)
+                if (seek != NO_SEEK) {
+                    decoder.seekTo(seek)
+                    originPts = seek
+                    originClock = clockMs()
+                    pauseStarted = null
+                }
                 if (paused.get()) {
                     if (pauseStarted == null) pauseStarted = clockMs()
                     sleepMs(10L)
@@ -46,12 +62,15 @@ internal class FfmpegNativeVideoPlayback(
                     pauseStarted = null
                 }
                 val frame = decoder.nextFrame() ?: break
+                if (pendingSeekMs.get() != NO_SEEK) continue
+                if (originPts != null && frame.presentationTimeMs < originPts) continue
                 if (originPts == null) {
                     originPts = frame.presentationTimeMs
                     originClock = clockMs()
                 }
                 val relativePts = (frame.presentationTimeMs - originPts).coerceAtLeast(0L)
                 while (!stopped.get()) {
+                    if (pendingSeekMs.get() != NO_SEEK) break
                     if (paused.get()) {
                         if (pauseStarted == null) pauseStarted = clockMs()
                         sleepMs(10L)
@@ -80,5 +99,9 @@ internal class FfmpegNativeVideoPlayback(
             }
         }
         return Stats(presented, dropped)
+    }
+
+    private companion object {
+        const val NO_SEEK = -1L
     }
 }
