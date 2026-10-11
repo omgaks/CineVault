@@ -574,6 +574,7 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(6.dp))
             Text("Listened: ${formatListened(stats.listenedMs)}", color = TextMuted, fontSize = CineType.Label)
             Text("Speech-like sound present: ${formatPercent(stats.speechShare())} of that time", color = TextMuted, fontSize = CineType.Label)
+            Text("Loudest microphone level: ${(stats.peak * 100).toInt()}%${if (stats.listenedMs > 5000 && stats.peak < 0.05f) " (very quiet: this phone's mic gives almost no signal)" else ""}", color = TextMuted, fontSize = CineType.Label)
             Text("Wake-word work: ${formatPercent(stats.processingShare())} of one processor core", color = TextMuted, fontSize = CineType.Label)
             Text("Wake word heard: ${stats.totalHears} times", color = TextMuted, fontSize = CineType.Label)
             Text("Confirmed by the speech check: ${stats.confirmed}, turned away: ${stats.rejected}", color = TextMuted, fontSize = CineType.Label)

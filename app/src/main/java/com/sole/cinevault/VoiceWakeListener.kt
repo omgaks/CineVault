@@ -139,6 +139,7 @@ internal class VoiceWakeListener(
             val recent = ArrayDeque<FloatArray>()      // about 2.5 s of the latest sound, for the speech check
             val shorts = ShortArray(WINDOW_SAMPLES)
             val stats = VoiceRuntime.stats
+            val autoGain = VoiceAutoGain()
             var wasOpen = false
             var lastWakeAt = 0L
 
@@ -150,7 +151,11 @@ internal class VoiceWakeListener(
                     read += n
                 }
                 if (read < WINDOW_SAMPLES) break
-                val window = FloatArray(WINDOW_SAMPLES) { shorts[it] / 32768f }
+                var windowPeak = 0f
+                for (i in 0 until WINDOW_SAMPLES) { val a = kotlin.math.abs(shorts[i] / 32768f); if (a > windowPeak) windowPeak = a }
+                stats.addPeak(windowPeak)
+                val gain = autoGain.gainFor(windowPeak)
+                val window = FloatArray(WINDOW_SAMPLES) { (shorts[it] / 32768f * gain).coerceIn(-1f, 1f) }
                 recent.addLast(window)
                 while (recent.size > RECENT_WINDOWS) recent.removeFirst()
 
