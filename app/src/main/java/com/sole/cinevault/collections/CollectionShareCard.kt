@@ -128,15 +128,16 @@ fun shareCollectionCard(context: Context, model: ShareCardModel): Boolean = runC
     val bitmap = renderShareCard(model)
     val dir = File(context.cacheDir, "share").apply { mkdirs() }
     dir.listFiles()?.forEach { it.delete() }
-    val file = File(dir, "collection-${System.currentTimeMillis()}.png")
-    FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    val file = File(dir, "collection-${System.currentTimeMillis()}.jpg")
+    FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 92, it) }
     bitmap.recycle()
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.shareprovider", file)
     val send = Intent(Intent.ACTION_SEND).apply {
-        type = "image/png"
+        // JPEG: WhatsApp and Messenger accept it more reliably than a large PNG.
+        type = "image/jpeg"
         putExtra(Intent.EXTRA_STREAM, uri)
         // The clip data is what the share sheet reads to draw the preview picture.
-        clipData = android.content.ClipData.newRawUri("Collection card", uri)
+        clipData = android.content.ClipData("Collection card", arrayOf("image/jpeg"), android.content.ClipData.Item(uri))
         putExtra(Intent.EXTRA_TITLE, "Collection card")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
