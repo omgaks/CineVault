@@ -54,6 +54,8 @@ internal fun PlayerEventListener(
         resumePosition: Long,
         subtitleUri: android.net.Uri?,
     ) -> Unit,
+    onMalformedContainerRescueRequested: (resumePosition: Long, playWhenReady: Boolean) -> Boolean =
+        { _, _ -> false },
 ) {
     DisposableEffect(
         player, currentVideoPath, currentMediaType, isStreamMedia, episodeList,
@@ -135,6 +137,16 @@ internal fun PlayerEventListener(
                     return
                 }
                 val positionAtError = player.currentPosition.coerceAtLeast(0L)
+                // Let the native rescue host claim only malformed local containers.
+                // If it cannot activate, preserve the existing Media3 recovery path.
+                if (
+                    error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED &&
+                    !isStreamMedia &&
+                    onMalformedContainerRescueRequested(positionAtError, player.playWhenReady)
+                ) {
+                    onPlayerErrorMessageChanged(null)
+                    return
+                }
                 val attribution = attributePlaybackFailure(error)
 
                 // D15-R1: a bad/unsupported subtitle must not take the movie down
