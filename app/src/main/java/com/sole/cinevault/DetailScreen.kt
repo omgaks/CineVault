@@ -99,6 +99,11 @@ fun DetailScreen(
     onActorClick: (Int, String, String?) -> Unit = { _, _, _ -> },
     onNativeCollectionClick: (Int, String) -> Unit = { _, _ -> },
     onCuratedCollectionClick: (String) -> Unit = {},
+    // Franchise strip: the rest of this film's collection / universe.
+    libraryVideos: List<VideoWithMetadata> = emptyList(),
+    onOpenFilm: (VideoWithMetadata) -> Unit = {},
+    onUniverseClick: (String) -> Unit = {},
+    onSearchLibrary: (String) -> Unit = {},
     // Called after a manual "Fix Match" is applied, with the freshly
     // re-matched metadata. The caller (wherever this screen is invoked from,
     // e.g. MainActivity's nav stack) should update whatever it holds for
@@ -575,6 +580,17 @@ fun DetailScreen(
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(24.dp))
+                com.sole.cinevault.collections.FranchiseStrip(
+                    item = item,
+                    libraryVideos = libraryVideos,
+                    isTelevision = isTelevision,
+                    onOpenFilm = onOpenFilm,
+                    onOpenCollection = onNativeCollectionClick,
+                    onOpenUniverse = onUniverseClick,
+                    onSearchLibrary = onSearchLibrary
+                )
 
                 Spacer(modifier = Modifier.height(28.dp))
                 Text(text = "File", color = TextFaint, fontSize = 12.sp, fontWeight = FontWeight.Bold)
