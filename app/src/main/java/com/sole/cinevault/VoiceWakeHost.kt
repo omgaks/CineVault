@@ -84,6 +84,18 @@ internal fun VoiceWakeHost() {
         micAllowed = hasMicrophonePermission(context)
         while (enabled && visible) { delay(1500); micAllowed = hasMicrophonePermission(context) }
     }
+    // The wake word needs the microphone. Ask once as soon as it is wanted, instead of
+    // waiting for the first tap on the mic button (which is what used to trigger the prompt).
+    var askedForMic by remember { mutableStateOf(false) }
+    val micLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted -> micAllowed = granted }
+    LaunchedEffect(enabled, micAllowed, visible, VoiceRuntime.wakeListening) {
+        if (enabled && visible && VoiceRuntime.wakeListening && !micAllowed && !askedForMic) {
+            askedForMic = true
+            micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
     val shouldListen = enabled && micAllowed && visible && screenOn &&
         VoiceRuntime.wakeListening && !VoiceRuntime.talkActive
 
