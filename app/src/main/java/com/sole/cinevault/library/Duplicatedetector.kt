@@ -114,6 +114,17 @@ fun findDuplicateGroups(context: Context, videos: List<VideoWithMetadata>): List
         .map { DuplicateGroup(it) }
 }
 
+/**
+ * Copies of one film in different qualities (a 4K HDR file and a 1080p file) never match by
+ * size, but they are the same film: same TMDB id. Movies only; TV episodes are never folded.
+ */
+internal fun sameFilmGroups(videos: List<VideoWithMetadata>): List<List<VideoWithMetadata>> =
+    videos.filter { it.type.equals("movie", ignoreCase = true) && it.tmdbId != null }
+        .distinctBy { it.video.path }
+        .groupBy { it.tmdbId }
+        .values
+        .filter { it.size > 1 }
+
 /** Same key = same film: its TMDB id when matched, otherwise its tidied title. */
 internal fun filmIdentityKey(tmdbId: Int?, title: String): String =
     if (tmdbId != null) "tmdb:$tmdbId"
