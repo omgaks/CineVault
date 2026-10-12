@@ -113,6 +113,40 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
         return true
     }
 
+    /**
+     * Atomic preflight for video-surface ownership. Audio/control takeover
+     * must be arranged by the caller before accepting the rescue request.
+     * If the worker cannot start, restore Media3 immediately.
+     */
+    @Synchronized
+    fun startAfterMedia3Release(
+        player: ExoPlayer,
+        playerView: PlayerView,
+        path: String,
+        playback: FfmpegNativeVideoPlayback,
+        resumePositionMs: Long,
+        playWhenReady: Boolean,
+        onFailure: (Throwable) -> Unit,
+        onCompleted: (FfmpegNativeVideoPlayback.Stats) -> Unit = {},
+    ): Boolean {
+        if (!releaseMedia3VideoSurface(player, playerView)) return false
+        return try {
+            val started = start(
+                path = path,
+                playback = playback,
+                onFailure = onFailure,
+                resumePositionMs = resumePositionMs,
+                playWhenReady = playWhenReady,
+                onCompleted = onCompleted,
+            )
+            if (!started) rollbackMedia3VideoSurface(player, playerView)
+            started
+        } catch (error: Throwable) {
+            rollbackMedia3VideoSurface(player, playerView)
+            throw error
+        }
+    }
+
     /** Refuse a second handoff while a previous worker is still shutting down. */
     fun isRunning(): Boolean = worker != null
 
