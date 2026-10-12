@@ -351,7 +351,8 @@ fun VideoPlayerScreen(
     // Media3 stops being the timeline authority during native rescue.
     LaunchedEffect(ffmpegRescueActive) {
         while (ffmpegRescueActive) {
-            ffmpegAvCoordinator.positionMs()?.let { position = it }
+            if (!chromeUi.isDraggingSeekbar) ffmpegAvCoordinator.positionMs()?.let { position = it }
+            ffmpegAvCoordinator.durationMs()?.let { duration = it }
             kotlinx.coroutines.delay(100L)
         }
     }
@@ -447,8 +448,8 @@ fun VideoPlayerScreen(
                 when (command) {
                     VoiceCommand.Play -> { if (ffmpegRescueActive) { ffmpegAvCoordinator.resume(); isPlaying = true } else exoPlayer.play(); "Playing" }
                     VoiceCommand.Pause -> { if (ffmpegRescueActive) { ffmpegAvCoordinator.pause(); isPlaying = false } else exoPlayer.pause(); "Paused" }
-                    VoiceCommand.Mute -> { voiceMuted = true; exoPlayer.volume = 0f; "Muted" }
-                    VoiceCommand.Unmute -> { voiceMuted = false; exoPlayer.volume = 1f; "Sound on" }
+                    VoiceCommand.Mute -> { voiceMuted = true; exoPlayer.volume = 0f; ffmpegAvCoordinator.setVolume(0f); "Muted" }
+                    VoiceCommand.Unmute -> { voiceMuted = false; exoPlayer.volume = 1f; ffmpegAvCoordinator.setVolume(1f); "Sound on" }
                     VoiceCommand.NextEpisode -> { playbackNavigationCoordinator.playNext(); "Next" }
                     VoiceCommand.PreviousEpisode -> { playbackNavigationCoordinator.playPrevious(); "Previous" }
                     VoiceCommand.SubtitlesOn -> { coreUi.subtitlesEnabled = true; "Subtitles on" }
@@ -489,7 +490,11 @@ fun VideoPlayerScreen(
                     is VoiceCommand.PlayTitle -> null
                 }
             },
-            duck = { on -> exoPlayer.volume = if (on) DUCK_VOLUME else if (voiceMuted) 0f else 1f },
+            duck = { on ->
+                val gain = if (voiceMuted) 0f else if (on) DUCK_VOLUME else 1f
+                exoPlayer.volume = gain
+                ffmpegAvCoordinator.setVolume(gain)
+            },
             controlsVisible = { chromeUi.showControls }
         )
     }
@@ -614,7 +619,7 @@ fun VideoPlayerScreen(
             )
         },
         getCurrentSafeResumePosition = {
-            playerSafeResumePosition(exoPlayer.currentPosition)
+            playerSafeResumePosition(if (ffmpegRescueActive) position else exoPlayer.currentPosition)
         },
         setters = PlayerVideoSessionSetters(
             setMovieSubtitleMemoryReady = { movieSubtitleMemoryReady = it },
@@ -762,6 +767,7 @@ fun VideoPlayerScreen(
                 false
             } else {
                 ffmpegRescueAttemptedPath = currentVideo.path
+                ffmpegAvCoordinator.setVolume(exoPlayer.volume)
                 val started = ffmpegAvCoordinator.start(
                     player = exoPlayer,
                     playerView = view,
@@ -770,11 +776,13 @@ fun VideoPlayerScreen(
                     playWhenReady = playWhenReady,
                     onFailure = { error ->
                         ffmpegRescueActive = false
+                        isPlaying = false
                         playbackHealth.playerErrorMessage =
                             "FFmpeg rescue failed: ${error.message ?: "Unknown error"}"
                     },
                     onCompleted = {
                         ffmpegRescueActive = false
+                        isPlaying = false
                         isVideoEnded = true
                     },
                 )
@@ -786,7 +794,9 @@ fun VideoPlayerScreen(
                 started
             }
         },
-        onPositionChanged = { if (!ffmpegRescueActive) position = it },
+        playbackPositionMs = { if (ffmpegRescueActive) ffmpegAvCoordinator.positionMs() ?: position else exoPlayer.currentPosition },
+        playbackDurationMs = { if (ffmpegRescueActive) ffmpegAvCoordinator.durationMs() ?: duration else exoPlayer.duration },
+        onPositionChanged = { position = it },
         onDurationChanged = { duration = it },
         onBufferingSpinnerChanged = { playbackHealth.showBufferingSpinner = it },
         onStuckBufferingChanged = { playbackHealth.stuckBufferingHint = it },
@@ -1095,6 +1105,10 @@ fun VideoPlayerScreen(
             context = context,
             activity = activity,
             player = exoPlayer,
+            playbackPositionMs = { if (ffmpegRescueActive) position else exoPlayer.currentPosition },
+            playbackDurationMs = { if (ffmpegRescueActive) duration else exoPlayer.duration },
+            nativeSeek = if (ffmpegRescueActive) ({ target: Long -> ffmpegAvCoordinator.seekTo(target); position = target }) else null,
+            nativeTogglePlayPause = if (ffmpegRescueActive) ({ if (isPlaying) ffmpegAvCoordinator.pause() else ffmpegAvCoordinator.resume(); isPlaying = !isPlaying }) else null,
             audioManager = audioManager,
             externalDisplayActive = glasses.isActive,
             currentVideoPath = currentVideo.path,

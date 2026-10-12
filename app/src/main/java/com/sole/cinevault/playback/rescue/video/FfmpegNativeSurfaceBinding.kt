@@ -12,7 +12,7 @@ import androidx.media3.exoplayer.ExoPlayer
 
 /**
  * Observes the actual PlayerView video surface without taking it away from Media3.
- * A future rescue handoff must detach Media3 before starting native presentation.
+ * Rescue detaches Media3 before starting native presentation.
  * Surface destruction stops native decoding before the underlying Surface is reused.
  */
 @OptIn(UnstableApi::class)
@@ -22,6 +22,8 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
     private var media3SurfaceReleased = false
     private var surfaceGeneration = 0L
     private var sessionGeneration = 0L
+    var onSurfaceUnavailable: (() -> Unit)? = null
+    private val stoppedCallbacks = mutableListOf<() -> Unit>()
     @Volatile private var playback: FfmpegNativeVideoPlayback? = null
     @Volatile private var worker: Thread? = null
     private val callback = object : SurfaceHolder.Callback {
@@ -31,6 +33,7 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
             synchronized(this@FfmpegNativeSurfaceBinding) {
                 surfaceGeneration++
                 stop()
+                onSurfaceUnavailable?.invoke()
             }
         }
     }
@@ -39,7 +42,9 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
     fun bind(playerView: PlayerView?) {
         val next = (playerView?.videoSurfaceView as? SurfaceView)?.holder
         if (holder === next) return
+        val wasRunning = isRunning()
         stop()
+        if (wasRunning) onSurfaceUnavailable?.invoke()
         surfaceGeneration++
         media3SurfaceReleased = false
         holder?.removeCallback(callback)
@@ -116,12 +121,16 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
             } finally {
                 // Release worker ownership before posting completion. This lets
                 // the main-thread coordinator restore the Media3 surface safely.
-                synchronized(this@FfmpegNativeSurfaceBinding) {
+                val callbacks = synchronized(this@FfmpegNativeSurfaceBinding) {
                     if (worker === Thread.currentThread()) {
                         this.playback = null
                         worker = null
                     }
+                    stoppedCallbacks.toList().also { stoppedCallbacks.clear() }
                 }
+                // Shutdown callbacks run even when surface/session invalidation
+                // suppresses a normal completion event.
+                mainHandler.post { callbacks.forEach { it() } }
                 val result = stats
                 val error = failure
                 if (result != null || error != null) {
@@ -181,9 +190,13 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
     fun resume() { playback?.resume() }
     fun seekTo(positionMs: Long) { playback?.seekTo(positionMs) }
     @Synchronized
-    fun stop() {
+    fun stop(onStopped: (() -> Unit)? = null) {
         sessionGeneration++
         playback?.stop()
+        if (onStopped != null) {
+            if (worker == null) mainHandler.post { onStopped() }
+            else stoppedCallbacks += onStopped
+        }
     }
 
     @Synchronized
@@ -192,6 +205,7 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
         surfaceGeneration++
         holder?.removeCallback(callback)
         holder = null
+        onSurfaceUnavailable = null
         media3SurfaceReleased = false
     }
 }

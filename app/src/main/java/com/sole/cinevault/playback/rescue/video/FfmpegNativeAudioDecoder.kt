@@ -7,6 +7,11 @@ package com.sole.cinevault.playback.rescue.video
  * Native methods must never be called concurrently with close().
  */
 internal class FfmpegNativeAudioDecoder private constructor(private var handle: Long) : AutoCloseable {
+    fun durationMs(): Long {
+        check(handle != 0L)
+        return nativeDurationMs(handle)
+    }
+
     fun nextPcm(): ByteArray? {
         check(handle != 0L)
         return nativeNext(handle)
@@ -26,6 +31,7 @@ internal class FfmpegNativeAudioDecoder private constructor(private var handle: 
     }
 
     private external fun nativeOpen(path: String): Long
+    private external fun nativeDurationMs(handle: Long): Long
     private external fun nativeNext(handle: Long): ByteArray?
     private external fun nativeSeek(handle: Long, positionMs: Long)
     private external fun nativeClose(handle: Long)

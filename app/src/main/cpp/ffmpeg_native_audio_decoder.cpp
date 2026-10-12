@@ -138,3 +138,11 @@ Java_com_sole_cinevault_playback_rescue_video_FfmpegNativeAudioDecoder_nativeClo
     JNIEnv*, jobject, jlong handle) {
     delete reinterpret_cast<AudioSession*>(handle);
 }
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_sole_cinevault_playback_rescue_video_FfmpegNativeAudioDecoder_nativeDurationMs(
+    JNIEnv*, jobject, jlong handle) {
+    auto* s = reinterpret_cast<AudioSession*>(handle);
+    if (!s || s->format->duration == AV_NOPTS_VALUE || s->format->duration <= 0) return 0;
+    return av_rescale_q(s->format->duration, AVRational{1, AV_TIME_BASE}, AVRational{1, 1000});
+}

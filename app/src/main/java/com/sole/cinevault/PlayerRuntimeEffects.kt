@@ -108,6 +108,8 @@ internal fun PlayerRuntimeEffects(
     onHideSubtitleDock: () -> Unit,
     onHideSubtitleBloom: () -> Unit,
     onHideDualSubsWindow: () -> Unit,
+    playbackPositionMs: () -> Long = { player.currentPosition },
+    playbackDurationMs: () -> Long = { player.duration },
 ) {
     PlayerSessionLifecycle(
         context = context,
@@ -119,6 +121,7 @@ internal fun PlayerRuntimeEffects(
         onNextRequested = onNextRequested,
         onPreviousRequested = onPreviousRequested,
         onInitialBrightnessChanged = onInitialBrightnessChanged,
+        playbackPositionMs = playbackPositionMs,
     )
 
     PlayerEventListener(
@@ -227,6 +230,8 @@ internal fun PlayerRuntimeEffects(
         onPreviewFramesChanged = onPreviewFramesChanged,
         onPreviewBitmapChanged = onPreviewBitmapChanged,
         onSeekPreviewLargeChanged = onSeekPreviewLargeChanged,
+        playbackPositionMs = playbackPositionMs,
+        playbackDurationMs = playbackDurationMs,
     )
 
     PlayerPipWindowEffect(

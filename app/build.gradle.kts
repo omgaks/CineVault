@@ -61,7 +61,7 @@ android {
         // also receive their runtime dependencies. Stage the SDK libraries as
         // native JNI libs for this opt-in build only.
         val ffmpegNativeLibs = file("$ffmpegRoot/lib")
-        val ffmpegRequired = listOf("libavformat.so", "libavcodec.so", "libavutil.so")
+        val ffmpegRequired = listOf("libavformat.so", "libavcodec.so", "libavutil.so", "libswscale.so", "libswresample.so")
         ffmpegRequired.forEach { library ->
             require(file("$ffmpegRoot/lib/$library").isFile) {
                 "Missing FFmpeg native runtime dependency: $library"

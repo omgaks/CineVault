@@ -28,7 +28,9 @@ internal fun PlayerSessionLifecycle(
     onNextRequested: () -> Unit,
     onPreviousRequested: () -> Unit,
     onInitialBrightnessChanged: (Int) -> Unit,
+    playbackPositionMs: () -> Long = { player.currentPosition },
 ) {
+    val currentPlaybackPositionMs by rememberUpdatedState(playbackPositionMs)
     val currentVideoPath by rememberUpdatedState(videoPath)
     val currentIsStreamMedia by rememberUpdatedState(isStreamMedia)
     val currentNextRequested by rememberUpdatedState(onNextRequested)
@@ -76,7 +78,7 @@ internal fun PlayerSessionLifecycle(
                 savePlaybackPosition(
                     context,
                     currentVideoPath,
-                    player.currentPosition.coerceAtLeast(0L),
+                    currentPlaybackPositionMs().coerceAtLeast(0L),
                 )
             }
             audioFxController.stopAutoSwitching()

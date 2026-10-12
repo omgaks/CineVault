@@ -7,29 +7,28 @@ import android.media.AudioTrack
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
-/**
- * Native FFmpeg audio output engine. Runs on its own worker and owns AudioTrack.
- * This does not yet transfer Media3 session ownership or enable automatic rescue.
- */
+/** Native PCM output; only its worker touches AudioTrack or the decoder. */
 internal class FfmpegNativeAudioPlayback {
     private val stopped = AtomicBoolean(false)
     private val paused = AtomicBoolean(false)
     private val pendingSeek = AtomicLong(-1L)
-    @Volatile private var activeTrack: AudioTrack? = null
-    @Volatile private var positionBaseMs = 0L
+    @Volatile private var volume = 1f
+    @Volatile private var lastPositionMs = 0L
+    @Volatile private var clockPositionMs: Long? = null
+    @Volatile private var mediaDurationMs: Long? = null
 
-    /** AudioTrack playback-head clock, including the most recent seek offset. */
-    fun positionMs(): Long? {
-        val track = activeTrack ?: return null
-        return positionBaseMs + track.playbackHeadPosition.toLong() * 1000L / 48000L
-    }
-
+    fun positionMs(): Long = lastPositionMs
+    fun playbackClockMs(): Long? = clockPositionMs
+    fun durationMs(): Long? = mediaDurationMs
+    fun setVolume(value: Float) { volume = value.coerceIn(0f, 1f) }
     fun stop() { stopped.set(true) }
     fun pause() { paused.set(true) }
     fun resume() { paused.set(false) }
     fun seekTo(positionMs: Long) {
         require(positionMs >= 0L)
         pendingSeek.set(positionMs)
+        // The video worker must not pace a new seek against the previous clock.
+        clockPositionMs = null
     }
 
     fun play(path: String) {
@@ -43,44 +42,86 @@ internal class FfmpegNativeAudioPlayback {
                 .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE).build(),
             AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                 .setSampleRate(48000).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build(),
-            maxOf(minBytes, 19200),
-            AudioTrack.MODE_STREAM,
+            maxOf(minBytes, 19200), AudioTrack.MODE_STREAM,
             AudioManager.AUDIO_SESSION_ID_GENERATE,
         )
+        val clock = FfmpegNativeAudioClock()
+        var submittedFrames = 0L
+        var appliedVolume = -1f
+        fun updateClock() {
+            lastPositionMs = clock.positionMs(track.playbackHeadPosition)
+            clockPositionMs = if (pendingSeek.get() < 0L) lastPositionMs else null
+        }
+        fun updateVolume() {
+            val requested = volume
+            if (requested != appliedVolume) {
+                track.setVolume(requested)
+                appliedVolume = requested
+            }
+        }
         try {
             check(track.state == AudioTrack.STATE_INITIALIZED)
-            activeTrack = track
             FfmpegNativeAudioDecoder.open(path).use { decoder ->
+                mediaDurationMs = decoder.durationMs().takeIf { it > 0L }
+                var pcm: ByteArray? = null
+                var offset = 0
                 while (!stopped.get()) {
                     val seek = pendingSeek.getAndSet(-1L)
                     if (seek >= 0L) {
                         track.pause()
                         track.flush()
                         decoder.seekTo(seek)
-                        positionBaseMs = seek
+                        clock.reset(seek)
+                        submittedFrames = 0L
+                        pcm = null
+                        offset = 0
                     }
+                    updateClock()
+                    updateVolume()
                     if (paused.get()) {
                         track.pause()
                         Thread.sleep(10)
                         continue
                     }
                     track.play()
-                    val pcm = decoder.nextPcm() ?: break
-                    var offset = 0
-                    while (offset < pcm.size && !stopped.get()) {
-                        if (paused.get() || pendingSeek.get() >= 0L) break
-                        val written = track.write(pcm, offset, pcm.size - offset,
-                            AudioTrack.WRITE_NON_BLOCKING)
-                        check(written >= 0) { "AudioTrack write failed: $written" }
-                        if (written == 0) Thread.sleep(5) else offset += written
+                    if (pcm == null) {
+                        pcm = decoder.nextPcm()
+                        offset = 0
+                        if (pcm == null) {
+                            // Drain queued sound before releasing the track. A
+                            // queued seek or pause still interrupts this wait.
+                            while (!stopped.get() && pendingSeek.get() < 0L) {
+                                updateClock()
+                                updateVolume()
+                                if (paused.get()) track.pause() else track.play()
+                                if (clock.playedFrames >= submittedFrames) break
+                                Thread.sleep(5)
+                            }
+                            if (pendingSeek.get() >= 0L) continue
+                            break
+                        }
+                    }
+                    val bytes = pcm
+                    val written = track.write(bytes, offset, bytes.size - offset, AudioTrack.WRITE_NON_BLOCKING)
+                    check(written >= 0) { "AudioTrack write failed: $written" }
+                    if (written == 0) Thread.sleep(5) else {
+                        offset += written
+                        submittedFrames += written / 4
+                        if (offset == bytes.size) pcm = null
                     }
                 }
+                updateClock()
             }
         } finally {
-            activeTrack = null
-            track.pause()
-            track.flush()
-            track.release()
+            clockPositionMs = null
+            try {
+                if (track.state == AudioTrack.STATE_INITIALIZED) {
+                    track.pause()
+                    track.flush()
+                }
+            } finally {
+                track.release()
+            }
         }
     }
 }

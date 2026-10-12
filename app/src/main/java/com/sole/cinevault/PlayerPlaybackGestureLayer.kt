@@ -78,6 +78,10 @@ internal fun PlayerPlaybackGestureLayer(
     externalApplyViewportTransform: (zoom: Float, panX: Float, panY: Float) -> Unit,
     externalEnterTabletStandby: () -> Unit,
     disableGlassesSession: () -> Unit,
+    playbackPositionMs: () -> Long = { player.currentPosition },
+    playbackDurationMs: () -> Long = { player.duration },
+    nativeSeek: ((Long) -> Unit)? = null,
+    nativeTogglePlayPause: (() -> Unit)? = null,
 ) {
     val view = LocalView.current
     PlayerGestureExclusionCleanupEffect(view)
@@ -89,6 +93,20 @@ internal fun PlayerPlaybackGestureLayer(
     var liveVideoScale = videoScale
     var liveVideoOffsetX = videoOffsetX
     var liveVideoOffsetY = videoOffsetY
+
+    val currentPositionMs by rememberUpdatedState(playbackPositionMs)
+    val currentDurationMs by rememberUpdatedState(playbackDurationMs)
+    val currentNativeSeek by rememberUpdatedState(nativeSeek)
+    val currentNativeToggle by rememberUpdatedState(nativeTogglePlayPause)
+    fun seekTo(target: Long) {
+        val seek = currentNativeSeek
+        if (seek != null) seek(target) else player.seekTo(target)
+        onPositionChanged(target)
+    }
+    fun togglePlayPause() {
+        val toggle = currentNativeToggle
+        if (toggle != null) toggle() else if (player.isPlaying) player.pause() else player.play()
+    }
 
     val currentShowControls by rememberUpdatedState(showControls)
     val currentTransientUi by rememberUpdatedState(transientUi)
@@ -148,7 +166,7 @@ internal fun PlayerPlaybackGestureLayer(
                     )
                 },
                 seekTo = { targetMs ->
-                    val safeDuration = playerSafeSeekDuration(player.duration)
+                    val safeDuration = playerSafeSeekDuration(currentDurationMs())
                     livePreviewPosition =
                         targetMs.coerceIn(0L, safeDuration.coerceAtLeast(0L))
                     onPreviewPositionChanged(livePreviewPosition)
@@ -164,8 +182,7 @@ internal fun PlayerPlaybackGestureLayer(
                         livePreviewPosition,
                         true,
                     )
-                    player.seekTo(livePreviewPosition)
-                    onPositionChanged(livePreviewPosition)
+                    seekTo(livePreviewPosition)
                 },
                 userActivity = { externalShowControls() },
             )
@@ -176,8 +193,8 @@ internal fun PlayerPlaybackGestureLayer(
             Modifier
                 .haloPlayerLiveDragGestures(
                     gestureKey = currentVideoPath to isLandscape,
-                    playbackPositionMs = { player.currentPosition },
-                    durationMs = { playerSafeSeekDuration(player.duration) },
+                    playbackPositionMs = { currentPositionMs() },
+                    durationMs = { playerSafeSeekDuration(currentDurationMs()) },
                     liveSession = liveHaloSession,
                     onCanonicalPointerMove = { delta ->
                         haloLiveBindings.movePointer(delta.x, delta.y)
@@ -204,7 +221,7 @@ internal fun PlayerPlaybackGestureLayer(
                         }
                     },
                     onDoubleTap = {
-                        if (player.isPlaying) player.pause() else player.play()
+                        togglePlayPause()
                         externalShowGestureHud(
                             "Playback",
                             if (player.isPlaying) "PLAY" else "PAUSE",
@@ -262,17 +279,10 @@ internal fun PlayerPlaybackGestureLayer(
                     }
                 },
                 onSeekBack = {
-                    player.seekTo(playerSeekBackPosition(player.currentPosition))
-                    onPositionChanged(player.currentPosition)
+                    seekTo(playerSeekBackPosition(currentPositionMs()))
                 },
                 onSeekForward = {
-                    player.seekTo(
-                        playerSeekForwardPosition(
-                            player.currentPosition,
-                            player.duration,
-                        )
-                    )
-                    onPositionChanged(player.currentPosition)
+                    seekTo(playerSeekForwardPosition(currentPositionMs(), currentDurationMs()))
                 },
                 onToggleZoomMode = {
                     onZoomModeToggle()
@@ -280,7 +290,7 @@ internal fun PlayerPlaybackGestureLayer(
                     onShowTopBarChanged(true)
                 },
                 onTogglePlayPause = {
-                    if (player.isPlaying) player.pause() else player.play()
+                    togglePlayPause()
                     onShowControlsChanged(true)
                     onShowTopBarChanged(true)
                 },
