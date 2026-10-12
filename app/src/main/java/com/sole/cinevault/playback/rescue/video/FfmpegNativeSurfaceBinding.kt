@@ -20,6 +20,7 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var holder: SurfaceHolder? = null
     private var media3SurfaceReleased = false
+    private var surfaceGeneration = 0L
     @Volatile private var playback: FfmpegNativeVideoPlayback? = null
     @Volatile private var worker: Thread? = null
     private val callback = object : SurfaceHolder.Callback {
@@ -33,6 +34,7 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
         val next = (playerView?.videoSurfaceView as? SurfaceView)?.holder
         if (holder === next) return
         stop()
+        surfaceGeneration++
         media3SurfaceReleased = false
         holder?.removeCallback(callback)
         holder = next
@@ -94,6 +96,7 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
         if (resumePositionMs > 0L) playback.seekTo(resumePositionMs)
         if (!playWhenReady) playback.pause()
         this.playback = playback
+        val generation = surfaceGeneration
         worker = Thread({
             var stats: FfmpegNativeVideoPlayback.Stats? = null
             var failure: Throwable? = null
@@ -116,7 +119,10 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
                 val error = failure
                 if (result != null || error != null) {
                     mainHandler.post {
-                        if (!playback.isStopRequested()) {
+                        val stillCurrent = synchronized(this@FfmpegNativeSurfaceBinding) {
+                            generation == surfaceGeneration
+                        }
+                        if (stillCurrent && !playback.isStopRequested()) {
                             if (error != null) onFailure(error)
                             else if (result != null) onCompleted(result)
                         }
@@ -172,7 +178,9 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
     @Synchronized
     override fun close() {
         stop()
+        surfaceGeneration++
         holder?.removeCallback(callback)
         holder = null
+        media3SurfaceReleased = false
     }
 }
