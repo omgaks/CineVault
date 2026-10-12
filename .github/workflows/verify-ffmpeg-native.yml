@@ -107,7 +107,7 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug \
+          ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleDebug \
             -PcinevaultNativeTestSigning=release \
             -PcinevaultFfmpegRoot="$GITHUB_WORKSPACE/.native/ffmpeg/arm64-v8a" \
             --no-daemon
