@@ -72,6 +72,13 @@
 -keep class com.sole.cinevault.metadata.CachedVideoMetadata { *; }
 -keep class com.sole.cinevault.metadata.TmdbExtraDetails { *; }
 -keep class com.sole.cinevault.library.CachedLibrary { *; }
+# The library cache stores whole films as JSON through Gson. Without these rules the
+# release build renames the fields and loses the generic type of the cast list, so
+# reading the cache back gave a ClassCastException when opening an actor page, and
+# older cached films came back with missing fields.
+-keep class com.sole.cinevault.VideoWithMetadata { *; }
+-keep class com.sole.cinevault.CastEntry { *; }
+-keep class com.sole.cinevault.library.VideoFile { *; }
 
 # Collections V2 (+ Slice B name search) — TMDB collection / missing-film sheet responses (Gson reflection).
 -keep class com.sole.cinevault.metadata.TmdbCollectionDetails { *; }

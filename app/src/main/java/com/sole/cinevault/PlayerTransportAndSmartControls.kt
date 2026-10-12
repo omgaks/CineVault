@@ -146,7 +146,8 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
             creditNoticeExpired = true
         }
     }
-    val creditNoticeVisible = creditNoticeWanted && !creditNoticeExpired
+    // The Up Next countdown owns the same spot, so the notice waits until it is gone.
+    val creditNoticeVisible = creditNoticeWanted && !creditNoticeExpired && nextEpisodeCountdown <= 0
 
     PlayerSmartPlaybackOverlays(
         sidePadding = sidePadding,

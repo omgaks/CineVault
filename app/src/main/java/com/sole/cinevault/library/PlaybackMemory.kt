@@ -134,7 +134,12 @@ suspend fun loadLibraryCache(
             null
         }
     }
-    return CachedLibrary(videos = videos, timestamp = meta.timestamp)
+    // The picked poster/backdrop lives in its own table; put it back on top of the cached copy
+    // so an old cache can never show the original artwork again.
+    val withChosenArtwork = videos.map { v ->
+        runCatching { com.sole.cinevault.metadata.applyManualArtworkPreference(context, v) }.getOrDefault(v)
+    }
+    return CachedLibrary(videos = withChosenArtwork, timestamp = meta.timestamp)
 }
 
 suspend fun clearLibraryCache(context: Context) {
