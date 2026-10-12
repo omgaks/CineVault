@@ -734,11 +734,11 @@ fun VideoPlayerScreen(
                         com.sole.cinevault.playback.rescue.video.FfmpegContainerProbeLoader.isAvailable(),
                     alreadyAttempted = ffmpegSurfaceBinding.isRunning(),
                 )
-            if (nativeEligible) {
-                // Do not claim the error: Media3 recovery remains in charge
-                // until the full native audio/video handoff is installed.
-                ffmpegSurfaceBinding.stop()
-            }
+            // Preflight is observational only. Do not stop or mutate a native
+            // session merely because a malformed-container error was reported.
+            // Return false until audio and controls can transfer ownership.
+            @Suppress("UNUSED_VARIABLE")
+            val rescueReady = nativeEligible
             false
         },
         onPositionChanged = { position = it },
