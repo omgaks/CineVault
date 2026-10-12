@@ -62,6 +62,16 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
     }
 
     /**
+     * A failed handoff must not leave Media3 permanently disconnected.
+     * This rollback is safe only before a native worker starts.
+     */
+    @Synchronized
+    fun rollbackMedia3VideoSurface(player: ExoPlayer, playerView: PlayerView): Boolean {
+        if (worker != null) return false
+        return restoreMedia3VideoSurface(player, playerView)
+    }
+
+    /**
      * Called only after Media3 relinquishes the surface during a verified rescue
      * handoff. Does not automatically change player ownership or audio routing.
      */
