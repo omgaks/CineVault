@@ -109,6 +109,11 @@ internal fun VoiceWakeHost() {
                     atMs = System.currentTimeMillis()
                 )
                 VoiceRuntime.statsVersion++
+                VoiceRuntime.wakeFallback = false
+                VoiceRuntime.wakeRequest++
+            },
+            onSpeechCheck = {
+                VoiceRuntime.wakeFallback = true
                 VoiceRuntime.wakeRequest++
             },
             onStatus = { listening, error ->
