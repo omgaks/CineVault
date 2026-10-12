@@ -95,24 +95,31 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
         if (!playWhenReady) playback.pause()
         this.playback = playback
         worker = Thread({
+            var stats: FfmpegNativeVideoPlayback.Stats? = null
+            var failure: Throwable? = null
             try {
-                if (playback !== this.playback) return@Thread
-                val stats = playback.play(path, surface)
-                // Completion can mean EOF or a cooperative stop; the owner
-                // decides whether to advance playback or discard the session.
-                mainHandler.post {
-                    if (!playback.isStopRequested()) onCompleted(stats)
+                if (playback === this.playback && !playback.isStopRequested()) {
+                    stats = playback.play(path, surface)
                 }
             } catch (error: Throwable) {
-                mainHandler.post {
-                    if (!playback.isStopRequested()) onFailure(error)
-                }
+                failure = error
             } finally {
-                // An older worker must never erase a newer rescue session.
+                // Release worker ownership before posting completion. This lets
+                // the main-thread coordinator restore the Media3 surface safely.
                 synchronized(this@FfmpegNativeSurfaceBinding) {
                     if (worker === Thread.currentThread()) {
                         this.playback = null
                         worker = null
+                    }
+                }
+                val result = stats
+                val error = failure
+                if (result != null || error != null) {
+                    mainHandler.post {
+                        if (!playback.isStopRequested()) {
+                            if (error != null) onFailure(error)
+                            else if (result != null) onCompleted(result)
+                        }
                     }
                 }
             }
