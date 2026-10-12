@@ -197,7 +197,7 @@ fun applyCachedVideoMetadata(
         collectionId = cached.collectionId,
         collectionName = cached.collectionName,
         curatedCollections = cached.curatedCollections ?: emptyList(),
-        cast = cached.cast ?: emptyList()
+        cast = validCast(cached.cast)
     )
 }
 
@@ -241,7 +241,20 @@ fun needsGenreUpgrade(item: VideoWithMetadata): Boolean {
     // trigger again since genres/director are no longer empty.
     return (item.type == "movie" || item.type == "tv") &&
             (item.tmdbId ?: 0) > 0 &&
-            (item.genres.isEmpty() || item.director.isNullOrBlank() || item.cast.orEmpty().isEmpty())
+            (item.genres.isEmpty() || item.director.isNullOrBlank() || castNeedsRefresh(item.cast))
+}
+
+/**
+ * Cast rows saved while release builds were renaming fields read back as id 0 with no
+ * name. They look non-empty, so they were never refreshed, and no actor page could match
+ * them. Such entries are dropped, which makes the item fetch its cast again.
+ */
+internal fun validCast(cast: List<CastEntry>?): List<CastEntry> =
+    cast.orEmpty().filter { entry -> entry.id > 0 && !(entry.name as String?).isNullOrBlank() }
+
+internal fun castNeedsRefresh(cast: List<CastEntry>?): Boolean {
+    val list = cast.orEmpty()
+    return list.isEmpty() || list.any { entry -> entry.id <= 0 || (entry.name as String?).isNullOrBlank() }
 }
 
 /** True when a matched title is missing either of its useful artwork sizes. */
