@@ -35,7 +35,11 @@ internal class FfmpegNativeAvCoordinator(
         val previousPlayWhenReady = player.playWhenReady
         player.pause()
         val session = ++sessionGeneration
-        val output = FfmpegNativeAudioPlayback()
+        val previousAudioFormat = player.currentTracks.groups
+            .filter { it.type == androidx.media3.common.C.TRACK_TYPE_AUDIO }
+            .flatMap { group -> (0 until group.length).filter { group.isTrackSelected(it) }.map { group.getTrackFormat(it) } }
+            .firstOrNull()
+        val output = FfmpegNativeAudioPlayback(previousAudioFormat?.language, previousAudioFormat?.channelCount ?: -1)
         output.setVolume(volume)
         if (positionMs > 0) output.seekTo(positionMs)
         if (!playWhenReady) output.pause()
@@ -128,6 +132,8 @@ internal class FfmpegNativeAvCoordinator(
         if (!closed) callback?.invoke()
     }
 
+    @Synchronized fun audioTracks(): FfmpegNativeAudioTrackSnapshot = audio?.audioTracks() ?: FfmpegNativeAudioTrackSnapshot()
+    @Synchronized fun selectAudioTrack(streamIndex: Int): Boolean = audio?.selectAudioTrack(streamIndex) ?: false
     @Synchronized fun positionMs(): Long? = audio?.positionMs()
     @Synchronized fun durationMs(): Long? = audio?.durationMs()
     @Synchronized fun pause() { audio?.pause(); binding.pause() }

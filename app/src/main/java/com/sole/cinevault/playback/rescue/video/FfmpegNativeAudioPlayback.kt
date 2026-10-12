@@ -6,16 +6,30 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Native PCM output; only its worker touches AudioTrack or the decoder. */
-internal class FfmpegNativeAudioPlayback {
+internal class FfmpegNativeAudioPlayback(
+    private val restoreLanguage: String? = null,
+    private val restoreChannels: Int = -1,
+) {
     private val stopped = AtomicBoolean(false)
     private val paused = AtomicBoolean(false)
     private val pendingSeek = AtomicLong(-1L)
+    private val pendingStream = AtomicInteger(-1)
+    @Volatile private var trackSnapshot = FfmpegNativeAudioTrackSnapshot()
     @Volatile private var volume = 1f
     @Volatile private var lastPositionMs = 0L
     @Volatile private var clockPositionMs: Long? = null
     @Volatile private var mediaDurationMs: Long? = null
+
+    fun audioTracks(): FfmpegNativeAudioTrackSnapshot = trackSnapshot
+    fun selectAudioTrack(streamIndex: Int): Boolean {
+        if (stopped.get() || trackSnapshot.tracks.none { it.streamIndex == streamIndex }) return false
+        pendingStream.set(streamIndex)
+        clockPositionMs = null
+        return true
+    }
 
     fun positionMs(): Long = lastPositionMs
     fun playbackClockMs(): Long? = clockPositionMs
@@ -51,7 +65,7 @@ internal class FfmpegNativeAudioPlayback {
         var appliedVolume = -1f
         fun updateClock() {
             lastPositionMs = clock.positionMs(track.playbackHeadPosition)
-            clockPositionMs = if (pendingSeek.get() < 0L) lastPositionMs else null
+            clockPositionMs = if (pendingSeek.get() < 0L && pendingStream.get() < 0) lastPositionMs else null
         }
         fun updateVolume() {
             val requested = volume
@@ -62,12 +76,30 @@ internal class FfmpegNativeAudioPlayback {
         }
         try {
             check(track.state == AudioTrack.STATE_INITIALIZED)
-            FfmpegNativeAudioDecoder.open(path).use { decoder ->
+            var decoder = FfmpegNativeAudioDecoder.open(path)
+            try {
+                val tracks = decoder.tracks()
+                val restored = FfmpegNativeAudioTracks.restoreStream(tracks, restoreLanguage, restoreChannels)
+                if (restored != null && restored != decoder.selectedStreamIndex()) {
+                    val replacement = FfmpegNativeAudioDecoder.open(path, restored)
+                    decoder.close()
+                    decoder = replacement
+                }
+                trackSnapshot = FfmpegNativeAudioTrackSnapshot(tracks, decoder.selectedStreamIndex())
                 mediaDurationMs = decoder.durationMs().takeIf { it > 0L }
                 var pcm: ByteArray? = null
                 var offset = 0
                 while (!stopped.get()) {
-                    val seek = pendingSeek.getAndSet(-1L)
+                    val selectedStream = pendingStream.getAndSet(-1)
+                    val requestedSeek = pendingSeek.getAndSet(-1L)
+                    val seek = if (requestedSeek >= 0L) requestedSeek else if (selectedStream >= 0) lastPositionMs else -1L
+                    if (selectedStream >= 0) {
+                        // Open first so an invalid choice never destroys the current decoder.
+                        val replacement = FfmpegNativeAudioDecoder.open(path, selectedStream)
+                        decoder.close()
+                        decoder = replacement
+                        trackSnapshot = trackSnapshot.copy(selectedStreamIndex = selectedStream)
+                    }
                     if (seek >= 0L) {
                         track.pause()
                         track.flush()
@@ -91,14 +123,14 @@ internal class FfmpegNativeAudioPlayback {
                         if (pcm == null) {
                             // Drain queued sound before releasing the track. A
                             // queued seek or pause still interrupts this wait.
-                            while (!stopped.get() && pendingSeek.get() < 0L) {
+                            while (!stopped.get() && pendingSeek.get() < 0L && pendingStream.get() < 0) {
                                 updateClock()
                                 updateVolume()
                                 if (paused.get()) track.pause() else track.play()
                                 if (clock.playedFrames >= submittedFrames) break
                                 Thread.sleep(5)
                             }
-                            if (pendingSeek.get() >= 0L) continue
+                            if (pendingSeek.get() >= 0L || pendingStream.get() >= 0) continue
                             break
                         }
                     }
@@ -116,6 +148,8 @@ internal class FfmpegNativeAudioPlayback {
                     }
                 }
                 updateClock()
+            } finally {
+                decoder.close()
             }
         } finally {
             clockPositionMs = null

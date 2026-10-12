@@ -337,6 +337,7 @@ fun VideoPlayerScreen(
     var ffmpegRescueActive by remember { mutableStateOf(false) }
     var ffmpegLastPosition by remember { mutableStateOf<Long?>(null) }
     var ffmpegLastDuration by remember { mutableStateOf<Long?>(null) }
+    var ffmpegAudioTracks by remember { mutableStateOf(com.sole.cinevault.playback.rescue.video.FfmpegNativeAudioTrackSnapshot()) }
     var ffmpegRescueAttemptedPath by remember { mutableStateOf<String?>(null) }
     DisposableEffect(ffmpegAvCoordinator) {
         onDispose {
@@ -350,11 +351,13 @@ fun VideoPlayerScreen(
         ffmpegRescueAttemptedPath = null
         ffmpegLastPosition = null
         ffmpegLastDuration = null
+        ffmpegAudioTracks = com.sole.cinevault.playback.rescue.video.FfmpegNativeAudioTrackSnapshot()
     }
 
     // Media3 stops being the timeline authority during native rescue.
     LaunchedEffect(ffmpegRescueActive) {
         while (ffmpegRescueActive) {
+            ffmpegAudioTracks = ffmpegAvCoordinator.audioTracks()
             if (!chromeUi.isDraggingSeekbar) ffmpegAvCoordinator.positionMs()?.let {
                 position = it
                 ffmpegLastPosition = it
@@ -405,6 +408,8 @@ fun VideoPlayerScreen(
         context = context,
         scope = scope,
         player = exoPlayer,
+        nativePlaybackActive = ffmpegRescueActive,
+        playbackPositionMs = { if (ffmpegRescueActive) ffmpegAvCoordinator.positionMs() ?: position else exoPlayer.currentPosition },
         trackSelector = trackSelector,
         haptics = haptics,
         episodeList = episodeList,
@@ -865,6 +870,8 @@ fun VideoPlayerScreen(
         context = context,
         scope = scope,
         exoPlayer = exoPlayer,
+        playbackPositionMs = { if (ffmpegRescueActive) ffmpegAvCoordinator.positionMs() ?: position else exoPlayer.currentPosition },
+        resumePlayback = { if (ffmpegRescueActive) { ffmpegAvCoordinator.resume(); isPlaying = true } else exoPlayer.play() },
         trackSelector = trackSelector,
         currentVideoPath = currentVideo.path,
         availableWidthDp = subtitleWindowInfo.widthDp.value,
@@ -1278,6 +1285,19 @@ fun VideoPlayerScreen(
         PlayerSubtitleSelectionAndAcquisitionSurfaces(
             context = context,
             player = exoPlayer,
+            nativeAudioRows = if (ffmpegRescueActive) ffmpegAudioTracks.tracks.map { track ->
+                TrackPopupRowData(
+                    title = friendlyLanguageName(track.language),
+                    subtitle = "${track.codec.uppercase()} · ${track.channels} ch",
+                    selected = track.streamIndex == ffmpegAudioTracks.selectedStreamIndex,
+                    onClick = {
+                        if (ffmpegAvCoordinator.selectAudioTrack(track.streamIndex)) {
+                            chromeUi.showAudioSelector = false
+                            chromeUi.showControls = true
+                        }
+                    },
+                )
+            } else null,
             trackSelector = trackSelector,
             videoPath = currentVideo.path,
             canDownloadExternalSubtitles = canDownloadExternalSubtitles,

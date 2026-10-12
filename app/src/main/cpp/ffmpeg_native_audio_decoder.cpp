@@ -3,6 +3,7 @@
 #include <memory>
 #include <algorithm>
 #include <cstdint>
+#include <string>
 extern "C" {
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
@@ -34,7 +35,7 @@ void fail(JNIEnv* env, const char* message) {
 }
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_sole_cinevault_playback_rescue_video_FfmpegNativeAudioDecoder_nativeOpen(
-    JNIEnv* env, jobject, jstring path) {
+    JNIEnv* env, jobject, jstring path, jint requestedStream) {
     if (!path) { fail(env, "Audio path missing"); return 0; }
     const char* chars = env->GetStringUTFChars(path, nullptr);
     if (!chars) return 0;
@@ -43,7 +44,15 @@ Java_com_sole_cinevault_playback_rescue_video_FfmpegNativeAudioDecoder_nativeOpe
     env->ReleaseStringUTFChars(path, chars);
     if (result < 0) { fail(env, "Cannot open audio container"); return 0; }
     avformat_find_stream_info(session->format, nullptr);
-    session->stream = av_find_best_stream(session->format, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    if (requestedStream >= 0) {
+        if (static_cast<unsigned int>(requestedStream) >= session->format->nb_streams ||
+            session->format->streams[requestedStream]->codecpar->codec_type != AVMEDIA_TYPE_AUDIO) {
+            fail(env, "Invalid requested audio stream"); return 0;
+        }
+        session->stream = requestedStream;
+    } else {
+        session->stream = av_find_best_stream(session->format, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    }
     if (session->stream < 0) { fail(env, "No supported audio stream"); return 0; }
     const AVCodecParameters* params = session->format->streams[session->stream]->codecpar;
     const AVCodec* codec = avcodec_find_decoder(params->codec_id);
@@ -145,4 +154,41 @@ Java_com_sole_cinevault_playback_rescue_video_FfmpegNativeAudioDecoder_nativeDur
     auto* s = reinterpret_cast<AudioSession*>(handle);
     if (!s || s->format->duration == AV_NOPTS_VALUE || s->format->duration <= 0) return 0;
     return av_rescale_q(s->format->duration, AVRational{1, AV_TIME_BASE}, AVRational{1, 1000});
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_sole_cinevault_playback_rescue_video_FfmpegNativeAudioDecoder_nativeSelectedStream(
+    JNIEnv*, jobject, jlong handle) {
+    auto* s = reinterpret_cast<AudioSession*>(handle);
+    return s ? s->stream : -1;
+}
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_com_sole_cinevault_playback_rescue_video_FfmpegNativeAudioDecoder_nativeTracks(
+    JNIEnv* env, jobject, jlong handle) {
+    auto* s = reinterpret_cast<AudioSession*>(handle);
+    if (!s) { fail(env, "Audio decoder closed"); return nullptr; }
+    std::vector<std::string> fields;
+    for (unsigned int i = 0; i < s->format->nb_streams; ++i) {
+        const AVStream* stream = s->format->streams[i];
+        const AVCodecParameters* params = stream->codecpar;
+        if (params->codec_type != AVMEDIA_TYPE_AUDIO || !avcodec_find_decoder(params->codec_id)) continue;
+        const AVDictionaryEntry* language = av_dict_get(stream->metadata, "language", nullptr, 0);
+        fields.push_back(std::to_string(i));
+        fields.push_back(language ? language->value : "und");
+        fields.push_back(avcodec_get_name(params->codec_id));
+        fields.push_back(std::to_string(params->ch_layout.nb_channels));
+    }
+    jclass stringClass = env->FindClass("java/lang/String");
+    if (!stringClass) return nullptr;
+    jobjectArray result = env->NewObjectArray(static_cast<jsize>(fields.size()), stringClass, nullptr);
+    env->DeleteLocalRef(stringClass);
+    if (!result) return nullptr;
+    for (size_t i = 0; i < fields.size(); ++i) {
+        jstring value = env->NewStringUTF(fields[i].c_str());
+        if (!value) return nullptr;
+        env->SetObjectArrayElement(result, static_cast<jsize>(i), value);
+        env->DeleteLocalRef(value);
+        if (env->ExceptionCheck()) return nullptr;
+    }
+    return result;
 }

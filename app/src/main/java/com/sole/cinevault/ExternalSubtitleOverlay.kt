@@ -46,6 +46,10 @@ import kotlinx.coroutines.withContext
 class ExternalSubtitleOverlay(
     private val player: ExoPlayer,
     private val trackSelector: DefaultTrackSelector,
+    private val playbackPositionMs: () -> Long = { player.currentPosition },
+    private val readSubtitleText: (Uri) -> String? = { uri ->
+        if (uri.scheme == "file" || uri.scheme == null) File(uri.path.orEmpty()).readText(Charsets.UTF_8) else null
+    },
     private val subtitleViewProvider: () -> SubtitleView?,
 ) {
     private class TimedCue(val startMs: Long, val endMs: Long, val cue: Cue)
@@ -172,7 +176,7 @@ class ExternalSubtitleOverlay(
 
     private fun tick(force: Boolean = false) {
         if (!hasLoaded) return
-        val position = player.currentPosition
+        val position = playbackPositionMs().coerceAtLeast(0L)
         val key = if (visible) indexAt(position) else -1
         val now = SystemClock.elapsedRealtime()
         // Re-send every so often too, in case ExoPlayer cleared the view in the meantime.
@@ -232,10 +236,7 @@ class ExternalSubtitleOverlay(
 
     private fun readCues(uri: Uri): List<TimedCue> {
         return try {
-            val text = when (uri.scheme) {
-                "file", null -> File(uri.path ?: return emptyList()).readText(Charsets.UTF_8)
-                else -> return emptyList()
-            }
+            val text = readSubtitleText(uri) ?: return emptyList()
             SubtitleCueParser.parse(text).map { TimedCue(it.startMs, it.endMs, buildCue(it)) }
         } catch (_: Exception) {
             emptyList()

@@ -32,6 +32,7 @@ class PlaybackNavigationCoordinator(
     private val externalSubtitleSelector: ExternalSubtitleSelector? = null,
     private val subtitleOverlay: ExternalSubtitleOverlay? = null,
     private val trackSelector: DefaultTrackSelector? = null,
+    private val isNativePlaybackActive: () -> Boolean = { false },
 ) {
     // True only when the current MediaItem carries an attached subtitle (the fallback path
     // for formats the overlay cannot draw). Such an item has to be rebuilt to remove it.
@@ -74,6 +75,13 @@ class PlaybackNavigationCoordinator(
         }
 
         try {
+            val nativeActive = isNativePlaybackActive()
+            // Never prepare the failed Media3 video just to change a subtitle
+            // while FFmpeg owns its surface and audio output.
+            if (nativeActive && subtitleUri != null && subtitleOverlay?.canHandle(subtitleUri) != true) {
+                CineVaultToast.show(context, "Choose an SRT or WebVTT subtitle for this playback", long = true)
+                return
+            }
             setPlayerErrorMessage(null)
             if (subtitleUri != null && isOriginalSubtitle) {
                 trackUi.originalUri = subtitleUri
@@ -86,6 +94,18 @@ class PlaybackNavigationCoordinator(
 
             val resumeAt = resumePosition.coerceAtLeast(0L)
             val overlay = subtitleOverlay
+            if (nativeActive) {
+                if (subtitleUri == null) {
+                    overlay?.clear()
+                } else {
+                    overlay!!.claimEarly()
+                    overlay.show(subtitleUri) { shown ->
+                        if (shown) overlay.setVisible(coreUi.subtitlesEnabled)
+                        else CineVaultToast.show(context, "Subtitle file could not be read", long = true)
+                    }
+                }
+                return
+            }
             val useOverlay = subtitleUri != null && overlay != null && overlay.canHandle(subtitleUri)
 
             // The video itself only needs rebuilding when it is not loaded yet, has stopped

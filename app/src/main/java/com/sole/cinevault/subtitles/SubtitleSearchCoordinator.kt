@@ -38,6 +38,8 @@ class SubtitleSearchCoordinator(
     // Called when an embedded track replaces the external subtitle, so anything built on that
     // external file (Dual subtitles) can be switched off.
     private val onExternalSubtitleReplaced: () -> Unit = {},
+    private val getPlaybackPositionMs: () -> Long = { exoPlayer.currentPosition },
+    private val isNativePlaybackActive: () -> Boolean = { false },
 ) {
     private var searchGeneration = 0L
 
@@ -78,7 +80,7 @@ class SubtitleSearchCoordinator(
 
     fun applyImportedWebsiteSubtitle(imported: ImportedSubtitle) {
         scope.launch {
-            val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+            val resumeAt = getPlaybackPositionMs().coerceAtLeast(0L)
             val cleanedUri = withContext(Dispatchers.IO) {
                 if (supportsCustomTextPipeline(imported.format)) {
                     buildCleanedSubtitleFile(context, imported.uri, coreUi.cleaningOptions)
@@ -161,7 +163,7 @@ class SubtitleSearchCoordinator(
                             coreUi.behaviorPrefs = promoteLanguageToFront(coreUi.behaviorPrefs, SubtitleLanguageRegistry.normalize(result.language) ?: result.language.lowercase())
                             saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
                         }
-                        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+                        val resumeAt = getPlaybackPositionMs().coerceAtLeast(0L)
                         val cleanedApplyUri = withContext(Dispatchers.IO) { buildCleanedSubtitleFile(context, downloadResult.uri, coreUi.cleaningOptions) } ?: downloadResult.uri
                         trackUi.primaryUri = cleanedApplyUri
                         trackUi.primaryLanguage = SubtitleLanguageRegistry.normalize(result.language)
@@ -180,6 +182,10 @@ class SubtitleSearchCoordinator(
 
     @SuppressLint("UnsafeOptInUsageError")
     fun selectSubtitleTrack(choice: SubtitleTrackChoice) {
+        if (isNativePlaybackActive() && (choice is SubtitleTrackChoice.Embedded || (choice is SubtitleTrackChoice.On && externalOverlay?.hasContent != true))) {
+            CineVaultToast.show(context, "Choose a downloaded or local subtitle for this playback", long = true)
+            return
+        }
         studioUi.menuTouchKey++
         when (choice) {
             is SubtitleTrackChoice.On -> {
@@ -281,7 +287,7 @@ class SubtitleSearchCoordinator(
             is SubtitleTrackChoice.Downloaded -> {
                 coreUi.subtitlesEnabled = true
                 prepareExplicitExternalSelection(choice.language)
-                val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+                val resumeAt = getPlaybackPositionMs().coerceAtLeast(0L)
                 scope.launch {
                     val cleaned = withContext(Dispatchers.IO) {
                         buildCleanedSubtitleFile(context, Uri.fromFile(choice.file), coreUi.cleaningOptions)
