@@ -16,6 +16,7 @@ internal class FfmpegNativeAvCoordinator(
     private val mainHandler = Handler(Looper.getMainLooper())
     private var audio: FfmpegNativeAudioPlayback? = null
     private var audioWorker: Thread? = null
+    private var sessionGeneration = 0L
 
     @Synchronized
     fun start(
@@ -29,6 +30,7 @@ internal class FfmpegNativeAvCoordinator(
     ): Boolean {
         if (audioWorker != null || binding.isRunning()) return false
         val terminalDelivered = AtomicBoolean(false)
+        val session = ++sessionGeneration
         val output = FfmpegNativeAudioPlayback()
         if (positionMs > 0) output.seekTo(positionMs)
         if (!playWhenReady) output.pause()
@@ -41,13 +43,13 @@ internal class FfmpegNativeAvCoordinator(
             resumePositionMs = positionMs,
             playWhenReady = playWhenReady,
             onFailure = { error ->
-                if (terminalDelivered.compareAndSet(false, true)) {
+                if (session == sessionGeneration && terminalDelivered.compareAndSet(false, true)) {
                     stop()
                     onFailure(error)
                 }
             },
             onCompleted = { stats ->
-                if (terminalDelivered.compareAndSet(false, true)) {
+                if (session == sessionGeneration && terminalDelivered.compareAndSet(false, true)) {
                     stop()
                     onCompleted(stats)
                 }
@@ -63,7 +65,7 @@ internal class FfmpegNativeAvCoordinator(
                 // Audio worker callbacks must never manipulate Compose/player
                 // state off the main thread. Only one terminal event wins.
                 mainHandler.post {
-                    if (terminalDelivered.compareAndSet(false, true)) {
+                    if (session == sessionGeneration && terminalDelivered.compareAndSet(false, true)) {
                         stop()
                         onFailure(error)
                     }
@@ -87,6 +89,10 @@ internal class FfmpegNativeAvCoordinator(
         audio?.seekTo(positionMs)
         binding.seekTo(positionMs)
     }
-    @Synchronized fun stop() { audio?.stop(); binding.stop() }
+    @Synchronized fun stop() {
+        sessionGeneration++
+        audio?.stop()
+        binding.stop()
+    }
     override fun close() { stop() }
 }
