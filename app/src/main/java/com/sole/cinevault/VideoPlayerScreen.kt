@@ -1426,6 +1426,8 @@ fun VideoPlayerScreen(
             onShowSeekPreviewChanged = { gestureUi.showSeekPreview = it },
             onPreviewPositionChanged = { gestureUi.previewPosition = it },
             onPreviewBitmapChanged = { gestureUi.previewBitmap = it },
+            nativeSeek = if (ffmpegRescueActive) ({ target: Long -> ffmpegAvCoordinator.seekTo(target); position = target }) else null,
+            nativeTogglePlayPause = if (ffmpegRescueActive) ({ if (isPlaying) ffmpegAvCoordinator.pause() else ffmpegAvCoordinator.resume(); isPlaying = !isPlaying }) else null,
         )
 
         AnimatedVisibility(
