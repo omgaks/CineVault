@@ -560,8 +560,8 @@ fun LocalVideoLibraryScreen(
         "Continue Watching" -> foldedVideos.filter { loadPlaybackPosition(context, it.video.path) > 15_000L }
         "TV Shows" -> emptyList()
         "Folders" -> emptyList()
-        "Movies" -> foldedVideos.filter { it.type.equals("movie", ignoreCase = true) }
-        else -> foldedVideos.filter { !it.type.equals("tv", ignoreCase = true) && !it.type.equals("restricted", ignoreCase = true) }
+        "Movies" -> foldedVideos.filter { it.type.equals("movie", ignoreCase = true) && !isRestrictedFolderItem(it) }
+        else -> foldedVideos.filter { !it.type.equals("tv", ignoreCase = true) && !isRestrictedFolderItem(it) }
     }
 
     val tvGroups = groupTvShows(sortedVideos.filter { it.type.equals("tv", ignoreCase = true) && !isSecretItem(it, hiddenPaths, hiddenFolders) })

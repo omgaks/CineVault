@@ -267,6 +267,24 @@ internal fun BoxScope.VoiceTalkHost(
             VoiceRuntime.wakeAudio = null
             // An old message or list card must not block the wake word.
             val free = ui == TalkUi.Idle || ui is TalkUi.Message || ui is TalkUi.Pick || ui == TalkUi.NoModel
+            if (VoiceRuntime.wakeFallback) {
+                // Speech-model check: quiet unless the phrase really started with the wake word.
+                VoiceRuntime.wakeFallback = false
+                if (allowed && ui == TalkUi.Idle && heardBefore != null && hasMicrophonePermission(context)) {
+                    val mine = token
+                    val filmsNow = films
+                    Thread({
+                        val heardText = runCatching { VoiceTranscriber.transcribe(context, heardBefore) }.getOrNull()
+                        val said = heardText?.let { cleanTranscript(it) }
+                        if (said != null && stripWakePhrase(said, VoiceRuntime.phraseIds) != null) {
+                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                if (mine == token && ui == TalkUi.Idle) handleText(heardText, mine, filmsNow, wakeMode = true)
+                            }
+                        }
+                    }, "voice-wake-check").also { it.isDaemon = true; it.start() }
+                }
+                return@LaunchedEffect
+            }
             if (allowed && free && hasMicrophonePermission(context)) startListening(heardBefore)
         }
     }

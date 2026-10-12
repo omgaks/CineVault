@@ -21,7 +21,11 @@ private const val WINDOW_SAMPLES = 512
 private const val WINDOW_MS = 32
 private const val PRE_ROLL_WINDOWS = 16          // about half a second of audio before speech starts
 private const val COOLDOWN_MS = 2000L
-private const val RECENT_WINDOWS = 80            // about 2.5 seconds
+private const val RECENT_WINDOWS = 190           // about 6 seconds
+private const val WAKE_SNAPSHOT_WINDOWS = 80     // about 2.5 seconds, for a normal wake hit
+private const val CHECK_MIN_MS = 1600            // open time, hangover included
+private const val CHECK_MAX_MS = 6000
+private const val CHECK_COOLDOWN_MS = 4000L
 private const val MODEL_FOLDER = "voice_kws_v1"
 private val MODEL_FILES = listOf("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt", "keywords.txt")
 
@@ -51,7 +55,9 @@ internal class VoiceWakeListener(
     private val context: Context,
     private val phraseIds: () -> Set<String>,
     private val onWake: (VoiceWakePhrase?, String) -> Unit,
-    private val onStatus: (listening: Boolean, error: String?) -> Unit
+    private val onStatus: (listening: Boolean, error: String?) -> Unit,
+    /** The detector stayed silent but a short phrase was spoken: ask the speech model to check it. */
+    private val onSpeechCheck: () -> Unit = {}
 ) {
     @Volatile private var running = false
     private var thread: Thread? = null
@@ -142,6 +148,9 @@ internal class VoiceWakeListener(
             val autoGain = VoiceAutoGain()
             var wasOpen = false
             var lastWakeAt = 0L
+            var lastCheckAt = 0L
+            var segmentMs = 0
+            var firedInSegment = false
 
             while (running) {
                 var read = 0
@@ -167,7 +176,26 @@ internal class VoiceWakeListener(
                 stats.addListened(WINDOW_MS)
 
                 if (!open) {
-                    if (wasOpen) { stream?.release(); stream = null }
+                    if (wasOpen) {
+                        stream?.release(); stream = null
+                        // Fallback: a short phrase ended and the detector said nothing. Let the
+                        // speech model check whether it began with the wake phrase.
+                        val nowMs = System.currentTimeMillis()
+                        if (!firedInSegment && segmentMs in CHECK_MIN_MS..CHECK_MAX_MS &&
+                            nowMs - lastCheckAt >= CHECK_COOLDOWN_MS && nowMs - lastWakeAt >= COOLDOWN_MS &&
+                            VoiceTranscriber.isReady(context)
+                        ) {
+                            lastCheckAt = nowMs
+                            val take = minOf(recent.size, segmentMs / WINDOW_MS + PRE_ROLL_WINDOWS)
+                            val windows = recent.toList().takeLast(take)
+                            val snap = FloatArray(windows.size * WINDOW_SAMPLES)
+                            windows.forEachIndexed { i, w -> System.arraycopy(w, 0, snap, i * WINDOW_SAMPLES, WINDOW_SAMPLES) }
+                            VoiceRuntime.wakeAudio = snap
+                            onSpeechCheck()
+                        }
+                    }
+                    segmentMs = 0
+                    firedInSegment = false
                     wasOpen = false
                     preRoll.addLast(window)
                     while (preRoll.size > PRE_ROLL_WINDOWS) preRoll.removeFirst()
@@ -176,6 +204,7 @@ internal class VoiceWakeListener(
                 }
 
                 stats.addGated(WINDOW_MS)
+                segmentMs += WINDOW_MS
                 if (!wasOpen) {
                     // Speech just began: start a fresh stream with the phrases ticked right now,
                     // and give it the half second before, so the start of "Hey" is not lost.
@@ -197,10 +226,12 @@ internal class VoiceWakeListener(
                         val now = System.currentTimeMillis()
                         if (now - lastWakeAt >= COOLDOWN_MS) {
                             lastWakeAt = now
+                            firedInSegment = true
                             val phrase = phraseForKeywordName(result.keyword)
                             if (phrase != null) stats.addHear(phrase.id)
-                            val snapshot = FloatArray(recent.size * WINDOW_SAMPLES)
-                            recent.forEachIndexed { i, w -> System.arraycopy(w, 0, snapshot, i * WINDOW_SAMPLES, WINDOW_SAMPLES) }
+                            val last = recent.toList().takeLast(WAKE_SNAPSHOT_WINDOWS)
+                            val snapshot = FloatArray(last.size * WINDOW_SAMPLES)
+                            last.forEachIndexed { i, w -> System.arraycopy(w, 0, snapshot, i * WINDOW_SAMPLES, WINDOW_SAMPLES) }
                             VoiceRuntime.wakeAudio = snapshot
                             onWake(phrase, result.keyword)
                         }
