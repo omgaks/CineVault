@@ -3,6 +3,8 @@ package com.sole.cinevault
 import android.content.Context
 import android.widget.Toast
 import com.sole.cinevault.library.clearPlaybackPosition
+import com.sole.cinevault.library.hiddenSetWith
+import com.sole.cinevault.library.hiddenSetWithout
 import com.sole.cinevault.library.saveFavoriteVideoPaths
 import com.sole.cinevault.library.saveSecretFolderPaths
 import com.sole.cinevault.library.saveSecretVideoPaths
@@ -13,7 +15,7 @@ internal fun addVideoToSecret(
     hiddenPaths: Set<String>,
     item: VideoWithMetadata
 ): Set<String> {
-    val updated = hiddenPaths + item.video.path
+    val updated = hiddenSetWith(hiddenPaths, item)
     saveSecretVideoPaths(context, updated)
     clearPlaybackPosition(context, item.video.path)
     Toast.makeText(
@@ -29,7 +31,7 @@ internal fun removeVideoFromSecret(
     hiddenPaths: Set<String>,
     item: VideoWithMetadata
 ): Set<String> {
-    val updated = hiddenPaths - item.video.path
+    val updated = hiddenSetWithout(hiddenPaths, item)
     saveSecretVideoPaths(context, updated)
     Toast.makeText(
         context,

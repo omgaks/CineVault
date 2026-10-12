@@ -92,7 +92,7 @@ fun TvShowDetailScreen(
 
     var expandedSeasons by remember { mutableStateOf<Set<Int>>(emptySet()) }
 
-    val visibleEpisodes = episodes.filter { !hiddenPaths.contains(it.video.path) && !videoIsInsideSecretFolder(it, hiddenFolders) }
+    val visibleEpisodes = episodes.filter { !isSecretItem(it, hiddenPaths, hiddenFolders) }
 
     // Grouped by season using the same extractEpisodeInfo() parser the rest
     // of the app uses for S/E detection — falls back to season 1 for any
@@ -439,7 +439,7 @@ fun TvShowDetailScreen(
             ) {
                 if (selectedItem != null) {
                     val isFavorite = favoritePaths.contains(selectedItem.video.path)
-                    val isHidden = hiddenPaths.contains(selectedItem.video.path)
+                    val isHidden = isSecretItem(selectedItem, hiddenPaths, hiddenFolders)
                     val isInSecretFolder = videoIsInsideSecretFolder(selectedItem, hiddenFolders)
 
                     // Sheet slides up + fades in on top of the scrim's plain

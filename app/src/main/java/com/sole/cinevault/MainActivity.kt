@@ -579,9 +579,8 @@ fun CineVaultApp() {
     val secretVideoPaths = loadSecretVideoPaths(context)
     val secretFolderPaths = loadSecretFolderPaths(context)
     val homeVisibleVideos = libraryVideos.filter { item ->
-        val videoPath = runCatching { item.video.path }.getOrNull() ?: return@filter false
-        !secretVideoPaths.contains(videoPath) &&
-            !videoIsInsideSecretFolder(item, secretFolderPaths) &&
+        runCatching { item.video.path }.getOrNull() ?: return@filter false
+        !isSecretItem(item, secretVideoPaths, secretFolderPaths) &&
             !isRestrictedFolderItem(item)
     }
 

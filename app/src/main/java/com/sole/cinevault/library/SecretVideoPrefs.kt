@@ -1,6 +1,7 @@
 package com.sole.cinevault.library
 
 import com.sole.cinevault.VideoWithMetadata
+import com.sole.cinevault.fileLeafName
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -133,4 +134,35 @@ fun createNoMediaFileForFolder(folderPath: String): Boolean {
     } catch (e: Exception) {
         false
     }
+}
+
+
+// One film can reach the app by two routes with two different path strings
+// (the library scan, and an added folder). Hiding by path alone only hid one
+// of them. So a hide also stores the file's name as a second key, and every
+// screen asks isSecretItem(), which understands both. Episodes are left out of
+// the name key because many shows share names like "S01E01.mkv".
+private const val LEAF_KEY_PREFIX = "leaf::"
+private const val MIN_LEAF_KEY_LENGTH = 6
+
+internal fun secretNameKey(item: VideoWithMetadata): String? {
+    if (item.type.equals("tv", ignoreCase = true)) return null
+    val leaf = fileLeafName(item.video.path).trim().lowercase()
+    return if (leaf.length >= MIN_LEAF_KEY_LENGTH) LEAF_KEY_PREFIX + leaf else null
+}
+
+/** The set after hiding [item]: its path plus its name key. */
+internal fun hiddenSetWith(hidden: Set<String>, item: VideoWithMetadata): Set<String> =
+    hidden + item.video.path + listOfNotNull(secretNameKey(item))
+
+/** The set after un-hiding [item]. */
+internal fun hiddenSetWithout(hidden: Set<String>, item: VideoWithMetadata): Set<String> =
+    hidden - item.video.path - listOfNotNull(secretNameKey(item)).toSet()
+
+/** True if this video, or another copy of the same file, is hidden, or it sits in a hidden folder. */
+internal fun isSecretItem(item: VideoWithMetadata, hiddenPaths: Set<String>, hiddenFolders: Set<String>): Boolean {
+    if (hiddenPaths.contains(item.video.path)) return true
+    val key = secretNameKey(item)
+    if (key != null && hiddenPaths.contains(key)) return true
+    return videoIsInsideSecretFolder(item, hiddenFolders)
 }

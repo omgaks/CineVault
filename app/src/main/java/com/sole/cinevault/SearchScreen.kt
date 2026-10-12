@@ -126,7 +126,7 @@ fun SearchScreen(
     val hiddenPaths = remember { loadSecretVideoPaths(context) }
     val hiddenFolders = remember { loadSecretFolderPaths(context) }
     val searchableVideos = remember(videos, hiddenPaths, hiddenFolders) {
-        videos.filter { !hiddenPaths.contains(it.video.path) && !videoIsInsideSecretFolder(it, hiddenFolders) }
+        videos.filter { !isSecretItem(it, hiddenPaths, hiddenFolders) }
     }
 
     // Expanded beyond title/filename to also match genre, director, and

@@ -365,7 +365,10 @@ private fun MediaIntelligenceGridScreen(
             .show()
     }
 
-    val visibleGridItems = remember(items, locallyDeletedPaths) { items.filterNot { locallyDeletedPaths.contains(it.video.path) } }
+    val gridHiddenFolders = remember { loadSecretFolderPaths(gridContext) }
+    val visibleGridItems = remember(items, locallyDeletedPaths, hiddenPaths) {
+        items.filterNot { locallyDeletedPaths.contains(it.video.path) || isSecretItem(it, hiddenPaths, gridHiddenFolders) }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(SpaceBlack)) {
         LazyVerticalGrid(
@@ -485,7 +488,7 @@ private fun MediaIntelligenceGridScreen(
             ) {
                 if (selectedItem != null) {
                     val isFavorite = favoritePaths.contains(selectedItem.video.path)
-                    val isHidden = hiddenPaths.contains(selectedItem.video.path)
+                    val isHidden = isSecretItem(selectedItem, hiddenPaths, gridHiddenFolders)
                     Column(
                         modifier = Modifier.width(150.dp).glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.98f))
                             .clickable(enabled = false) { }.padding(12.dp)
@@ -510,7 +513,7 @@ private fun MediaIntelligenceGridScreen(
                                 tint = TextBright,
                                 contentDescription = if (isHidden) "Remove from Secret" else "Move to Secret"
                             ) {
-                                hiddenPaths = if (isHidden) hiddenPaths - selectedItem.video.path else hiddenPaths + selectedItem.video.path
+                                hiddenPaths = if (isHidden) hiddenSetWithout(hiddenPaths, selectedItem) else hiddenSetWith(hiddenPaths, selectedItem)
                                 saveSecretVideoPaths(gridContext, hiddenPaths)
                                 contextSheetItem = null
                             }

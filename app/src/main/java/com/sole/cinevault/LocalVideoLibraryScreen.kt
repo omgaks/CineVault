@@ -85,7 +85,6 @@ import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -146,6 +145,7 @@ object LibraryScrollState {
     var shelfIndex: Int = 0
     var shelfOffset: Int = 0
     var category: String = "All"
+    var secretUnlocked: Boolean = false
     var sort: LibrarySortOption = LibrarySortOption.TITLE_AZ
     var gridMode: Boolean = true
     var viewMode: LibraryViewMode = LibraryViewMode.Grid
@@ -195,7 +195,19 @@ fun LocalVideoLibraryScreen(
     var scanWasRunning by remember { mutableStateOf(false) }
     var scanUpToDate by remember { mutableStateOf(false) }
     // Survives rotation, re-locks when you leave the Library.
-    var secretUnlocked by rememberSaveable { mutableStateOf(false) }
+    var secretUnlocked by remember { mutableStateOf(LibraryScrollState.secretUnlocked) }
+    LaunchedEffect(secretUnlocked) { LibraryScrollState.secretUnlocked = secretUnlocked }
+    // Leaving the Library (another tab, or opening something) locks Secret again and
+    // brings back the normal library. Rotation is not leaving, so it is left alone.
+    val libraryActivity = context.findCineActivity()
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            if (libraryActivity?.isChangingConfigurations != true) {
+                LibraryScrollState.secretUnlocked = false
+                if (LibraryScrollState.category == "Secret") LibraryScrollState.category = "All"
+            }
+        }
+    }
     var hiddenPaths by remember { mutableStateOf<Set<String>>(loadSecretVideoPaths(context)) }
     var hiddenFolders by remember { mutableStateOf<Set<String>>(loadSecretFolderPaths(context)) }
     var favoritePaths by remember { mutableStateOf(loadFavoriteVideoPaths(context)) }
@@ -455,8 +467,8 @@ fun LocalVideoLibraryScreen(
         }
     }
 
-    val visibleSortedVideos = sortedVideos.filter { !hiddenPaths.contains(it.video.path) && !videoIsInsideSecretFolder(it, hiddenFolders) }
-    val secretVideos = sortedVideos.filter { hiddenPaths.contains(it.video.path) || videoIsInsideSecretFolder(it, hiddenFolders) }
+    val visibleSortedVideos = sortedVideos.filter { !isSecretItem(it, hiddenPaths, hiddenFolders) }
+    val secretVideos = sortedVideos.filter { isSecretItem(it, hiddenPaths, hiddenFolders) }
     val favoriteVideos = visibleSortedVideos.filter { favoritePaths.contains(it.video.path) }
 
     // Restricted (Select-Folder) folders that were bulk-secreted as a whole
@@ -552,7 +564,7 @@ fun LocalVideoLibraryScreen(
         else -> foldedVideos.filter { !it.type.equals("tv", ignoreCase = true) && !it.type.equals("restricted", ignoreCase = true) }
     }
 
-    val tvGroups = groupTvShows(sortedVideos.filter { it.type.equals("tv", ignoreCase = true) && !hiddenPaths.contains(it.video.path) && !videoIsInsideSecretFolder(it, hiddenFolders) })
+    val tvGroups = groupTvShows(sortedVideos.filter { it.type.equals("tv", ignoreCase = true) && !isSecretItem(it, hiddenPaths, hiddenFolders) })
 
     LocalLibrarySecretScreenProtection(
         context = context,
@@ -836,7 +848,7 @@ fun LocalVideoLibraryScreen(
         LibraryItemContextSheet(
             item = contextSheetItem,
             isFavorite = contextSheetItem?.let { favoritePaths.contains(it.video.path) } ?: false,
-            isHidden = contextSheetItem?.let { hiddenPaths.contains(it.video.path) } ?: false,
+            isHidden = contextSheetItem?.let { isSecretItem(it, hiddenPaths, hiddenFolders) } ?: false,
             isInSecretFolder = contextSheetItem?.let { videoIsInsideSecretFolder(it, hiddenFolders) } ?: false,
             onDismiss = { contextSheetItem = null },
             onPlay = { selectedItem -> contextSheetItem = null; onPlayClick(selectedItem) },
@@ -845,7 +857,7 @@ fun LocalVideoLibraryScreen(
                 contextSheetItem = null
             },
             onSecretToggle = { selectedItem ->
-                if (hiddenPaths.contains(selectedItem.video.path)) unhideVideo(selectedItem) else hideVideo(selectedItem)
+                if (isSecretItem(selectedItem, hiddenPaths, hiddenFolders)) unhideVideo(selectedItem) else hideVideo(selectedItem)
                 contextSheetItem = null
             },
             onUnlockFolder = { selectedItem ->
