@@ -433,6 +433,7 @@ fun CineVaultApp() {
     // First-run Onboarding: only a brand-new install sees it. Decided once,
     // off the main thread, after the saved library has been looked at.
     var showOnboarding by remember { mutableStateOf(false) }
+    var replayWelcome by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         val show = withContext(Dispatchers.IO) {
             val done = isOnboardingDone(context)
@@ -925,6 +926,7 @@ fun CineVaultApp() {
                             onOpenNetworkHub = { push(Destination.NetworkHub) },
                             onOpenGlassesGestureTutorial = { push(Destination.GlassesGestureTutorial) },
                             onOpenLibraryTools = { push(Destination.LibraryTools) },
+                            onReplayWelcome = { replayWelcome = true },
                             // FIX: previously just switched to the Library tab and
                             // discarded the typed URL entirely — Play did nothing.
                             // Now it actually pushes a Player destination for it.
@@ -1097,13 +1099,14 @@ fun CineVaultApp() {
     LaunchedEffect(Unit) { VoiceRuntime.loadFrom(context) }
     VoiceWakeHost()
 
-    if (showOnboarding) {
+    if (showOnboarding || replayWelcome) {
         OnboardingScreen(
+            replay = replayWelcome,
             onVideosLoaded = { loadedVideos ->
                 libraryVideos = sanitizeLibraryVideos(loadedVideos)
                 scope.launch { saveLibraryCache(context = context, videos = sanitizeLibraryVideos(loadedVideos)) }
             },
-            onFinished = { showOnboarding = false }
+            onFinished = { showOnboarding = false; replayWelcome = false }
         )
     }
 
