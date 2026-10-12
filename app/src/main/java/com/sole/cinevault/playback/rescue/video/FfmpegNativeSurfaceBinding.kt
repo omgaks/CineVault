@@ -6,6 +6,7 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
+import androidx.media3.exoplayer.ExoPlayer
 
 /**
  * Observes the actual PlayerView video surface without taking it away from Media3.
@@ -15,6 +16,7 @@ import androidx.media3.ui.PlayerView
 @OptIn(UnstableApi::class)
 internal class FfmpegNativeSurfaceBinding : AutoCloseable {
     private var holder: SurfaceHolder? = null
+    private var media3SurfaceReleased = false
     @Volatile private var playback: FfmpegNativeVideoPlayback? = null
     @Volatile private var worker: Thread? = null
     private val callback = object : SurfaceHolder.Callback {
@@ -28,9 +30,35 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
         val next = (playerView?.videoSurfaceView as? SurfaceView)?.holder
         if (holder === next) return
         stop()
+        media3SurfaceReleased = false
         holder?.removeCallback(callback)
         holder = next
         next?.addCallback(callback)
+    }
+
+    /**
+     * Explicitly release Media3's video output before native presentation.
+     * Call from the player/main thread, never from the decoder worker.
+     * The player owner remains responsible for audio and control transfer.
+     */
+    @Synchronized
+    fun releaseMedia3VideoSurface(player: ExoPlayer, playerView: PlayerView): Boolean {
+        val surfaceView = playerView.videoSurfaceView as? SurfaceView ?: return false
+        if (holder !== surfaceView.holder || worker != null) return false
+        if (!surfaceView.holder.surface.isValid) return false
+        player.clearVideoSurfaceView(surfaceView)
+        media3SurfaceReleased = true
+        return true
+    }
+
+    /** Reattach Media3 only after the native worker has fully exited. */
+    @Synchronized
+    fun restoreMedia3VideoSurface(player: ExoPlayer, playerView: PlayerView): Boolean {
+        val surfaceView = playerView.videoSurfaceView as? SurfaceView ?: return false
+        if (holder !== surfaceView.holder || worker != null || !media3SurfaceReleased) return false
+        player.setVideoSurfaceView(surfaceView)
+        media3SurfaceReleased = false
+        return true
     }
 
     /**
@@ -47,7 +75,7 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
         onCompleted: (FfmpegNativeVideoPlayback.Stats) -> Unit = {},
     ): Boolean {
         val surface: Surface = holder?.surface ?: return false
-        if (!surface.isValid || worker != null || path.isBlank() || resumePositionMs < 0L) return false
+        if (!surface.isValid || worker != null || !media3SurfaceReleased || path.isBlank() || resumePositionMs < 0L) return false
         // Prime the decoder worker before it starts so the first frame is
         // sought to the previous Media3 position and pause state is preserved.
         if (resumePositionMs > 0L) playback.seekTo(resumePositionMs)
