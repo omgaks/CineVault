@@ -110,6 +110,7 @@ internal class FfmpegNativeAvCoordinator(
         }
     }
 
+    @Synchronized fun positionMs(): Long? = audio?.positionMs()
     @Synchronized fun pause() { audio?.pause(); binding.pause() }
     @Synchronized fun resume() { audio?.resume(); binding.resume() }
     @Synchronized fun seekTo(positionMs: Long) {

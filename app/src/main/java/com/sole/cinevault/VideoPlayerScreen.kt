@@ -348,6 +348,14 @@ fun VideoPlayerScreen(
         ffmpegRescueAttemptedPath = null
     }
 
+    // Media3 stops being the timeline authority during native rescue.
+    LaunchedEffect(ffmpegRescueActive) {
+        while (ffmpegRescueActive) {
+            ffmpegAvCoordinator.positionMs()?.let { position = it }
+            kotlinx.coroutines.delay(100L)
+        }
+    }
+
     var localPlayerView by remember { mutableStateOf<PlayerView?>(null) }
     val glasses = rememberPlayerGlassesMode(
         localPlayerView = localPlayerView,
@@ -437,8 +445,8 @@ fun VideoPlayerScreen(
         VoicePlayerController(
             apply = { command ->
                 when (command) {
-                    VoiceCommand.Play -> { exoPlayer.play(); "Playing" }
-                    VoiceCommand.Pause -> { exoPlayer.pause(); "Paused" }
+                    VoiceCommand.Play -> { if (ffmpegRescueActive) { ffmpegAvCoordinator.resume(); isPlaying = true } else exoPlayer.play(); "Playing" }
+                    VoiceCommand.Pause -> { if (ffmpegRescueActive) { ffmpegAvCoordinator.pause(); isPlaying = false } else exoPlayer.pause(); "Paused" }
                     VoiceCommand.Mute -> { voiceMuted = true; exoPlayer.volume = 0f; "Muted" }
                     VoiceCommand.Unmute -> { voiceMuted = false; exoPlayer.volume = 1f; "Sound on" }
                     VoiceCommand.NextEpisode -> { playbackNavigationCoordinator.playNext(); "Next" }
@@ -449,11 +457,13 @@ fun VideoPlayerScreen(
                     VoiceCommand.FillScreen -> { gestureUi.isZoomMode = true; "Fill the screen" }
                     VoiceCommand.ExitPlayer -> { latestOnBack(); "Closed" }
                     is VoiceCommand.SkipSeconds -> {
-                        exoPlayer.seekTo(seekTargetMs(exoPlayer.currentPosition, exoPlayer.duration.coerceAtLeast(0L), command.seconds * 1000L))
+                        val target = seekTargetMs(if (ffmpegRescueActive) position else exoPlayer.currentPosition, duration.coerceAtLeast(0L), command.seconds * 1000L)
+                        if (ffmpegRescueActive) { ffmpegAvCoordinator.seekTo(target); position = target } else exoPlayer.seekTo(target)
                         if (command.seconds >= 0) "Skipped forward ${command.seconds} seconds" else "Skipped back ${-command.seconds} seconds"
                     }
                     is VoiceCommand.JumpToMs -> {
-                        exoPlayer.seekTo(jumpTargetMs(command.positionMs, exoPlayer.duration.coerceAtLeast(0L)))
+                        val target = jumpTargetMs(command.positionMs, duration.coerceAtLeast(0L))
+                        if (ffmpegRescueActive) { ffmpegAvCoordinator.seekTo(target); position = target } else exoPlayer.seekTo(target)
                         "Jumped to ${formatListened(command.positionMs)}"
                     }
                     is VoiceCommand.VolumeBy, is VoiceCommand.VolumeTo -> {
@@ -702,7 +712,7 @@ fun VideoPlayerScreen(
         onPlayerErrorMessageChanged = { playbackHealth.playerErrorMessage = it },
         onVideoEndedChanged = { isVideoEnded = it },
         onPlayingChanged = {
-            isPlaying = it
+            if (!ffmpegRescueActive) isPlaying = it
             if (it) {
                 playbackRecovery.confirmPlaybackStarted()
             }
@@ -776,7 +786,7 @@ fun VideoPlayerScreen(
                 started
             }
         },
-        onPositionChanged = { position = it },
+        onPositionChanged = { if (!ffmpegRescueActive) position = it },
         onDurationChanged = { duration = it },
         onBufferingSpinnerChanged = { playbackHealth.showBufferingSpinner = it },
         onStuckBufferingChanged = { playbackHealth.stuckBufferingHint = it },
@@ -1063,7 +1073,10 @@ fun VideoPlayerScreen(
         ) { gesture ->
             when (gesture) {
                 HeadGesture.NOD -> {
-                    if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                    if (ffmpegRescueActive) {
+                        if (isPlaying) ffmpegAvCoordinator.pause() else ffmpegAvCoordinator.resume()
+                        isPlaying = !isPlaying
+                    } else if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
                 }
 
                 HeadGesture.SHAKE -> {
