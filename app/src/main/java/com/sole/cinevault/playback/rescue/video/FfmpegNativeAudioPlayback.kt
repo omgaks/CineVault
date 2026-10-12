@@ -15,6 +15,14 @@ internal class FfmpegNativeAudioPlayback {
     private val stopped = AtomicBoolean(false)
     private val paused = AtomicBoolean(false)
     private val pendingSeek = AtomicLong(-1L)
+    @Volatile private var activeTrack: AudioTrack? = null
+    @Volatile private var positionBaseMs = 0L
+
+    /** AudioTrack playback-head clock, including the most recent seek offset. */
+    fun positionMs(): Long? {
+        val track = activeTrack ?: return null
+        return positionBaseMs + track.playbackHeadPosition.toLong() * 1000L / 48000L
+    }
 
     fun stop() { stopped.set(true) }
     fun pause() { paused.set(true) }
@@ -41,6 +49,7 @@ internal class FfmpegNativeAudioPlayback {
         )
         try {
             check(track.state == AudioTrack.STATE_INITIALIZED)
+            activeTrack = track
             FfmpegNativeAudioDecoder.open(path).use { decoder ->
                 while (!stopped.get()) {
                     val seek = pendingSeek.getAndSet(-1L)
@@ -48,6 +57,7 @@ internal class FfmpegNativeAudioPlayback {
                         track.pause()
                         track.flush()
                         decoder.seekTo(seek)
+                        positionBaseMs = seek
                     }
                     if (paused.get()) {
                         track.pause()
@@ -67,6 +77,7 @@ internal class FfmpegNativeAudioPlayback {
                 }
             }
         } finally {
+            activeTrack = null
             track.pause()
             track.flush()
             track.release()
