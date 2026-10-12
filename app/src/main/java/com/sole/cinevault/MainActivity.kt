@@ -714,7 +714,7 @@ fun CineVaultApp() {
                 }
 
                 is Destination.ActorPage -> {
-                    val items = libraryVideos.filter { v -> v.cast.orEmpty().any { it.id == dest.actorId } }
+                    val items = libraryVideos.filter { v -> v.cast.orEmpty().any { it.id == dest.actorId || ((it.name as String?)?.equals(dest.actorName, ignoreCase = true) == true) } }
                     ActorScreen(
                         actorId = dest.actorId,
                         actorName = dest.actorName,
