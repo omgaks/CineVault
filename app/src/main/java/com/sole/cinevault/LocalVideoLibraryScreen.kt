@@ -85,6 +85,7 @@ import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -193,7 +194,8 @@ fun LocalVideoLibraryScreen(
     var manageCopiesMainPath by remember { mutableStateOf<String?>(null) }
     var scanWasRunning by remember { mutableStateOf(false) }
     var scanUpToDate by remember { mutableStateOf(false) }
-    var secretUnlocked by remember { mutableStateOf(false) }
+    // Survives rotation, re-locks when you leave the Library.
+    var secretUnlocked by rememberSaveable { mutableStateOf(false) }
     var hiddenPaths by remember { mutableStateOf<Set<String>>(loadSecretVideoPaths(context)) }
     var hiddenFolders by remember { mutableStateOf<Set<String>>(loadSecretFolderPaths(context)) }
     var favoritePaths by remember { mutableStateOf(loadFavoriteVideoPaths(context)) }
