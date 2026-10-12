@@ -1,6 +1,7 @@
 name: Verify optional native FFmpeg integration
 
-# Explicit verification branch: native build only, with no APK or release.
+# Builds an ARM64 native test APK on the dedicated verification branch.
+# Uploads an Actions artifact; does not publish a GitHub Release.
 on:
   push:
     branches: [ci/verify-ffmpeg-slice2-27043ef]
@@ -57,3 +58,43 @@ jobs:
           ./gradlew :app:externalNativeBuildDebug \
             -PcinevaultFfmpegRoot="$GITHUB_WORKSPACE/.native/ffmpeg/arm64-v8a" \
             --no-daemon
+
+      - name: Build native-enabled test APK
+        run: |
+          ./gradlew :app:assembleDebug \
+            -PcinevaultFfmpegRoot="$GITHUB_WORKSPACE/.native/ffmpeg/arm64-v8a" \
+            --no-daemon
+
+      - name: Verify native libraries are packaged
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          apk = Path("app/build/outputs/apk/debug/app-debug.apk")
+          required = {
+              "lib/arm64-v8a/libcinevault_container_probe.so",
+              "lib/arm64-v8a/libavformat.so",
+              "lib/arm64-v8a/libavcodec.so",
+              "lib/arm64-v8a/libavutil.so",
+              "lib/arm64-v8a/libswscale.so",
+              "lib/arm64-v8a/libswresample.so",
+          }
+          with ZipFile(apk) as archive:
+              missing = required - set(archive.namelist())
+              if missing:
+                  raise SystemExit("Missing native libraries: " + ", ".join(sorted(missing)))
+              for name in sorted(required):
+                  if archive.getinfo(name).file_size == 0:
+                      raise SystemExit("Empty native library: " + name)
+                  print(name)
+          print("Native-enabled APK packaging verified.")
+          PY
+
+      - name: Upload test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CineVault-Native-Test-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
