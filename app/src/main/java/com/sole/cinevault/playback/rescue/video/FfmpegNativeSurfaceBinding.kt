@@ -21,12 +21,18 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
     private var holder: SurfaceHolder? = null
     private var media3SurfaceReleased = false
     private var surfaceGeneration = 0L
+    private var sessionGeneration = 0L
     @Volatile private var playback: FfmpegNativeVideoPlayback? = null
     @Volatile private var worker: Thread? = null
     private val callback = object : SurfaceHolder.Callback {
         override fun surfaceCreated(holder: SurfaceHolder) = Unit
         override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
-        override fun surfaceDestroyed(holder: SurfaceHolder) { stop() }
+        override fun surfaceDestroyed(holder: SurfaceHolder) {
+            synchronized(this@FfmpegNativeSurfaceBinding) {
+                surfaceGeneration++
+                stop()
+            }
+        }
     }
 
     @Synchronized
@@ -97,6 +103,7 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
         if (!playWhenReady) playback.pause()
         this.playback = playback
         val generation = surfaceGeneration
+        val session = ++sessionGeneration
         worker = Thread({
             var stats: FfmpegNativeVideoPlayback.Stats? = null
             var failure: Throwable? = null
@@ -120,7 +127,7 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
                 if (result != null || error != null) {
                     mainHandler.post {
                         val stillCurrent = synchronized(this@FfmpegNativeSurfaceBinding) {
-                            generation == surfaceGeneration
+                            generation == surfaceGeneration && session == sessionGeneration
                         }
                         if (stillCurrent && !playback.isStopRequested()) {
                             if (error != null) onFailure(error)
@@ -173,7 +180,11 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
     fun pause() { playback?.pause() }
     fun resume() { playback?.resume() }
     fun seekTo(positionMs: Long) { playback?.seekTo(positionMs) }
-    fun stop() { playback?.stop() }
+    @Synchronized
+    fun stop() {
+        sessionGeneration++
+        playback?.stop()
+    }
 
     @Synchronized
     override fun close() {
