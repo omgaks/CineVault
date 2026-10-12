@@ -17,6 +17,8 @@ internal class FfmpegNativeAvCoordinator(
     private var audio: FfmpegNativeAudioPlayback? = null
     private var audioWorker: Thread? = null
     private var sessionGeneration = 0L
+    private var owningPlayer: ExoPlayer? = null
+    private var owningView: PlayerView? = null
 
     @Synchronized
     fun start(
@@ -44,18 +46,20 @@ internal class FfmpegNativeAvCoordinator(
             playWhenReady = playWhenReady,
             onFailure = { error ->
                 if (session == sessionGeneration && terminalDelivered.compareAndSet(false, true)) {
-                    stop()
+                    finishSession()
                     onFailure(error)
                 }
             },
             onCompleted = { stats ->
                 if (session == sessionGeneration && terminalDelivered.compareAndSet(false, true)) {
-                    stop()
+                    finishSession()
                     onCompleted(stats)
                 }
             },
         )
         if (!started) return false
+        owningPlayer = player
+        owningView = playerView
         audio = output
         audioWorker = Thread({
             try {
@@ -66,7 +70,7 @@ internal class FfmpegNativeAvCoordinator(
                 // state off the main thread. Only one terminal event wins.
                 mainHandler.post {
                     if (session == sessionGeneration && terminalDelivered.compareAndSet(false, true)) {
-                        stop()
+                        finishSession()
                         onFailure(error)
                     }
                 }
@@ -80,6 +84,23 @@ internal class FfmpegNativeAvCoordinator(
             }
         }, "CineVault-FFmpeg-Audio").apply { start() }
         return true
+    }
+
+    /**
+     * Terminal callbacks arrive on the main thread. The native video worker
+     * has released its Surface before completion/failure is delivered.
+     * Restore Media3 output before the screen attempts recovery.
+     */
+    @Synchronized
+    private fun finishSession() {
+        stop()
+        val player = owningPlayer
+        val view = owningView
+        owningPlayer = null
+        owningView = null
+        if (player != null && view != null && !binding.isRunning()) {
+            binding.restoreMedia3VideoSurface(player, view)
+        }
     }
 
     @Synchronized fun pause() { audio?.pause(); binding.pause() }
