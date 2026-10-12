@@ -31,6 +31,10 @@ internal class FfmpegNativeAvCoordinator(
         onCompleted: (FfmpegNativeVideoPlayback.Stats) -> Unit,
     ): Boolean {
         if (audioWorker != null || binding.isRunning()) return false
+        // Silence Media3 before the native audio worker can begin output.
+        // Preserve the prior play intent for rollback if video handoff fails.
+        val previousPlayWhenReady = player.playWhenReady
+        player.pause()
         val terminalDelivered = AtomicBoolean(false)
         val session = ++sessionGeneration
         val output = FfmpegNativeAudioPlayback()
@@ -57,7 +61,10 @@ internal class FfmpegNativeAvCoordinator(
                 }
             },
         )
-        if (!started) return false
+        if (!started) {
+            player.playWhenReady = previousPlayWhenReady
+            return false
+        }
         owningPlayer = player
         owningView = playerView
         audio = output
