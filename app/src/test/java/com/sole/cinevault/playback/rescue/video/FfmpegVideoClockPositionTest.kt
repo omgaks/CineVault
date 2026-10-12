@@ -19,4 +19,15 @@ class FfmpegVideoClockPositionTest {
     @Test fun clockRollbackNeverProducesNegativeTime() {
         assertEquals(0L, FfmpegVideoClockPosition.resolve(1000L, 200L, 190L, null))
     }
+    @Test fun videoTailKeepsTheLastAudioAnchorAtDoubleSpeed() {
+        assertEquals(900L, FfmpegVideoClockPosition.resolve(1000L, 200L, 400L, null, 2f, 1500L))
+    }
+
+    @Test fun audioClockAlreadyIncludesSpeedAndMustNotBeMultipliedTwice() {
+        assertEquals(500L, FfmpegVideoClockPosition.resolve(1000L, 200L, 400L, 1500L, 2f))
+    }
+
+    @Test fun invalidFallbackSpeedPreservesNormalTiming() {
+        assertEquals(200L, FfmpegVideoClockPosition.resolve(1000L, 200L, 400L, null, Float.NaN))
+    }
 }

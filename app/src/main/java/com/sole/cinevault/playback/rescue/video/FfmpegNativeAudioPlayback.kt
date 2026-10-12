@@ -4,6 +4,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.media.PlaybackParams
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicInteger
@@ -19,10 +20,14 @@ internal class FfmpegNativeAudioPlayback(
     private val pendingStream = AtomicInteger(-1)
     @Volatile private var trackSnapshot = FfmpegNativeAudioTrackSnapshot()
     @Volatile private var volume = 1f
+    private var restoredStream: Int? = null
+    @Volatile private var requestedSpeed = 1f
+    @Volatile private var appliedSpeed: Float? = null
     @Volatile private var lastPositionMs = 0L
     @Volatile private var clockPositionMs: Long? = null
     @Volatile private var mediaDurationMs: Long? = null
 
+    fun restoreAudioStream(streamIndex: Int?) { restoredStream = streamIndex }
     fun audioTracks(): FfmpegNativeAudioTrackSnapshot = trackSnapshot
     fun selectAudioTrack(streamIndex: Int): Boolean {
         if (stopped.get() || trackSnapshot.tracks.none { it.streamIndex == streamIndex }) return false
@@ -34,6 +39,8 @@ internal class FfmpegNativeAudioPlayback(
     fun positionMs(): Long = lastPositionMs
     fun playbackClockMs(): Long? = clockPositionMs
     fun durationMs(): Long? = mediaDurationMs
+    fun playbackSpeed(): Float? = appliedSpeed
+    fun setSpeed(value: Float) { require(value.isFinite()); requestedSpeed = value.coerceIn(0.25f, 3f) }
     fun setVolume(value: Float) { volume = value.coerceIn(0f, 1f) }
     fun stop() { stopped.set(true) }
     fun pause() { paused.set(true) }
@@ -67,6 +74,19 @@ internal class FfmpegNativeAudioPlayback(
             lastPositionMs = clock.positionMs(track.playbackHeadPosition)
             clockPositionMs = if (pendingSeek.get() < 0L && pendingStream.get() < 0) lastPositionMs else null
         }
+        fun updateSpeed() {
+            val wanted = requestedSpeed
+            if (appliedSpeed == wanted) return
+            try {
+                track.playbackParams = PlaybackParams().allowDefaults().setSpeed(wanted).setPitch(1f)
+                appliedSpeed = track.playbackParams.speed
+            } catch (_: IllegalArgumentException) {
+                // A device may reject an extreme rate. Preserve playback at 1x.
+                track.playbackParams = PlaybackParams().allowDefaults().setSpeed(1f).setPitch(1f)
+                requestedSpeed = 1f
+                appliedSpeed = 1f
+            }
+        }
         fun updateVolume() {
             val requested = volume
             if (requested != appliedVolume) {
@@ -79,7 +99,8 @@ internal class FfmpegNativeAudioPlayback(
             var decoder = FfmpegNativeAudioDecoder.open(path)
             try {
                 val tracks = decoder.tracks()
-                val restored = FfmpegNativeAudioTracks.restoreStream(tracks, restoreLanguage, restoreChannels)
+                val restored = restoredStream?.takeIf { requested -> tracks.any { it.streamIndex == requested } }
+                    ?: FfmpegNativeAudioTracks.restoreStream(tracks, restoreLanguage, restoreChannels)
                 if (restored != null && restored != decoder.selectedStreamIndex()) {
                     val replacement = FfmpegNativeAudioDecoder.open(path, restored)
                     decoder.close()
@@ -111,6 +132,7 @@ internal class FfmpegNativeAudioPlayback(
                     }
                     updateClock()
                     updateVolume()
+                    updateSpeed()
                     if (paused.get()) {
                         track.pause()
                         Thread.sleep(10)
@@ -126,6 +148,7 @@ internal class FfmpegNativeAudioPlayback(
                             while (!stopped.get() && pendingSeek.get() < 0L && pendingStream.get() < 0) {
                                 updateClock()
                                 updateVolume()
+                                updateSpeed()
                                 if (paused.get()) track.pause() else track.play()
                                 if (clock.playedFrames >= submittedFrames) break
                                 Thread.sleep(5)

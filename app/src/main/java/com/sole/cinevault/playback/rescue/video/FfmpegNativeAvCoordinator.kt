@@ -19,6 +19,7 @@ internal class FfmpegNativeAvCoordinator(
     private var shuttingDown = false
     private var closed = false
     private var volume = 1f
+    private var speed = 1f
     private var onShutdownComplete: (() -> Unit)? = null
 
     @Synchronized
@@ -30,6 +31,7 @@ internal class FfmpegNativeAvCoordinator(
         playWhenReady: Boolean,
         onFailure: (Throwable) -> Unit,
         onCompleted: (FfmpegNativeVideoPlayback.Stats) -> Unit,
+        preferredAudioStream: Int? = null,
     ): Boolean {
         if (closed || shuttingDown || audioWorker != null || binding.isRunning()) return false
         val previousPlayWhenReady = player.playWhenReady
@@ -41,9 +43,11 @@ internal class FfmpegNativeAvCoordinator(
             .firstOrNull()
         val output = FfmpegNativeAudioPlayback(previousAudioFormat?.language, previousAudioFormat?.channelCount ?: -1)
         output.setVolume(volume)
+        output.setSpeed(speed)
+        output.restoreAudioStream(preferredAudioStream)
         if (positionMs > 0) output.seekTo(positionMs)
         if (!playWhenReady) output.pause()
-        val video = FfmpegNativeVideoPlayback(audioPositionMs = output::playbackClockMs)
+        val video = FfmpegNativeVideoPlayback(audioPositionMs = output::playbackClockMs, playbackSpeed = { output.playbackSpeed() ?: speed })
         val started = try {
             binding.startAfterMedia3Release(
                 player = player,
@@ -138,6 +142,12 @@ internal class FfmpegNativeAvCoordinator(
     @Synchronized fun durationMs(): Long? = audio?.durationMs()
     @Synchronized fun pause() { audio?.pause(); binding.pause() }
     @Synchronized fun resume() { audio?.resume(); binding.resume() }
+    @Synchronized fun playbackSpeed(): Float? = audio?.playbackSpeed()
+    @Synchronized fun setSpeed(value: Float) {
+        require(value.isFinite())
+        speed = value.coerceIn(0.25f, 3f)
+        audio?.setSpeed(speed)
+    }
     @Synchronized fun setVolume(value: Float) {
         volume = value.coerceIn(0f, 1f)
         audio?.setVolume(volume)

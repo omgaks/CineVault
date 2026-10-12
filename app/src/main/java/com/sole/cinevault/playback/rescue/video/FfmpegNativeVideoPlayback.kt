@@ -17,6 +17,7 @@ internal class FfmpegNativeVideoPlayback(
     private val sleepMs: (Long) -> Unit = Thread::sleep,
     private val scheduler: FfmpegVideoFrameScheduler = FfmpegVideoFrameScheduler(),
     private val audioPositionMs: (() -> Long?)? = null,
+    private val playbackSpeed: () -> Float = { 1f },
 ) {
     private val stopped = AtomicBoolean(false)
     private val paused = AtomicBoolean(false)
@@ -47,6 +48,8 @@ internal class FfmpegNativeVideoPlayback(
         var dropped = 0
         var originPts: Long? = null
         var originClock = clockMs()
+        var fallbackPosition = 0L
+        var fallbackClock = originClock
         var pauseStarted: Long? = null
         FfmpegNativeDecoderSession.open(path).use { decoder ->
             while (!stopped.get()) {
@@ -55,6 +58,8 @@ internal class FfmpegNativeVideoPlayback(
                     decoder.seekTo(seek)
                     originPts = seek
                     originClock = clockMs()
+                    fallbackPosition = seek
+                    fallbackClock = originClock
                     pauseStarted = null
                 }
                 if (paused.get()) {
@@ -63,7 +68,9 @@ internal class FfmpegNativeVideoPlayback(
                     continue
                 }
                 pauseStarted?.let { started ->
-                    originClock += (clockMs() - started).coerceAtLeast(0L)
+                    val pausedFor = (clockMs() - started).coerceAtLeast(0L)
+                    originClock += pausedFor
+                    fallbackClock += pausedFor
                     pauseStarted = null
                 }
                 val frame = decoder.nextFrame() ?: break
@@ -72,6 +79,8 @@ internal class FfmpegNativeVideoPlayback(
                 if (originPts == null) {
                     originPts = frame.presentationTimeMs
                     originClock = clockMs()
+                    fallbackPosition = frame.presentationTimeMs
+                    fallbackClock = originClock
                 }
                 val relativePts = (frame.presentationTimeMs - originPts).coerceAtLeast(0L)
                 while (!stopped.get()) {
@@ -82,14 +91,24 @@ internal class FfmpegNativeVideoPlayback(
                         continue
                     }
                     pauseStarted?.let { started ->
-                        originClock += (clockMs() - started).coerceAtLeast(0L)
+                        val pausedFor = (clockMs() - started).coerceAtLeast(0L)
+                        originClock += pausedFor
+                        fallbackClock += pausedFor
                         pauseStarted = null
+                    }
+                    val now = clockMs()
+                    val audioTime = audioPositionMs?.invoke()
+                    if (audioTime != null && audioTime >= originPts) {
+                        fallbackPosition = audioTime
+                        fallbackClock = now
                     }
                     val position = FfmpegVideoClockPosition.resolve(
                         originPtsMs = originPts,
-                        originClockMs = originClock,
-                        nowMs = clockMs(),
-                        audioPositionMs = audioPositionMs?.invoke(),
+                        originClockMs = fallbackClock,
+                        nowMs = now,
+                        audioPositionMs = audioTime,
+                        playbackSpeed = playbackSpeed(),
+                        fallbackPositionMs = fallbackPosition,
                     )
                     when (scheduler.decide(relativePts, position)) {
                         FfmpegVideoFrameScheduleDecision.WAIT -> sleepMs(5L)

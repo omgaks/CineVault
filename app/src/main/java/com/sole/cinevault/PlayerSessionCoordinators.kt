@@ -61,10 +61,14 @@ internal fun rememberPlayerSessionCoordinators(
     onExternalSubtitleReplaced: () -> Unit = {},
     nativePlaybackActive: Boolean = false,
     playbackPositionMs: () -> Long = { player.currentPosition },
+    applyPlaybackSpeed: (Float) -> Unit = { player.setPlaybackSpeed(it) },
+    pausePlayback: () -> Unit = { player.pause() },
 ): PlayerSessionCoordinatorBundle {
     // These coordinators are remembered for the player lifetime, so any values
     // they read later through callbacks must stay fresh across recomposition.
     val currentNativePlaybackActive = rememberUpdatedState(nativePlaybackActive)
+    val currentApplySpeed = rememberUpdatedState(applyPlaybackSpeed)
+    val currentPausePlayback = rememberUpdatedState(pausePlayback)
     val currentPlaybackPositionMs = rememberUpdatedState(playbackPositionMs)
     val currentEpisodeList = rememberUpdatedState(episodeList)
     val currentVideoState = rememberUpdatedState(currentVideo)
@@ -90,6 +94,8 @@ internal fun rememberPlayerSessionCoordinators(
             closeSpeedMenu = { onShowSpeedMenuChanged(false) },
             closeSleepMenu = { onShowSleepMenuChanged(false) },
             showControls = { onShowControlsChanged(true) },
+            applyPlaybackSpeed = { currentApplySpeed.value(it) },
+            pausePlayback = { currentPausePlayback.value() },
         )
     }
 

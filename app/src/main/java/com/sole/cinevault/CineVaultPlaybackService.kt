@@ -255,7 +255,8 @@ class CineVaultPlaybackService : MediaSessionService() {
     // of leaving an orphaned foreground notification behind.
     override fun onTaskRemoved(rootIntent: Intent?) {
         val player = CineVaultPlayerHolder.currentPlayer
-        if (player == null || !player.playWhenReady) {
+        val native = CineVaultPlayerHolder.nativeBridge?.takeIf { it.owner === player }?.snapshot
+        if (player == null || !(native?.playing ?: player.playWhenReady)) {
             mediaSession?.release()
             mediaSession = null
             stopSelf()

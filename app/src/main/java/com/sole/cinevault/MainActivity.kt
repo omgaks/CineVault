@@ -166,7 +166,8 @@ class MainActivity : FragmentActivity() {
     // PiP remains a visible playback mode and is allowed to continue.
     override fun onStop() {
         if (!isInPictureInPictureMode && !CineVaultPlayerHolder.isInPipMode) {
-            CineVaultPlayerHolder.currentPlayer?.pause()
+            val native = CineVaultPlayerHolder.nativeBridge
+            if (native?.snapshot != null) native.pause() else CineVaultPlayerHolder.currentPlayer?.pause()
         }
         super.onStop()
     }
@@ -202,6 +203,8 @@ class MainActivity : FragmentActivity() {
         // object indefinitely. release() is safe to call twice (idempotent
         // per Media3), so this costs nothing even when the normal path
         // already handled it.
+        CineVaultPlayerHolder.nativeBridge?.release()
+        CineVaultPlayerHolder.nativeBridge = null
         CineVaultPlayerHolder.currentPlayer?.apply {
             stop()
             release()

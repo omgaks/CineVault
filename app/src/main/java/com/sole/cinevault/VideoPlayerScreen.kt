@@ -335,6 +335,8 @@ fun VideoPlayerScreen(
         com.sole.cinevault.playback.rescue.video.FfmpegNativeAvCoordinator(ffmpegSurfaceBinding)
     }
     var ffmpegRescueActive by remember { mutableStateOf(false) }
+    var ffmpegReplayReady by remember { mutableStateOf(false) }
+    var ffmpegPreferredAudioStream by remember { mutableStateOf<Int?>(null) }
     var ffmpegLastPosition by remember { mutableStateOf<Long?>(null) }
     var ffmpegLastDuration by remember { mutableStateOf<Long?>(null) }
     var ffmpegAudioTracks by remember { mutableStateOf(com.sole.cinevault.playback.rescue.video.FfmpegNativeAudioTrackSnapshot()) }
@@ -348,6 +350,8 @@ fun VideoPlayerScreen(
     LaunchedEffect(currentVideo.path) {
         ffmpegAvCoordinator.stop()
         ffmpegRescueActive = false
+        ffmpegReplayReady = false
+        ffmpegPreferredAudioStream = null
         ffmpegRescueAttemptedPath = null
         ffmpegLastPosition = null
         ffmpegLastDuration = null
@@ -358,6 +362,7 @@ fun VideoPlayerScreen(
     LaunchedEffect(ffmpegRescueActive) {
         while (ffmpegRescueActive) {
             ffmpegAudioTracks = ffmpegAvCoordinator.audioTracks()
+            ffmpegAvCoordinator.playbackSpeed()?.let { playbackSpeed = it }
             if (!chromeUi.isDraggingSeekbar) ffmpegAvCoordinator.positionMs()?.let {
                 position = it
                 ffmpegLastPosition = it
@@ -371,6 +376,108 @@ fun VideoPlayerScreen(
     }
 
     var localPlayerView by remember { mutableStateOf<PlayerView?>(null) }
+
+    fun startNativePlayback(resumePosition: Long, playWhenReady: Boolean): Boolean {
+        val view = localPlayerView ?: return false
+        ffmpegAvCoordinator.setVolume(exoPlayer.volume)
+        ffmpegAvCoordinator.setSpeed(playbackSpeed)
+        val selected = ffmpegPreferredAudioStream ?: ffmpegAudioTracks.selectedStreamIndex.takeIf { it >= 0 }
+        val started = ffmpegAvCoordinator.start(
+            player = exoPlayer,
+            playerView = view,
+            path = currentVideo.path,
+            positionMs = resumePosition.coerceAtLeast(0L),
+            playWhenReady = playWhenReady,
+            preferredAudioStream = selected,
+            onFailure = { error ->
+                ffmpegRescueActive = false
+                ffmpegReplayReady = false
+                isPlaying = false
+                playbackHealth.playerErrorMessage = "FFmpeg rescue failed: ${error.message ?: "Unknown error"}"
+                CineVaultPlayerHolder.nativeBridge?.takeIf { it.owner === exoPlayer }?.publish()
+            },
+            onCompleted = {
+                ffmpegLastDuration?.takeIf { it > 0L }?.let { position = it; ffmpegLastPosition = it }
+                ffmpegRescueActive = false
+                ffmpegReplayReady = true
+                isPlaying = false
+                isVideoEnded = true
+                CineVaultPlayerHolder.nativeBridge?.takeIf { it.owner === exoPlayer }?.publish()
+            },
+        )
+        if (started) {
+            ffmpegLastPosition = resumePosition.coerceAtLeast(0L)
+            position = resumePosition.coerceAtLeast(0L)
+            ffmpegReplayReady = false
+            ffmpegRescueActive = true
+            isVideoEnded = false
+            isPlaying = playWhenReady
+            playbackHealth.playerErrorMessage = null
+            CineVaultPlayerHolder.nativeBridge?.takeIf { it.owner === exoPlayer }?.publish()
+        }
+        return started
+    }
+
+    val nativePlaybackBridge = remember(exoPlayer, ffmpegAvCoordinator) {
+        NativePlaybackBridge(
+            owner = exoPlayer,
+            readSnapshot = {
+                if (!ffmpegRescueActive && !ffmpegReplayReady) null else NativePlaybackSnapshot(
+                    positionMs = ffmpegAvCoordinator.positionMs() ?: ffmpegLastPosition ?: position,
+                    durationMs = ffmpegAvCoordinator.durationMs() ?: ffmpegLastDuration ?: duration,
+                    playing = ffmpegRescueActive && isPlaying,
+                    ended = ffmpegReplayReady,
+                    speed = ffmpegAvCoordinator.playbackSpeed() ?: playbackSpeed,
+                    volume = exoPlayer.volume,
+                )
+            },
+            onPlay = {
+                if (ffmpegReplayReady) startNativePlayback(0L, true)
+                else { ffmpegAvCoordinator.resume(); isPlaying = true }
+            },
+            onPause = { if (ffmpegRescueActive) { ffmpegAvCoordinator.pause(); isPlaying = false } },
+            onSeek = { target ->
+                if (ffmpegReplayReady) startNativePlayback(target, false)
+                else {
+                    ffmpegAvCoordinator.seekTo(target)
+                    position = target
+                    ffmpegLastPosition = target
+                }
+            },
+            onSpeed = { speed ->
+                ffmpegAvCoordinator.setSpeed(speed)
+                playbackSpeed = speed
+            },
+            onVolume = { gain -> ffmpegAvCoordinator.setVolume(gain); exoPlayer.volume = gain },
+            onStop = {
+                ffmpegAvCoordinator.stop()
+                exoPlayer.stop()
+                ffmpegRescueActive = false
+                ffmpegReplayReady = false
+                isPlaying = false
+            },
+            onRelease = {
+                ffmpegAvCoordinator.close()
+                ffmpegRescueActive = false
+                ffmpegReplayReady = false
+                isPlaying = false
+            },
+        )
+    }
+    DisposableEffect(nativePlaybackBridge) {
+        CineVaultPlayerHolder.nativeBridge = nativePlaybackBridge
+        onDispose {
+            nativePlaybackBridge.release()
+            if (CineVaultPlayerHolder.nativeBridge === nativePlaybackBridge) CineVaultPlayerHolder.nativeBridge = null
+        }
+    }
+    LaunchedEffect(nativePlaybackBridge) {
+        while (true) {
+            nativePlaybackBridge.publish()
+            kotlinx.coroutines.delay(100L)
+        }
+    }
+
     val glasses = rememberPlayerGlassesMode(
         localPlayerView = localPlayerView,
         onBoundPlayerViewChanged = { studioUi.playerView = it },
@@ -408,8 +515,12 @@ fun VideoPlayerScreen(
         context = context,
         scope = scope,
         player = exoPlayer,
-        nativePlaybackActive = ffmpegRescueActive,
-        playbackPositionMs = { if (ffmpegRescueActive) ffmpegAvCoordinator.positionMs() ?: position else exoPlayer.currentPosition },
+        nativePlaybackActive = ffmpegRescueActive || ffmpegReplayReady,
+        applyPlaybackSpeed = { speed ->
+            if (nativePlaybackBridge.snapshot != null) nativePlaybackBridge.setSpeed(speed) else exoPlayer.setPlaybackSpeed(speed)
+        },
+        pausePlayback = { if (nativePlaybackBridge.snapshot != null) nativePlaybackBridge.pause() else exoPlayer.pause() },
+        playbackPositionMs = { nativePlaybackBridge.snapshot?.positionMs ?: exoPlayer.currentPosition },
         trackSelector = trackSelector,
         haptics = haptics,
         episodeList = episodeList,
@@ -461,8 +572,8 @@ fun VideoPlayerScreen(
         VoicePlayerController(
             apply = { command ->
                 when (command) {
-                    VoiceCommand.Play -> { if (ffmpegRescueActive) { ffmpegAvCoordinator.resume(); isPlaying = true } else exoPlayer.play(); "Playing" }
-                    VoiceCommand.Pause -> { if (ffmpegRescueActive) { ffmpegAvCoordinator.pause(); isPlaying = false } else exoPlayer.pause(); "Paused" }
+                    VoiceCommand.Play -> { if (nativePlaybackBridge.snapshot != null) nativePlaybackBridge.play() else exoPlayer.play(); "Playing" }
+                    VoiceCommand.Pause -> { if (nativePlaybackBridge.snapshot != null) nativePlaybackBridge.pause() else exoPlayer.pause(); "Paused" }
                     VoiceCommand.Mute -> { voiceMuted = true; exoPlayer.volume = 0f; ffmpegAvCoordinator.setVolume(0f); "Muted" }
                     VoiceCommand.Unmute -> { voiceMuted = false; exoPlayer.volume = 1f; ffmpegAvCoordinator.setVolume(1f); "Sound on" }
                     VoiceCommand.NextEpisode -> { playbackNavigationCoordinator.playNext(); "Next" }
@@ -473,14 +584,14 @@ fun VideoPlayerScreen(
                     VoiceCommand.FillScreen -> { gestureUi.isZoomMode = true; "Fill the screen" }
                     VoiceCommand.ExitPlayer -> { latestOnBack(); "Closed" }
                     is VoiceCommand.SkipSeconds -> {
-                        val target = seekTargetMs(if (ffmpegRescueActive) position else exoPlayer.currentPosition, duration.coerceAtLeast(0L), command.seconds * 1000L)
-                        if (ffmpegRescueActive) { ffmpegAvCoordinator.seekTo(target); position = target } else exoPlayer.seekTo(target)
+                        val target = seekTargetMs(nativePlaybackBridge.snapshot?.positionMs ?: exoPlayer.currentPosition, duration.coerceAtLeast(0L), command.seconds * 1000L)
+                        if (nativePlaybackBridge.snapshot != null) nativePlaybackBridge.seekTo(target) else exoPlayer.seekTo(target)
                         val at = formatListened(target)
                         if (command.seconds >= 0) "Skipped forward ${command.seconds} seconds (now $at)" else "Skipped back ${-command.seconds} seconds (now $at)"
                     }
                     is VoiceCommand.JumpToMs -> {
                         val target = jumpTargetMs(command.positionMs, duration.coerceAtLeast(0L))
-                        if (ffmpegRescueActive) { ffmpegAvCoordinator.seekTo(target); position = target } else exoPlayer.seekTo(target)
+                        if (nativePlaybackBridge.snapshot != null) nativePlaybackBridge.seekTo(target) else exoPlayer.seekTo(target)
                         "Jumped to ${formatListened(command.positionMs)}"
                     }
                     is VoiceCommand.VolumeBy, is VoiceCommand.VolumeTo -> {
@@ -508,7 +619,7 @@ fun VideoPlayerScreen(
                         "Brightness $target%"
                     }
                     is VoiceCommand.SpeedTo, is VoiceCommand.SpeedBy -> {
-                        val target = speedTarget(exoPlayer.playbackParameters.speed, command)!!
+                        val target = speedTarget(playbackSpeed, command)!!
                         playerSessionActionsCoordinator.setPlaybackSpeed(target)
                         "Speed ${target}x"
                     }
@@ -644,7 +755,7 @@ fun VideoPlayerScreen(
             )
         },
         getCurrentSafeResumePosition = {
-            playerSafeResumePosition(if (ffmpegRescueActive) position else exoPlayer.currentPosition)
+            playerSafeResumePosition(nativePlaybackBridge.snapshot?.positionMs ?: exoPlayer.currentPosition)
         },
         setters = PlayerVideoSessionSetters(
             setMovieSubtitleMemoryReady = { movieSubtitleMemoryReady = it },
@@ -745,6 +856,7 @@ fun VideoPlayerScreen(
             if (!ffmpegRescueActive) {
                 isPlaying = it
                 if (it) {
+                    ffmpegReplayReady = false
                     // A successful Media3 restart reclaims the timeline.
                     ffmpegLastPosition = null
                     ffmpegLastDuration = null
@@ -799,32 +911,7 @@ fun VideoPlayerScreen(
                 false
             } else {
                 ffmpegRescueAttemptedPath = currentVideo.path
-                ffmpegAvCoordinator.setVolume(exoPlayer.volume)
-                val started = ffmpegAvCoordinator.start(
-                    player = exoPlayer,
-                    playerView = view,
-                    path = currentVideo.path,
-                    positionMs = resumePosition.coerceAtLeast(0L),
-                    playWhenReady = playWhenReady,
-                    onFailure = { error ->
-                        ffmpegRescueActive = false
-                        isPlaying = false
-                        playbackHealth.playerErrorMessage =
-                            "FFmpeg rescue failed: ${error.message ?: "Unknown error"}"
-                    },
-                    onCompleted = {
-                        ffmpegRescueActive = false
-                        isPlaying = false
-                        isVideoEnded = true
-                    },
-                )
-                if (started) {
-                    ffmpegLastPosition = resumePosition.coerceAtLeast(0L)
-                    ffmpegRescueActive = true
-                    isPlaying = playWhenReady
-                    playbackHealth.playerErrorMessage = null
-                }
-                started
+                startNativePlayback(resumePosition, playWhenReady)
             }
         },
         playbackPositionMs = { if (ffmpegRescueActive) ffmpegAvCoordinator.positionMs() ?: position else ffmpegLastPosition ?: exoPlayer.currentPosition },
@@ -870,8 +957,8 @@ fun VideoPlayerScreen(
         context = context,
         scope = scope,
         exoPlayer = exoPlayer,
-        playbackPositionMs = { if (ffmpegRescueActive) ffmpegAvCoordinator.positionMs() ?: position else exoPlayer.currentPosition },
-        resumePlayback = { if (ffmpegRescueActive) { ffmpegAvCoordinator.resume(); isPlaying = true } else exoPlayer.play() },
+        playbackPositionMs = { nativePlaybackBridge.snapshot?.positionMs ?: exoPlayer.currentPosition },
+        resumePlayback = { if (nativePlaybackBridge.snapshot != null) nativePlaybackBridge.play() else exoPlayer.play() },
         trackSelector = trackSelector,
         currentVideoPath = currentVideo.path,
         availableWidthDp = subtitleWindowInfo.widthDp.value,
@@ -1118,9 +1205,8 @@ fun VideoPlayerScreen(
         ) { gesture ->
             when (gesture) {
                 HeadGesture.NOD -> {
-                    if (ffmpegRescueActive) {
-                        if (isPlaying) ffmpegAvCoordinator.pause() else ffmpegAvCoordinator.resume()
-                        isPlaying = !isPlaying
+                    if (nativePlaybackBridge.snapshot != null) {
+                        if (nativePlaybackBridge.snapshot?.playing == true) nativePlaybackBridge.pause() else nativePlaybackBridge.play()
                     } else if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
                 }
 
@@ -1140,10 +1226,10 @@ fun VideoPlayerScreen(
             context = context,
             activity = activity,
             player = exoPlayer,
-            playbackPositionMs = { if (ffmpegRescueActive) position else exoPlayer.currentPosition },
-            playbackDurationMs = { if (ffmpegRescueActive) duration else exoPlayer.duration },
-            nativeSeek = if (ffmpegRescueActive) ({ target: Long -> ffmpegAvCoordinator.seekTo(target); position = target }) else null,
-            nativeTogglePlayPause = if (ffmpegRescueActive) ({ if (isPlaying) ffmpegAvCoordinator.pause() else ffmpegAvCoordinator.resume(); isPlaying = !isPlaying }) else null,
+            playbackPositionMs = { nativePlaybackBridge.snapshot?.positionMs ?: exoPlayer.currentPosition },
+            playbackDurationMs = { nativePlaybackBridge.snapshot?.durationMs ?: exoPlayer.duration },
+            nativeSeek = if (ffmpegRescueActive || ffmpegReplayReady) ({ target: Long -> nativePlaybackBridge.seekTo(target) }) else null,
+            nativeTogglePlayPause = if (ffmpegRescueActive || ffmpegReplayReady) ({ if (nativePlaybackBridge.snapshot?.playing == true) nativePlaybackBridge.pause() else nativePlaybackBridge.play() }) else null,
             audioManager = audioManager,
             externalDisplayActive = glasses.isActive,
             currentVideoPath = currentVideo.path,
@@ -1285,13 +1371,15 @@ fun VideoPlayerScreen(
         PlayerSubtitleSelectionAndAcquisitionSurfaces(
             context = context,
             player = exoPlayer,
-            nativeAudioRows = if (ffmpegRescueActive) ffmpegAudioTracks.tracks.map { track ->
+            nativeAudioRows = if (ffmpegRescueActive || ffmpegReplayReady) ffmpegAudioTracks.tracks.map { track ->
                 TrackPopupRowData(
                     title = friendlyLanguageName(track.language),
                     subtitle = "${track.codec.uppercase()} · ${track.channels} ch",
                     selected = track.streamIndex == ffmpegAudioTracks.selectedStreamIndex,
                     onClick = {
-                        if (ffmpegAvCoordinator.selectAudioTrack(track.streamIndex)) {
+                        if (ffmpegReplayReady || ffmpegAvCoordinator.selectAudioTrack(track.streamIndex)) {
+                            ffmpegPreferredAudioStream = track.streamIndex
+                            if (ffmpegReplayReady) ffmpegAudioTracks = ffmpegAudioTracks.copy(selectedStreamIndex = track.streamIndex)
                             chromeUi.showAudioSelector = false
                             chromeUi.showControls = true
                         }
@@ -1488,8 +1576,8 @@ fun VideoPlayerScreen(
             onShowSeekPreviewChanged = { gestureUi.showSeekPreview = it },
             onPreviewPositionChanged = { gestureUi.previewPosition = it },
             onPreviewBitmapChanged = { gestureUi.previewBitmap = it },
-            nativeSeek = if (ffmpegRescueActive) ({ target: Long -> ffmpegAvCoordinator.seekTo(target); position = target }) else null,
-            nativeTogglePlayPause = if (ffmpegRescueActive) ({ if (isPlaying) ffmpegAvCoordinator.pause() else ffmpegAvCoordinator.resume(); isPlaying = !isPlaying }) else null,
+            nativeSeek = if (ffmpegRescueActive || ffmpegReplayReady) ({ target: Long -> nativePlaybackBridge.seekTo(target) }) else null,
+            nativeTogglePlayPause = if (ffmpegRescueActive || ffmpegReplayReady) ({ if (nativePlaybackBridge.snapshot?.playing == true) nativePlaybackBridge.pause() else nativePlaybackBridge.play() }) else null,
         )
 
         AnimatedVisibility(
