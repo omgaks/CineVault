@@ -482,10 +482,15 @@ fun LocalVideoLibraryScreen(
     // outside of it, same boundary every other category already respects.
     val duplicateGroups = remember(visibleSortedVideos) { findDuplicateGroups(context, visibleSortedVideos) }
     // Copies of the same film are folded behind the best one. Nothing is deleted.
-    val foldPlan = remember(duplicateGroups, mainCopyChoices) {
+    val foldPlan = remember(duplicateGroups, visibleSortedVideos, mainCopyChoices) {
+        // Same film (same TMDB id) first, whatever the quality; then same-size copies of
+        // anything that has no film identity.
+        val byFilm = sameFilmGroups(visibleSortedVideos)
+        val taken = byFilm.flatten().map { it.video.path }.toSet()
+        val bySize = duplicateGroups.map { it.videos.filter { v -> v.video.path !in taken } }.filter { it.size > 1 }
         planDuplicateFold(
-            duplicateGroups.map { group ->
-                group.videos.map { CopyInfo(it.video.path, it.video.name, File(it.video.path).length()) }
+            (byFilm + bySize).map { group ->
+                group.map { CopyInfo(it.video.path, it.video.name, runCatching { File(it.video.path).length() }.getOrDefault(0L)) }
             },
             mainCopyChoices
         )
