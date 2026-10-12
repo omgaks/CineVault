@@ -241,7 +241,7 @@ fun needsGenreUpgrade(item: VideoWithMetadata): Boolean {
     // trigger again since genres/director are no longer empty.
     return (item.type == "movie" || item.type == "tv") &&
             (item.tmdbId ?: 0) > 0 &&
-            (item.genres.isEmpty() || item.director.isNullOrBlank() || item.cast.isEmpty())
+            (item.genres.isEmpty() || item.director.isNullOrBlank() || item.cast.orEmpty().isEmpty())
 }
 
 /** True when a matched title is missing either of its useful artwork sizes. */
