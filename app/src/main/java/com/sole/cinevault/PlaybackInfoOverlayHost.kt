@@ -35,6 +35,8 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
     topPadding: Dp,
     sidePadding: Dp,
 ) {
+    if (CineVaultPlayerHolder.isInPipMode) return
+
     var surface by remember { mutableStateOf(PlaybackInfoSurface.NONE) }
 
     val panelRequested = surface != PlaybackInfoSurface.NONE

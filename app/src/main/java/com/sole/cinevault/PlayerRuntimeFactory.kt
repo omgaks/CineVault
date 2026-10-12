@@ -44,6 +44,7 @@ internal fun rememberPlayerRuntime(
             preferredLanguage = preferredLanguage,
             autoEnableEmbeddedSubtitles = autoEnableEmbeddedSubtitles,
             audioRendererPreference = audioRendererPreference,
+            localPlayback = currentVideoPath.startsWith("/") || currentVideoPath.startsWith("content://"),
         ).also { created ->
             AudioRuntimeRescueController.consumePendingPlan(currentVideoPath)
                 ?.toHandover()
@@ -91,6 +92,7 @@ internal fun rememberPlayerRuntime(
 @OptIn(UnstableApi::class)
 internal fun createPlayerRuntime(
     context: Context,
+    localPlayback: Boolean = false,
     preferredLanguage: String,
     autoEnableEmbeddedSubtitles: Boolean,
     audioRendererPreference: CineAudioRendererPreference =
@@ -109,8 +111,8 @@ internal fun createPlayerRuntime(
         .setBufferDurationsMs(
             15_000,
             50_000,
-            1_500,
-            3_000
+            if (localPlayback) 250 else 1_500,
+            if (localPlayback) 500 else 3_000
         )
         .setBackBuffer(30_000, true)
         .build()

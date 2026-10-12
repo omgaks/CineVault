@@ -305,7 +305,7 @@ private fun MainPage(
     }
 
     Spacer(Modifier.height(10.dp))
-    PictureMasterPill(on, available) { controller.setEnabled(it) }
+    PictureMasterPill(on, available, controller.statusLive) { controller.setEnabled(it) }
 
     val selectedFamily = PictureExperienceBridge.selectedFamily(settings)
     val sourceProfile = remember(controller.detected) {
@@ -460,7 +460,7 @@ private fun Chip(
 }
 
 @Composable
-private fun PictureMasterPill(enabled: Boolean, usable: Boolean, onToggle: (Boolean) -> Unit) {
+private fun PictureMasterPill(enabled: Boolean, usable: Boolean, live: Boolean, onToggle: (Boolean) -> Unit) {
     val shape = RoundedCornerShape(50)
     val dark = Color(0xFF1A1206)
     Row(
@@ -475,7 +475,7 @@ private fun PictureMasterPill(enabled: Boolean, usable: Boolean, onToggle: (Bool
         Column(Modifier.weight(1f)) {
             Text("Picture Enhance", color = if (enabled) AmberCore else TextMuted,
                 fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            Text(if (enabled) "Processing live" else "Original picture",
+            Text(if (!enabled) "Original picture" else if (live) "Processing live" else "Waiting for video frames",
                 color = TextMuted, fontSize = 8.sp)
         }
         Box(

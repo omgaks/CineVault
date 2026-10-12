@@ -27,4 +27,24 @@ class FfmpegNativeRescueEligibilityTest {
     @Test fun remoteUriCannotTakeOver() {
         assertFalse(FfmpegNativeRescueEligibility.shouldAttempt(malformed, "https://example.com/movie.mkv", true, false))
     }
+    @Test fun extractorBoundsFailureWrappedAsIoIsEligible() {
+        val cause = ArrayIndexOutOfBoundsException("negative extractor offset").apply {
+            stackTrace = arrayOf(StackTraceElement("androidx.media3.extractor.mkv.MatroskaExtractor", "read", "MatroskaExtractor.java", 100))
+        }
+        val error = PlaybackException("source error", cause, PlaybackException.ERROR_CODE_IO_UNSPECIFIED)
+        assertTrue(FfmpegNativeRescueEligibility.isContainerFailure(error))
+    }
+
+    @Test fun unrelatedBoundsFailureIsNotAContainerFailure() {
+        val cause = ArrayIndexOutOfBoundsException().apply {
+            stackTrace = arrayOf(StackTraceElement("com.sole.cinevault.Other", "read", "Other.kt", 1))
+        }
+        assertFalse(FfmpegNativeRescueEligibility.isContainerFailure(
+            PlaybackException("source error", cause, PlaybackException.ERROR_CODE_IO_UNSPECIFIED)))
+    }
+
+    @Test fun ordinaryIoFailureIsNotAContainerFailure() {
+        assertFalse(FfmpegNativeRescueEligibility.isContainerFailure(
+            PlaybackException("source error", java.io.IOException("unreadable"), PlaybackException.ERROR_CODE_IO_UNSPECIFIED)))
+    }
 }

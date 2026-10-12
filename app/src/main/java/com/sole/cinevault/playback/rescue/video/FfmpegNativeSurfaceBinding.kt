@@ -63,6 +63,9 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
         if (holder !== surfaceView.holder || worker != null) return false
         if (!surfaceView.holder.surface.isValid) return false
         player.clearVideoSurfaceView(surfaceView)
+        // PlayerView waits for a Media3 first-frame event that native output never sends.
+        playerView.setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+        playerView.hideController()
         media3SurfaceReleased = true
         return true
     }
@@ -72,6 +75,7 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
     fun restoreMedia3VideoSurface(player: ExoPlayer, playerView: PlayerView): Boolean {
         val surfaceView = playerView.videoSurfaceView as? SurfaceView ?: return false
         if (holder !== surfaceView.holder || worker != null || !media3SurfaceReleased) return false
+        playerView.setShutterBackgroundColor(android.graphics.Color.BLACK)
         player.setVideoSurfaceView(surfaceView)
         media3SurfaceReleased = false
         return true

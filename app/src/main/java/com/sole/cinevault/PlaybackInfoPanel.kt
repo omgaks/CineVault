@@ -39,6 +39,7 @@ fun PlaybackInfoPanel(
     onShowCompatibilityReport: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val nativeSession = CineVaultPlayerHolder.nativeBridge?.snapshot
     val presentation = presentPlaybackDiagnostics(snapshot)
     val liveStatus = buildPlaybackDiagnosticsLiveStatus(snapshot)
     val failureHistoryPresentation =
@@ -188,6 +189,7 @@ fun PlaybackInfoPanel(
             "COMPATIBILITY",
             presentation.compatibilitySummary.removePrefix("Compatibility: "),
         )
+        DiagnosticSection("ACTIVE ENGINE", if (nativeSession != null) "FFmpeg native AV · ${if (nativeSession.playing) "playing" else "paused / ended"}" else "Media3")
         DiagnosticSection("READINESS", liveStatus.readiness)
         DiagnosticSection("HEALTH", liveStatus.health)
         DiagnosticSection(

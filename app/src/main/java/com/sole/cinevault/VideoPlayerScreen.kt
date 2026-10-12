@@ -410,6 +410,9 @@ fun VideoPlayerScreen(
             position = resumePosition.coerceAtLeast(0L)
             ffmpegReplayReady = false
             ffmpegRescueActive = true
+            playbackHealth.isBuffering = false
+            playbackHealth.showBufferingSpinner = false
+            playbackHealth.stuckBufferingHint = false
             isVideoEnded = false
             isPlaying = playWhenReady
             playbackHealth.playerErrorMessage = null
@@ -813,7 +816,7 @@ fun VideoPlayerScreen(
         studioUi = studioUi,
         audioLanguageCheckedForPath = audioLanguageCheckedForPath,
         isDraggingSeekbar = chromeUi.isDraggingSeekbar,
-        isBuffering = playbackHealth.isBuffering,
+        isBuffering = playbackHealth.isBuffering && !ffmpegRescueActive && !ffmpegReplayReady,
         showSeekPreview = gestureUi.showSeekPreview,
         previewPosition = gestureUi.previewPosition,
         duration = duration,
@@ -848,7 +851,7 @@ fun VideoPlayerScreen(
         onFailureDiagnostic = {
             playbackRecovery.recordFailureDiagnostic(it)
         },
-        onBufferingChanged = { playbackHealth.isBuffering = it },
+        onBufferingChanged = { playbackHealth.isBuffering = it && !ffmpegRescueActive && !ffmpegReplayReady },
         onErrorRetryCountChanged = { playbackHealth.errorRetryCount = it },
         onPlayerErrorMessageChanged = { playbackHealth.playerErrorMessage = it },
         onVideoEndedChanged = { isVideoEnded = it },
@@ -1310,7 +1313,7 @@ fun VideoPlayerScreen(
             volumePercent = chromeUi.volumePercent,
             edgeSwipeHint = gestureUi.edgeSwipeHint,
             showGlassesConnectedHint = showGlassesConnectedHint,
-            showBufferingSpinner = playbackHealth.showBufferingSpinner,
+            showBufferingSpinner = playbackHealth.showBufferingSpinner && !ffmpegRescueActive && !ffmpegReplayReady,
             stuckBufferingHint = playbackHealth.stuckBufferingHint,
             playerErrorMessage = playbackHealth.playerErrorMessage,
             sleepTimerActive = sleepTimerActive,
