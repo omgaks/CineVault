@@ -440,6 +440,9 @@ fun VideoPlayerScreen(
                     is VoiceCommand.VolumeBy, is VoiceCommand.VolumeTo -> {
                         val target = volumeTargetPercent(chromeUi.volumePercent, command)!!
                         chromeUi.volumePercent = target
+                        // Same on-screen circle the swipe gesture shows.
+                        chromeUi.showVolumeCircle = true
+                        chromeUi.volumeGestureKey++
                         val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
                         val wanted = playerSystemVolumeIndex(target, maxVol)
                         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, wanted, 0)
@@ -450,6 +453,9 @@ fun VideoPlayerScreen(
                     is VoiceCommand.BrightnessBy, is VoiceCommand.BrightnessTo -> {
                         val target = brightnessTargetPercent(chromeUi.brightnessPercent, command)!!
                         chromeUi.brightnessPercent = target
+                        // Same on-screen slider the swipe gesture shows.
+                        chromeUi.showBrightnessCircle = true
+                        chromeUi.brightnessGestureKey++
                         activity?.window?.attributes = activity?.window?.attributes?.apply {
                             screenBrightness = playerWindowBrightness(target)
                         }
