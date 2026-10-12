@@ -26,6 +26,7 @@ internal class FfmpegNativeAudioPlayback {
     fun resume() { paused.set(false) }
     fun seekTo(positionMs: Long) {
         require(positionMs >= 0L)
+        lastPositionMs = positionMs
         pendingSeek.set(positionMs)
         // The video worker must not pace a new seek against the previous clock.
         clockPositionMs = null

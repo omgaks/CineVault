@@ -335,6 +335,8 @@ fun VideoPlayerScreen(
         com.sole.cinevault.playback.rescue.video.FfmpegNativeAvCoordinator(ffmpegSurfaceBinding)
     }
     var ffmpegRescueActive by remember { mutableStateOf(false) }
+    var ffmpegLastPosition by remember { mutableStateOf<Long?>(null) }
+    var ffmpegLastDuration by remember { mutableStateOf<Long?>(null) }
     var ffmpegRescueAttemptedPath by remember { mutableStateOf<String?>(null) }
     DisposableEffect(ffmpegAvCoordinator) {
         onDispose {
@@ -346,13 +348,21 @@ fun VideoPlayerScreen(
         ffmpegAvCoordinator.stop()
         ffmpegRescueActive = false
         ffmpegRescueAttemptedPath = null
+        ffmpegLastPosition = null
+        ffmpegLastDuration = null
     }
 
     // Media3 stops being the timeline authority during native rescue.
     LaunchedEffect(ffmpegRescueActive) {
         while (ffmpegRescueActive) {
-            if (!chromeUi.isDraggingSeekbar) ffmpegAvCoordinator.positionMs()?.let { position = it }
-            ffmpegAvCoordinator.durationMs()?.let { duration = it }
+            if (!chromeUi.isDraggingSeekbar) ffmpegAvCoordinator.positionMs()?.let {
+                position = it
+                ffmpegLastPosition = it
+            }
+            ffmpegAvCoordinator.durationMs()?.let {
+                duration = it
+                ffmpegLastDuration = it
+            }
             kotlinx.coroutines.delay(100L)
         }
     }
@@ -727,7 +737,14 @@ fun VideoPlayerScreen(
         onPlayerErrorMessageChanged = { playbackHealth.playerErrorMessage = it },
         onVideoEndedChanged = { isVideoEnded = it },
         onPlayingChanged = {
-            if (!ffmpegRescueActive) isPlaying = it
+            if (!ffmpegRescueActive) {
+                isPlaying = it
+                if (it) {
+                    // A successful Media3 restart reclaims the timeline.
+                    ffmpegLastPosition = null
+                    ffmpegLastDuration = null
+                }
+            }
             if (it) {
                 playbackRecovery.confirmPlaybackStarted()
             }
@@ -797,6 +814,7 @@ fun VideoPlayerScreen(
                     },
                 )
                 if (started) {
+                    ffmpegLastPosition = resumePosition.coerceAtLeast(0L)
                     ffmpegRescueActive = true
                     isPlaying = playWhenReady
                     playbackHealth.playerErrorMessage = null
@@ -804,8 +822,8 @@ fun VideoPlayerScreen(
                 started
             }
         },
-        playbackPositionMs = { if (ffmpegRescueActive) ffmpegAvCoordinator.positionMs() ?: position else exoPlayer.currentPosition },
-        playbackDurationMs = { if (ffmpegRescueActive) ffmpegAvCoordinator.durationMs() ?: duration else exoPlayer.duration },
+        playbackPositionMs = { if (ffmpegRescueActive) ffmpegAvCoordinator.positionMs() ?: position else ffmpegLastPosition ?: exoPlayer.currentPosition },
+        playbackDurationMs = { if (ffmpegRescueActive) ffmpegAvCoordinator.durationMs() ?: duration else ffmpegLastDuration ?: exoPlayer.duration },
         onPositionChanged = { position = it },
         onDurationChanged = { duration = it },
         onBufferingSpinnerChanged = { playbackHealth.showBufferingSpinner = it },
