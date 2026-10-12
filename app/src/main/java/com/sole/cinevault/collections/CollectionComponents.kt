@@ -160,11 +160,13 @@ internal fun SlotTile(
     onOpenOwned: (VideoWithMetadata) -> Unit,
     onPlayOwned: (VideoWithMetadata) -> Unit,
     onOpenMissing: (CollectionSlot) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** The film whose detail page this strip sits on: thicker edge, no re-open, no play badge. */
+    isCurrent: Boolean = false
 ) {
     val shape = RoundedCornerShape(16.dp)
     val owned = slot.owned
-    val onActivate: () -> Unit = { if (owned != null) onOpenOwned(owned) else onOpenMissing(slot) }
+    val onActivate: () -> Unit = { if (isCurrent) Unit else if (owned != null) onOpenOwned(owned) else onOpenMissing(slot) }
     val posterUrl = owned?.posterUrl?.takeIf { it.isNotBlank() } ?: tmdbImageUrl(slot.part.posterPath)
 
     Column(modifier) {
@@ -174,7 +176,7 @@ internal fun SlotTile(
                     Modifier.fillMaxWidth().aspectRatio(2f / 3f)
                         .shadow(10.dp, shape, ambientColor = AmberGlow, spotColor = AmberGlow)
                         .clip(shape).background(SpaceMid)
-                        .border(2.dp, AmberGlow, shape)
+                        .border(if (isCurrent) 4.dp else 2.dp, if (isCurrent) AmberCore else AmberGlow, shape)
                         .clickable(onClick = onActivate)
                 ) {
                     if (posterUrl != null) {
@@ -182,7 +184,7 @@ internal fun SlotTile(
                     } else {
                         TileTitle(slot.part.title, AmberCore)
                     }
-                    if (owned != null) {
+                    if (owned != null && !isCurrent) {
                         Box(
                             Modifier.align(Alignment.TopEnd).padding(6.dp).size(34.dp).clip(CircleShape)
                                 .background(GlassSurfaceStrong).clickable { onPlayOwned(owned) },
@@ -244,7 +246,7 @@ internal fun SlotTile(
         }
 
         Column(Modifier.padding(top = 8.dp)) {
-            val heading = if (slot.number != null) "${slot.number} · ${slot.year ?: "TBA"}" else "Upcoming"
+            val heading = if (isCurrent) "Viewing now" else if (slot.number != null) "${slot.number} · ${slot.year ?: "TBA"}" else "Upcoming"
             Text(heading, color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(slotStateText(slot, watchedFraction), color = TextMuted, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }

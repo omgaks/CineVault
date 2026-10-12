@@ -669,6 +669,13 @@ fun CineVaultApp() {
                         onActorClick = { actorId, actorName, profilePath -> push(Destination.ActorPage(actorId, actorName, profilePath)) },
                         onNativeCollectionClick = { id, name -> openNativeCollection(id, name) },
                         onCuratedCollectionClick = { name -> push(Destination.CuratedCollectionPage(name)) },
+                        libraryVideos = homeVisibleVideos,
+                        onOpenFilm = { film -> push(Destination.Detail(film)) },
+                        onUniverseClick = { id -> push(Destination.UniversePage(id)) },
+                        onSearchLibrary = { query ->
+                            LibrarySearchRequest.pending = query
+                            switchTab(1)
+                        },
                         onMetadataUpdated = { updated ->
                             // Refresh what's on screen right now, no back-out needed
                             replaceTop(Destination.Detail(updated))
