@@ -44,7 +44,6 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
         panelRequested = panelRequested,
         fallbackOccurred = snapshot.fallbackOccurred,
     )
-    val showStatusPill = shouldShowPlaybackStatusPill(snapshot)
 
     BackHandler(enabled = visibility.showPanel) {
         surface = when (surface) {
@@ -56,15 +55,12 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
     }
 
     AnimatedVisibility(
-        visible = controlsVisible && !visibility.showPanel && showStatusPill,
+        visible = controlsVisible && !visibility.showPanel,
         enter = fadeIn(),
         exit = fadeOut(),
         modifier = Modifier
-            .align(Alignment.TopEnd)
-            .padding(
-                top = topPadding + 72.dp,
-                end = sidePadding,
-            ),
+            .align(Alignment.CenterStart)
+            .padding(start = sidePadding.coerceAtLeast(12.dp)),
     ) {
         PlaybackStatusPill(
             snapshot = snapshot,

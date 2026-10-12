@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -59,7 +60,8 @@ fun PlaybackStatusPill(
 
     Box(
         modifier = modifier
-            .widthIn(min = 74.dp, max = 188.dp)
+            .widthIn(min = 96.dp, max = 220.dp)
+            .heightIn(min = 48.dp)
             .background(
                 color = Color.Black.copy(
                     alpha = if (presentation.emphasized) 0.72f else 0.58f,
@@ -83,7 +85,7 @@ fun PlaybackStatusPill(
             label = "playbackStatusPillText",
         ) { label ->
             Text(
-                text = label,
+                text = "INFO · $label",
                 color = if (presentation.emphasized) {
                     StatusPillAmber
                 } else {
