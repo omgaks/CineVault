@@ -44,6 +44,7 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
         onFailure: (Throwable) -> Unit,
         resumePositionMs: Long = 0L,
         playWhenReady: Boolean = true,
+        onCompleted: (FfmpegNativeVideoPlayback.Stats) -> Unit = {},
     ): Boolean {
         val surface: Surface = holder?.surface ?: return false
         if (!surface.isValid || worker != null || path.isBlank() || resumePositionMs < 0L) return false
@@ -55,7 +56,10 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
         worker = Thread({
             try {
                 if (playback !== this.playback) return@Thread
-                playback.play(path, surface)
+                val stats = playback.play(path, surface)
+                // Completion can mean EOF or a cooperative stop; the owner
+                // decides whether to advance playback or discard the session.
+                onCompleted(stats)
             } catch (error: Throwable) {
                 onFailure(error)
             } finally {
