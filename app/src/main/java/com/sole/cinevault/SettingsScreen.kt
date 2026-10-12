@@ -142,7 +142,8 @@ fun SettingsScreen(
     onOpenNetworkHub: () -> Unit,
     onOpenStreamUrl: (String) -> Unit,
     onOpenGlassesGestureTutorial: () -> Unit,
-    onOpenLibraryTools: () -> Unit = {}
+    onOpenLibraryTools: () -> Unit = {},
+    onReplayWelcome: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var showStreamDialog by remember { mutableStateOf(false) }
@@ -272,6 +273,15 @@ fun SettingsScreen(
                     subtitle = "${TUTORIAL_GUIDES.size} guides: gestures, studios, glasses, network, TV and more",
                     action = "OPEN"
                 ) { showTutorial = true }
+            }
+            TvFocusableSlot(isTelevision = isTelevision, onActivate = onReplayWelcome) {
+                GlassActionRow(
+                    icon = Icons.Filled.Info,
+                    iconTint = AccentAbout,
+                    title = "Replay welcome tour",
+                    subtitle = "See the first-run welcome and feature tour again",
+                    action = "PLAY"
+                ) { onReplayWelcome() }
             }
         }
     }
