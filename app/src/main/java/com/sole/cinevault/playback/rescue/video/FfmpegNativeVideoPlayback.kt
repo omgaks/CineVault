@@ -28,6 +28,9 @@ internal class FfmpegNativeVideoPlayback(
     fun resume() { paused.set(false) }
     fun stop() { stopped.set(true) }
 
+    /** True after stop was requested, including before the worker starts. */
+    fun isStopRequested(): Boolean = stopped.get()
+
     /** Queues a seek; native decoder access remains confined to the playback worker. */
     fun seekTo(positionMs: Long) {
         require(positionMs >= 0L)

@@ -59,9 +59,9 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
                 val stats = playback.play(path, surface)
                 // Completion can mean EOF or a cooperative stop; the owner
                 // decides whether to advance playback or discard the session.
-                onCompleted(stats)
+                if (!playback.isStopRequested()) onCompleted(stats)
             } catch (error: Throwable) {
-                onFailure(error)
+                if (!playback.isStopRequested()) onFailure(error)
             } finally {
                 // An older worker must never erase a newer rescue session.
                 synchronized(this@FfmpegNativeSurfaceBinding) {
