@@ -36,4 +36,14 @@ class VoiceWakeConfirmTest {
         assertEquals("pause", stripWakePhrase("vault pause", defaults + "vault"))
         assertEquals("pause", stripWakePhrase("CineVault pause", defaults + "cinevault"))
     }
+
+    @Test fun badlyGarbledPhraseAcceptedWhenCommandFollows() {
+        assertEquals("open spider man", stripWakePhrase("Hey it's in a world, open Spider Man", defaults))
+        assertEquals("play jura sikpak", stripWakePhrase("Hey, it's a new world. Play Jura Sikpak.", defaults))
+    }
+
+    @Test fun tapToTalkDropsSpokenWakePhrase() {
+        assertEquals("open spider man", dropLeadingWakeWords("a cine-world open Spider-Man", defaults))
+        assertEquals("play dune", dropLeadingWakeWords("play dune", defaults))
+    }
 }

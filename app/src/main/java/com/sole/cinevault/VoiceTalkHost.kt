@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -114,6 +115,9 @@ internal fun BoxScope.VoiceTalkHost(
                 return
             }
             text = rest
+        } else if (text != null) {
+            // Tap-to-talk: ignore a spoken "Hey CineVault" in front of the command.
+            text = dropLeadingWakeWords(cleanTranscript(text) ?: text, VoiceRuntime.phraseIds)
         }
         val textNow = text
         val next: TalkUi? = if (textNow == null) {
@@ -359,6 +363,24 @@ internal fun BoxScope.VoiceTalkHost(
     val playerChrome = !inPlayer || VoicePlayerRegistry.current?.controlsVisible?.invoke() == true
     if (VoiceRuntime.enabled && micShown && ((buttonVisible && playerChrome) || ui != TalkUi.Idle)) {
         val listening = ui == TalkUi.Listening
+        val ringLevel = if (listening) level else VoiceRuntime.wakeLevel
+        val ringOn = listening || (VoiceRuntime.wakeListening && VoiceRuntime.isListening)
+        val ringTarget = if (ringOn) (0.15f + 0.85f * kotlin.math.sqrt(ringLevel.coerceIn(0f, 1f))) else 0f
+        val ringScale by androidx.compose.animation.core.animateFloatAsState(ringTarget, label = "micRing")
+        Box(
+            modifier = Modifier
+                .align(if (inPlayer) Alignment.CenterEnd else Alignment.BottomEnd)
+                .safeDrawingPadding()
+                .padding(end = 16.dp, bottom = if (inPlayer) 0.dp else 96.dp)
+                .size(56.dp)
+                .drawBehind {
+                    if (ringOn) {
+                        val c = if (VoiceRuntime.wakeSpeech || listening) GelMint else GelGold
+                        drawCircle(c.copy(alpha = 0.35f), radius = size.minDimension / 2f * (1f + 0.55f * ringScale))
+                        drawCircle(c, radius = size.minDimension / 2f * (1.08f + 0.3f * ringScale), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx()))
+                    }
+                }
+        ) {} 
         Box(
             modifier = Modifier
                 .align(if (inPlayer) Alignment.CenterEnd else Alignment.BottomEnd)
