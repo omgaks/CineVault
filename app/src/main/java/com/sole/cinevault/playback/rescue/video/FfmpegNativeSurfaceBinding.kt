@@ -1,6 +1,8 @@
 package com.sole.cinevault.playback.rescue.video
 
 import android.view.Surface
+import android.os.Handler
+import android.os.Looper
 import androidx.annotation.OptIn
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -15,6 +17,7 @@ import androidx.media3.exoplayer.ExoPlayer
  */
 @OptIn(UnstableApi::class)
 internal class FfmpegNativeSurfaceBinding : AutoCloseable {
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var holder: SurfaceHolder? = null
     private var media3SurfaceReleased = false
     @Volatile private var playback: FfmpegNativeVideoPlayback? = null
@@ -97,9 +100,13 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
                 val stats = playback.play(path, surface)
                 // Completion can mean EOF or a cooperative stop; the owner
                 // decides whether to advance playback or discard the session.
-                if (!playback.isStopRequested()) onCompleted(stats)
+                mainHandler.post {
+                    if (!playback.isStopRequested()) onCompleted(stats)
+                }
             } catch (error: Throwable) {
-                if (!playback.isStopRequested()) onFailure(error)
+                mainHandler.post {
+                    if (!playback.isStopRequested()) onFailure(error)
+                }
             } finally {
                 // An older worker must never erase a newer rescue session.
                 synchronized(this@FfmpegNativeSurfaceBinding) {
