@@ -102,7 +102,11 @@ internal class FfmpegNativeAudioPlayback {
                             break
                         }
                     }
-                    val bytes = pcm
+                    val bytes = checkNotNull(pcm)
+                    if (bytes.isEmpty()) {
+                        pcm = null
+                        continue
+                    }
                     val written = track.write(bytes, offset, bytes.size - offset, AudioTrack.WRITE_NON_BLOCKING)
                     check(written >= 0) { "AudioTrack write failed: $written" }
                     if (written == 0) Thread.sleep(5) else {
