@@ -1,5 +1,8 @@
 package com.sole.cinevault.playback.rescue.video
 
+import android.os.Handler
+import android.os.Looper
+import java.util.concurrent.atomic.AtomicBoolean
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 
@@ -10,6 +13,7 @@ import androidx.media3.ui.PlayerView
 internal class FfmpegNativeAvCoordinator(
     private val binding: FfmpegNativeSurfaceBinding,
 ) : AutoCloseable {
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var audio: FfmpegNativeAudioPlayback? = null
     private var audioWorker: Thread? = null
 
@@ -24,6 +28,7 @@ internal class FfmpegNativeAvCoordinator(
         onCompleted: (FfmpegNativeVideoPlayback.Stats) -> Unit,
     ): Boolean {
         if (audioWorker != null || binding.isRunning()) return false
+        val terminalDelivered = AtomicBoolean(false)
         val output = FfmpegNativeAudioPlayback()
         if (positionMs > 0) output.seekTo(positionMs)
         if (!playWhenReady) output.pause()
@@ -35,8 +40,18 @@ internal class FfmpegNativeAvCoordinator(
             playback = video,
             resumePositionMs = positionMs,
             playWhenReady = playWhenReady,
-            onFailure = { error -> stop(); onFailure(error) },
-            onCompleted = { stats -> stop(); onCompleted(stats) },
+            onFailure = { error ->
+                if (terminalDelivered.compareAndSet(false, true)) {
+                    stop()
+                    onFailure(error)
+                }
+            },
+            onCompleted = { stats ->
+                if (terminalDelivered.compareAndSet(false, true)) {
+                    stop()
+                    onCompleted(stats)
+                }
+            },
         )
         if (!started) return false
         audio = output
@@ -45,9 +60,14 @@ internal class FfmpegNativeAvCoordinator(
                 output.play(path)
             } catch (error: Throwable) {
                 binding.stop()
-                // Native audio failure is fatal for AV rescue. The player owner
-                // must marshal UI restoration to the main thread.
-                onFailure(error)
+                // Audio worker callbacks must never manipulate Compose/player
+                // state off the main thread. Only one terminal event wins.
+                mainHandler.post {
+                    if (terminalDelivered.compareAndSet(false, true)) {
+                        stop()
+                        onFailure(error)
+                    }
+                }
             } finally {
                 synchronized(this@FfmpegNativeAvCoordinator) {
                     if (audioWorker === Thread.currentThread()) {
