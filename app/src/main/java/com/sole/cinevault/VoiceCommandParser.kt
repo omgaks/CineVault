@@ -26,6 +26,9 @@ internal sealed interface VoiceCommand {
     /** Positive skips forward, negative skips back. */
     /** "play Avengers Endgame": the words after "play", to be matched against the library. */
     data class PlayTitle(val query: String) : VoiceCommand
+
+    /** "open Spider-Man": go to that film's page instead of playing it. */
+    data class OpenTitle(val query: String) : VoiceCommand
     data class SkipSeconds(val seconds: Int) : VoiceCommand
     data class JumpToMs(val positionMs: Long) : VoiceCommand
     data class VolumeBy(val percent: Int) : VoiceCommand
@@ -286,6 +289,7 @@ private fun matchCommand(t: List<String>): VoiceCommand? {
 
     return when (first) {
         "play", "watch" -> playOrTitle(t.drop(1))
+        "open", "show" -> openTitle(t.drop(1))
         "put" -> if (t.getOrNull(1) == "on") playOrTitle(t.drop(2)).takeIf { it != VoiceCommand.Play } else null
         "resume", "continue", "start", "unpause" -> VoiceCommand.Play
         "pause", "stop", "freeze" -> VoiceCommand.Pause
@@ -339,6 +343,14 @@ private fun skipCommand(t: List<String>, first: String, words: Set<String>): Voi
     val seconds = if (amountMs != null) (amountMs / 1000).toInt() else DEFAULT_SKIP_SECONDS
     val clamped = seconds.coerceIn(1, MAX_SKIP_SECONDS)
     return VoiceCommand.SkipSeconds(if (backward) -clamped else clamped)
+}
+
+/** "open <film>" asks for the film's page. Nothing after "open" means nothing to do. */
+private fun openTitle(after: List<String>): VoiceCommand? {
+    var rest = after
+    while (rest.isNotEmpty() && rest.first() in TITLE_LEAD_WORDS) rest = rest.drop(1)
+    if (rest.isEmpty()) return null
+    return VoiceCommand.OpenTitle(rest.joinToString(" "))
 }
 
 /** Bare "play" resumes. "play <something>" asks for a film by name. */

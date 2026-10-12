@@ -460,7 +460,7 @@ fun VideoPlayerScreen(
                         playerSessionActionsCoordinator.setPlaybackSpeed(target)
                         "Speed ${target}x"
                     }
-                    is VoiceCommand.PlayTitle -> null
+                    is VoiceCommand.PlayTitle, is VoiceCommand.OpenTitle -> null
                 }
             },
             duck = { on -> exoPlayer.volume = if (on) DUCK_VOLUME else if (voiceMuted) 0f else 1f },

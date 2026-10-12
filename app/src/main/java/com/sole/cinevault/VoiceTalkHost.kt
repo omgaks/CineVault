@@ -54,7 +54,7 @@ private sealed interface TalkUi {
     object NoModel : TalkUi
     data class Done(val heard: String?, val text: String, val tone: Color = GelMint) : TalkUi
     data class Message(val heard: String?, val text: String, val tone: Color = TextMuted) : TalkUi
-    data class Pick(val heard: String?, val options: List<TitleCandidate>) : TalkUi
+    data class Pick(val heard: String?, val options: List<TitleCandidate>, val open: Boolean = false) : TalkUi
 }
 
 /**
@@ -66,7 +66,8 @@ private sealed interface TalkUi {
 internal fun BoxScope.VoiceTalkHost(
     films: List<TitleCandidate>,
     buttonVisible: Boolean,
-    onPlay: (String) -> Unit
+    onPlay: (String) -> Unit,
+    onOpen: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     var ui by remember { mutableStateOf<TalkUi>(TalkUi.Idle) }
@@ -123,7 +124,12 @@ internal fun BoxScope.VoiceTalkHost(
                         android.os.Handler(android.os.Looper.getMainLooper()).post { onPlay(key) }
                         close(); TalkUi.Idle
                     }
-                    is TalkOutcome.PickFilm -> TalkUi.Pick(heard, o.options)
+                    is TalkOutcome.OpenFilm -> {
+                        val key = o.film.key
+                        android.os.Handler(android.os.Looper.getMainLooper()).post { onOpen(key) }
+                        close(); TalkUi.Idle
+                    }
+                    is TalkOutcome.PickFilm -> TalkUi.Pick(heard, o.options, o.open)
                     is TalkOutcome.FilmNotFound -> TalkUi.Message(heard, "I couldn't find \"${o.query}\" in your library.")
                     is TalkOutcome.NeedsScreen -> TalkUi.Message(heard, "For safety, do that on screen. Voice never ${o.action}s anything.")
                     is TalkOutcome.PlayerCommand -> {
@@ -142,7 +148,7 @@ internal fun BoxScope.VoiceTalkHost(
                         }
                         null
                     }
-                    is TalkOutcome.NotUnderstood -> TalkUi.Message(heard, "I didn't understand that. Try \"play\" and a film name.")
+                    is TalkOutcome.NotUnderstood -> TalkUi.Message(heard, "I didn't understand that. Try \"play\" or \"open\" and a film name.")
                     TalkOutcome.Silence -> TalkUi.Message(null, "I didn't hear anything. Tap the microphone and try again.")
                 }
             }
@@ -324,7 +330,7 @@ internal fun BoxScope.VoiceTalkHost(
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(14.dp))
                                             .background(Color(0x22FFFFFF))
-                                            .clickable { onPlay(option.key); close() }
+                                            .clickable { if (state.open) onOpen(option.key) else onPlay(option.key); close() }
                                             .padding(horizontal = 14.dp, vertical = 12.dp)
                                     )
                                 }

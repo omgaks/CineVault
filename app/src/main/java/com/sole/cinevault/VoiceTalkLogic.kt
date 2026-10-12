@@ -6,8 +6,10 @@ package com.sole.cinevault
  */
 internal sealed interface TalkOutcome {
     data class PlayFilm(val film: TitleCandidate) : TalkOutcome
-    /** Several films fit about equally. The person picks. */
-    data class PickFilm(val query: String, val options: List<TitleCandidate>) : TalkOutcome
+    /** "open <film>": go to the film's page. */
+    data class OpenFilm(val film: TitleCandidate) : TalkOutcome
+    /** Several films fit about equally. The person picks (to play, or to open when [open]). */
+    data class PickFilm(val query: String, val options: List<TitleCandidate>, val open: Boolean = false) : TalkOutcome
     data class FilmNotFound(val query: String) : TalkOutcome
     /** A risky request. It is never run by voice. */
     data class NeedsScreen(val action: String) : TalkOutcome
@@ -65,6 +67,7 @@ internal fun describeCommand(command: VoiceCommand): String = when (command) {
     is VoiceCommand.SpeedTo -> "speed ${command.speed}x"
     is VoiceCommand.SpeedBy -> if (command.delta >= 0) "faster" else "slower"
     is VoiceCommand.PlayTitle -> "play ${command.query}"
+    is VoiceCommand.OpenTitle -> "open ${command.query}"
 }
 
 /**
@@ -78,6 +81,7 @@ internal fun resolveTalk(transcript: String, films: List<TitleCandidate>): TalkO
         is VoiceResult.NeedsScreen -> TalkOutcome.NeedsScreen(result.action)
         is VoiceResult.Command -> when (val c = result.command) {
             is VoiceCommand.PlayTitle -> titleOutcome(c.query, films)
+            is VoiceCommand.OpenTitle -> openOutcome(c.query, films)
             else -> TalkOutcome.PlayerCommand(c)
         }
         is VoiceResult.NotUnderstood, VoiceResult.NoWakeWord -> {
@@ -94,6 +98,14 @@ private fun titleOutcome(query: String, films: List<TitleCandidate>): TalkOutcom
     when (val choice = chooseTitle(query, films)) {
         is TitleChoice.Play -> TalkOutcome.PlayFilm(choice.match)
         is TitleChoice.Choose -> TalkOutcome.PickFilm(query, choice.options)
+        TitleChoice.NotFound -> TalkOutcome.FilmNotFound(query)
+    }
+
+/** Like [titleOutcome], but a clear match opens the film's page and several matches are always listed. */
+internal fun openOutcome(query: String, films: List<TitleCandidate>): TalkOutcome =
+    when (val choice = chooseTitle(query, films)) {
+        is TitleChoice.Play -> TalkOutcome.OpenFilm(choice.match)
+        is TitleChoice.Choose -> TalkOutcome.PickFilm(query, choice.options, open = true)
         TitleChoice.NotFound -> TalkOutcome.FilmNotFound(query)
     }
 

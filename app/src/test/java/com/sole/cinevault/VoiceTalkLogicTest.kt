@@ -20,6 +20,20 @@ class VoiceTalkLogicTest {
         assertNull(cleanTranscript("♪ ♪"))
     }
 
+    @Test fun opensAClearTitleInsteadOfPlayingIt() {
+        assertEquals(TalkOutcome.OpenFilm(film("Iron Man 2")), resolveTalk("open Iron Man 2", library))
+        assertEquals(TalkOutcome.OpenFilm(film("Dune")), resolveTalk("show me dune", library))
+    }
+
+    @Test fun openListsSeveralMatchesAndMarksThemAsOpen() {
+        val o = resolveTalk("open avengers", library)
+        assertTrue(o is TalkOutcome.PickFilm && o.open)
+    }
+
+    @Test fun openWithUnknownTitleSaysNotFound() {
+        assertEquals(TalkOutcome.FilmNotFound("zzz qqq"), resolveTalk("open zzz qqq", library))
+    }
+
     @Test fun playsAClearTitle() {
         assertEquals(TalkOutcome.PlayFilm(film("Iron Man 2")), resolveTalk("Play Iron Man 2.", library))
         assertEquals(TalkOutcome.PlayFilm(film("Toy Story 3")), resolveTalk("play toy story three", library))

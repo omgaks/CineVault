@@ -1081,6 +1081,12 @@ fun CineVaultApp() {
                         val target = Destination.Player(item.video, item.type, libraryVideos)
                         if (isPlayerActive) replaceTop(target) else push(target)
                     }
+                },
+                onOpen = { key ->
+                    homeVisibleVideos.firstOrNull { it.video.path == key }?.let { item ->
+                        val target = Destination.Detail(item)
+                        if (isPlayerActive) replaceTop(target) else push(target)
+                    }
                 }
             )
         }
