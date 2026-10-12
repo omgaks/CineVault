@@ -501,7 +501,7 @@ fun LocalVideoLibraryScreen(
                     SearchDoc(
                         title = v.title,
                         fileName = v.video.name,
-                        cast = v.cast.map { it.name },
+                        cast = v.cast.orEmpty().map { it.name },
                         director = v.director,
                         genres = v.genres,
                         year = extractYearFromName(v.video.name)
