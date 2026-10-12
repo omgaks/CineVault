@@ -140,7 +140,7 @@ internal fun PlayerEventListener(
                 // Let the native rescue host claim only malformed local containers.
                 // If it cannot activate, preserve the existing Media3 recovery path.
                 if (
-                    error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED &&
+                    com.sole.cinevault.playback.rescue.video.FfmpegNativeRescueEligibility.isContainerFailure(error) &&
                     !isStreamMedia &&
                     onMalformedContainerRescueRequested(positionAtError, player.playWhenReady)
                 ) {

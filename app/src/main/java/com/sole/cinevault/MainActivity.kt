@@ -1078,9 +1078,9 @@ fun CineVaultApp() {
             }
             VoiceTalkHost(
                 films = talkFilms,
-                buttonVisible = (isPlayerActive && !isTelevision && VoicePlayerRegistry.current != null) ||
+                buttonVisible = !CineVaultPlayerHolder.isInPipMode && ((isPlayerActive && !isTelevision && VoicePlayerRegistry.current != null) ||
                     (!isPlayerActive && !isTelevision && current is Destination.Tab &&
-                        (activeTabIndex == 0 || activeTabIndex == 1)),
+                        (activeTabIndex == 0 || activeTabIndex == 1))),
                 onPlay = { key ->
                     homeVisibleVideos.firstOrNull { it.video.path == key }?.let { item ->
                         val target = Destination.Player(item.video, item.type, libraryVideos)
