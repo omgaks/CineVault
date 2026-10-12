@@ -106,6 +106,16 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Explicit device-test opt-in: use the existing release key so
+            // this debug APK can update an installed release without data loss.
+            if (providers.gradleProperty("cinevaultNativeTestSigning").orNull == "release") {
+                require(rootProject.file("cinevault-release.jks").isFile) {
+                    "Release keystore is required for the signed native test APK"
+                }
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

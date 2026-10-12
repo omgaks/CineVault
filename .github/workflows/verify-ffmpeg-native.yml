@@ -25,6 +25,48 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Prepare existing release signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          import os, base64
+          from pathlib import Path
+          required = ("KEYSTORE_BASE64", "KEYSTORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD")
+          missing = [name for name in required if not os.environ.get(name)]
+          if missing:
+              raise SystemExit("Missing signing secrets: " + ", ".join(missing))
+          key = Path("cinevault-release.jks")
+          key.write_bytes(base64.b64decode("".join(os.environ["KEYSTORE_BASE64"].split()), validate=True))
+          key.chmod(0o600)
+          print("Existing release signing key prepared.")
+          PY
+
+      - name: Include existing metadata API configuration
+        env:
+          TMDB_TOKEN: ${{ secrets.TMDB_TOKEN }}
+          OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
+          FANART_API_KEY: ${{ secrets.FANART_API_KEY }}
+          OPENSUB_API_KEY: ${{ secrets.OPENSUB_API_KEY }}
+          SUBDL_API_KEY: ${{ secrets.SUBDL_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          keys = ("TMDB_TOKEN", "OMDB_API_KEY", "FANART_API_KEY", "OPENSUB_API_KEY", "SUBDL_API_KEY")
+          def escape(value):
+              return value.replace(chr(92), chr(92) * 2).replace(chr(10), chr(92) + "n").replace(chr(13), chr(92) + "r")
+          Path("local.properties").write_text(
+              "".join(name + "=" + escape(os.environ.get(name, "")) + chr(10) for name in keys),
+              encoding="utf-8",
+          )
+          print("Metadata API configuration written.")
+          PY
+
       - name: Install Android NDK
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018"
@@ -59,9 +101,14 @@ jobs:
             -PcinevaultFfmpegRoot="$GITHUB_WORKSPACE/.native/ffmpeg/arm64-v8a" \
             --no-daemon
 
-      - name: Build native-enabled test APK
+      - name: Build native-enabled test APK with existing release key
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           ./gradlew :app:assembleDebug \
+            -PcinevaultNativeTestSigning=release \
             -PcinevaultFfmpegRoot="$GITHUB_WORKSPACE/.native/ffmpeg/arm64-v8a" \
             --no-daemon
 
@@ -89,6 +136,36 @@ jobs:
                   print(name)
           print("Native-enabled APK packaging verified.")
           PY
+
+
+      - name: Verify APK signing certificate matches existing release key
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, os, re, subprocess
+          from pathlib import Path
+          tools = list((Path(os.environ["ANDROID_HOME"]) / "build-tools").glob("*/apksigner"))
+          if not tools:
+              raise SystemExit("Android apksigner was not found")
+          signer = max(tools, key=lambda p: tuple(int(n) for n in re.findall(r"[0-9]+", p.parent.name)))
+          apk = "app/build/outputs/apk/debug/app-debug.apk"
+          output = subprocess.check_output([str(signer), "verify", "--print-certs", apk], text=True)
+          cert = subprocess.check_output([
+              "keytool", "-exportcert", "-keystore", "cinevault-release.jks",
+              "-alias", os.environ["KEY_ALIAS"], "-storepass:env", "KEYSTORE_PASSWORD",
+          ])
+          expected = hashlib.sha256(cert).hexdigest()
+          actual = re.findall(r"certificate SHA-256 digest: ([0-9a-fA-F]+)", output)
+          if not actual or any(value.lower() != expected for value in actual):
+              raise SystemExit("APK certificate does not match the existing release key")
+          print("APK signature verified against the existing release key.")
+          PY
+
+      - name: Remove temporary signing and API files
+        if: always()
+        run: rm -f cinevault-release.jks local.properties
 
       - name: Upload test APK
         uses: actions/upload-artifact@v4
