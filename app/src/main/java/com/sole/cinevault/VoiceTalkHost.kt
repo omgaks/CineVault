@@ -108,7 +108,9 @@ internal fun BoxScope.VoiceTalkHost(
             VoiceRuntime.stats.addConfirm()
             VoiceRuntime.statsVersion++
             if (rest.isBlank()) {
-                ui = TalkUi.Message(null, "Yes? I heard the wake word but no command. Tap the microphone and say it, like \"play Dune\".")
+                // Heard only "Hey CineVault": keep listening for the command, no tap needed.
+                ui = TalkUi.Message(null, "Yes? Say your command, like \"play Dune\".")
+                android.os.Handler(android.os.Looper.getMainLooper()).post { VoiceRuntime.wakeRequest++ }
                 return
             }
             text = rest
@@ -236,6 +238,12 @@ internal fun BoxScope.VoiceTalkHost(
     val allowed = VoiceRuntime.enabled && buttonVisible
     LaunchedEffect(allowed) { if (!allowed) close() }
 
+    // Plain messages go away by themselves, so the card never sits there blocking the screen.
+    val messageState = ui as? TalkUi.Message
+    LaunchedEffect(messageState) {
+        if (messageState != null) { kotlinx.coroutines.delay(9000); if (ui === messageState) close() }
+    }
+
     // A finished command shows its result for a moment, then the card goes away.
     val doneState = ui as? TalkUi.Done
     LaunchedEffect(doneState) {
@@ -253,7 +261,9 @@ internal fun BoxScope.VoiceTalkHost(
             handledWake = VoiceRuntime.wakeRequest
             val heardBefore = VoiceRuntime.wakeAudio
             VoiceRuntime.wakeAudio = null
-            if (allowed && ui == TalkUi.Idle && hasMicrophonePermission(context)) startListening(heardBefore)
+            // An old message or list card must not block the wake word.
+            val free = ui == TalkUi.Idle || ui is TalkUi.Message || ui is TalkUi.Pick || ui == TalkUi.NoModel
+            if (allowed && free && hasMicrophonePermission(context)) startListening(heardBefore)
         }
     }
 

@@ -59,7 +59,7 @@ fun recordWatchHistory(
     dao.upsert(
         WatchHistoryEntity(
             videoPath = videoPath,
-            title = title.ifBlank { videoPath.substringAfterLast("/") },
+            title = title.ifBlank { fileLeafName(videoPath) },
             watchedAt = System.currentTimeMillis()
         )
     )

@@ -78,7 +78,12 @@ internal fun VoiceWakeHost() {
     }
 
     val enabled = VoiceRuntime.enabled
-    val micAllowed = remember(enabled, visible) { hasMicrophonePermission(context) }
+    var micAllowed by remember { mutableStateOf(hasMicrophonePermission(context)) }
+    // Re-checked while Voice is on, so allowing the microphone later is noticed without a restart.
+    LaunchedEffect(enabled, visible) {
+        micAllowed = hasMicrophonePermission(context)
+        while (enabled && visible) { delay(1500); micAllowed = hasMicrophonePermission(context) }
+    }
     val shouldListen = enabled && micAllowed && visible && screenOn &&
         VoiceRuntime.wakeListening && !VoiceRuntime.talkActive
 
