@@ -193,4 +193,13 @@ class VoiceTitleMatcherTest {
         assertEquals(TitleChoice.NotFound, chooseTitle("completely unknown picture", library))
         assertEquals(TitleChoice.NotFound, chooseTitle("anything", emptyList()))
     }
+
+    @Test fun openAsksForAFilmPage() {
+        assertEquals(VoiceCommand.OpenTitle("spiderman"), (parseVoiceCommand("hey cinevault open spiderman") as? VoiceResult.Command)?.command)
+        assertEquals(VoiceCommand.OpenTitle("dune part two"), (parseVoiceCommand("open the movie dune part two", wakeAlreadyHeard = true) as? VoiceResult.Command)?.command)
+    }
+
+    @Test fun bareOpenIsNotACommand() {
+        assertEquals(null, (parseVoiceCommand("open", wakeAlreadyHeard = true) as? VoiceResult.Command)?.command)
+    }
 }

@@ -99,6 +99,9 @@ internal class VoiceStats {
     private val hears = linkedMapOf<String, Int>()
     var confirmed: Int = 0; private set
     var rejected: Int = 0; private set
+    /** Loudest microphone sample seen since the last reset (0..1). Tells a silent mic from a quiet room. */
+    var peak: Float = 0f; private set
+    fun addPeak(level: Float) { if (level > peak) peak = level }
     fun addConfirm() { confirmed++ }
     fun addReject() { rejected++ }
 
@@ -118,7 +121,7 @@ internal class VoiceStats {
         if (listenedMs <= 0) 0.0 else gatedMs.toDouble() / listenedMs
 
     fun reset() {
-        listenedMs = 0; gatedMs = 0; processingNs = 0; hears.clear(); confirmed = 0; rejected = 0
+        listenedMs = 0; gatedMs = 0; processingNs = 0; hears.clear(); confirmed = 0; rejected = 0; peak = 0f
     }
 }
 
@@ -141,5 +144,19 @@ internal fun formatPercent(share: Double): String {
         pct < 0.1 -> "<0.1%"
         pct < 10.0 -> "%.1f%%".format(java.util.Locale.US, pct)
         else -> "%d%%".format(java.util.Locale.US, Math.round(pct).toInt())
+    }
+}
+
+/**
+ * Evens out a quiet microphone so the speech detector can hear it. Some tablets deliver
+ * the voice-recognition input very faintly. Gain follows the recent level, between 1x and [maxGain]x.
+ */
+internal class VoiceAutoGain(private val targetPeak: Float = 0.25f, private val maxGain: Float = 12f) {
+    private var smoothedPeak = targetPeak
+    fun gainFor(windowPeak: Float): Float {
+        // Rise quickly on loud sound, fall slowly so quiet speech is lifted but silence is not hissy.
+        smoothedPeak = if (windowPeak > smoothedPeak) windowPeak else smoothedPeak * 0.995f + windowPeak * 0.005f
+        val floor = 0.004f
+        return (targetPeak / smoothedPeak.coerceAtLeast(floor)).coerceIn(1f, maxGain)
     }
 }

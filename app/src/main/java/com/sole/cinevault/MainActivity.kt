@@ -433,6 +433,7 @@ fun CineVaultApp() {
     // First-run Onboarding: only a brand-new install sees it. Decided once,
     // off the main thread, after the saved library has been looked at.
     var showOnboarding by remember { mutableStateOf(false) }
+    var replayWelcome by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         val show = withContext(Dispatchers.IO) {
             val done = isOnboardingDone(context)
@@ -669,6 +670,13 @@ fun CineVaultApp() {
                         onActorClick = { actorId, actorName, profilePath -> push(Destination.ActorPage(actorId, actorName, profilePath)) },
                         onNativeCollectionClick = { id, name -> openNativeCollection(id, name) },
                         onCuratedCollectionClick = { name -> push(Destination.CuratedCollectionPage(name)) },
+                        libraryVideos = homeVisibleVideos,
+                        onOpenFilm = { film -> push(Destination.Detail(film)) },
+                        onUniverseClick = { id -> push(Destination.UniversePage(id)) },
+                        onSearchLibrary = { query ->
+                            LibrarySearchRequest.pending = query
+                            switchTab(1)
+                        },
                         onMetadataUpdated = { updated ->
                             // Refresh what's on screen right now, no back-out needed
                             replaceTop(Destination.Detail(updated))
@@ -707,7 +715,7 @@ fun CineVaultApp() {
                 }
 
                 is Destination.ActorPage -> {
-                    val items = libraryVideos.filter { v -> v.cast.any { it.id == dest.actorId } }
+                    val items = libraryVideos.filter { v -> v.cast.orEmpty().any { it.id == dest.actorId } }
                     ActorScreen(
                         actorId = dest.actorId,
                         actorName = dest.actorName,
@@ -918,6 +926,7 @@ fun CineVaultApp() {
                             onOpenNetworkHub = { push(Destination.NetworkHub) },
                             onOpenGlassesGestureTutorial = { push(Destination.GlassesGestureTutorial) },
                             onOpenLibraryTools = { push(Destination.LibraryTools) },
+                            onReplayWelcome = { replayWelcome = true },
                             // FIX: previously just switched to the Library tab and
                             // discarded the typed URL entirely — Play did nothing.
                             // Now it actually pushes a Player destination for it.
@@ -1074,6 +1083,12 @@ fun CineVaultApp() {
                         val target = Destination.Player(item.video, item.type, libraryVideos)
                         if (isPlayerActive) replaceTop(target) else push(target)
                     }
+                },
+                onOpen = { key ->
+                    homeVisibleVideos.firstOrNull { it.video.path == key }?.let { item ->
+                        val target = Destination.Detail(item)
+                        if (isPlayerActive) replaceTop(target) else push(target)
+                    }
                 }
             )
         }
@@ -1084,13 +1099,14 @@ fun CineVaultApp() {
     LaunchedEffect(Unit) { VoiceRuntime.loadFrom(context) }
     VoiceWakeHost()
 
-    if (showOnboarding) {
+    if (showOnboarding || replayWelcome) {
         OnboardingScreen(
+            replay = replayWelcome,
             onVideosLoaded = { loadedVideos ->
                 libraryVideos = sanitizeLibraryVideos(loadedVideos)
                 scope.launch { saveLibraryCache(context = context, videos = sanitizeLibraryVideos(loadedVideos)) }
             },
-            onFinished = { showOnboarding = false }
+            onFinished = { showOnboarding = false; replayWelcome = false }
         )
     }
 

@@ -32,6 +32,6 @@ fun adaptiveColumnCount(
     return fit.coerceIn(minColumns, maxColumns)
 }
 
-/** Wide or landscape windows use a side rail instead of a bottom dock. */
+/** Landscape windows use a side rail; any portrait window (phone or tablet) keeps the bottom dock. */
 fun usesSideRail(widthDp: Int, heightDp: Int): Boolean =
-    widthDp >= 600 || widthDp > heightDp
+    widthDp > heightDp

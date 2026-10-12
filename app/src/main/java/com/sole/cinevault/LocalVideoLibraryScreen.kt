@@ -85,6 +85,7 @@ import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -193,7 +194,8 @@ fun LocalVideoLibraryScreen(
     var manageCopiesMainPath by remember { mutableStateOf<String?>(null) }
     var scanWasRunning by remember { mutableStateOf(false) }
     var scanUpToDate by remember { mutableStateOf(false) }
-    var secretUnlocked by remember { mutableStateOf(false) }
+    // Survives rotation, re-locks when you leave the Library.
+    var secretUnlocked by rememberSaveable { mutableStateOf(false) }
     var hiddenPaths by remember { mutableStateOf<Set<String>>(loadSecretVideoPaths(context)) }
     var hiddenFolders by remember { mutableStateOf<Set<String>>(loadSecretFolderPaths(context)) }
     var favoritePaths by remember { mutableStateOf(loadFavoriteVideoPaths(context)) }
@@ -480,10 +482,15 @@ fun LocalVideoLibraryScreen(
     // outside of it, same boundary every other category already respects.
     val duplicateGroups = remember(visibleSortedVideos) { findDuplicateGroups(context, visibleSortedVideos) }
     // Copies of the same film are folded behind the best one. Nothing is deleted.
-    val foldPlan = remember(duplicateGroups, mainCopyChoices) {
+    val foldPlan = remember(duplicateGroups, visibleSortedVideos, mainCopyChoices) {
+        // Same film (same TMDB id) first, whatever the quality; then same-size copies of
+        // anything that has no film identity.
+        val byFilm = sameFilmGroups(visibleSortedVideos)
+        val taken = byFilm.flatten().map { it.video.path }.toSet()
+        val bySize = duplicateGroups.map { it.videos.filter { v -> v.video.path !in taken } }.filter { it.size > 1 }
         planDuplicateFold(
-            duplicateGroups.map { group ->
-                group.videos.map { CopyInfo(it.video.path, it.video.name, File(it.video.path).length()) }
+            (byFilm + bySize).map { group ->
+                group.map { CopyInfo(it.video.path, it.video.name, runCatching { File(it.video.path).length() }.getOrDefault(0L)) }
             },
             mainCopyChoices
         )
@@ -501,7 +508,7 @@ fun LocalVideoLibraryScreen(
                     SearchDoc(
                         title = v.title,
                         fileName = v.video.name,
-                        cast = v.cast.map { it.name },
+                        cast = v.cast.orEmpty().map { it.name },
                         director = v.director,
                         genres = v.genres,
                         year = extractYearFromName(v.video.name)
@@ -531,7 +538,7 @@ fun LocalVideoLibraryScreen(
     // While searching the shelves step aside and results take the page.
     val shownCategory = if (searching && selectedCategory != "Secret") "Search" else selectedCategory
 
-    val filteredVideos = when (selectedCategory) {
+    val filteredVideos = when (shownCategory) {
         "Secret" -> if (secretUnlocked) secretVideos.filter { it.video.path !in secretGroupedPaths } else emptyList()
         "Search" -> searchResults.map { it.first }
         "Favorites" -> favoriteVideos.filter { it.video.path !in foldPlan.hiddenPaths }

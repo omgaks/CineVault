@@ -130,7 +130,8 @@ internal fun cleanScannedTitle(fileName: String): String {
             "bluray|blu.?ray|brrip|hdrip|webrip|web.?dl|webdl|web|nf|amzn|dsnp|hulu|" +
             "x264|x265|h264|h265|hevc|10bit|8bit|aac|ddp|dts|truehd|atmos|" +
             "yts|rarbg|tgx|eztv|pir8|proper|repack|extended|theatrical|" +
-            "directors?.?cut|multi|dual|eng|hindi|ita|mkv|mp4|avi|subs?)\\b",
+            "directors?.?cut|alternate.?(ending|cut)|unrated|uncut|remastered|special.?edition|open.?matte|" +
+            "multi|dual|eng|hindi|ita|mkv|mp4|avi|subs?)\\b",
             RegexOption.IGNORE_CASE
         ), " "
     )

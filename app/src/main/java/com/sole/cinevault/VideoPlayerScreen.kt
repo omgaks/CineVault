@@ -460,7 +460,8 @@ fun VideoPlayerScreen(
                     is VoiceCommand.SkipSeconds -> {
                         val target = seekTargetMs(if (ffmpegRescueActive) position else exoPlayer.currentPosition, duration.coerceAtLeast(0L), command.seconds * 1000L)
                         if (ffmpegRescueActive) { ffmpegAvCoordinator.seekTo(target); position = target } else exoPlayer.seekTo(target)
-                        if (command.seconds >= 0) "Skipped forward ${command.seconds} seconds" else "Skipped back ${-command.seconds} seconds"
+                        val at = formatListened(target)
+                        if (command.seconds >= 0) "Skipped forward ${command.seconds} seconds (now $at)" else "Skipped back ${-command.seconds} seconds (now $at)"
                     }
                     is VoiceCommand.JumpToMs -> {
                         val target = jumpTargetMs(command.positionMs, duration.coerceAtLeast(0L))
@@ -470,13 +471,22 @@ fun VideoPlayerScreen(
                     is VoiceCommand.VolumeBy, is VoiceCommand.VolumeTo -> {
                         val target = volumeTargetPercent(chromeUi.volumePercent, command)!!
                         chromeUi.volumePercent = target
+                        // Same on-screen circle the swipe gesture shows.
+                        chromeUi.showVolumeCircle = true
+                        chromeUi.volumeGestureKey++
                         val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, playerSystemVolumeIndex(target, maxVol), 0)
-                        "Volume $target%"
+                        val wanted = playerSystemVolumeIndex(target, maxVol)
+                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, wanted, 0)
+                        // Report what the phone really did, so a failure is visible on the card.
+                        val actual = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                        if (actual == wanted) "Volume $target%" else "Phone kept volume at $actual of $maxVol"
                     }
                     is VoiceCommand.BrightnessBy, is VoiceCommand.BrightnessTo -> {
                         val target = brightnessTargetPercent(chromeUi.brightnessPercent, command)!!
                         chromeUi.brightnessPercent = target
+                        // Same on-screen slider the swipe gesture shows.
+                        chromeUi.showBrightnessCircle = true
+                        chromeUi.brightnessGestureKey++
                         activity?.window?.attributes = activity?.window?.attributes?.apply {
                             screenBrightness = playerWindowBrightness(target)
                         }
@@ -487,7 +497,7 @@ fun VideoPlayerScreen(
                         playerSessionActionsCoordinator.setPlaybackSpeed(target)
                         "Speed ${target}x"
                     }
-                    is VoiceCommand.PlayTitle -> null
+                    is VoiceCommand.PlayTitle, is VoiceCommand.OpenTitle -> null
                 }
             },
             duck = { on ->

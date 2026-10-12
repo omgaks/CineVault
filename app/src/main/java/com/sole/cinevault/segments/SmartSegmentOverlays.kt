@@ -82,26 +82,12 @@ fun PostCreditNotice(
     // Why no time could be found, when that is the case.
     detail: String? = null
 ) {
-    val pulse by rememberInfiniteTransition(label = "noticeDot").animateFloat(
-        initialValue = 0.35f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1300, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "noticeDotPulse"
-    )
     Column(
         modifier = Modifier.widthIn(min = 240.dp, max = 320.dp)
             .glassPanel(24.dp, GlassSurfaceStrong)
             .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // A steady, glowing dot: the same one that marks the scene on the seek bar.
-            Box(
-                modifier = Modifier.size(18.dp).drawBehind {
-                    drawCircle(AmberGlow.copy(alpha = 0.20f * pulse), radius = size.minDimension / 2f)
-                    drawCircle(AmberGlow.copy(alpha = 0.45f * pulse), radius = size.minDimension / 3.2f)
-                    drawCircle(AmberCore, radius = size.minDimension / 6f)
-                }
-            )
-            Spacer(Modifier.width(10.dp))
             Column {
                 Text(
                     if (isMidCredits) "MID-CREDITS SCENE" else "POST-CREDIT SCENE",

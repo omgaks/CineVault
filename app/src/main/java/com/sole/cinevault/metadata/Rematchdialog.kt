@@ -79,7 +79,7 @@ fun RematchDialog(
     // a separate search hint.
     var query by remember(currentItem.video.path) {
         mutableStateOf(
-            cleanMovieFilename(currentItem.video.path.substringAfterLast('/'))
+            cleanMovieFilename(com.sole.cinevault.fileLeafName(currentItem.video.path))
         )
     }
     var candidates by remember { mutableStateOf<List<MatchCandidate>>(emptyList()) }

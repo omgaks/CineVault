@@ -142,7 +142,8 @@ fun SettingsScreen(
     onOpenNetworkHub: () -> Unit,
     onOpenStreamUrl: (String) -> Unit,
     onOpenGlassesGestureTutorial: () -> Unit,
-    onOpenLibraryTools: () -> Unit = {}
+    onOpenLibraryTools: () -> Unit = {},
+    onReplayWelcome: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var showStreamDialog by remember { mutableStateOf(false) }
@@ -261,16 +262,26 @@ fun SettingsScreen(
             title = "Tutorial",
             subtitle = "Short guides to every part of CineVault.",
             icon = Icons.Filled.Info,
-            accent = AccentAbout
+            accent = AccentAbout,
+            showHeader = false
         ) {
             TvFocusableSlot(isTelevision = isTelevision, onActivate = { showTutorial = true }) {
                 GlassActionRow(
                     icon = Icons.Filled.Info,
                     iconTint = AccentAbout,
-                    title = "Open Tutorial",
+                    title = "Tutorial",
                     subtitle = "${TUTORIAL_GUIDES.size} guides: gestures, studios, glasses, network, TV and more",
                     action = "OPEN"
                 ) { showTutorial = true }
+            }
+            TvFocusableSlot(isTelevision = isTelevision, onActivate = onReplayWelcome) {
+                GlassActionRow(
+                    icon = Icons.Filled.Info,
+                    iconTint = AccentAbout,
+                    title = "Replay welcome tour",
+                    subtitle = "See the first-run welcome and feature tour again",
+                    action = "PLAY"
+                ) { onReplayWelcome() }
             }
         }
     }
@@ -280,13 +291,14 @@ fun SettingsScreen(
             title = "Network",
             subtitle = "Sources, nearby devices and private library sharing.",
             icon = Icons.Rounded.Dns,
-            accent = AccentNetwork
+            accent = AccentNetwork,
+            showHeader = false
         ) {
             TvFocusableSlot(isTelevision = isTelevision, onActivate = onOpenNetworkHub) {
                 GlassActionRow(
                     icon = Icons.Rounded.Dns,
                     iconTint = AccentNetwork,
-                    title = "Open Network Hub",
+                    title = "Network Hub",
                     subtitle = "SMB, nearby devices, media servers, web sources & sharing",
                     action = "OPEN",
                     onClick = onOpenNetworkHub
@@ -305,9 +317,9 @@ fun SettingsScreen(
     }
 
     val streamSection: @Composable () -> Unit = {
-        GlassSectionCard(title = "Stream a link", subtitle = "Play direct online video links.", icon = Icons.Rounded.Language, accent = AccentStream) {
+        GlassSectionCard(title = "Stream a link", subtitle = "Play direct online video links.", icon = Icons.Rounded.Language, accent = AccentStream, showHeader = false) {
             TvFocusableSlot(isTelevision = isTelevision, onActivate = { showStreamDialog = true }) {
-                GlassActionRow(icon = Icons.Rounded.Language, iconTint = AccentStream, title = "Stream URL", subtitle = "Play MP4 / M3U8 / WEBM links instantly", action = "OPEN") { showStreamDialog = true }
+                GlassActionRow(icon = Icons.Rounded.Language, iconTint = AccentStream, title = "Stream a link", subtitle = "Play MP4 / M3U8 / WEBM links instantly", action = "OPEN") { showStreamDialog = true }
             }
             Spacer(modifier = Modifier.height(8.dp))
             Text(text = "For direct video links only. Torrent/magnet links are not supported.", color = TextFaint, fontSize = CineType.Caption, lineHeight = 17.sp)
@@ -319,13 +331,14 @@ fun SettingsScreen(
             title = "Glasses Mode",
             subtitle = "Learn the controls and practice supported head gestures.",
             icon = Icons.Filled.Info,
-            accent = AccentAbout
+            accent = AccentAbout,
+            showHeader = false
         ) {
             GlassActionRow(
                 icon = Icons.Filled.Info,
                 iconTint = AccentAbout,
-                title = "Glasses controls & gesture practice",
-                subtitle = "Touchpad, emergency return, nod and shake",
+                title = "Glasses Mode",
+                subtitle = "Learn the controls, practise nod and shake gestures",
                 action = "OPEN"
             ) { onOpenGlassesGestureTutorial() }
         }
@@ -379,13 +392,14 @@ fun SettingsScreen(
             title = "Library tools",
             subtitle = "Local artwork and match review.",
             icon = Icons.Rounded.Collections,
-            accent = AccentAbout
+            accent = AccentAbout,
+            showHeader = false
         ) {
             TvFocusableSlot(isTelevision = isTelevision, onActivate = onOpenLibraryTools) {
                 GlassActionRow(
                     icon = Icons.Rounded.Collections,
                     iconTint = AccentAbout,
-                    title = "Open Library tools",
+                    title = "Library tools",
                     subtitle = "Import artwork kept beside your films, and fix doubtful matches",
                     action = "OPEN",
                     onClick = onOpenLibraryTools
@@ -574,6 +588,7 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(6.dp))
             Text("Listened: ${formatListened(stats.listenedMs)}", color = TextMuted, fontSize = CineType.Label)
             Text("Speech-like sound present: ${formatPercent(stats.speechShare())} of that time", color = TextMuted, fontSize = CineType.Label)
+            Text("Loudest microphone level: ${(stats.peak * 100).toInt()}%${if (stats.listenedMs > 5000 && stats.peak < 0.05f) " (very quiet: this phone's mic gives almost no signal)" else ""}", color = TextMuted, fontSize = CineType.Label)
             Text("Wake-word work: ${formatPercent(stats.processingShare())} of one processor core", color = TextMuted, fontSize = CineType.Label)
             Text("Wake word heard: ${stats.totalHears} times", color = TextMuted, fontSize = CineType.Label)
             Text("Confirmed by the speech check: ${stats.confirmed}, turned away: ${stats.rejected}", color = TextMuted, fontSize = CineType.Label)
@@ -600,14 +615,15 @@ fun SettingsScreen(
             title = "Reset Settings",
             subtitle = "Restore CineVault preferences to their defaults.",
             icon = Icons.Rounded.RestartAlt,
-            accent = AccentReset
+            accent = AccentReset,
+            showHeader = false
         ) {
             val onResetClick = { showResetSettingsConfirm = true }
             TvFocusableSlot(isTelevision = isTelevision, onActivate = onResetClick) {
                 GlassActionRow(
                     icon = Icons.Rounded.RestartAlt,
                     iconTint = AccentReset,
-                    title = "Reset CineVault settings",
+                    title = "Reset settings",
                     subtitle = "Keeps your library, history, favourites, folders and subtitle files",
                     action = "RESET",
                     onClick = onResetClick
@@ -617,10 +633,10 @@ fun SettingsScreen(
     }
 
     val supportSection: @Composable () -> Unit = {
-        GlassSectionCard(title = "Support CineVault", subtitle = "A small thank you keeps the vault alive.", icon = Icons.Filled.Favorite, accent = AccentSupport) {
+        GlassSectionCard(title = "Support CineVault", subtitle = "A small thank you keeps the vault alive.", icon = Icons.Filled.Favorite, accent = AccentSupport, showHeader = false) {
             val onCoffeeClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.buymeacoffee.com/"))) }
             TvFocusableSlot(isTelevision = isTelevision, onActivate = onCoffeeClick) {
-                GlassActionRow(icon = Icons.Filled.Favorite, iconTint = AccentSupport, title = "Buy me a coffee", subtitle = "Optional support / donate button", action = "♥", onClick = onCoffeeClick)
+                GlassActionRow(icon = Icons.Filled.Favorite, iconTint = AccentSupport, title = "Buy me a coffee", subtitle = "A small thank you keeps the vault alive", action = "♥", onClick = onCoffeeClick)
             }
         }
     }

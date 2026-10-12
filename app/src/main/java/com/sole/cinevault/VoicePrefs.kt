@@ -86,6 +86,9 @@ internal object VoiceRuntime {
     var lastHeard by mutableStateOf<VoiceHeardEvent?>(null)
     var lastError by mutableStateOf<String?>(null)
     var isListening by mutableStateOf(false)
+    /** Live mic loudness (0..1) and whether speech is being picked up, for the mic button ring. */
+    var wakeLevel by androidx.compose.runtime.mutableFloatStateOf(0f)
+    var wakeSpeech by mutableStateOf(false)
     /** Bumped whenever the readout numbers change, so the card redraws. */
     var statsVersion by mutableStateOf(0)
     val stats = VoiceStats()

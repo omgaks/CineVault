@@ -61,7 +61,9 @@ import kotlinx.coroutines.delay
 @Composable
 internal fun OnboardingScreen(
     onVideosLoaded: (List<VideoWithMetadata>) -> Unit,
-    onFinished: () -> Unit
+    onFinished: () -> Unit,
+    /** Replay from Settings: skips the Scan step and never rescans. */
+    replay: Boolean = false
 ) {
     val context = LocalContext.current
     var step by remember { mutableStateOf(OnboardingStep.Welcome) }
@@ -74,7 +76,7 @@ internal fun OnboardingScreen(
     }
 
     BackHandler {
-        val previous = step.previous
+        val previous = if (replay && step == OnboardingStep.Reel) OnboardingStep.Welcome else step.previous
         if (previous != null) step = previous else finish()
     }
 
@@ -109,7 +111,7 @@ internal fun OnboardingScreen(
                 OnboardingStep.Welcome -> WelcomeStep(
                     name = name,
                     onNameChange = { name = sanitizeNameInput(it) },
-                    onContinue = { saveDisplayName(context, name); step = OnboardingStep.Scan }
+                    onContinue = { saveDisplayName(context, name); step = if (replay) OnboardingStep.Reel else OnboardingStep.Scan }
                 )
                 OnboardingStep.Scan -> ScanStep(
                     onVideosLoaded = onVideosLoaded,

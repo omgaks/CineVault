@@ -101,11 +101,34 @@ fun findDuplicateGroups(context: Context, videos: List<VideoWithMetadata>): List
     }
     if (currentGroup.size > 1) groups.add(currentGroup)
 
+    // Similar size and runtime is not enough on its own: two different 1.4 GB films
+    // were folded together as "2 copies" and one vanished from the library. Inside
+    // each size cluster, only files that are the same FILM stay together.
     return groups
-        .map { group -> group.map { it.first }.distinctBy { it.video.path } }
+        .flatMap { group ->
+            group.map { it.first }.distinctBy { it.video.path }
+                .groupBy { filmIdentityKey(it.tmdbId, it.title) }
+                .values
+        }
         .filter { it.size > 1 }
         .map { DuplicateGroup(it) }
 }
+
+/**
+ * Copies of one film in different qualities (a 4K HDR file and a 1080p file) never match by
+ * size, but they are the same film: same TMDB id. Movies only; TV episodes are never folded.
+ */
+internal fun sameFilmGroups(videos: List<VideoWithMetadata>): List<List<VideoWithMetadata>> =
+    videos.filter { it.type.equals("movie", ignoreCase = true) && it.tmdbId != null }
+        .distinctBy { it.video.path }
+        .groupBy { it.tmdbId }
+        .values
+        .filter { it.size > 1 }
+
+/** Same key = same film: its TMDB id when matched, otherwise its tidied title. */
+internal fun filmIdentityKey(tmdbId: Int?, title: String): String =
+    if (tmdbId != null) "tmdb:$tmdbId"
+    else "title:" + title.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
 
 // Human-readable size for the duplicate-cleanup UI (e.g. "1.4 GB").
 fun formatFileSize(bytes: Long): String {

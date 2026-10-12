@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -54,7 +55,7 @@ private sealed interface TalkUi {
     object NoModel : TalkUi
     data class Done(val heard: String?, val text: String, val tone: Color = GelMint) : TalkUi
     data class Message(val heard: String?, val text: String, val tone: Color = TextMuted) : TalkUi
-    data class Pick(val heard: String?, val options: List<TitleCandidate>) : TalkUi
+    data class Pick(val heard: String?, val options: List<TitleCandidate>, val open: Boolean = false) : TalkUi
 }
 
 /**
@@ -66,7 +67,8 @@ private sealed interface TalkUi {
 internal fun BoxScope.VoiceTalkHost(
     films: List<TitleCandidate>,
     buttonVisible: Boolean,
-    onPlay: (String) -> Unit
+    onPlay: (String) -> Unit,
+    onOpen: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     var ui by remember { mutableStateOf<TalkUi>(TalkUi.Idle) }
@@ -107,10 +109,15 @@ internal fun BoxScope.VoiceTalkHost(
             VoiceRuntime.stats.addConfirm()
             VoiceRuntime.statsVersion++
             if (rest.isBlank()) {
-                ui = TalkUi.Message(null, "Yes? I heard the wake word but no command. Tap the microphone and say it, like \"play Dune\".")
+                // Heard only "Hey CineVault": keep listening for the command, no tap needed.
+                ui = TalkUi.Message(null, "Yes? Say your command, like \"play Dune\".")
+                android.os.Handler(android.os.Looper.getMainLooper()).post { VoiceRuntime.wakeRequest++ }
                 return
             }
             text = rest
+        } else if (text != null) {
+            // Tap-to-talk: ignore a spoken "Hey CineVault" in front of the command.
+            text = dropLeadingWakeWords(cleanTranscript(text) ?: text, VoiceRuntime.phraseIds)
         }
         val textNow = text
         val next: TalkUi? = if (textNow == null) {
@@ -123,7 +130,12 @@ internal fun BoxScope.VoiceTalkHost(
                         android.os.Handler(android.os.Looper.getMainLooper()).post { onPlay(key) }
                         close(); TalkUi.Idle
                     }
-                    is TalkOutcome.PickFilm -> TalkUi.Pick(heard, o.options)
+                    is TalkOutcome.OpenFilm -> {
+                        val key = o.film.key
+                        android.os.Handler(android.os.Looper.getMainLooper()).post { onOpen(key) }
+                        close(); TalkUi.Idle
+                    }
+                    is TalkOutcome.PickFilm -> TalkUi.Pick(heard, o.options, o.open)
                     is TalkOutcome.FilmNotFound -> TalkUi.Message(heard, "I couldn't find \"${o.query}\" in your library.")
                     is TalkOutcome.NeedsScreen -> TalkUi.Message(heard, "For safety, do that on screen. Voice never ${o.action}s anything.")
                     is TalkOutcome.PlayerCommand -> {
@@ -142,17 +154,17 @@ internal fun BoxScope.VoiceTalkHost(
                         }
                         null
                     }
-                    is TalkOutcome.NotUnderstood -> TalkUi.Message(heard, "I didn't understand that. Try \"play\" and a film name.")
+                    is TalkOutcome.NotUnderstood -> TalkUi.Message(heard, "I didn't understand that. Try \"play\" or \"open\" and a film name.")
                     TalkOutcome.Silence -> TalkUi.Message(null, "I didn't hear anything. Tap the microphone and try again.")
                 }
             }
             if (next != null) ui = next
     }
 
-    fun startListening(wakeAudio: FloatArray? = null) {
+    fun startListening(wakeAudio: FloatArray? = null, forceWhisper: Boolean = false) {
         // After the wake word, Whisper double-checks the phrase if it is downloaded.
         val checkWake = wakeAudio != null && VoiceTranscriber.isReady(context)
-        val choice = if (checkWake) EngineChoice.UseWhisper
+        val choice = if (checkWake || (forceWhisper && VoiceTranscriber.isReady(context))) EngineChoice.UseWhisper
         else chooseEngine(VoiceRuntime.engine, androidOnDeviceSpeechReady(context), VoiceTranscriber.isReady(context))
         if (choice is EngineChoice.Unavailable) {
             ui = if (choice.reason == "NO_WHISPER_MODEL") TalkUi.NoModel else TalkUi.Message(null, choice.reason, GelRose)
@@ -171,6 +183,10 @@ internal fun BoxScope.VoiceTalkHost(
                         androidSession = null
                         VoiceRuntime.talkActive = false
                         when {
+                            // Auto mode: this phone's speech pack is missing, so use Whisper instead.
+                            code != null && code in setOf(1, 2, 11, 12, 13) &&
+                                VoiceRuntime.engine == SpeechEngine.Auto &&
+                                VoiceTranscriber.isReady(context) -> startListening(forceWhisper = true)
                             code == 6 || code == 7 -> ui = TalkUi.Message(null, describeAndroidSpeechError(code))
                             code != null -> ui = TalkUi.Message(null, describeAndroidSpeechError(code), GelRose)
                             else -> handleText(text ?: "", mine, filmsNow)
@@ -226,6 +242,12 @@ internal fun BoxScope.VoiceTalkHost(
     val allowed = VoiceRuntime.enabled && buttonVisible
     LaunchedEffect(allowed) { if (!allowed) close() }
 
+    // Plain messages go away by themselves, so the card never sits there blocking the screen.
+    val messageState = ui as? TalkUi.Message
+    LaunchedEffect(messageState) {
+        if (messageState != null) { kotlinx.coroutines.delay(9000); if (ui === messageState) close() }
+    }
+
     // A finished command shows its result for a moment, then the card goes away.
     val doneState = ui as? TalkUi.Done
     LaunchedEffect(doneState) {
@@ -243,7 +265,9 @@ internal fun BoxScope.VoiceTalkHost(
             handledWake = VoiceRuntime.wakeRequest
             val heardBefore = VoiceRuntime.wakeAudio
             VoiceRuntime.wakeAudio = null
-            if (allowed && ui == TalkUi.Idle && hasMicrophonePermission(context)) startListening(heardBefore)
+            // An old message or list card must not block the wake word.
+            val free = ui == TalkUi.Idle || ui is TalkUi.Message || ui is TalkUi.Pick || ui == TalkUi.NoModel
+            if (allowed && free && hasMicrophonePermission(context)) startListening(heardBefore)
         }
     }
 
@@ -320,7 +344,7 @@ internal fun BoxScope.VoiceTalkHost(
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(14.dp))
                                             .background(Color(0x22FFFFFF))
-                                            .clickable { onPlay(option.key); close() }
+                                            .clickable { if (state.open) onOpen(option.key) else onPlay(option.key); close() }
                                             .padding(horizontal = 14.dp, vertical = 12.dp)
                                     )
                                 }
@@ -339,6 +363,24 @@ internal fun BoxScope.VoiceTalkHost(
     val playerChrome = !inPlayer || VoicePlayerRegistry.current?.controlsVisible?.invoke() == true
     if (VoiceRuntime.enabled && micShown && ((buttonVisible && playerChrome) || ui != TalkUi.Idle)) {
         val listening = ui == TalkUi.Listening
+        val ringLevel = if (listening) level else VoiceRuntime.wakeLevel
+        val ringOn = listening || (VoiceRuntime.wakeListening && VoiceRuntime.isListening)
+        val ringTarget = if (ringOn) (0.15f + 0.85f * kotlin.math.sqrt(ringLevel.coerceIn(0f, 1f))) else 0f
+        val ringScale by androidx.compose.animation.core.animateFloatAsState(ringTarget, label = "micRing")
+        Box(
+            modifier = Modifier
+                .align(if (inPlayer) Alignment.CenterEnd else Alignment.BottomEnd)
+                .safeDrawingPadding()
+                .padding(end = 16.dp, bottom = if (inPlayer) 0.dp else 96.dp)
+                .size(56.dp)
+                .drawBehind {
+                    if (ringOn) {
+                        val c = if (VoiceRuntime.wakeSpeech || listening) GelMint else GelGold
+                        drawCircle(c.copy(alpha = 0.35f), radius = size.minDimension / 2f * (1f + 0.55f * ringScale))
+                        drawCircle(c, radius = size.minDimension / 2f * (1.08f + 0.3f * ringScale), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx()))
+                    }
+                }
+        ) {} 
         Box(
             modifier = Modifier
                 .align(if (inPlayer) Alignment.CenterEnd else Alignment.BottomEnd)

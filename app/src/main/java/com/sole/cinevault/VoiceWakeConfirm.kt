@@ -77,6 +77,31 @@ internal fun stripWakePhrase(heard: String, enabledIds: Set<String>): String? {
             }
         }
     }
-    if (bestWords == 0) return null
+    if (bestWords == 0) {
+        // The detector already heard the wake word; the words may have garbled it
+        // ("Hey it's a new world"). Accept it if a command verb follows soon.
+        return dropBeforeCommandVerb(words)?.joinToString(" ")
+    }
     return words.drop(bestWords).joinToString(" ")
+}
+
+private val COMMAND_VERBS = setOf("play", "open", "show", "watch")
+private const val MAX_LEAD_WORDS = 6
+
+/**
+ * Words from the first command verb on, when 1..6 words come before it.
+ * Null when there is no verb near the start (or it is already first).
+ */
+internal fun dropBeforeCommandVerb(words: List<String>): List<String>? {
+    val i = words.indexOfFirst { it in COMMAND_VERBS }
+    if (i < 1 || i > MAX_LEAD_WORDS) return null
+    return words.drop(i)
+}
+
+/** For tap-to-talk: if the person also said the wake phrase first, drop it. */
+internal fun dropLeadingWakeWords(heard: String, enabledIds: Set<String>): String {
+    val words = heard.lowercase().split(Regex("[^a-z0-9']+")).filter { it.isNotEmpty() }.map { it.replace("'", "") }
+    if (words.firstOrNull() in COMMAND_VERBS) return heard
+    val stripped = stripWakePhrase(heard, enabledIds)
+    return if (stripped.isNullOrBlank()) heard else stripped
 }

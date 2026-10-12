@@ -42,6 +42,15 @@
 # Gson reflection, so they have no exposure to this class of issue.
 -keep class com.sole.cinevault.metadata.TmdbMovieSearchResponse { *; }
 -keep class com.sole.cinevault.metadata.TmdbMovie { *; }
+# Artwork Studio poster lists (TMDB images + Fanart.tv). These were missing,
+# so the release build renamed them and Retrofit/Gson failed with a
+# ClassCastException ("No poster results" on device).
+-keep class com.sole.cinevault.metadata.TmdbImagesResponse { *; }
+-keep class com.sole.cinevault.metadata.TmdbImage { *; }
+-keep class com.sole.cinevault.metadata.FanartImage { *; }
+-keep class com.sole.cinevault.metadata.FanartMovieResponse { *; }
+-keep class com.sole.cinevault.metadata.FanartTvResponse { *; }
+-keep,allowobfuscation interface com.sole.cinevault.metadata.FanartApi
 -keep class com.sole.cinevault.metadata.TmdbTvSearchResponse { *; }
 -keep class com.sole.cinevault.metadata.TmdbTvShow { *; }
 -keep class com.sole.cinevault.metadata.TmdbCreditsResponse { *; }
@@ -63,6 +72,13 @@
 -keep class com.sole.cinevault.metadata.CachedVideoMetadata { *; }
 -keep class com.sole.cinevault.metadata.TmdbExtraDetails { *; }
 -keep class com.sole.cinevault.library.CachedLibrary { *; }
+# The library cache stores whole films as JSON through Gson. Without these rules the
+# release build renames the fields and loses the generic type of the cast list, so
+# reading the cache back gave a ClassCastException when opening an actor page, and
+# older cached films came back with missing fields.
+-keep class com.sole.cinevault.VideoWithMetadata { *; }
+-keep class com.sole.cinevault.CastEntry { *; }
+-keep class com.sole.cinevault.library.VideoFile { *; }
 
 # Collections V2 (+ Slice B name search) — TMDB collection / missing-film sheet responses (Gson reflection).
 -keep class com.sole.cinevault.metadata.TmdbCollectionDetails { *; }

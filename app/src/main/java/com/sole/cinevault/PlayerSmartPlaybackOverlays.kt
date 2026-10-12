@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -66,7 +67,7 @@ internal fun BoxScope.PlayerSmartPlaybackOverlays(
         exit = fadeOut(animationSpec = tween(140)),
         modifier = Modifier
             .align(Alignment.CenterEnd)
-            .padding(end = sidePadding)
+            .padding(end = sidePadding + 72.dp)
     ) {
         activeSmartSegment?.let { segment ->
             SmartSkipPill(
@@ -83,7 +84,7 @@ internal fun BoxScope.PlayerSmartPlaybackOverlays(
         exit = fadeOut(animationSpec = tween(140)),
         modifier = Modifier
             .align(Alignment.CenterEnd)
-            .padding(end = sidePadding)
+            .padding(end = sidePadding + 72.dp)
     ) {
         PostCreditNotice(
             hasExactTimestamp = exactSceneSegment != null,
