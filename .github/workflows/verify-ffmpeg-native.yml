@@ -1,7 +1,9 @@
 name: Verify optional native FFmpeg integration
 
-# Explicit opt-in: no APK build or release, and no automatic FFmpeg download.
+# Explicit verification branch: native build only, with no APK or release.
 on:
+  push:
+    branches: [ci/verify-ffmpeg-slice2-27043ef]
   workflow_dispatch:
     inputs:
       ffmpeg_tag:
@@ -28,7 +30,7 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
       - name: Fetch explicitly selected FFmpeg release source
         env:
-          FFMPEG_TAG: ${{ inputs.ffmpeg_tag }}
+          FFMPEG_TAG: ${{ inputs.ffmpeg_tag || 'n7.1.1' }}
         run: |
           case "$FFMPEG_TAG" in
             n7.1.1|n7.1.2) ;;
