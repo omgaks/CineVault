@@ -331,8 +331,21 @@ fun VideoPlayerScreen(
     // Observe the real video Surface; native rescue never takes ownership until
     // the Media3 handoff explicitly relinquishes it.
     val ffmpegSurfaceBinding = remember { com.sole.cinevault.playback.rescue.video.FfmpegNativeSurfaceBinding() }
-    DisposableEffect(ffmpegSurfaceBinding) {
-        onDispose { ffmpegSurfaceBinding.close() }
+    val ffmpegAvCoordinator = remember(ffmpegSurfaceBinding) {
+        com.sole.cinevault.playback.rescue.video.FfmpegNativeAvCoordinator(ffmpegSurfaceBinding)
+    }
+    var ffmpegRescueActive by remember { mutableStateOf(false) }
+    var ffmpegRescueAttemptedPath by remember { mutableStateOf<String?>(null) }
+    DisposableEffect(ffmpegAvCoordinator) {
+        onDispose {
+            ffmpegAvCoordinator.close()
+            ffmpegSurfaceBinding.close()
+        }
+    }
+    LaunchedEffect(currentVideo.path) {
+        ffmpegAvCoordinator.stop()
+        ffmpegRescueActive = false
+        ffmpegRescueAttemptedPath = null
     }
 
     var localPlayerView by remember { mutableStateOf<PlayerView?>(null) }
@@ -722,24 +735,46 @@ fun VideoPlayerScreen(
                 subtitleUri = subtitleUri,
             )
         },
-        // Evaluate the real source and native decoder availability before any
-        // surface takeover. Actual activation remains disabled until Media3
-        // audio and control ownership are transferred safely.
-        onMalformedContainerRescueRequested = { _, _ ->
-            val nativeEligible =
+        // Attempt one native AV takeover per source after Media3 reports a
+        // malformed local container. Keep Media3 recovery if startup is refused.
+        onMalformedContainerRescueRequested = { resumePosition, playWhenReady ->
+            val view = localPlayerView
+            val eligible =
                 com.sole.cinevault.playback.rescue.video.FfmpegNativeRescueEligibility.shouldAttempt(
                     errorCode = androidx.media3.common.PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
                     localPath = currentVideo.path,
                     nativeLibraryAvailable =
                         com.sole.cinevault.playback.rescue.video.FfmpegContainerProbeLoader.isAvailable(),
-                    alreadyAttempted = ffmpegSurfaceBinding.isRunning(),
+                    alreadyAttempted = ffmpegRescueAttemptedPath == currentVideo.path ||
+                        ffmpegRescueActive || ffmpegSurfaceBinding.isRunning(),
                 )
-            // Preflight is observational only. Do not stop or mutate a native
-            // session merely because a malformed-container error was reported.
-            // Return false until audio and controls can transfer ownership.
-            @Suppress("UNUSED_VARIABLE")
-            val rescueReady = nativeEligible
-            false
+            if (!eligible || view == null) {
+                false
+            } else {
+                ffmpegRescueAttemptedPath = currentVideo.path
+                val started = ffmpegAvCoordinator.start(
+                    player = exoPlayer,
+                    playerView = view,
+                    path = currentVideo.path,
+                    positionMs = resumePosition.coerceAtLeast(0L),
+                    playWhenReady = playWhenReady,
+                    onFailure = { error ->
+                        ffmpegRescueActive = false
+                        playbackHealth.playerErrorMessage =
+                            "FFmpeg rescue failed: ${error.message ?: "Unknown error"}"
+                    },
+                    onCompleted = {
+                        ffmpegRescueActive = false
+                        isVideoEnded = true
+                    },
+                )
+                if (started) {
+                    ffmpegRescueActive = true
+                    isPlaying = playWhenReady
+                    playbackHealth.playerErrorMessage = null
+                }
+                started
+            }
         },
         onPositionChanged = { position = it },
         onDurationChanged = { duration = it },
