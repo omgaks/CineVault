@@ -82,14 +82,16 @@ internal class FfmpegNativeVideoPlayback(
                 }
                 val frame = decoder.nextFrame() ?: break
                 if (pendingSeekMs.get() != NO_SEEK) continue
-                if (originPts != null && frame.presentationTimeMs < originPts) continue
+                val seekOrigin = originPts
+                if (seekOrigin != null && frame.presentationTimeMs < seekOrigin) continue
                 if (originPts == null) {
                     originPts = frame.presentationTimeMs
                     originClock = clockMs()
                     fallbackPosition = frame.presentationTimeMs
                     fallbackClock = originClock
                 }
-                val relativePts = (frame.presentationTimeMs - originPts).coerceAtLeast(0L)
+                val frameOrigin = requireNotNull(originPts)
+                val relativePts = (frame.presentationTimeMs - frameOrigin).coerceAtLeast(0L)
                 while (!stopped.get()) {
                     if (pendingSeekMs.get() != NO_SEEK) break
                     if (paused.get()) {
@@ -105,12 +107,12 @@ internal class FfmpegNativeVideoPlayback(
                     }
                     val now = clockMs()
                     val audioTime = audioPositionMs?.invoke()
-                    if (audioTime != null && audioTime >= originPts) {
+                    if (audioTime != null && audioTime >= frameOrigin) {
                         fallbackPosition = audioTime
                         fallbackClock = now
                     }
                     val position = FfmpegVideoClockPosition.resolve(
-                        originPtsMs = originPts,
+                        originPtsMs = frameOrigin,
                         originClockMs = fallbackClock,
                         nowMs = now,
                         audioPositionMs = audioTime,
