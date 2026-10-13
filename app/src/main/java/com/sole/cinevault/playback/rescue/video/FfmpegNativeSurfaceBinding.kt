@@ -31,6 +31,7 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
         override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
         override fun surfaceDestroyed(holder: SurfaceHolder) {
             synchronized(this@FfmpegNativeSurfaceBinding) {
+                if (this@FfmpegNativeSurfaceBinding.holder !== holder) return
                 surfaceGeneration++
                 stop()
                 onSurfaceUnavailable?.invoke()
@@ -189,6 +190,9 @@ internal class FfmpegNativeSurfaceBinding : AutoCloseable {
 
     /** Refuse a second handoff while a previous worker is still shutting down. */
     fun isRunning(): Boolean = worker != null
+
+    @Synchronized fun isSurfaceReady(): Boolean = holder?.surface?.isValid == true && worker == null
+    fun frameStats(): FfmpegNativeVideoPlayback.Stats? = playback?.let { FfmpegNativeVideoPlayback.Stats(it.presentedFrames, it.droppedFrames) }
 
     fun pause() { playback?.pause() }
     fun resume() { playback?.resume() }

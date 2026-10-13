@@ -40,6 +40,7 @@ internal class FfmpegRgbaFrameSequencePresenter(
         var presented = 0
         var dropped = 0
         var previousPts = -1L
+        FfmpegRgbaFrameRenderer().use { renderer ->
         for (frame in frames) {
             if (isCancelled()) break
             require(frame.presentationTimeMs >= previousPts) {
@@ -60,12 +61,13 @@ internal class FfmpegRgbaFrameSequencePresenter(
                     }
                     FfmpegVideoFrameScheduleDecision.PRESENT -> {
                         if (isCancelled()) break
-                        FfmpegRgbaFrameRenderer.render(frame.image, surface)
+                        renderer.render(frame.image, surface)
                         presented++
                         break
                     }
                 }
             }
+        }
         }
         return Stats(presented, dropped)
     }

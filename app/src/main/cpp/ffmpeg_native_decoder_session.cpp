@@ -59,8 +59,13 @@ Java_com_sole_cinevault_playback_rescue_video_FfmpegNativeDecoderSession_nativeO
     const AVCodec* codec = avcodec_find_decoder(params->codec_id);
     if (!codec) { fail(env, "Video codec unsupported by FFmpeg"); return 0; }
     s->decoder = avcodec_alloc_context3(codec);
-    if (!s->decoder || avcodec_parameters_to_context(s->decoder, params) < 0 ||
-        avcodec_open2(s->decoder, codec, nullptr) < 0) {
+    if (!s->decoder || avcodec_parameters_to_context(s->decoder, params) < 0) {
+        fail(env, "Unable to configure FFmpeg decoder"); return 0;
+    }
+    // Auto-select worker count; HEVC software decoding must not stay single-threaded.
+    s->decoder->thread_count = 0;
+    s->decoder->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
+    if (avcodec_open2(s->decoder, codec, nullptr) < 0) {
         fail(env, "Unable to initialize FFmpeg decoder"); return 0;
     }
     s->packet = av_packet_alloc();

@@ -22,6 +22,13 @@ class FfmpegVideoFrameScheduler(
         }
     }
 
+    /** Keep slow decoding visible instead of dropping every frame indefinitely. */
+    fun decideWithPresentationProgress(frameMs: Long, positionMs: Long, sinceLastPresentationMs: Long): FfmpegVideoFrameScheduleDecision {
+        val decision = decide(frameMs, positionMs)
+        return if (decision == FfmpegVideoFrameScheduleDecision.DROP_LATE && sinceLastPresentationMs >= 250L)
+            FfmpegVideoFrameScheduleDecision.PRESENT else decision
+    }
+
     companion object {
         const val DEFAULT_EARLY_TOLERANCE_MS = 15L
         const val DEFAULT_LATE_DROP_THRESHOLD_MS = 120L

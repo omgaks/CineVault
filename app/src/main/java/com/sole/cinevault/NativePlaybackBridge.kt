@@ -7,6 +7,8 @@ internal data class NativePlaybackSnapshot(
     val ended: Boolean,
     val speed: Float,
     val volume: Float = 1f,
+    val presentedFrames: Int = 0,
+    val droppedFrames: Int = 0,
 )
 
 /** Main-thread bridge shared by screen, PiP and MediaSession; scoped to one raw player. */

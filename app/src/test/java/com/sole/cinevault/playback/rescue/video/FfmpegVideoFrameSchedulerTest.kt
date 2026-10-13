@@ -7,6 +7,13 @@ import org.junit.Test
 class FfmpegVideoFrameSchedulerTest {
     private fun frame(pts: Long) = FfmpegDecodedVideoFrame(pts, 1920, 1080)
 
+    @Test fun lateFramesCannotStarvePresentationForever() {
+        val scheduler = FfmpegVideoFrameScheduler()
+        assertEquals(FfmpegVideoFrameScheduleDecision.PRESENT, scheduler.decideWithPresentationProgress(100, 2000, 250))
+        assertEquals(FfmpegVideoFrameScheduleDecision.DROP_LATE, scheduler.decideWithPresentationProgress(100, 2000, 100))
+        assertEquals(FfmpegVideoFrameScheduleDecision.WAIT, scheduler.decideWithPresentationProgress(3000, 2000, 1000))
+    }
+
     @Test fun nearClockPresents() {
         assertEquals(FfmpegVideoFrameScheduleDecision.PRESENT,
             FfmpegVideoFrameScheduler().decide(1010L, 1000L))
