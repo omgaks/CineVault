@@ -98,6 +98,7 @@ fun PlaybackInfoPanel(
             }
             Spacer(Modifier.weight(1f))
             DecoderModeBadge(
+                native = nativeSession != null,
                 mode = snapshot.decoderMode,
                 kind = snapshot.activeDecoderKind,
             )
@@ -119,7 +120,7 @@ fun PlaybackInfoPanel(
             DiagnosticSection("CODEC DETAILS", it)
         }
 
-        DiagnosticSection("VIDEO DECODER", presentation.decoderSummary)
+        DiagnosticSection("VIDEO DECODER", if (nativeSession != null) "FFmpeg software video" else presentation.decoderSummary)
 
         presentation.audioSummary?.let {
             DiagnosticSection("AUDIO", it)
@@ -128,7 +129,7 @@ fun PlaybackInfoPanel(
         presentation.audioDecoderSummary?.let {
             DiagnosticSection(
                 "AUDIO DECODER",
-                it,
+                if (nativeSession != null) "FFmpeg PCM · AudioTrack" else it,
                 snapshot.activeAudioDecoderKind == ActiveAudioDecoderKind.FFMPEG,
             )
         }
@@ -136,7 +137,7 @@ fun PlaybackInfoPanel(
         presentation.audioResilienceSummary?.let {
             DiagnosticSection(
                 "AUDIO RESILIENCE",
-                it,
+                if (nativeSession != null) "Native audio session" else it,
                 audioResilience.readiness == AudioPlaybackReadiness.FFMPEG_RESCUED ||
                     audioResilience.readiness == AudioPlaybackReadiness.FFMPEG_RESCUE_EXPECTED,
             )
@@ -154,7 +155,7 @@ fun PlaybackInfoPanel(
         presentation.pipelineSummary?.let {
             DiagnosticSection(
                 "PIPELINE",
-                it,
+                if (nativeSession != null) "FFmpeg native audio/video" else it,
                 snapshot.activeAudioDecoderKind == ActiveAudioDecoderKind.FFMPEG,
             )
         }
@@ -190,11 +191,11 @@ fun PlaybackInfoPanel(
             presentation.compatibilitySummary.removePrefix("Compatibility: "),
         )
         DiagnosticSection("ACTIVE ENGINE", if (nativeSession != null) "FFmpeg native AV · ${if (nativeSession.playing) "playing" else "paused / ended"}" else "Media3")
-        DiagnosticSection("READINESS", liveStatus.readiness)
-        DiagnosticSection("HEALTH", liveStatus.health)
+        DiagnosticSection("READINESS", if (nativeSession != null) "FFmpeg session active" else liveStatus.readiness)
+        DiagnosticSection("HEALTH", if (nativeSession != null) "Video frames: ${nativeSession.presentedFrames} presented · ${nativeSession.droppedFrames} dropped" else liveStatus.health)
         DiagnosticSection(
             "SOFTWARE RESCUE",
-            liveStatus.recovery,
+            if (nativeSession != null) "FFmpeg container rescue active" else liveStatus.recovery,
             snapshot.fallbackOccurred,
         )
 
@@ -231,10 +232,11 @@ fun PlaybackInfoPanel(
 
 @Composable
 private fun DecoderModeBadge(
+    native: Boolean = false,
     mode: PlaybackEngineMode,
     kind: ActiveVideoDecoderKind,
 ) {
-    val text = when (kind) {
+    val text = if (native) "FFmpeg" else when (kind) {
         ActiveVideoDecoderKind.HARDWARE -> "HW"
         ActiveVideoDecoderKind.SOFTWARE -> "SW"
         ActiveVideoDecoderKind.UNKNOWN -> when (mode) {

@@ -13,7 +13,14 @@ import java.nio.ByteBuffer
  * The caller owns the Surface lifecycle and must invoke this on a background
  * thread. No decoding, playback scheduling, or Surface ownership is implied.
  */
-internal object FfmpegRgbaFrameRenderer {
+internal class FfmpegRgbaFrameRenderer : AutoCloseable {
+    private var cachedBitmap: Bitmap? = null
+
+    override fun close() {
+        cachedBitmap?.recycle()
+        cachedBitmap = null
+    }
+
     fun render(frame: FfmpegContainerProbeLoader.RgbaFrame, surface: Surface) {
         require(surface.isValid) { "Video surface is unavailable" }
         require(frame.width > 0 && frame.height > 0)
@@ -22,8 +29,12 @@ internal object FfmpegRgbaFrameRenderer {
         }
         // Bitmap.Config.ARGB_8888 expects native RGBA bytes when populated
         // through copyPixelsFromBuffer on Android.
-        val bitmap = Bitmap.createBitmap(frame.width, frame.height, Bitmap.Config.ARGB_8888)
-        try {
+        val bitmap = cachedBitmap?.takeIf { it.width == frame.width && it.height == frame.height }
+            ?: Bitmap.createBitmap(frame.width, frame.height, Bitmap.Config.ARGB_8888).also {
+                cachedBitmap?.recycle()
+                cachedBitmap = it
+            }
+        run {
             bitmap.copyPixelsFromBuffer(ByteBuffer.wrap(frame.rgba))
             val canvas: Canvas = surface.lockCanvas(null)
             try {
@@ -45,8 +56,6 @@ internal object FfmpegRgbaFrameRenderer {
             } finally {
                 surface.unlockCanvasAndPost(canvas)
             }
-        } finally {
-            bitmap.recycle()
         }
     }
 }

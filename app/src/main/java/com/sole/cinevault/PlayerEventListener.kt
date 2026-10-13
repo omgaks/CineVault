@@ -128,6 +128,9 @@ internal fun PlayerEventListener(
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                // A detached Media3 source may still finish a queued load/error callback.
+                // It cannot restart the stream while the native session owns it.
+                if (CineVaultPlayerHolder.nativeBridge?.snapshot != null) return
                 // Picture enhancement runs on its own GPU pipeline. If that pipeline is what
                 // failed, the Picture controller removes it and resumes playback here, so the
                 // normal retry / software-fallback / error-screen logic must not run.

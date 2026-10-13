@@ -136,6 +136,8 @@ internal class FfmpegNativeAvCoordinator(
         if (!closed) callback?.invoke()
     }
 
+    fun videoStats(): FfmpegNativeVideoPlayback.Stats? = binding.frameStats()
+
     @Synchronized fun audioTracks(): FfmpegNativeAudioTrackSnapshot = audio?.audioTracks() ?: FfmpegNativeAudioTrackSnapshot()
     @Synchronized fun selectAudioTrack(streamIndex: Int): Boolean = audio?.selectAudioTrack(streamIndex) ?: false
     @Synchronized fun positionMs(): Long? = audio?.positionMs()

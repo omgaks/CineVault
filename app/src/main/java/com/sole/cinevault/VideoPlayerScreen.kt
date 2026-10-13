@@ -334,6 +334,10 @@ fun VideoPlayerScreen(
     val ffmpegAvCoordinator = remember(ffmpegSurfaceBinding) {
         com.sole.cinevault.playback.rescue.video.FfmpegNativeAvCoordinator(ffmpegSurfaceBinding)
     }
+    var ffmpegSurfaceRecoveryPending by remember { mutableStateOf(false) }
+    var ffmpegSurfaceRecoveryUsed by remember { mutableStateOf(false) }
+    var ffmpegSurfaceRecoveryPosition by remember { mutableStateOf(0L) }
+    var ffmpegSurfaceRecoveryPlaying by remember { mutableStateOf(false) }
     var ffmpegRescueActive by remember { mutableStateOf(false) }
     var ffmpegReplayReady by remember { mutableStateOf(false) }
     var ffmpegPreferredAudioStream by remember { mutableStateOf<Int?>(null) }
@@ -352,6 +356,8 @@ fun VideoPlayerScreen(
         ffmpegRescueActive = false
         ffmpegReplayReady = false
         ffmpegPreferredAudioStream = null
+        ffmpegSurfaceRecoveryPending = false
+        ffmpegSurfaceRecoveryUsed = false
         ffmpegRescueAttemptedPath = null
         ffmpegLastPosition = null
         ffmpegLastDuration = null
@@ -390,10 +396,19 @@ fun VideoPlayerScreen(
             playWhenReady = playWhenReady,
             preferredAudioStream = selected,
             onFailure = { error ->
+                val recoverSurface = error.message == "Native video surface was lost" && !ffmpegSurfaceRecoveryUsed
+                ffmpegSurfaceRecoveryPosition = ffmpegLastPosition ?: position
+                ffmpegSurfaceRecoveryPlaying = isPlaying
                 ffmpegRescueActive = false
                 ffmpegReplayReady = false
                 isPlaying = false
-                playbackHealth.playerErrorMessage = "FFmpeg rescue failed: ${error.message ?: "Unknown error"}"
+                if (recoverSurface) {
+                    ffmpegSurfaceRecoveryUsed = true
+                    ffmpegSurfaceRecoveryPending = true
+                    playbackHealth.playerErrorMessage = null
+                } else {
+                    playbackHealth.playerErrorMessage = "FFmpeg rescue failed: ${error.message ?: "Unknown error"}"
+                }
                 CineVaultPlayerHolder.nativeBridge?.takeIf { it.owner === exoPlayer }?.publish()
             },
             onCompleted = {
@@ -421,6 +436,23 @@ fun VideoPlayerScreen(
         return started
     }
 
+    LaunchedEffect(ffmpegSurfaceRecoveryPending) {
+        if (!ffmpegSurfaceRecoveryPending) return@LaunchedEffect
+        var restarted = false
+        repeat(30) {
+            kotlinx.coroutines.delay(100L)
+            if (!restarted && ffmpegSurfaceBinding.isSurfaceReady()) {
+                restarted = startNativePlayback(ffmpegSurfaceRecoveryPosition, ffmpegSurfaceRecoveryPlaying)
+            }
+            if (restarted) {
+                ffmpegSurfaceRecoveryPending = false
+                return@LaunchedEffect
+            }
+        }
+        ffmpegSurfaceRecoveryPending = false
+        playbackHealth.playerErrorMessage = "FFmpeg rescue failed: video surface did not return"
+    }
+
     val nativePlaybackBridge = remember(exoPlayer, ffmpegAvCoordinator) {
         NativePlaybackBridge(
             owner = exoPlayer,
@@ -428,6 +460,8 @@ fun VideoPlayerScreen(
                 if (!ffmpegRescueActive && !ffmpegReplayReady) null else NativePlaybackSnapshot(
                     positionMs = ffmpegAvCoordinator.positionMs() ?: ffmpegLastPosition ?: position,
                     durationMs = ffmpegAvCoordinator.durationMs() ?: ffmpegLastDuration ?: duration,
+                    presentedFrames = ffmpegAvCoordinator.videoStats()?.presented ?: 0,
+                    droppedFrames = ffmpegAvCoordinator.videoStats()?.dropped ?: 0,
                     playing = ffmpegRescueActive && isPlaying,
                     ended = ffmpegReplayReady,
                     speed = ffmpegAvCoordinator.playbackSpeed() ?: playbackSpeed,
@@ -1332,6 +1366,7 @@ fun VideoPlayerScreen(
             onShowControls = { chromeUi.showControls = true },
             onBack = onBack,
             onRetry = {
+                if (!ffmpegSurfaceBinding.isRunning()) ffmpegRescueAttemptedPath = null
                 playbackHealth.errorRetryCount = 0
                 replaySubtitlePreservingTiming(position)
             },

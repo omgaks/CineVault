@@ -19,6 +19,11 @@ internal class FfmpegNativeVideoPlayback(
     private val audioPositionMs: (() -> Long?)? = null,
     private val playbackSpeed: () -> Float = { 1f },
 ) {
+    @Volatile var presentedFrames: Int = 0
+        private set
+    @Volatile var droppedFrames: Int = 0
+        private set
+
     private val stopped = AtomicBoolean(false)
     private val paused = AtomicBoolean(false)
     private val pendingSeekMs = AtomicLong(NO_SEEK)
@@ -46,11 +51,13 @@ internal class FfmpegNativeVideoPlayback(
         if (stopped.get()) return Stats(presented = 0, dropped = 0)
         var presented = 0
         var dropped = 0
+        var lastPresentationAt: Long? = null
         var originPts: Long? = null
         var originClock = clockMs()
         var fallbackPosition = 0L
         var fallbackClock = originClock
         var pauseStarted: Long? = null
+        FfmpegRgbaFrameRenderer().use { renderer ->
         FfmpegNativeDecoderSession.open(path).use { decoder ->
             while (!stopped.get()) {
                 val seek = pendingSeekMs.getAndSet(NO_SEEK)
@@ -110,22 +117,26 @@ internal class FfmpegNativeVideoPlayback(
                         playbackSpeed = playbackSpeed(),
                         fallbackPositionMs = fallbackPosition,
                     )
-                    when (scheduler.decide(relativePts, position)) {
+                    when (scheduler.decideWithPresentationProgress(relativePts, position, lastPresentationAt?.let { (now - it).coerceAtLeast(0L) } ?: Long.MAX_VALUE)) {
                         FfmpegVideoFrameScheduleDecision.WAIT -> sleepMs(5L)
                         FfmpegVideoFrameScheduleDecision.DROP_LATE -> {
                             dropped++
+                            droppedFrames = dropped
                             break
                         }
                         FfmpegVideoFrameScheduleDecision.PRESENT -> {
                             if (!stopped.get()) {
-                                FfmpegRgbaFrameRenderer.render(frame.image, surface)
+                                renderer.render(frame.image, surface)
                                 presented++
+                                presentedFrames = presented
+                                lastPresentationAt = clockMs()
                             }
                             break
                         }
                     }
                 }
             }
+        }
         }
         return Stats(presented, dropped)
     }
