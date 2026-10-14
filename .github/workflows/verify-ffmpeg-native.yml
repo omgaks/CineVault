@@ -1,6 +1,7 @@
 name: Verify optional native FFmpeg integration
 
 # Builds an ARM64 native test APK on the dedicated verification branch.
+# Manual device-test build requested 2026-10-14; retain native packaging and signing checks.
 # Uploads an Actions artifact; does not publish a GitHub Release.
 on:
   push:
