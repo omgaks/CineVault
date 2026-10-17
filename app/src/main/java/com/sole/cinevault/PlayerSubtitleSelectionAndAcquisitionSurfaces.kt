@@ -78,13 +78,14 @@ internal fun BoxScope.PlayerSubtitleSelectionAndAcquisitionSurfaces(
     onStudioCategoryChanged: (StudioCategory?) -> Unit,
     onLaunchSrtPicker: (Array<String>) -> Unit,
     isTelevision: Boolean = false,
+    nativeAudioRows: List<TrackPopupRowData>? = null,
 ) {
     val srtFiles = rememberAvailableLocalSubtitleFiles(
         videoPath = videoPath,
         selectorVisible = showSrtBrowser,
         pendingDeletePaths = pendingDeletePaths,
     )
-    val audioTracksForPopup = buildAudioTrackRows(
+    val audioTracksForPopup = nativeAudioRows ?: buildAudioTrackRows(
         player = player,
         trackSelector = trackSelector,
         onTrackSelected = {

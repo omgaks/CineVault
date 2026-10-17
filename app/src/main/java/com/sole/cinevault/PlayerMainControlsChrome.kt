@@ -112,6 +112,8 @@ internal fun BoxScope.PlayerMainControlsChrome(
     onShowSeekPreviewChanged: (Boolean) -> Unit,
     onPreviewPositionChanged: (Long) -> Unit,
     onPreviewBitmapChanged: (Bitmap?) -> Unit,
+    nativeSeek: ((Long) -> Unit)? = null,
+    nativeTogglePlayPause: (() -> Unit)? = null,
 ) {
     val subtitleOverlayActive =
         subtitleSettingsVisible ||
@@ -263,6 +265,8 @@ internal fun BoxScope.PlayerMainControlsChrome(
             onShowSeekPreviewChanged = onShowSeekPreviewChanged,
             onPreviewPositionChanged = onPreviewPositionChanged,
             onPreviewBitmapChanged = onPreviewBitmapChanged,
+            nativeSeek = nativeSeek,
+            nativeTogglePlayPause = nativeTogglePlayPause,
         )
     }
 }

@@ -29,6 +29,18 @@ internal class FfmpegNativeDecoderSession private constructor(
         return Frame(metadata[2], FfmpegContainerProbeLoader.RgbaFrame(width, height, pixels))
     }
 
+    /**
+     * Seek the persistent decoder to a keyframe at or before targetMs.
+     * The caller must discard previously decoded frames and reset its
+     * presentation clock. Invoke from the decoder worker thread.
+     */
+    @Synchronized
+    fun seekTo(targetMs: Long) {
+        require(targetMs >= 0L) { "Seek position must be nonnegative" }
+        check(handle != 0L) { "Decoder session already closed" }
+        nativeSeek(handle, targetMs)
+    }
+
     @Synchronized
     override fun close() {
         if (handle != 0L) {
@@ -39,6 +51,7 @@ internal class FfmpegNativeDecoderSession private constructor(
 
     private external fun nativeOpen(path: String): Long
     private external fun nativeNext(handle: Long): Array<Any?>?
+    private external fun nativeSeek(handle: Long, targetMs: Long)
     private external fun nativeClose(handle: Long)
 
     companion object {

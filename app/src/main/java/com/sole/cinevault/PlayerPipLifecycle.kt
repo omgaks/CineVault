@@ -59,6 +59,16 @@ internal fun PlayerPipActionReceiverEffect(
             override fun onReceive(receiverContext: Context, intent: Intent) {
                 if (intent.action != CINEVAULT_PIP_ACTION) return
                 val activePlayer = CineVaultPlayerHolder.currentPlayer ?: return
+                val native = CineVaultPlayerHolder.nativeBridge?.takeIf { it.owner === activePlayer }
+                val snapshot = native?.snapshot
+                if (snapshot != null) {
+                    when (intent.getIntExtra(CINEVAULT_PIP_ACTION_EXTRA, -1)) {
+                        0 -> if (snapshot.playing) native.pause() else native.play()
+                        1 -> native.seekTo(snapshot.positionMs - 10_000L)
+                        2 -> native.seekTo(snapshot.positionMs + 10_000L)
+                    }
+                    return
+                }
                 when (intent.getIntExtra(CINEVAULT_PIP_ACTION_EXTRA, -1)) {
                     0 -> {
                         if (activePlayer.isPlaying) {

@@ -95,6 +95,8 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
     onShowSeekPreviewChanged: (Boolean) -> Unit,
     onPreviewPositionChanged: (Long) -> Unit,
     onPreviewBitmapChanged: (Bitmap?) -> Unit,
+    nativeSeek: ((Long) -> Unit)? = null,
+    nativeTogglePlayPause: (() -> Unit)? = null,
 ) {
     val anyMenuOpenForSmartSkip =
         showAudioSelector ||
@@ -168,13 +170,13 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
         onPlayNextEpisode = onPlayNextEpisode,
         onCancelNextEpisode = onCancelNextEpisode,
         onSkipSegment = { segment ->
-            player.seekTo(segment.endMs)
+            if (nativeSeek != null) nativeSeek(segment.endMs) else player.seekTo(segment.endMs)
             onPositionChanged(segment.endMs)
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
             onShowControlsChanged(true)
         },
         onJumpToCreditScene = { scene ->
-            player.seekTo(scene.startMs)
+            if (nativeSeek != null) nativeSeek(scene.startMs) else player.seekTo(scene.startMs)
             onPositionChanged(scene.startMs)
         },
     )
@@ -196,32 +198,26 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
         isStreamMedia = isStreamMedia,
         onBack = onBack,
         onReplay10 = {
-            player.seekTo(
-                playerSeekBackPosition(player.currentPosition)
-            )
-            onPositionChanged(player.currentPosition)
+            val target = playerSeekBackPosition(position)
+            if (nativeSeek != null) nativeSeek(target) else player.seekTo(target)
+            onPositionChanged(target)
             onShowControlsChanged(true)
         },
         onPlayPause = {
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
             if (isVideoEnded) {
-                player.seekTo(0)
-                player.play()
+                if (nativeSeek != null) { nativeSeek(0); nativeTogglePlayPause?.invoke() } else { player.seekTo(0); player.play() }
                 onVideoEndedChanged(false)
                 onShowControlsChanged(true)
             } else {
-                if (player.isPlaying) player.pause() else player.play()
+                if (nativeTogglePlayPause != null) nativeTogglePlayPause() else if (player.isPlaying) player.pause() else player.play()
                 onShowControlsChanged(true)
             }
         },
         onForward10 = {
-            player.seekTo(
-                playerSeekForwardPosition(
-                    player.currentPosition,
-                    player.duration,
-                )
-            )
-            onPositionChanged(player.currentPosition)
+            val target = playerSeekForwardPosition(position, duration)
+            if (nativeSeek != null) nativeSeek(target) else player.seekTo(target)
+            onPositionChanged(target)
             onShowControlsChanged(true)
         },
         onNext = {
@@ -290,7 +286,7 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
                 playerBoundedSeekPosition(finalPos, duration)
             onPositionChanged(safe)
             onPreviewPositionChanged(safe)
-            player.seekTo(safe)
+            if (nativeSeek != null) nativeSeek(safe) else player.seekTo(safe)
             onDraggingSeekbarChanged(false)
 
             val nearest =

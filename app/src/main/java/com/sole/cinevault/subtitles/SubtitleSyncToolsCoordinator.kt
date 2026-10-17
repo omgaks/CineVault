@@ -47,13 +47,15 @@ class SubtitleSyncToolsCoordinator(
     private val playSubtitle: (subtitleUri: Uri?, resumePosition: Long, isOriginalSubtitle: Boolean) -> Unit,
     private val findCachedAiSecondary: (String) -> Uri?,
     private val requestAiSecondary: (String) -> Unit,
-    private val clearPendingAiSecondary: () -> Unit
+    private val clearPendingAiSecondary: () -> Unit,
+    private val getPlaybackPositionMs: () -> Long = { exoPlayer.currentPosition },
+    private val resumePlayback: () -> Unit = { exoPlayer.play() },
 ) {
     // ── Dialogue Sync Tap ─────────────────────────────────────────────
     fun armDialogueSync() {
-        coreUi.dialogueSyncReferenceMs = exoPlayer.currentPosition.coerceAtLeast(0L)
+        coreUi.dialogueSyncReferenceMs = getPlaybackPositionMs().coerceAtLeast(0L)
         coreUi.dialogueSyncArmed = true
-        exoPlayer.play()
+        resumePlayback()
         coreUi.showSettings = false
     }
 
@@ -65,7 +67,7 @@ class SubtitleSyncToolsCoordinator(
     fun confirmDialogueSyncTap() {
         val reference = coreUi.dialogueSyncReferenceMs
         if (reference != null) {
-            val deltaMs = exoPlayer.currentPosition - reference
+            val deltaMs = getPlaybackPositionMs() - reference
             coreUi.syncOffset = (coreUi.syncOffset + deltaMs / 1000f).coerceIn(-10f, 10f)
             CineVaultToast.show(context, "Sync adjusted by ${if (deltaMs >= 0) "+" else ""}${String.format(java.util.Locale.US, "%.1f", deltaMs / 1000f)}s")
         }
@@ -75,11 +77,11 @@ class SubtitleSyncToolsCoordinator(
 
     // ── Progressive Drift Correction ─────────────────────────────────
     fun markDriftPointA(correctionSeconds: Float) {
-        driftUi.pointA = DriftPoint(exoPlayer.currentPosition.coerceAtLeast(0L), correctionSeconds)
+        driftUi.pointA = DriftPoint(getPlaybackPositionMs().coerceAtLeast(0L), correctionSeconds)
     }
 
     fun markDriftPointB(correctionSeconds: Float) {
-        driftUi.pointB = DriftPoint(exoPlayer.currentPosition.coerceAtLeast(0L), correctionSeconds)
+        driftUi.pointB = DriftPoint(getPlaybackPositionMs().coerceAtLeast(0L), correctionSeconds)
     }
 
     fun applyDriftFix() {
@@ -325,7 +327,7 @@ class SubtitleSyncToolsCoordinator(
             } ?: merged
             trackUi.appliedOffsetMs = offsetMs
             driftUi.appliedScale = requestedScale
-            val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+            val resumeAt = getPlaybackPositionMs().coerceAtLeast(0L)
             playSubtitle(renderUri, resumeAt, false)
         }
     }
@@ -340,7 +342,7 @@ class SubtitleSyncToolsCoordinator(
         dualUi.statusText = ""
         dualUi.secondarySourceLabel = ""
         val primary = trackUi.primaryUri ?: return
-        val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+        val resumeAt = getPlaybackPositionMs().coerceAtLeast(0L)
         coreUi.subtitlesEnabled = true
         trackUi.renderBaseUri = null
         trackUi.originalUri = primary

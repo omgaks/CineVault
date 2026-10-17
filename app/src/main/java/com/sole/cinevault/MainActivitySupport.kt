@@ -47,6 +47,7 @@ import kotlinx.coroutines.withContext
 
 object CineVaultPlayerHolder {
     var currentPlayer: ExoPlayer? = null
+    internal var nativeBridge: NativePlaybackBridge? = null
     // Set/cleared by VideoPlayerScreen.kt alongside currentPlayer. Bridges
     // hardware media-button next/previous (headset, Bluetooth) into the
     // app's own episode-switching logic (playNext()/playPrevious() in

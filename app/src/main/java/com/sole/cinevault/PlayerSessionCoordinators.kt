@@ -59,9 +59,17 @@ internal fun rememberPlayerSessionCoordinators(
     onPendingSrtUriChanged: (android.net.Uri?) -> Unit,
     onPlayNext: (VideoWithMetadata) -> Unit,
     onExternalSubtitleReplaced: () -> Unit = {},
+    nativePlaybackActive: Boolean = false,
+    playbackPositionMs: () -> Long = { player.currentPosition },
+    applyPlaybackSpeed: (Float) -> Unit = { player.setPlaybackSpeed(it) },
+    pausePlayback: () -> Unit = { player.pause() },
 ): PlayerSessionCoordinatorBundle {
     // These coordinators are remembered for the player lifetime, so any values
     // they read later through callbacks must stay fresh across recomposition.
+    val currentNativePlaybackActive = rememberUpdatedState(nativePlaybackActive)
+    val currentApplySpeed = rememberUpdatedState(applyPlaybackSpeed)
+    val currentPausePlayback = rememberUpdatedState(pausePlayback)
+    val currentPlaybackPositionMs = rememberUpdatedState(playbackPositionMs)
     val currentEpisodeList = rememberUpdatedState(episodeList)
     val currentVideoState = rememberUpdatedState(currentVideo)
     val currentIsStreamMedia = rememberUpdatedState(isStreamMedia)
@@ -86,6 +94,8 @@ internal fun rememberPlayerSessionCoordinators(
             closeSpeedMenu = { onShowSpeedMenuChanged(false) },
             closeSleepMenu = { onShowSleepMenuChanged(false) },
             showControls = { onShowControlsChanged(true) },
+            applyPlaybackSpeed = { currentApplySpeed.value(it) },
+            pausePlayback = { currentPausePlayback.value() },
         )
     }
 
@@ -104,10 +114,29 @@ internal fun rememberPlayerSessionCoordinators(
 
     // Draws external subtitles itself so changing one never restarts the video.
     val subtitleOverlay = remember(player, trackSelector) {
-        ExternalSubtitleOverlay(player, trackSelector) { studioUi.playerView?.subtitleView }
+        ExternalSubtitleOverlay(
+            player = player,
+            trackSelector = trackSelector,
+            playbackPositionMs = { currentPlaybackPositionMs.value() },
+            readSubtitleText = { uri ->
+                when (uri.scheme) {
+                    "file", null -> java.io.File(uri.path.orEmpty()).readText(Charsets.UTF_8)
+                    "content" -> context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                    else -> null
+                }
+            },
+            subtitleViewProvider = { studioUi.playerView?.subtitleView },
+        )
     }
     androidx.compose.runtime.DisposableEffect(subtitleOverlay) {
         onDispose { subtitleOverlay.release() }
+    }
+
+    LaunchedEffect(nativePlaybackActive) {
+        if (nativePlaybackActive && !subtitleOverlay.hasContent) {
+            // Media3 may leave a last embedded cue behind after its error.
+            studioUi.playerView?.subtitleView?.setCues(emptyList())
+        }
     }
 
     val navigation = remember(player, externalSubtitleSelector, subtitleOverlay) {
@@ -130,6 +159,7 @@ internal fun rememberPlayerSessionCoordinators(
             externalSubtitleSelector = externalSubtitleSelector,
             subtitleOverlay = subtitleOverlay,
             trackSelector = trackSelector,
+            isNativePlaybackActive = { currentNativePlaybackActive.value },
         )
     }
 
@@ -154,6 +184,8 @@ internal fun rememberPlayerSessionCoordinators(
                 )
             },
             externalOverlay = subtitleOverlay,
+            getPlaybackPositionMs = { currentPlaybackPositionMs.value() },
+            isNativePlaybackActive = { currentNativePlaybackActive.value },
             onExternalSubtitleReplaced = { latestExternalSubtitleReplaced.value() },
         )
     }

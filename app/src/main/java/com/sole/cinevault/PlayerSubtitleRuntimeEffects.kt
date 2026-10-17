@@ -65,7 +65,11 @@ fun rememberPlayerSubtitleRuntimeEffects(
         resumePosition: Long,
         isOriginalSubtitle: Boolean,
     ) -> Unit,
+    playbackPositionMs: () -> Long = { exoPlayer.currentPosition },
+    resumePlayback: () -> Unit = { exoPlayer.play() },
 ): PlayerSubtitleRuntimeEffects {
+    val currentPlaybackPositionMs by rememberUpdatedState(playbackPositionMs)
+    val currentResumePlayback by rememberUpdatedState(resumePlayback)
     val pendingSubtitleApplyCoordinator = remember(exoPlayer, trackSelector) {
         PendingSubtitleApplyCoordinator(
             context = context,
@@ -73,7 +77,7 @@ fun rememberPlayerSubtitleRuntimeEffects(
             trackUi = trackUi,
             autoSubtitleFetch = autoSubtitleFetch,
             getResumePosition = {
-                playerSafeResumePosition(exoPlayer.currentPosition)
+                playerSafeResumePosition(currentPlaybackPositionMs())
             },
             enableTextTracks = { language ->
                 val normalized = com.sole.cinevault.subtitles.SubtitleLanguageRegistry.normalize(language ?: "")
@@ -179,7 +183,7 @@ fun rememberPlayerSubtitleRuntimeEffects(
             setAppliedOffsetMs = { trackUi.appliedOffsetMs = it },
             setAppliedScale = { driftUi.appliedScale = it },
             getResumePosition = {
-                playerSafeResumePosition(exoPlayer.currentPosition)
+                playerSafeResumePosition(currentPlaybackPositionMs())
             },
             playShiftedSubtitle = { uri, resumeAt ->
                 playCurrentVideoWithSubtitle(
@@ -221,6 +225,8 @@ fun rememberPlayerSubtitleRuntimeEffects(
             trackUi = trackUi,
             getDualSecondaryColorHex = { latestDualSecondaryColorHex },
             getCurrentVideoPath = { currentVideoPath },
+            getPlaybackPositionMs = { currentPlaybackPositionMs() },
+            resumePlayback = { currentResumePlayback() },
             getEmbeddedRef = {
                 EmbeddedSubtitleRef.fromSelectedKey(trackUi.selectedKey, trackUi.primaryLanguage)
             },

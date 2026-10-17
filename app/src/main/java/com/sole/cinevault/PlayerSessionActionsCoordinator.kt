@@ -27,11 +27,13 @@ class PlayerSessionActionsCoordinator(
     private val closeSpeedMenu: () -> Unit,
     private val closeSleepMenu: () -> Unit,
     private val showControls: () -> Unit,
+    private val applyPlaybackSpeed: (Float) -> Unit = { exoPlayer.playbackParameters = PlaybackParameters(it) },
+    private val pausePlayback: () -> Unit = { exoPlayer.pause() },
 ) {
     fun setPlaybackSpeed(speed: Float) {
         performSelectionHaptic()
         setPlaybackSpeedState(speed)
-        exoPlayer.playbackParameters = PlaybackParameters(speed)
+        applyPlaybackSpeed(speed)
         closeSpeedMenu()
         showControls()
         CineVaultToast.show(context, "${if (speed % 1f == 0f) speed.toInt().toString() else speed.toString()}x speed")
@@ -70,7 +72,7 @@ class PlayerSessionActionsCoordinator(
         if (playerSleepTimerHasExpired(remaining)) {
             setSleepTimerActive(false)
             setSleepTimerRemainingMs(0L)
-            exoPlayer.pause()
+            pausePlayback()
             Toast.makeText(
                 context,
                 "Sleep timer — playback paused",

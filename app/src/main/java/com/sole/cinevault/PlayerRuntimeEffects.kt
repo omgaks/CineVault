@@ -85,6 +85,7 @@ internal fun PlayerRuntimeEffects(
         resumePosition: Long,
         subtitleUri: Uri?,
     ) -> Unit,
+    onMalformedContainerRescueRequested: (Long, Boolean) -> Boolean = { _, _ -> false },
     onPositionChanged: (Long) -> Unit,
     onDurationChanged: (Long) -> Unit,
     onBufferingSpinnerChanged: (Boolean) -> Unit,
@@ -107,6 +108,8 @@ internal fun PlayerRuntimeEffects(
     onHideSubtitleDock: () -> Unit,
     onHideSubtitleBloom: () -> Unit,
     onHideDualSubsWindow: () -> Unit,
+    playbackPositionMs: () -> Long = { player.currentPosition },
+    playbackDurationMs: () -> Long = { player.duration },
 ) {
     PlayerSessionLifecycle(
         context = context,
@@ -118,6 +121,7 @@ internal fun PlayerRuntimeEffects(
         onNextRequested = onNextRequested,
         onPreviousRequested = onPreviousRequested,
         onInitialBrightnessChanged = onInitialBrightnessChanged,
+        playbackPositionMs = playbackPositionMs,
     )
 
     PlayerEventListener(
@@ -200,6 +204,7 @@ internal fun PlayerRuntimeEffects(
         onShowControls = onShowControlsAndTopBar,
         onRetryPlayback = onRetryPlayback,
         onSoftwareFallbackRequested = onSoftwareFallbackRequested,
+        onMalformedContainerRescueRequested = onMalformedContainerRescueRequested,
     )
 
     PlayerTimelineEffects(
@@ -225,6 +230,8 @@ internal fun PlayerRuntimeEffects(
         onPreviewFramesChanged = onPreviewFramesChanged,
         onPreviewBitmapChanged = onPreviewBitmapChanged,
         onSeekPreviewLargeChanged = onSeekPreviewLargeChanged,
+        playbackPositionMs = playbackPositionMs,
+        playbackDurationMs = playbackDurationMs,
     )
 
     PlayerPipWindowEffect(

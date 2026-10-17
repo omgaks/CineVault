@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.library.VideoThumbnailHelper
 import com.sole.cinevault.library.savePlaybackPosition
@@ -44,7 +46,12 @@ internal fun PlayerTimelineEffects(
     onPreviewFramesChanged: (List<VideoThumbnailHelper.PreviewFrame>) -> Unit,
     onPreviewBitmapChanged: (Bitmap?) -> Unit,
     onSeekPreviewLargeChanged: (Boolean) -> Unit,
+    playbackPositionMs: () -> Long = { player.currentPosition },
+    playbackDurationMs: () -> Long = { player.duration },
 ) {
+    val currentPositionMs by rememberUpdatedState(playbackPositionMs)
+    val currentDurationMs by rememberUpdatedState(playbackDurationMs)
+
     // droppedFrameNudgeCount / lastNudgeAtMs and their callbacks remain in
     // the signature for source compatibility with the existing host. They
     // are intentionally no longer used to seek/restart playback.
@@ -69,9 +76,9 @@ internal fun PlayerTimelineEffects(
     LaunchedEffect(player, isDraggingSeekbar) {
         while (true) {
             if (!isDraggingSeekbar) {
-                onPositionChanged(player.currentPosition.coerceAtLeast(0L))
+                onPositionChanged(currentPositionMs().coerceAtLeast(0L))
             }
-            onDurationChanged(player.duration.coerceAtLeast(1L))
+            onDurationChanged(currentDurationMs().coerceAtLeast(1L))
             onPlayingChanged(player.isPlaying)
             delay(350)
         }
@@ -122,8 +129,8 @@ internal fun PlayerTimelineEffects(
     LaunchedEffect(videoPath, isStreamMedia) {
         while (true) {
             delay(5000)
-            val current = player.currentPosition.coerceAtLeast(0L)
-            val total = player.duration.coerceAtLeast(1L)
+            val current = currentPositionMs().coerceAtLeast(0L)
+            val total = currentDurationMs().coerceAtLeast(1L)
 
             if (
                 !isStreamMedia &&

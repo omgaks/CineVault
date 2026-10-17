@@ -59,8 +59,13 @@ Java_com_sole_cinevault_playback_rescue_video_FfmpegNativeDecoderSession_nativeO
     const AVCodec* codec = avcodec_find_decoder(params->codec_id);
     if (!codec) { fail(env, "Video codec unsupported by FFmpeg"); return 0; }
     s->decoder = avcodec_alloc_context3(codec);
-    if (!s->decoder || avcodec_parameters_to_context(s->decoder, params) < 0 ||
-        avcodec_open2(s->decoder, codec, nullptr) < 0) {
+    if (!s->decoder || avcodec_parameters_to_context(s->decoder, params) < 0) {
+        fail(env, "Unable to configure FFmpeg decoder"); return 0;
+    }
+    // Auto-select worker count; HEVC software decoding must not stay single-threaded.
+    s->decoder->thread_count = 0;
+    s->decoder->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
+    if (avcodec_open2(s->decoder, codec, nullptr) < 0) {
         fail(env, "Unable to initialize FFmpeg decoder"); return 0;
     }
     s->packet = av_packet_alloc();
@@ -155,4 +160,26 @@ Java_com_sole_cinevault_playback_rescue_video_FfmpegNativeDecoderSession_nativeC
     JNIEnv*, jobject, jlong id) {
     std::lock_guard<std::mutex> lock(sessionsMutex);
     sessions.erase(id);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_sole_cinevault_playback_rescue_video_FfmpegNativeDecoderSession_nativeSeek(
+    JNIEnv* env, jobject, jlong id, jlong targetMs) {
+    std::lock_guard<std::mutex> lock(sessionsMutex);
+    auto it = sessions.find(id);
+    if (it == sessions.end()) { fail(env, "Decoder session is closed"); return; }
+    if (targetMs < 0) { fail(env, "Negative seek position"); return; }
+    Session& s = *it->second;
+    const AVRational msBase{1, 1000};
+    const AVRational streamBase = s.format->streams[s.stream]->time_base;
+    const int64_t timestamp = av_rescale_q(targetMs, msBase, streamBase);
+    if (av_seek_frame(s.format, s.stream, timestamp, AVSEEK_FLAG_BACKWARD) < 0) {
+        fail(env, "FFmpeg video seek failed");
+        return;
+    }
+    avcodec_flush_buffers(s.decoder);
+    av_packet_unref(s.packet);
+    av_frame_unref(s.frame);
+    s.pending = false;
+    s.flushed = false;
 }
