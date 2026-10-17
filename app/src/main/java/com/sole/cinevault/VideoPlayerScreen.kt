@@ -364,6 +364,41 @@ fun VideoPlayerScreen(
         ffmpegAudioTracks = com.sole.cinevault.playback.rescue.video.FfmpegNativeAudioTrackSnapshot()
     }
 
+    // Plain-language hints for files that cannot play well. Neither changes playback.
+    var slowSoftwareNoticeShown by remember(currentVideo.path) { mutableStateOf(false) }
+    LaunchedEffect(ffmpegRescueActive, currentVideo.path) {
+        if (!ffmpegRescueActive) return@LaunchedEffect
+        val completeness = withContext(Dispatchers.IO) { checkFileCompleteness(context, currentVideo.path) }
+        if (completeness == Completeness.INCOMPLETE) {
+            Toast.makeText(
+                context,
+                "This file looks incomplete (partly downloaded). Downloading it again should fix playback.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+        while (ffmpegRescueActive && !slowSoftwareNoticeShown) {
+            delay(2000L)
+            val stats = ffmpegAvCoordinator.videoStats()
+            if (stats != null && softwareVideoIsTooSlow(stats.presented, stats.dropped)) {
+                slowSoftwareNoticeShown = true
+                Toast.makeText(
+                    context,
+                    "Software video is slower than real time for this file, so the picture may look slow.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+    LaunchedEffect(playbackHealth.playerErrorMessage) {
+        val message = playbackHealth.playerErrorMessage ?: return@LaunchedEffect
+        if (message.startsWith("This file looks incomplete")) return@LaunchedEffect
+        val completeness = withContext(Dispatchers.IO) { checkFileCompleteness(context, currentVideo.path) }
+        if (completeness == Completeness.INCOMPLETE && playbackHealth.playerErrorMessage == message) {
+            playbackHealth.playerErrorMessage =
+                "This file looks incomplete (partly downloaded). Try downloading it again.\n\n$message"
+        }
+    }
+
     // Media3 stops being the timeline authority during native rescue.
     LaunchedEffect(ffmpegRescueActive) {
         while (ffmpegRescueActive) {
