@@ -31,6 +31,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -379,7 +381,19 @@ internal fun BoxScope.VoiceTalkHost(
     val micShown = VoiceRuntime.showMic || !VoiceRuntime.wakeListening
     val inPlayer = VoicePlayerRegistry.current != null
     val playerChrome = !inPlayer || VoicePlayerRegistry.current?.controlsVisible?.invoke() == true
-    if (VoiceRuntime.enabled && micShown && ((buttonVisible && playerChrome) || ui != TalkUi.Idle)) {
+
+    // In the player the mic is one of the floating pills (see PlayerTopIconCluster); share what it needs.
+    val tapNow by rememberUpdatedState { onMicTap() }
+    SideEffect {
+        VoiceRuntime.micTap = if (buttonVisible) ({ tapNow() }) else null
+        VoiceRuntime.micListening = ui == TalkUi.Listening
+        VoiceRuntime.micTalkLevel = level
+    }
+    DisposableEffect(Unit) { onDispose { VoiceRuntime.micTap = null } }
+    // The round button is only drawn outside the player, or in the player when the controls are
+    // hidden but a talk is still going, so Stop is always reachable.
+    val drawRoundMic = !inPlayer || (ui != TalkUi.Idle && !playerChrome)
+    if (drawRoundMic && VoiceRuntime.enabled && micShown && ((buttonVisible && playerChrome) || ui != TalkUi.Idle)) {
         val listening = ui == TalkUi.Listening
         val ringLevel = if (listening) level else VoiceRuntime.wakeLevel
         val ringOn = listening || (VoiceRuntime.wakeListening && VoiceRuntime.isListening)

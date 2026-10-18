@@ -52,22 +52,19 @@ internal fun BoxScope.PlayerControlsLockLayer(
         exit = fadeOut(),
         modifier = Modifier.align(Alignment.TopEnd)
     ) {
-        Box(
-            modifier = Modifier
-                .padding(top = if (isLandscape) 10.dp else 14.dp, end = 14.dp)
-                .height(46.dp)
-                .clip(RoundedCornerShape(50))
-                .background(AmberCore)
-                .clickable(onClick = onToggleLock)
-                .padding(horizontal = 12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = if (controlsLocked) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
-                contentDescription = if (controlsLocked) "Unlock controls" else "Lock controls",
-                tint = Color.Black,
-                modifier = Modifier.size(22.dp)
-            )
-        }
+        // Same pill as the right-hand column; its place is reserved at the top of that column.
+        NeonPill(
+            icon = if (controlsLocked) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
+            label = if (controlsLocked) "UNLOCK" else "LOCK",
+            accent = Color(0xFFFF9F6E),
+            contentDescription = if (controlsLocked) "Unlock controls" else "Lock controls",
+            compact = isLandscape,
+            highlighted = controlsLocked,
+            modifier = Modifier.padding(
+                top = PlayerPillMetrics.top(isLandscape),
+                end = PlayerPillMetrics.end,
+            ),
+            onClick = onToggleLock,
+        )
     }
 }

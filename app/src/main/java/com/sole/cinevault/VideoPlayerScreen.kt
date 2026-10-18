@@ -267,6 +267,7 @@ fun VideoPlayerScreen(
     var showNextEpisodeOverlay by remember { mutableStateOf(false) }
     var nextEpisodeDismissed by remember { mutableStateOf(false) }
     var autoPlayEnabled by remember { mutableStateOf(false) }
+    var hwInfoOpen by remember { mutableStateOf(false) }
     val smartSegmentRepository = remember { SmartSegmentRepository(context.applicationContext) }
     var smartSegmentResult by remember { mutableStateOf(SmartSegmentResult()) }
     val sceneDetectionRunner = remember { SceneDetectionRunner(context.applicationContext) }
@@ -1291,6 +1292,15 @@ fun VideoPlayerScreen(
             showPrevNextButtons = showPrevNextButtons,
             hasNextVideo = hasNextVideo,
             autoPlayEnabled = autoPlayEnabled,
+            diagnostics = playbackRecovery.playbackDiagnosticsSnapshot,
+            hwLabel = when (playbackRecovery.activeVideoDecoderStatus.kind) {
+                ActiveVideoDecoderKind.HARDWARE -> "HW VIDEO"
+                ActiveVideoDecoderKind.SOFTWARE -> "SW VIDEO"
+                ActiveVideoDecoderKind.UNKNOWN -> "INFO"
+            },
+            hwNeedsAttention = shouldShowPlaybackStatusPill(playbackRecovery.playbackDiagnosticsSnapshot),
+            hwSoftware = playbackRecovery.activeVideoDecoderStatus.kind == ActiveVideoDecoderKind.SOFTWARE,
+            onHwClick = { hwInfoOpen = !hwInfoOpen },
             onBack = onBack,
             playbackNavigationCoordinator = playbackNavigationCoordinator,
             playerMenuCloseCoordinator = playerMenuCloseCoordinator,
@@ -1455,22 +1465,11 @@ fun VideoPlayerScreen(
             onDualSecondaryColorHexChanged = { dualSecondaryColorHex = it },
         )
 
-        PlaybackDecoderStatusPill(
-            status = playbackRecovery.activeVideoDecoderStatus,
-            fallbackReason = playbackRecovery.fallbackReason,
-            visible = chromeUi.showControls && (isPlaying || playbackHealth.isBuffering),
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(
-                    top = playerLayout.topClusterPaddingTop + 6.dp,
-                    end = playerLayout.sidePadding,
-                ),
-        )
-
         PlaybackInfoOverlayHost(
             snapshot = playbackRecovery.playbackDiagnosticsSnapshot,
             compatibilityRecorder = playbackCompatibilityRecorder,
-            controlsVisible = chromeUi.showControls,
+            infoRequested = hwInfoOpen,
+            onInfoRequestedChange = { hwInfoOpen = it },
             topPadding = playerLayout.topClusterPaddingTop,
             sidePadding = playerLayout.sidePadding,
         )

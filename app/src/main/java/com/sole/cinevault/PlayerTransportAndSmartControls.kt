@@ -190,10 +190,6 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
         isVideoEnded = isVideoEnded,
         showPrevNextButtons = showPrevNextButtons,
         hasNextVideo = hasNextVideo,
-        autoPlayEnabled = autoPlayEnabled,
-        showAudioSelector = showAudioSelector,
-        showSubtitleActive = showSubtitleActive,
-        isStreamMedia = isStreamMedia,
         onBack = onBack,
         onReplay10 = {
             player.seekTo(
@@ -232,31 +228,6 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
                 playbackNavigationCoordinator.playNext()
             }
         },
-        onToggleAutoplay = {
-            haptics.performHapticFeedback(
-                HapticFeedbackType.TextHandleMove
-            )
-            val enabled = !autoPlayEnabled
-            onAutoPlayEnabledChanged(enabled)
-            onShowControlsChanged(true)
-            Toast.makeText(
-                context,
-                if (enabled) "Autoplay on" else "Autoplay off",
-                Toast.LENGTH_SHORT,
-            ).show()
-        },
-        onAudioClick = {
-            val wasOpen = showAudioSelector
-            playerMenuCloseCoordinator.closeAll()
-            onShowAudioSelectorChanged(!wasOpen)
-            onShowControlsChanged(true)
-            onMenuTouch()
-        },
-        onAudioCenterMeasured = onAudioCenterMeasured,
-        onAudioFxClick = onAudioFxClick,
-        onSubtitleClick = onSubtitleClick,
-        onSubtitleLongClick = onSubtitleLongClick,
-        onSubtitleCenterMeasured = onSubtitleCenterMeasured,
     )
 
     PlayerSeekDock(

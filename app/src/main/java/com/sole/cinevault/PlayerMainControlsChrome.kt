@@ -6,9 +6,11 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.os.Build
 import android.util.Rational
+import android.widget.Toast
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.unit.Dp
 import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.library.VideoThumbnailHelper
@@ -88,6 +90,11 @@ internal fun BoxScope.PlayerMainControlsChrome(
     showPrevNextButtons: Boolean,
     hasNextVideo: Boolean,
     autoPlayEnabled: Boolean,
+    diagnostics: PlaybackDiagnosticsSnapshot,
+    hwLabel: String,
+    hwNeedsAttention: Boolean,
+    hwSoftware: Boolean,
+    onHwClick: () -> Unit,
     onBack: () -> Unit,
     playbackNavigationCoordinator: PlaybackNavigationCoordinator,
     playerMenuCloseCoordinator: PlayerMenuCloseCoordinator,
@@ -153,9 +160,10 @@ internal fun BoxScope.PlayerMainControlsChrome(
             topRowVisible = !showSeekPreview,
             topClusterPaddingTop = topClusterPaddingTop,
             sidePadding = sidePadding,
-            topIconSize = topIconSize,
             currentMeta = currentMeta,
             title = currentTitle,
+            fileName = currentVideoPath.substringAfterLast('/'),
+            diagnostics = diagnostics,
             playbackSpeed = playbackSpeed,
             sleepTimerActive = sleepTimerActive,
             showSpeedMenu = showSpeedMenu,
@@ -185,6 +193,47 @@ internal fun BoxScope.PlayerMainControlsChrome(
                 }
             },
             onClusterHeightMeasured = onClusterHeightMeasured,
+            leftPills = {
+                PlayerLeftPills(
+                    isLandscape = isLandscape,
+                    hwLabel = hwLabel,
+                    hwNeedsAttention = hwNeedsAttention,
+                    hwSoftware = hwSoftware,
+                    onHwClick = onHwClick,
+                    autoPlayEnabled = autoPlayEnabled,
+                    onToggleAutoplay = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val enabled = !autoPlayEnabled
+                        onAutoPlayEnabledChanged(enabled)
+                        onShowControlsChanged(true)
+                        Toast.makeText(
+                            context,
+                            if (enabled) "Autoplay on" else "Autoplay off",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    },
+                    audioActive = showAudioSelector,
+                    onAudioClick = {
+                        val wasOpen = showAudioSelector
+                        playerMenuCloseCoordinator.closeAll()
+                        onShowAudioSelectorChanged(!wasOpen)
+                        onShowControlsChanged(true)
+                        onMenuTouch()
+                    },
+                    onAudioCenterMeasured = onAudioCenterMeasured,
+                    onAudioFxClick = onAudioFxClick,
+                    subtitleActive =
+                        subtitleSettingsVisible ||
+                            trackSelectorVisible ||
+                            subtitleSearchVisible ||
+                            driftDialogVisible ||
+                            appearanceStudioVisible,
+                    isStreamMedia = isStreamMedia,
+                    onSubtitleClick = onSubtitleClick,
+                    onSubtitleLongClick = onSubtitleLongClick,
+                    onSubtitleCenterMeasured = onSubtitleCenterMeasured,
+                )
+            },
         )
 
         PlayerTransientStatusPills(

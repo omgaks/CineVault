@@ -89,6 +89,13 @@ internal object VoiceRuntime {
     /** Live mic loudness (0..1) and whether speech is being picked up, for the mic button ring. */
     var wakeLevel by androidx.compose.runtime.mutableFloatStateOf(0f)
     var wakeSpeech by mutableStateOf(false)
+    /**
+     * Set by the talk host so the player can draw the mic as one of its own pills.
+     * [micTap] starts or stops listening; the other two only drive the pill's look.
+     */
+    var micTap by mutableStateOf<(() -> Unit)?>(null)
+    var micListening by mutableStateOf(false)
+    var micTalkLevel by androidx.compose.runtime.mutableFloatStateOf(0f)
     /** True when the latest wake request is a speech-model check, not a detector hit. */
     @Volatile var wakeFallback: Boolean = false
     /** Bumped whenever the readout numbers change, so the card redraws. */

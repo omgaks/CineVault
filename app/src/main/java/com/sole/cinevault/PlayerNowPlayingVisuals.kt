@@ -31,7 +31,11 @@ import androidx.compose.foundation.Image
 import com.sole.cinevault.ui.theme.*
 
 @Composable
-internal fun NowPlayingTitlePill(text: String, fontSize: androidx.compose.ui.unit.TextUnit) {
+internal fun NowPlayingTitlePill(
+    text: String,
+    fontSize: androidx.compose.ui.unit.TextUnit,
+    modifier: Modifier = Modifier,
+) {
     val infinite = rememberInfiniteTransition(label = "titlePulse")
     val dotAlpha by infinite.animateFloat(
         initialValue = 0.35f, targetValue = 1f,
@@ -40,14 +44,14 @@ internal fun NowPlayingTitlePill(text: String, fontSize: androidx.compose.ui.uni
     )
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
+        modifier = modifier
             .glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong)
-            .border(1.dp, Brush.horizontalGradient(listOf(AmberGlow.copy(alpha = 0.15f), AmberGlow.copy(alpha = 0.55f), AmberGlow.copy(alpha = 0.15f))), RoundedCornerShape(50))
+            .border(1.2.dp, AmberCore.copy(alpha = 0.6f), RoundedCornerShape(50))
             .padding(horizontal = 14.dp, vertical = 7.dp)
     ) {
         Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(AmberCore.copy(alpha = dotAlpha)))
         Spacer(modifier = Modifier.width(7.dp))
-        Text(text = text, color = TextBright, fontSize = fontSize, fontWeight = FontWeight.Bold, maxLines = 1, textAlign = TextAlign.Center)
+        Text(text = text, color = TextBright, fontSize = fontSize, fontWeight = FontWeight.Bold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.weight(1f, fill = false))
     }
 }
 
