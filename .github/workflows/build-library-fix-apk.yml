@@ -1,7 +1,7 @@
-name: Build library-fix native test APK
+name: Build library-fix test APK
 
-# Builds an ARM64 native test APK on the dedicated verification branch.
-# Manual device-test build requested 2026-10-14; retain native packaging and signing checks.
+# Builds a signed library-fix test APK from this branch.
+# Includes library fixes without merging the separate FFmpeg rescue PR.
 # Uploads an Actions artifact; does not publish a GitHub Release.
 on:
   push:
@@ -68,76 +68,16 @@ jobs:
           print("Metadata API configuration written.")
           PY
 
-      - name: Install Android NDK
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
-      - name: Fetch explicitly selected FFmpeg release source
-        env:
-          FFMPEG_TAG: ${{ inputs.ffmpeg_tag || 'n7.1.1' }}
-        run: |
-          case "$FFMPEG_TAG" in
-            n7.1.1|n7.1.2) ;;
-            *) echo "Unsupported tag; use an audited allowlisted release" >&2; exit 1 ;;
-          esac
-          git clone --depth 1 --branch "$FFMPEG_TAG" https://github.com/FFmpeg/FFmpeg.git /tmp/cinevault-ffmpeg
-          git -C /tmp/cinevault-ffmpeg rev-parse HEAD
-      - name: Build native FFmpeg ARM64 libraries
-        run: bash scripts/build-ffmpeg-arm64.sh /tmp/cinevault-ffmpeg
-      - name: Validate FFmpeg runtime libraries
-        run: |
-          set -eu
-          SDK="$GITHUB_WORKSPACE/.native/ffmpeg/arm64-v8a"
-          for lib in avformat avcodec avutil swscale swresample; do
-            test -s "$SDK/lib/lib$lib.so"
-          done
-          find "$SDK/lib" -name '*.so' -print
-          test -s "$SDK/include/libswscale/swscale.h"
-          test -s "$SDK/include/libswresample/swresample.h"
-      # Includes the RGBA JNI entry points; standard Kotlin CI does not compile these. 
-      - name: Compile CineVault optional JNI decoder (no APK)
-        run: |
-          chmod +x gradlew
-          ./gradlew :app:externalNativeBuildDebug \
-            -PcinevaultFfmpegRoot="$GITHUB_WORKSPACE/.native/ffmpeg/arm64-v8a" \
-            --no-daemon
-
-      - name: Build native-enabled test APK with existing release key
+      - name: Build signed library-fix APK
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleDebug \
-            -PcinevaultNativeTestSigning=release \
-            -PcinevaultFfmpegRoot="$GITHUB_WORKSPACE/.native/ffmpeg/arm64-v8a" \
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleDebug \\
+            -PcinevaultNativeTestSigning=release \\
             --no-daemon
-
-      - name: Verify native libraries are packaged
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          from zipfile import ZipFile
-          apk = Path("app/build/outputs/apk/debug/app-debug.apk")
-          required = {
-              "lib/arm64-v8a/libcinevault_container_probe.so",
-              "lib/arm64-v8a/libavformat.so",
-              "lib/arm64-v8a/libavcodec.so",
-              "lib/arm64-v8a/libavutil.so",
-              "lib/arm64-v8a/libswscale.so",
-              "lib/arm64-v8a/libswresample.so",
-          }
-          with ZipFile(apk) as archive:
-              missing = required - set(archive.namelist())
-              if missing:
-                  raise SystemExit("Missing native libraries: " + ", ".join(sorted(missing)))
-              for name in sorted(required):
-                  if archive.getinfo(name).file_size == 0:
-                      raise SystemExit("Empty native library: " + name)
-                  print(name)
-          print("Native-enabled APK packaging verified.")
-          PY
-
 
       - name: Verify APK signing certificate matches existing release key
         env:
@@ -171,7 +111,7 @@ jobs:
       - name: Upload test APK
         uses: actions/upload-artifact@v4
         with:
-          name: CineVault-Native-Test-APK
+          name: CineVault-Library-Fix-Test-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           compression-level: 0
