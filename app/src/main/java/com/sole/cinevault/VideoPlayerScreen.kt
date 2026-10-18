@@ -266,7 +266,7 @@ fun VideoPlayerScreen(
     var nextEpisodeCountdown by remember { mutableIntStateOf(0) }
     var showNextEpisodeOverlay by remember { mutableStateOf(false) }
     var nextEpisodeDismissed by remember { mutableStateOf(false) }
-    var autoPlayEnabled by remember { mutableStateOf(true) }
+    var autoPlayEnabled by remember { mutableStateOf(false) }
     val smartSegmentRepository = remember { SmartSegmentRepository(context.applicationContext) }
     var smartSegmentResult by remember { mutableStateOf(SmartSegmentResult()) }
     val sceneDetectionRunner = remember { SceneDetectionRunner(context.applicationContext) }
