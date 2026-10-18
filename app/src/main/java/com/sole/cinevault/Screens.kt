@@ -469,15 +469,24 @@ internal fun getWatchedPercent(context: Context, item: VideoWithMetadata): Float
 }
 
 fun groupTvShows(videos: List<VideoWithMetadata>): List<TvGroup> {
+    // Group from the source filename rather than relying on stale cached
+    // episode titles, which can be different for every file in a season.
     return videos
-        .filter { it.type == "tv" }
-        .groupBy { it.title }
+        .filter { it.type.equals("tv", ignoreCase = true) ||
+            com.sole.cinevault.library.extractEpisodeInfo(it.video.name) != null }
+        .groupBy { item ->
+            com.sole.cinevault.library.extractEpisodeInfo(item.video.name)?.showName
+                ?: item.title
+        }
         .map { (title, episodes) ->
             TvGroup(
                 showName = title,
                 posterUrl = episodes.firstOrNull()?.posterUrl,
                 backdropUrl = episodes.firstOrNull()?.backdropUrl,
-                episodes = episodes.sortedBy { it.subtitle }
+                episodes = episodes.sortedWith(compareBy(
+                    { com.sole.cinevault.library.extractEpisodeInfo(it.video.name)?.season ?: 1 },
+                    { com.sole.cinevault.library.extractEpisodeInfo(it.video.name)?.episode ?: 0 }
+                ))
             )
         }
         .sortedBy { it.showName }

@@ -47,6 +47,17 @@ fun extractEpisodeInfo(fileName: String): EpisodeInfo? {
         )
     }
 
+    // Support titles such as "Cyberpunk Edgerunners Episode 09.mkv".
+    // The parent folder's season is resolved by the caller when available.
+    val namedEpisode = Regex("""(?i)^(.*?)\b(?:episode|ep)[ ._-]*(\d{1,3})\b""").find(cleanName)
+    if (namedEpisode != null) {
+        val showName = namedEpisode.groupValues[1].trim()
+        val episode = namedEpisode.groupValues[2].toIntOrNull()
+        if (showName.isNotBlank() && episode != null && episode > 0) {
+            return EpisodeInfo(showName, 1, episode)
+        }
+    }
+
     return null
 }
 

@@ -152,10 +152,12 @@ fun ActorScreen(
     onPlayClick: (VideoWithMetadata) -> Unit = {}
 ) {
     val context = LocalContext.current
-    val items = remember(videos, actorId) {
+    val items = remember(videos, actorId, actorName) {
         // Older cached VideoWithMetadata JSON can carry a runtime-null cast
         // field even though the current Kotlin model declares it non-null.
-        videos.filter { v -> v.cast.orEmpty().any { it.id == actorId } }
+        videos.filter { v -> v.cast.orEmpty().any { person ->
+            person.id == actorId || person.name?.trim()?.equals(actorName.trim(), ignoreCase = true) == true
+        } }
     }
     MediaIntelligenceGridScreen(
         title = actorName,
