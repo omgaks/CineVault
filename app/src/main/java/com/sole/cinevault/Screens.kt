@@ -341,12 +341,14 @@ fun LibraryGridCard(
     onLongPress: (VideoWithMetadata) -> Unit = {}
 ) {
     val context = LocalContext.current
-    val badges = mediaBadgesFromName(item.video.name)
     val watchedPercent = getWatchedPercent(context, item)
-    val qualityChip = listOfNotNull(
-        badges.firstOrNull { it == "4K" || it == "1080p" || it == "720p" },
-        badges.firstOrNull { it == "HDR" }
-    ).joinToString(" ")
+    val qualityChip = remember(item.video.name) {
+        val badges = mediaBadgesFromName(item.video.name)
+        listOfNotNull(
+            badges.firstOrNull { it == "4K" || it == "1080p" || it == "720p" },
+            badges.firstOrNull { it == "HDR" }
+        ).joinToString(" ")
+    }
 
     Column(
         modifier = Modifier.combinedClickable(
@@ -456,10 +458,12 @@ internal fun formatClock(ms: Long): String {
 }
 
 internal fun getWatchedPercent(context: Context, item: VideoWithMetadata): Float {
-    val savedPosition = loadPlaybackPosition(context, item.video.path)
+    // Reads from the in-memory snapshot (no database hit per card while scrolling).
+    PlaybackProgressCache.ensureLoaded(context)
+    val savedPosition = PlaybackProgressCache.positions[item.video.path] ?: 0L
     if (savedPosition <= 15_000L) return 0f
     // Use real saved duration if available, fall back to 90min estimate
-    val realDuration = loadDuration(context, item.video.path)
+    val realDuration = PlaybackProgressCache.durations[item.video.path] ?: 0L
     val duration = if (realDuration > 60_000L) realDuration else 90L * 60L * 1000L
     return (savedPosition.toFloat() / duration.toFloat()).coerceIn(0.03f, 0.98f)
 }

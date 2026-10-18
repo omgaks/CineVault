@@ -37,6 +37,9 @@ object LibraryScanController {
     fun start(context: Context, onVideosLoaded: (List<VideoWithMetadata>) -> Unit) {
         if (isScanning) return
         controllerScope.launch {
+            kotlinx.coroutines.withContext(Dispatchers.IO) {
+                com.sole.cinevault.library.VideoThumbnailHelper.clearDiskThumbnails(context)
+            }
             isScanning = true; status = "Scanning device videos..."; lastError = null
             val deviceVideos = try { scanDeviceVideos(context) } catch (e: Exception) {
                 e.printStackTrace()

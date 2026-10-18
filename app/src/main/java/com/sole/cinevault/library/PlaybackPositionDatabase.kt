@@ -63,6 +63,9 @@ interface PlaybackPositionDao {
     // the cost of correctness.
     @Query("SELECT videoPath FROM playback_positions")
     fun getAllPaths(): List<String>
+
+    @Query("SELECT * FROM playback_positions")
+    fun getAll(): List<PlaybackPositionEntity>
 }
 
 @Database(entities = [PlaybackPositionEntity::class], version = 1, exportSchema = false)

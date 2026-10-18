@@ -51,6 +51,7 @@ internal fun savePlayerDuration(
     VideoDurationDatabase.getInstance(context)
         .videoDurationDao()
         .upsert(VideoDurationEntity(videoPath, durationMs))
+    PlaybackProgressCache.durations[videoPath] = durationMs
 }
 
 fun loadDuration(context: Context, videoPath: String): Long {

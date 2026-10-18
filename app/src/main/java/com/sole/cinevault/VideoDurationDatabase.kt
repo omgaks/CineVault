@@ -42,6 +42,9 @@ interface VideoDurationDao {
     @Query("SELECT durationMs FROM video_durations WHERE videoPath = :videoPath")
     fun getDuration(videoPath: String): Long?
 
+    @Query("SELECT * FROM video_durations")
+    fun getAll(): List<VideoDurationEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun upsert(entity: VideoDurationEntity)
 

@@ -45,6 +45,7 @@ fun savePlaybackPosition(
     ensurePlaybackMigratedToRoom(context)
     PlaybackPositionDatabase.getInstance(context).playbackPositionDao()
         .upsert(PlaybackPositionEntity(videoPath, position))
+    PlaybackProgressCache.positions[videoPath] = position
 }
 
 fun loadPlaybackPosition(
@@ -61,6 +62,7 @@ fun clearPlaybackPosition(
 ) {
     ensurePlaybackMigratedToRoom(context)
     PlaybackPositionDatabase.getInstance(context).playbackPositionDao().delete(videoPath)
+    PlaybackProgressCache.positions.remove(videoPath)
 }
 
 fun clearPlaybackFolderPositions(
@@ -71,7 +73,10 @@ fun clearPlaybackFolderPositions(
     val dao = PlaybackPositionDatabase.getInstance(context).playbackPositionDao()
     dao.getAllPaths()
         .filter { it.startsWith(folderPath) }
-        .forEach { dao.delete(it) }
+        .forEach {
+            dao.delete(it)
+            PlaybackProgressCache.positions.remove(it)
+        }
 }
 
 // FIX: the fuller restructuring for library_cache — see

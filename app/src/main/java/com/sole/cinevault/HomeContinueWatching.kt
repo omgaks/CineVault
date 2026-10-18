@@ -448,7 +448,7 @@ internal fun RatingBadgeStack(item: VideoWithMetadata, modifier: Modifier = Modi
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
         if (imdb != null) ImdbCornerChip(value = imdb)
         if (rt != null) RottenTomatoesCornerChip(value = rt)
-        if (tmdb != null) TmdbCornerChip(value = String.format("%.1f", tmdb))
+        if (tmdb != null) TmdbCornerChip(value = remember(tmdb) { String.format("%.1f", tmdb) })
     }
 }
 
