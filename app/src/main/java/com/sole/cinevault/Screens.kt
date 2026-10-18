@@ -482,7 +482,14 @@ fun groupTvShows(videos: List<VideoWithMetadata>): List<TvGroup> {
                 episodes = episodes.sortedWith(compareBy(
                     { com.sole.cinevault.library.extractEpisodeInfo(it.video.name)?.season ?: 1 },
                     { com.sole.cinevault.library.extractEpisodeInfo(it.video.name)?.episode ?: 0 }
-                ))
+                )).map { episode ->
+                    val info = com.sole.cinevault.library.extractEpisodeInfo(episode.video.name)
+                    if (info != null) episode.copy(
+                        type = "tv",
+                        title = title,
+                        subtitle = "S${info.season.toString().padStart(2, '0')}E${info.episode.toString().padStart(2, '0')}"
+                    ) else episode
+                }
             )
         }
         .sortedBy { it.showName }
