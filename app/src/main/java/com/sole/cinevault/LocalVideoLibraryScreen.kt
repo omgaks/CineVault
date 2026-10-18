@@ -565,7 +565,7 @@ fun LocalVideoLibraryScreen(
     // While searching the shelves step aside and results take the page.
     val shownCategory = if (searching && selectedCategory != "Secret") "Search" else selectedCategory
 
-    val filteredVideos = remember(
+    val filteredVideos = remember<List<VideoWithMetadata>>(
         shownCategory, secretUnlocked, secretVideos, secretGroupedPaths, searchResults,
         favoriteVideos, foldPlan, foldedVideos, watchedPaths
     ) { when (shownCategory) {
