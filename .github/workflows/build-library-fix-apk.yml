@@ -1,0 +1,178 @@
+name: Build library-fix native test APK
+
+# Builds an ARM64 native test APK on the dedicated verification branch.
+# Manual device-test build requested 2026-10-14; retain native packaging and signing checks.
+# Uploads an Actions artifact; does not publish a GitHub Release.
+on:
+  push:
+    branches: [fix/episode-and-actor-library-match]
+  workflow_dispatch:
+    inputs:
+      ffmpeg_tag:
+        description: 'Audited FFmpeg release tag'
+        required: true
+        default: 'n7.1.1'
+
+permissions:
+  contents: read
+
+jobs:
+  native-ffmpeg:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare existing release signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          import os, base64
+          from pathlib import Path
+          required = ("KEYSTORE_BASE64", "KEYSTORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD")
+          missing = [name for name in required if not os.environ.get(name)]
+          if missing:
+              raise SystemExit("Missing signing secrets: " + ", ".join(missing))
+          key = Path("cinevault-release.jks")
+          key.write_bytes(base64.b64decode("".join(os.environ["KEYSTORE_BASE64"].split()), validate=True))
+          key.chmod(0o600)
+          print("Existing release signing key prepared.")
+          PY
+
+      - name: Include existing metadata API configuration
+        env:
+          TMDB_TOKEN: ${{ secrets.TMDB_TOKEN }}
+          OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
+          FANART_API_KEY: ${{ secrets.FANART_API_KEY }}
+          OPENSUB_API_KEY: ${{ secrets.OPENSUB_API_KEY }}
+          SUBDL_API_KEY: ${{ secrets.SUBDL_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          keys = ("TMDB_TOKEN", "OMDB_API_KEY", "FANART_API_KEY", "OPENSUB_API_KEY", "SUBDL_API_KEY")
+          def escape(value):
+              return value.replace(chr(92), chr(92) * 2).replace(chr(10), chr(92) + "n").replace(chr(13), chr(92) + "r")
+          Path("local.properties").write_text(
+              "".join(name + "=" + escape(os.environ.get(name, "")) + chr(10) for name in keys),
+              encoding="utf-8",
+          )
+          print("Metadata API configuration written.")
+          PY
+
+      - name: Install Android NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Fetch explicitly selected FFmpeg release source
+        env:
+          FFMPEG_TAG: ${{ inputs.ffmpeg_tag || 'n7.1.1' }}
+        run: |
+          case "$FFMPEG_TAG" in
+            n7.1.1|n7.1.2) ;;
+            *) echo "Unsupported tag; use an audited allowlisted release" >&2; exit 1 ;;
+          esac
+          git clone --depth 1 --branch "$FFMPEG_TAG" https://github.com/FFmpeg/FFmpeg.git /tmp/cinevault-ffmpeg
+          git -C /tmp/cinevault-ffmpeg rev-parse HEAD
+      - name: Build native FFmpeg ARM64 libraries
+        run: bash scripts/build-ffmpeg-arm64.sh /tmp/cinevault-ffmpeg
+      - name: Validate FFmpeg runtime libraries
+        run: |
+          set -eu
+          SDK="$GITHUB_WORKSPACE/.native/ffmpeg/arm64-v8a"
+          for lib in avformat avcodec avutil swscale swresample; do
+            test -s "$SDK/lib/lib$lib.so"
+          done
+          find "$SDK/lib" -name '*.so' -print
+          test -s "$SDK/include/libswscale/swscale.h"
+          test -s "$SDK/include/libswresample/swresample.h"
+      # Includes the RGBA JNI entry points; standard Kotlin CI does not compile these. 
+      - name: Compile CineVault optional JNI decoder (no APK)
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:externalNativeBuildDebug \
+            -PcinevaultFfmpegRoot="$GITHUB_WORKSPACE/.native/ffmpeg/arm64-v8a" \
+            --no-daemon
+
+      - name: Build native-enabled test APK with existing release key
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleDebug \
+            -PcinevaultNativeTestSigning=release \
+            -PcinevaultFfmpegRoot="$GITHUB_WORKSPACE/.native/ffmpeg/arm64-v8a" \
+            --no-daemon
+
+      - name: Verify native libraries are packaged
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          apk = Path("app/build/outputs/apk/debug/app-debug.apk")
+          required = {
+              "lib/arm64-v8a/libcinevault_container_probe.so",
+              "lib/arm64-v8a/libavformat.so",
+              "lib/arm64-v8a/libavcodec.so",
+              "lib/arm64-v8a/libavutil.so",
+              "lib/arm64-v8a/libswscale.so",
+              "lib/arm64-v8a/libswresample.so",
+          }
+          with ZipFile(apk) as archive:
+              missing = required - set(archive.namelist())
+              if missing:
+                  raise SystemExit("Missing native libraries: " + ", ".join(sorted(missing)))
+              for name in sorted(required):
+                  if archive.getinfo(name).file_size == 0:
+                      raise SystemExit("Empty native library: " + name)
+                  print(name)
+          print("Native-enabled APK packaging verified.")
+          PY
+
+
+      - name: Verify APK signing certificate matches existing release key
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, os, re, subprocess
+          from pathlib import Path
+          tools = list((Path(os.environ["ANDROID_HOME"]) / "build-tools").glob("*/apksigner"))
+          if not tools:
+              raise SystemExit("Android apksigner was not found")
+          signer = max(tools, key=lambda p: tuple(int(n) for n in re.findall(r"[0-9]+", p.parent.name)))
+          apk = "app/build/outputs/apk/debug/app-debug.apk"
+          output = subprocess.check_output([str(signer), "verify", "--print-certs", apk], text=True)
+          cert = subprocess.check_output([
+              "keytool", "-exportcert", "-keystore", "cinevault-release.jks",
+              "-alias", os.environ["KEY_ALIAS"], "-storepass:env", "KEYSTORE_PASSWORD",
+          ])
+          expected = hashlib.sha256(cert).hexdigest()
+          actual = re.findall(r"certificate SHA-256 digest: ([0-9a-fA-F]+)", output)
+          if not actual or any(value.lower() != expected for value in actual):
+              raise SystemExit("APK certificate does not match the existing release key")
+          print("APK signature verified against the existing release key.")
+          PY
+
+      - name: Remove temporary signing and API files
+        if: always()
+        run: rm -f cinevault-release.jks local.properties
+
+      - name: Upload test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CineVault-Native-Test-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
