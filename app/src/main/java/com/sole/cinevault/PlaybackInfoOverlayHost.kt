@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,7 +32,8 @@ private enum class PlaybackInfoSurface {
 internal fun BoxScope.PlaybackInfoOverlayHost(
     snapshot: PlaybackDiagnosticsSnapshot,
     compatibilityRecorder: PlaybackCompatibilitySessionRecorder,
-    controlsVisible: Boolean,
+    infoRequested: Boolean,
+    onInfoRequestedChange: (Boolean) -> Unit,
     topPadding: Dp,
     sidePadding: Dp,
 ) {
@@ -42,32 +44,31 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
         panelRequested = panelRequested,
         fallbackOccurred = snapshot.fallbackOccurred,
     )
-    val showStatusPill = shouldShowPlaybackStatusPill(snapshot)
+
+    fun closeInfo() {
+        surface = PlaybackInfoSurface.NONE
+        onInfoRequestedChange(false)
+    }
+
+    // The HW pill (in the left pill column) opens and closes the panel.
+    LaunchedEffect(infoRequested) {
+        surface = if (infoRequested) {
+            if (surface == PlaybackInfoSurface.NONE) PlaybackInfoSurface.INFO else surface
+        } else {
+            PlaybackInfoSurface.NONE
+        }
+    }
 
     BackHandler(enabled = visibility.showPanel) {
         surface = when (surface) {
             PlaybackInfoSurface.MATRIX -> PlaybackInfoSurface.REPORT
             PlaybackInfoSurface.REPORT -> PlaybackInfoSurface.INFO
             PlaybackInfoSurface.INFO,
-            PlaybackInfoSurface.NONE -> PlaybackInfoSurface.NONE
+            PlaybackInfoSurface.NONE -> {
+                onInfoRequestedChange(false)
+                PlaybackInfoSurface.NONE
+            }
         }
-    }
-
-    AnimatedVisibility(
-        visible = controlsVisible && !visibility.showPanel && showStatusPill,
-        enter = fadeIn(),
-        exit = fadeOut(),
-        modifier = Modifier
-            .align(Alignment.TopEnd)
-            .padding(
-                top = topPadding + 72.dp,
-                end = sidePadding,
-            ),
-    ) {
-        PlaybackStatusPill(
-            snapshot = snapshot,
-            onClick = { surface = PlaybackInfoSurface.INFO },
-        )
     }
 
     if (visibility.showPanel) {
@@ -78,7 +79,7 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                 ) {
-                    surface = PlaybackInfoSurface.NONE
+                    closeInfo()
                 },
         )
     }
@@ -88,15 +89,15 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
         enter = fadeIn(),
         exit = fadeOut(),
         modifier = Modifier
-            .align(Alignment.TopEnd)
+            .align(Alignment.TopStart)
             .padding(
-                top = topPadding + 72.dp,
-                end = sidePadding,
+                top = topPadding,
+                start = sidePadding,
             ),
     ) {
         PlaybackInfoPanel(
             snapshot = snapshot,
-            onDismiss = { surface = PlaybackInfoSurface.NONE },
+            onDismiss = { closeInfo() },
             onShowCompatibilityReport = {
                 surface = PlaybackInfoSurface.REPORT
             },
@@ -108,10 +109,10 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
         enter = fadeIn(),
         exit = fadeOut(),
         modifier = Modifier
-            .align(Alignment.TopEnd)
+            .align(Alignment.TopStart)
             .padding(
-                top = topPadding + 72.dp,
-                end = sidePadding,
+                top = topPadding,
+                start = sidePadding,
             ),
     ) {
         val entries = compatibilityRecorder.entries()
@@ -120,7 +121,7 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
             entries = entries,
             report = compatibilityRecorder.report(),
             onBack = { surface = PlaybackInfoSurface.INFO },
-            onDismiss = { surface = PlaybackInfoSurface.NONE },
+            onDismiss = { closeInfo() },
             onShowMatrix = {
                 surface = PlaybackInfoSurface.MATRIX
             },
@@ -132,16 +133,16 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
         enter = fadeIn(),
         exit = fadeOut(),
         modifier = Modifier
-            .align(Alignment.TopEnd)
+            .align(Alignment.TopStart)
             .padding(
-                top = topPadding + 72.dp,
-                end = sidePadding,
+                top = topPadding,
+                start = sidePadding,
             ),
     ) {
         PlaybackCompatibilityMatrixPanel(
             entries = compatibilityRecorder.entries(),
             onBack = { surface = PlaybackInfoSurface.REPORT },
-            onDismiss = { surface = PlaybackInfoSurface.NONE },
+            onDismiss = { closeInfo() },
         )
     }
 }

@@ -1,5 +1,10 @@
 package com.sole.cinevault
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -58,6 +63,69 @@ fun PlaybackInfoPanel(
             decoderName = snapshot.audioDecoderName,
         ),
     )
+    val sections = buildList<Triple<String, String, Boolean>> {
+        add(Triple("VIDEO", presentation.videoSummary, false))
+        presentation.codecDetailsSummary?.let { add(Triple("CODEC DETAILS", it, false)) }
+        add(Triple("VIDEO DECODER", presentation.decoderSummary, false))
+        presentation.audioSummary?.let { add(Triple("AUDIO", it, false)) }
+        presentation.audioDecoderSummary?.let {
+            add(Triple("AUDIO DECODER", it, snapshot.activeAudioDecoderKind == ActiveAudioDecoderKind.FFMPEG))
+        }
+        presentation.audioResilienceSummary?.let {
+            add(
+                Triple(
+                    "AUDIO RESILIENCE",
+                    it,
+                    audioResilience.readiness == AudioPlaybackReadiness.FFMPEG_RESCUED ||
+                        audioResilience.readiness == AudioPlaybackReadiness.FFMPEG_RESCUE_EXPECTED,
+                )
+            )
+        }
+        audioFfmpegRescueOutcomeLabel(snapshot.audioFfmpegRescueOutcome)?.let {
+            add(Triple("FFMPEG RESCUE", it, snapshot.audioFfmpegRescueOutcome != AudioFfmpegRescueOutcome.NOT_ATTEMPTED))
+        }
+        presentation.pipelineSummary?.let {
+            add(Triple("PIPELINE", it, snapshot.activeAudioDecoderKind == ActiveAudioDecoderKind.FFMPEG))
+        }
+        snapshot.lastFailureDiagnostic?.let { failure ->
+            add(
+                Triple(
+                    if (failure.severity == PlaybackFailureSeverity.TERMINAL) "LAST FAILURE" else "LAST RECOVERY",
+                    playbackFailureDiagnosticSummary(failure),
+                    true,
+                )
+            )
+        }
+        failureHistoryPresentation?.let { history ->
+            add(
+                Triple(
+                    "RECOVERY HISTORY",
+                    buildString {
+                        append(history.summary)
+                        history.latestEvents.forEach { event ->
+                            append("\n")
+                            append(event)
+                        }
+                    },
+                    history.hasTerminalFailure,
+                )
+            )
+        }
+        add(Triple("COMPATIBILITY", presentation.compatibilitySummary.removePrefix("Compatibility: "), false))
+        add(Triple("READINESS", liveStatus.readiness, false))
+        add(Triple("HEALTH", liveStatus.health, false))
+        add(Triple("SOFTWARE RESCUE", liveStatus.recovery, snapshot.fallbackOccurred))
+        presentation.fallbackSummary?.let { add(Triple("RECOVERY", it.removePrefix("Fallback: "), true)) }
+    }
+    val reportText = buildString {
+        append("CineVault playback report\n")
+        sections.forEach { (label, value, _) ->
+            append("\n")
+            append(label)
+            append(": ")
+            append(value)
+        }
+    }
     val shape = RoundedCornerShape(18.dp)
 
     Column(
@@ -112,97 +180,38 @@ fun PlaybackInfoPanel(
             )
         }
 
-        DiagnosticSection("VIDEO", presentation.videoSummary)
-
-        presentation.codecDetailsSummary?.let {
-            DiagnosticSection("CODEC DETAILS", it)
+        sections.forEach { (label, value, emphasize) ->
+            DiagnosticSection(label, value, emphasize)
         }
 
-        DiagnosticSection("VIDEO DECODER", presentation.decoderSummary)
-
-        presentation.audioSummary?.let {
-            DiagnosticSection("AUDIO", it)
-        }
-
-        presentation.audioDecoderSummary?.let {
-            DiagnosticSection(
-                "AUDIO DECODER",
-                it,
-                snapshot.activeAudioDecoderKind == ActiveAudioDecoderKind.FFMPEG,
-            )
-        }
-
-        presentation.audioResilienceSummary?.let {
-            DiagnosticSection(
-                "AUDIO RESILIENCE",
-                it,
-                audioResilience.readiness == AudioPlaybackReadiness.FFMPEG_RESCUED ||
-                    audioResilience.readiness == AudioPlaybackReadiness.FFMPEG_RESCUE_EXPECTED,
-            )
-        }
-
-        audioFfmpegRescueOutcomeLabel(snapshot.audioFfmpegRescueOutcome)?.let {
-            DiagnosticSection(
-                "FFMPEG RESCUE",
-                it,
-                snapshot.audioFfmpegRescueOutcome !=
-                    AudioFfmpegRescueOutcome.NOT_ATTEMPTED,
-            )
-        }
-
-        presentation.pipelineSummary?.let {
-            DiagnosticSection(
-                "PIPELINE",
-                it,
-                snapshot.activeAudioDecoderKind == ActiveAudioDecoderKind.FFMPEG,
-            )
-        }
-
-        snapshot.lastFailureDiagnostic?.let { failure ->
-            DiagnosticSection(
-                label = if (failure.severity == PlaybackFailureSeverity.TERMINAL) {
-                    "LAST FAILURE"
-                } else {
-                    "LAST RECOVERY"
-                },
-                value = playbackFailureDiagnosticSummary(failure),
-                emphasize = true,
-            )
-        }
-
-        failureHistoryPresentation?.let { history ->
-            DiagnosticSection(
-                label = "RECOVERY HISTORY",
-                value = buildString {
-                    append(history.summary)
-                    history.latestEvents.forEach { event ->
-                        append("\\n")
-                        append(event)
-                    }
-                },
-                emphasize = history.hasTerminalFailure,
-            )
-        }
-
-        DiagnosticSection(
-            "COMPATIBILITY",
-            presentation.compatibilitySummary.removePrefix("Compatibility: "),
+        val context = LocalContext.current
+        Text(
+            text = "COPY REPORT  ⧉",
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    DiagnosticsAmber.copy(alpha = 0.10f),
+                    RoundedCornerShape(10.dp),
+                )
+                .border(
+                    1.dp,
+                    DiagnosticsAmber.copy(alpha = 0.30f),
+                    RoundedCornerShape(10.dp),
+                )
+                .clickable {
+                    val clipboard =
+                        context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(
+                        ClipData.newPlainText("CineVault playback report", reportText)
+                    )
+                    Toast.makeText(context, "Playback report copied", Toast.LENGTH_SHORT).show()
+                }
+                .padding(horizontal = 11.dp, vertical = 9.dp),
+            color = DiagnosticsAmber,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp,
         )
-        DiagnosticSection("READINESS", liveStatus.readiness)
-        DiagnosticSection("HEALTH", liveStatus.health)
-        DiagnosticSection(
-            "SOFTWARE RESCUE",
-            liveStatus.recovery,
-            snapshot.fallbackOccurred,
-        )
-
-        presentation.fallbackSummary?.let {
-            DiagnosticSection(
-                "RECOVERY",
-                it.removePrefix("Fallback: "),
-                true,
-            )
-        }
 
         Text(
             text = "COMPATIBILITY REPORT  ›",
