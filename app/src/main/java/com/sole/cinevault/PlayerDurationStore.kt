@@ -1,6 +1,7 @@
 package com.sole.cinevault
 
 import android.content.Context
+import com.sole.cinevault.library.PlaybackProgressCache
 
 private const val DURATIONS_MIGRATION_DONE_KEY = "durations_room_migration_done"
 

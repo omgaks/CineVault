@@ -38,12 +38,7 @@ jobs:
       # Keeping these tasks in one invocation lets Gradle reuse the task graph
       # and avoids starting a fresh daemon/process for each quality gate.
       - name: Run CI quality gates
-        run: |
-          set +e
-          bash gradlew test jacocoTestReport lintRelease --no-daemon 2>&1 | tee /tmp/gradle.log
-          code=${PIPESTATUS[0]}
-          grep -E "^e: |FAILED|Unresolved|error:" /tmp/gradle.log | head -20 | while IFS= read -r l; do echo "::error::$l"; done
-          exit $code
+        run: bash gradlew test jacocoTestReport lintRelease --no-daemon
 
       # New code must not introduce new lint issues.
       # Existing issues are frozen in app/lint-baseline.xml.
