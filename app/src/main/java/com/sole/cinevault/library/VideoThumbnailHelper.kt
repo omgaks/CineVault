@@ -267,7 +267,51 @@ object VideoThumbnailHelper {
         }
     }
 
+    // Thumbnails are remembered on disk so they don't have to be rebuilt every
+    // time the app starts. The key includes the file's size and modified time,
+    // so a replaced file gets a new thumbnail; a rescan clears them all.
+    private fun thumbDir(context: Context): File =
+        File(context.applicationContext.filesDir, "thumbs").apply { mkdirs() }
+
+    private fun thumbFile(context: Context, videoPath: String): File {
+        val stamp = if (videoPath.startsWith("content://") || videoPath.startsWith("smb://")) ""
+        else try { File(videoPath).let { "${it.length()}:${it.lastModified()}" } } catch (_: Exception) { "" }
+        val digest = java.security.MessageDigest.getInstance("SHA-1").digest("$videoPath|$stamp".toByteArray())
+        return File(thumbDir(context), digest.joinToString("") { "%02x".format(it) } + ".jpg")
+    }
+
+    /** Forget every remembered thumbnail (called when the library is rescanned). */
+    fun clearDiskThumbnails(context: Context) {
+        localThumbnailCache.evictAll()
+        try { thumbDir(context).listFiles()?.forEach { it.delete() } } catch (_: Exception) { }
+    }
+
     suspend fun generateLocalThumbnail(
+        context: Context,
+        videoPath: String
+    ): Bitmap? = withContext(Dispatchers.IO) {
+        localThumbnailCache.get(videoPath)?.let { return@withContext it }
+        val file = try { thumbFile(context, videoPath) } catch (_: Exception) { null }
+        if (file != null && file.exists()) {
+            try {
+                android.graphics.BitmapFactory.decodeFile(file.absolutePath)?.let {
+                    localThumbnailCache.put(videoPath, it)
+                    return@withContext it
+                }
+            } catch (_: Exception) { }
+        }
+        val fresh = generateLocalThumbnailFresh(context, videoPath)
+        if (fresh != null && file != null) {
+            try {
+                file.outputStream().use { fresh.compress(Bitmap.CompressFormat.JPEG, 85, it) }
+            } catch (_: Exception) {
+                try { file.delete() } catch (_: Exception) { }
+            }
+        }
+        fresh
+    }
+
+    private suspend fun generateLocalThumbnailFresh(
         context: Context,
         videoPath: String
     ): Bitmap? = withContext(Dispatchers.IO) {

@@ -467,9 +467,20 @@ fun LocalVideoLibraryScreen(
         }
     }
 
-    val visibleSortedVideos = sortedVideos.filter { !isSecretItem(it, hiddenPaths, hiddenFolders) }
-    val secretVideos = sortedVideos.filter { isSecretItem(it, hiddenPaths, hiddenFolders) }
-    val favoriteVideos = visibleSortedVideos.filter { favoritePaths.contains(it.video.path) }
+    // Remembered so scrolling (which recomposes this screen constantly) never re-filters the whole library.
+    PlaybackProgressCache.ensureLoaded(context)
+    val watchedPaths by remember {
+        derivedStateOf { PlaybackProgressCache.positions.filterValues { it > 15_000L }.keys.toSet() }
+    }
+    val visibleSortedVideos = remember(sortedVideos, hiddenPaths, hiddenFolders) {
+        sortedVideos.filter { !isSecretItem(it, hiddenPaths, hiddenFolders) }
+    }
+    val secretVideos = remember(sortedVideos, hiddenPaths, hiddenFolders) {
+        sortedVideos.filter { isSecretItem(it, hiddenPaths, hiddenFolders) }
+    }
+    val favoriteVideos = remember(visibleSortedVideos, favoritePaths) {
+        visibleSortedVideos.filter { favoritePaths.contains(it.video.path) }
+    }
 
     // Restricted (Select-Folder) folders that were bulk-secreted as a whole
     // via toggleFolderSecret() — every one of their videos is in hiddenPaths.
@@ -477,14 +488,18 @@ fun LocalVideoLibraryScreen(
     // to secret as they are"), not as hundreds of individual loose entries.
     // Long-pressing that card (same toggleFolderSecret call) unlocks the
     // whole folder in one action.
-    val secretRestrictedFolderGroups: List<SecretFolderGroup> = if (!secretUnlocked) emptyList() else {
-        val restrictedInLibrary = sortedVideos.filter { it.type.equals("restricted", ignoreCase = true) }
-        loadRestrictedFolders(context).mapNotNull { folder ->
-            val items = restrictedInLibrary.filter { folderIdFromRestrictedMarker(it.video.folderPath) == folder.id }
-            if (items.isNotEmpty() && items.all { hiddenPaths.contains(it.video.path) }) SecretFolderGroup(folder, items) else null
+    val secretRestrictedFolderGroups: List<SecretFolderGroup> = remember(secretUnlocked, sortedVideos, hiddenPaths) {
+        if (!secretUnlocked) emptyList() else {
+            val restrictedInLibrary = sortedVideos.filter { it.type.equals("restricted", ignoreCase = true) }
+            loadRestrictedFolders(context).mapNotNull { folder ->
+                val items = restrictedInLibrary.filter { folderIdFromRestrictedMarker(it.video.folderPath) == folder.id }
+                if (items.isNotEmpty() && items.all { hiddenPaths.contains(it.video.path) }) SecretFolderGroup(folder, items) else null
+            }
         }
     }
-    val secretGroupedPaths = secretRestrictedFolderGroups.flatMap { group -> group.items.map { it.video.path } }.toSet()
+    val secretGroupedPaths = remember(secretRestrictedFolderGroups) {
+        secretRestrictedFolderGroups.flatMap { group -> group.items.map { it.video.path } }.toSet()
+    }
 
     val videoFolders = remember(visibleSortedVideos) { groupVideosByFolder(visibleSortedVideos.filterNot { it.type.equals("restricted", ignoreCase = true) }) }
 
@@ -513,7 +528,7 @@ fun LocalVideoLibraryScreen(
     val copyCounts = remember(foldPlan) { foldPlan.groupsByMain.mapValues { it.value.size } }
 
     val searching = searchQuery.isNotBlank() || searchFilters.anyOn
-    val searchResults = remember(foldedVideos, searchQuery, searchFilters, searchSort, favoritePaths) {
+    val searchResults = remember(foldedVideos, searchQuery, searchFilters, searchSort, favoritePaths, watchedPaths) {
         if (!searching) emptyList() else {
             val scored = foldedVideos.mapNotNull { v ->
                 val hit = if (searchQuery.isBlank()) SearchHit(SearchMatch.Title, 0) else searchDocument(
@@ -532,7 +547,7 @@ fun LocalVideoLibraryScreen(
                     isFilm = v.type.equals("movie", ignoreCase = true),
                     rating = v.rating,
                     fileName = v.video.name,
-                    watched = loadPlaybackPosition(context, v.video.path) > 15_000L,
+                    watched = v.video.path in watchedPaths,
                     favourite = favoritePaths.contains(v.video.path)
                 )
                 if (ok) v to hit else null
@@ -550,21 +565,26 @@ fun LocalVideoLibraryScreen(
     // While searching the shelves step aside and results take the page.
     val shownCategory = if (searching && selectedCategory != "Secret") "Search" else selectedCategory
 
-    val filteredVideos = when (shownCategory) {
+    val filteredVideos = remember<List<VideoWithMetadata>>(
+        shownCategory, secretUnlocked, secretVideos, secretGroupedPaths, searchResults,
+        favoriteVideos, foldPlan, foldedVideos, watchedPaths
+    ) { when (shownCategory) {
         "Secret" -> if (secretUnlocked) secretVideos.filter { it.video.path !in secretGroupedPaths } else emptyList()
         "Search" -> searchResults.map { it.first }
         "Favorites" -> favoriteVideos.filter { it.video.path !in foldPlan.hiddenPaths }
         // Same 15-second threshold Home's own Continue Watching row uses —
         // kept identical on purpose so "See All" from Home shows exactly
         // the same set, just not capped to 12.
-        "Continue Watching" -> foldedVideos.filter { loadPlaybackPosition(context, it.video.path) > 15_000L }
+        "Continue Watching" -> foldedVideos.filter { it.video.path in watchedPaths }
         "TV Shows" -> emptyList()
         "Folders" -> emptyList()
         "Movies" -> foldedVideos.filter { it.type.equals("movie", ignoreCase = true) && !isRestrictedFolderItem(it) }
         else -> foldedVideos.filter { !it.type.equals("tv", ignoreCase = true) && !isRestrictedFolderItem(it) }
-    }
+    } }
 
-    val tvGroups = groupTvShows(sortedVideos.filter { it.type.equals("tv", ignoreCase = true) && !isSecretItem(it, hiddenPaths, hiddenFolders) })
+    val tvGroups = remember(sortedVideos, hiddenPaths, hiddenFolders) {
+        groupTvShows(sortedVideos.filter { it.type.equals("tv", ignoreCase = true) && !isSecretItem(it, hiddenPaths, hiddenFolders) })
+    }
 
     LocalLibrarySecretScreenProtection(
         context = context,
