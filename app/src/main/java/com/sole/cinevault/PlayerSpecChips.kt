@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.FourK
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Hd
 import androidx.compose.material.icons.rounded.HdrOn
@@ -44,8 +43,8 @@ internal fun playerSpecChips(snapshot: PlaybackDiagnosticsSnapshot, fileName: St
     val res = snapshot.resolution.takeIf { it != "Unknown" }
         ?: mediaBadgesFromName(fileName).firstOrNull { it == "4K" || it == "1080p" || it == "720p" }
     when (res) {
-        "8K" -> chips += PlayerSpecChip("8K UHD", Icons.Rounded.FourK, ChipSky)
-        "4K" -> chips += PlayerSpecChip("4K UHD", Icons.Rounded.FourK, ChipSky)
+        "8K" -> chips += PlayerSpecChip("8K UHD", Icons.Rounded.Hd, ChipSky)
+        "4K" -> chips += PlayerSpecChip("4K UHD", Icons.Rounded.Hd, ChipSky)
         "1440p", "1080p", "720p" -> chips += PlayerSpecChip(res, Icons.Rounded.Hd, ChipSky)
     }
 
