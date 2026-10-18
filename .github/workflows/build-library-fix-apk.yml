@@ -99,8 +99,4 @@ jobs:
           APK=$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -type f | head -n 1)
           test -n "$APK"
           TAG="library-fix-${GITHUB_SHA::8}"
-          gh release create "$TAG" "$APK#CineVault-Library-Fix.apk" \\
-            --target "$GITHUB_SHA" \\
-            --title "CineVault Library Fix ${GITHUB_SHA::8}" \\
-            --notes "Pre-release APK for Cyberpunk TV grouping and actor matching device verification. Does not include the separate unmerged FFmpeg rescue PR." \\
-            --prerelease
+          gh release create "$TAG" "$APK#CineVault-Library-Fix.apk" --target "$GITHUB_SHA" --title "CineVault Library Fix ${GITHUB_SHA::8}" --notes "Pre-release APK for Cyberpunk TV grouping and actor matching device verification. Does not include the separate unmerged FFmpeg rescue PR." --prerelease
