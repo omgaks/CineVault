@@ -560,11 +560,11 @@ fun LocalVideoLibraryScreen(
         "Continue Watching" -> foldedVideos.filter { loadPlaybackPosition(context, it.video.path) > 15_000L }
         "TV Shows" -> emptyList()
         "Folders" -> emptyList()
-        "Movies" -> foldedVideos.filter { it.type.equals("movie", ignoreCase = true) && !isRestrictedFolderItem(it) }
-        else -> foldedVideos.filter { !it.type.equals("tv", ignoreCase = true) && !isRestrictedFolderItem(it) }
+        "Movies" -> foldedVideos.filter { it.type.equals("movie", ignoreCase = true) && com.sole.cinevault.library.extractEpisodeInfo(it.video.name) == null && !isRestrictedFolderItem(it) }
+        else -> foldedVideos.filter { !it.type.equals("tv", ignoreCase = true) && com.sole.cinevault.library.extractEpisodeInfo(it.video.name) == null && !isRestrictedFolderItem(it) }
     }
 
-    val tvGroups = groupTvShows(sortedVideos.filter { it.type.equals("tv", ignoreCase = true) && !isSecretItem(it, hiddenPaths, hiddenFolders) })
+    val tvGroups = groupTvShows(sortedVideos.filter { !isSecretItem(it, hiddenPaths, hiddenFolders) })
 
     LocalLibrarySecretScreenProtection(
         context = context,
