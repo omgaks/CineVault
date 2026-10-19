@@ -39,6 +39,7 @@ internal fun PlayerVideoSurface(
     videoOffsetY: Float,
     onPlayerViewChanged: (PlayerView) -> Unit,
     onResizeModeChanged: (Int) -> Unit,
+    onOutputSurfaceSizeChanged: (Int, Int) -> Unit = { _, _ -> },
 ) {
     val renderDestination = LocalCineVaultRenderDestination.current
     val cinemaVoidHost =
@@ -102,6 +103,13 @@ internal fun PlayerVideoSurface(
             modifier = Modifier
                 .fillMaxSize()
                 .onSizeChanged { size ->
+                    // Compose reports physical pixels, not density-independent dp.
+                    // A hidden host view must never authorize 4K GPU processing.
+                    if (cinemaVoidHost) {
+                        onOutputSurfaceSizeChanged(0, 0)
+                    } else {
+                        onOutputSurfaceSizeChanged(size.width, size.height)
+                    }
                     if (
                         renderDestination ==
                             CineVaultRenderDestination.EXTERNAL_DISPLAY
