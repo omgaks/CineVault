@@ -48,7 +48,7 @@ import com.sole.cinevault.ui.theme.glassPanel
 
 /**
  * Bottom transport bar: Back, -10 s, play/pause, +10 s, and Next episode (series only).
- * The whole bar and every button carry the amber outline and glow; icons fill their discs.
+ * A calm, quiet bar: soft glass, hairline edge, plain discs. Only the amber play button stands out.
  * Autoplay, audio, sound FX and subtitles live in the left pill column now.
  */
 @Composable
@@ -99,10 +99,8 @@ internal fun BoxScope.PlayerBottomTransportDock(
             Row(
                 modifier = Modifier
                     .padding(bottom = bottomDockPadding, start = sidePadding, end = sidePadding)
-                    .shadow(14.dp, barShape, ambientColor = AmberCore, spotColor = AmberCore)
                     .glassPanel(cornerRadius = 42.dp, fill = GlassSurfaceStrong)
-                    .background(Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.14f), Color.Transparent)))
-                    .border(1.4.dp, AmberGlow.copy(alpha = 0.78f), barShape)
+                    .border(0.8.dp, Color.White.copy(alpha = 0.10f), barShape)
                     .padding(horizontal = (14 * sc).dp, vertical = (7 * sc).dp)
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy((5 * sc).dp),
@@ -138,18 +136,11 @@ private fun AmberTransportButton(
     Box(
         modifier = Modifier
             .size(size)
-            .shadow(6.dp, CircleShape, ambientColor = AmberCore, spotColor = AmberCore)
             .clip(CircleShape)
-            .background(GlassSurface)
-            .background(Brush.radialGradient(listOf(AmberGlow.copy(alpha = 0.16f), Color.Transparent)))
-            .border(
-                1.3.dp,
-                Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.85f), AmberDeep.copy(alpha = 0.55f))),
-                CircleShape,
-            )
+            .background(Color.White.copy(alpha = 0.07f))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(size * 0.62f))
+        Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(size * 0.56f))
     }
 }

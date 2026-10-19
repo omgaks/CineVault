@@ -9,6 +9,8 @@ import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -45,7 +47,12 @@ internal fun PlayerLeftPills(
     onSubtitleClick: () -> Unit,
     onSubtitleLongClick: () -> Unit,
     onSubtitleCenterMeasured: (Float) -> Unit,
+    isPlaying: Boolean = false,
 ) {
+    val motion = rememberMotionEnabled()
+    val spin by rememberLoop(motion && autoPlayEnabled, 0f, 360f, 3000, rest = 0f)
+    val bars by rememberLoop(motion && isPlaying, 0.8f, 1.15f, 480, rest = 1f)
+    val hwBlink = hwNeedsAttention
     Column(
         verticalArrangement = Arrangement.spacedBy(PlayerPillMetrics.gap(isLandscape)),
         horizontalAlignment = Alignment.Start,
@@ -62,6 +69,8 @@ internal fun PlayerLeftPills(
             compact = isLandscape,
             highlighted = hwNeedsAttention,
             activeDot = hwNeedsAttention,
+            blink = hwBlink,
+            bobPhaseMs = 200,
             onClick = onHwClick,
         )
         NeonPill(
@@ -71,6 +80,8 @@ internal fun PlayerLeftPills(
             contentDescription = "Autoplay next episode",
             compact = isLandscape,
             highlighted = autoPlayEnabled,
+            iconModifier = Modifier.graphicsLayer { rotationZ = spin },
+            bobPhaseMs = 650,
             onClick = onToggleAutoplay,
         )
         NeonPill(
@@ -80,6 +91,7 @@ internal fun PlayerLeftPills(
             contentDescription = "Audio track",
             compact = isLandscape,
             highlighted = audioActive,
+            bobPhaseMs = 1100,
             modifier = Modifier.onGloballyPositioned {
                 onAudioCenterMeasured(it.positionInRoot().x + it.size.width / 2f)
             },
@@ -91,6 +103,8 @@ internal fun PlayerLeftPills(
             accent = PillViolet,
             contentDescription = "Sound effects",
             compact = isLandscape,
+            iconModifier = Modifier.graphicsLayer { scaleY = bars },
+            bobPhaseMs = 1550,
             onClick = onAudioFxClick,
         )
         NeonPill(
@@ -100,6 +114,7 @@ internal fun PlayerLeftPills(
             contentDescription = if (isStreamMedia) "Network subtitle controls" else "Subtitle controls",
             compact = isLandscape,
             highlighted = subtitleActive,
+            bobPhaseMs = 2000,
             modifier = Modifier.onGloballyPositioned {
                 onSubtitleCenterMeasured(it.positionInRoot().x + it.size.width / 2f)
             },

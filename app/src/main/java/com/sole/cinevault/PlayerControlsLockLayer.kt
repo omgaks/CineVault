@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Lock
@@ -60,10 +62,16 @@ internal fun BoxScope.PlayerControlsLockLayer(
             contentDescription = if (controlsLocked) "Unlock controls" else "Lock controls",
             compact = isLandscape,
             highlighted = controlsLocked,
-            modifier = Modifier.padding(
-                top = PlayerPillMetrics.top(isLandscape),
-                end = PlayerPillMetrics.end,
-            ),
+            modifier = Modifier
+                .padding(
+                    top = PlayerPillMetrics.top(isLandscape),
+                    end = PlayerPillMetrics.end,
+                )
+                .then(
+                    if (PlayerPillMetrics.rightColumnWidth.isSpecified)
+                        Modifier.width(PlayerPillMetrics.rightColumnWidth)
+                    else Modifier
+                ),
             onClick = onToggleLock,
         )
     }

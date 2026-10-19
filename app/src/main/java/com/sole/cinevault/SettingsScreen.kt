@@ -235,6 +235,18 @@ fun SettingsScreen(
                     saveCollectionPageV2Enabled(context, it)
                 }
             )
+            Spacer(modifier = Modifier.height(16.dp))
+            var reducePlayerMotion by remember { mutableStateOf(loadReduceMotion(context)) }
+            SettingsSwitchRow(
+                title = "Reduce player motion",
+                description = "Stops the floating, pulsing and animated pills in the player. They stay put and still work.",
+                checked = reducePlayerMotion,
+                isTelevision = isTelevision,
+                onCheckedChange = {
+                    reducePlayerMotion = it
+                    saveReduceMotion(context, it)
+                }
+            )
         }
     }
 

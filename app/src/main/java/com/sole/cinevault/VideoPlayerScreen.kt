@@ -1265,6 +1265,8 @@ fun VideoPlayerScreen(
             autoSubtitleStatus = autoSubtitleFetch.status,
             playbackSpeed = playbackSpeed,
             sleepTimerActive = sleepTimerActive,
+            sleepTimerRemainingMs = sleepTimerRemainingMs,
+            sleepTimerMinutes = sleepTimerMinutes,
             topClusterPaddingTop = playerLayout.topClusterPaddingTop,
             sidePadding = playerLayout.sidePadding,
             topIconSize = playerLayout.topIconSize,
