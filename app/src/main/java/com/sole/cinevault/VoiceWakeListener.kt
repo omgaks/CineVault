@@ -181,10 +181,10 @@ internal class VoiceWakeListener(
                         // Fallback: a short phrase ended and the detector said nothing. Let the
                         // speech model check whether it began with the wake phrase.
                         val nowMs = System.currentTimeMillis()
-                        if (!firedInSegment && segmentMs in CHECK_MIN_MS..CHECK_MAX_MS &&
-                            nowMs - lastCheckAt >= CHECK_COOLDOWN_MS && nowMs - lastWakeAt >= COOLDOWN_MS &&
-                            VoiceTranscriber.isReady(context)
-                        ) {
+                        val checkable = !firedInSegment && segmentMs in CHECK_MIN_MS..CHECK_MAX_MS &&
+                            nowMs - lastCheckAt >= CHECK_COOLDOWN_MS && nowMs - lastWakeAt >= COOLDOWN_MS
+                        if (checkable && !VoiceTranscriber.isReady(context)) stats.addSkipped()
+                        if (checkable && VoiceTranscriber.isReady(context)) {
                             lastCheckAt = nowMs
                             val take = minOf(recent.size, segmentMs / WINDOW_MS + PRE_ROLL_WINDOWS)
                             val windows = recent.toList().takeLast(take)

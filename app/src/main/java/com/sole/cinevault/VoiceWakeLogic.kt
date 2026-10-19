@@ -102,6 +102,9 @@ internal class VoiceStats {
     /** Loudest microphone sample seen since the last reset (0..1). Tells a silent mic from a quiet room. */
     var peak: Float = 0f; private set
     fun addPeak(level: Float) { if (level > peak) peak = level }
+    /** Short phrases the detector missed that could not be double-checked (no speech model downloaded). */
+    var checksSkipped: Int = 0; private set
+    fun addSkipped() { checksSkipped++ }
     fun addConfirm() { confirmed++ }
     fun addReject() { rejected++ }
 
@@ -121,7 +124,7 @@ internal class VoiceStats {
         if (listenedMs <= 0) 0.0 else gatedMs.toDouble() / listenedMs
 
     fun reset() {
-        listenedMs = 0; gatedMs = 0; processingNs = 0; hears.clear(); confirmed = 0; rejected = 0; peak = 0f
+        listenedMs = 0; gatedMs = 0; processingNs = 0; hears.clear(); confirmed = 0; rejected = 0; peak = 0f; checksSkipped = 0
     }
 }
 

@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -82,7 +83,7 @@ internal fun BoxScope.PlayerSeekDock(
         label = bandLabel,
     )
 
-    val dockShape = CutCornerShape(10.dp)
+    val dockShape = HudShape
     Row(
         modifier = Modifier
             .align(Alignment.BottomCenter)
@@ -90,7 +91,8 @@ internal fun BoxScope.PlayerSeekDock(
             .shadow(10.dp, dockShape, ambientColor = AmberCore, spotColor = AmberCore)
             .clip(dockShape)
             .background(GlassSurfaceStrong)
-            .border(1.2.dp, AmberGlow.copy(alpha = 0.75f), dockShape)
+            .scanlines()
+            .border(1.5.dp, HudEdge, dockShape)
             .padding(horizontal = (12 * scale).dp, vertical = (6 * scale).dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -98,6 +100,7 @@ internal fun BoxScope.PlayerSeekDock(
             text = formatTime(if (isDraggingSeekbar) previewPosition else position),
             color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace, maxLines = 1,
+            style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(AmberGlow, blurRadius = 12f)),
         )
         Spacer(Modifier.width((10 * scale).dp))
         Box(Modifier.weight(1f)) {
@@ -116,8 +119,9 @@ internal fun BoxScope.PlayerSeekDock(
         Spacer(Modifier.width((10 * scale).dp))
         Text(
             text = if (showRemaining) "−" + formatTime((duration - position).coerceAtLeast(0L)) else formatTime(duration),
-            color = TextBright.copy(alpha = 0.85f), fontSize = 11.sp, fontWeight = FontWeight.Bold,
+            color = Color(0xFF6FC3FF), fontSize = 11.sp, fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace, maxLines = 1,
+            style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color(0xFF6FC3FF), blurRadius = 12f)),
             modifier = Modifier.clickable { showRemaining = !showRemaining },
         )
     }
