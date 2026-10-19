@@ -30,7 +30,8 @@ object PictureAnime4kPolicy {
         if (input.hdrSource || input.thermalLimited || input.droppedFramePressure) return enhanced
         if (!input.rendererSupportsOutputScaling) return enhanced
         if (input.outputWidth < 3840 || input.outputHeight < 2160) return enhanced
-        if (input.sourceWidth >= 3840 || input.sourceHeight >= 2160) return enhanced\n        // Upscaling to a 4K-sized surface must not distort portrait or ultrawide content.
+        if (input.sourceWidth >= 3840 || input.sourceHeight >= 2160) return enhanced
+        // Upscaling to a 4K-sized surface must not distort portrait or ultrawide content.
         val scale = minOf(3840.0 / input.sourceWidth, 2160.0 / input.sourceHeight)
         if (scale <= 1.0) return enhanced
         val width = ((input.sourceWidth * scale).toInt() / 2) * 2
