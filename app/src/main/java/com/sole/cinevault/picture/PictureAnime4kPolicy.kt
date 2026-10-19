@@ -1,7 +1,7 @@
 package com.sole.cinevault.picture
 
 /**
- * Capability gate for genuine Anime 4K output scaling.
+ * Capability gate for adaptive Anime4K processing at the measured output resolution.
  *
  * A renderer must explicitly report output resizing support before a scale request
  * can be issued. Shader sharpening alone must never be reported as 4K upscaling.
@@ -29,13 +29,12 @@ object PictureAnime4kPolicy {
         val enhanced = Plan(Mode.ENHANCE_ONLY, input.sourceWidth, input.sourceHeight, "Anime enhancement without output resizing")
         if (input.hdrSource || input.thermalLimited || input.droppedFramePressure) return enhanced
         if (!input.rendererSupportsOutputScaling) return enhanced
-        if (input.outputWidth < 3840 || input.outputHeight < 2160) return enhanced
-        if (input.sourceWidth >= 3840 || input.sourceHeight >= 2160) return enhanced
-        // Upscaling to a 4K-sized surface must not distort portrait or ultrawide content.
-        val scale = minOf(3840.0 / input.sourceWidth, 2160.0 / input.sourceHeight)
+        if (input.outputWidth < 2 || input.outputHeight < 2) return enhanced
+        // Preserve aspect ratio, cap at 4K, and never request pixels beyond the surface.
+        val scale = minOf(input.outputWidth.toDouble() / input.sourceWidth, input.outputHeight.toDouble() / input.sourceHeight, 3840.0 / input.sourceWidth, 2160.0 / input.sourceHeight)
         if (scale <= 1.0) return enhanced
         val width = ((input.sourceWidth * scale).toInt() / 2) * 2
         val height = ((input.sourceHeight * scale).toInt() / 2) * 2
-        return Plan(Mode.UPSCALE, width, height, "Renderer-supported output upscale")
+        return Plan(Mode.UPSCALE, width, height, "Adaptive output upscale")
     }
 }
