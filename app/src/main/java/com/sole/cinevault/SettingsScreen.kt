@@ -56,6 +56,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import com.sole.cinevault.subtitles.WhisperModelManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -455,6 +456,20 @@ fun SettingsScreen(
             icon = Icons.Filled.Mic,
             accent = GelMint
         ) {
+            // First time Voice is switched on: say whether the shared Whisper model is already here.
+            var voiceWasOn by remember { mutableStateOf(VoiceRuntime.enabled) }
+            LaunchedEffect(VoiceRuntime.enabled) {
+                if (VoiceRuntime.enabled && !voiceWasOn) {
+                    val found = VoiceTranscriber.isReady(context)
+                    android.widget.Toast.makeText(
+                        context,
+                        if (found) "Whisper model found. Voice will reuse it, no second download."
+                        else "Whisper model not downloaded. Voice works with your phone's recogniser; Whisper is optional.",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
+                voiceWasOn = VoiceRuntime.enabled
+            }
             SettingsSwitchRow(
                 title = "Voice control",
                 description = "Off by default. Adds a microphone button on Home and Library. Tap it and say what to play. Uses your phone's built-in offline recogniser, or the free speech model that subtitle generation uses (see Speech engine below). Everything is heard on this phone only. Nothing is recorded or sent.",
@@ -560,6 +575,15 @@ fun SettingsScreen(
                 fontSize = CineType.Caption,
                 lineHeight = 17.sp,
                 modifier = Modifier.padding(top = 10.dp)
+            )
+            val whisperReadyNow = VoiceTranscriber.isReady(context)
+            Text(
+                text = if (whisperReadyNow) "Whisper model: found (${WhisperModelManager.modelDisplayName(context)}). It is shared with subtitle generation, so it is never downloaded twice."
+                else "Whisper model: not downloaded. Download it once from Subtitle Studio and Voice will use the same files.",
+                color = if (whisperReadyNow) GelMint else TextMuted,
+                fontSize = CineType.Caption,
+                lineHeight = 17.sp,
+                modifier = Modifier.padding(top = 6.dp)
             )
             Spacer(modifier = Modifier.height(18.dp))
             Text("Wake phrases", color = TextBright, fontSize = CineType.Body, fontWeight = FontWeight.SemiBold)

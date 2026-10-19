@@ -22,7 +22,7 @@ internal object VoiceTranscriber {
         synchronized(lock) { runCatching { recognizer?.release() }; recognizer = null }
     }
 
-    fun isReady(context: Context): Boolean = WhisperModelManager.isModelReady(context)
+    fun isReady(context: Context): Boolean = WhisperModelManager.adoptInstalledModelIfNeeded(context)
 
     /** Blocking. Call from a background thread. Returns null if the model could not be loaded. */
     fun transcribe(context: Context, samples: FloatArray): String? = synchronized(lock) {
