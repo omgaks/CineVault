@@ -89,8 +89,7 @@ internal fun AudioFxDashboard(
             Text(text = "Enabled", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             LumenSwitch(
                 checked = controller.enabled,
-                onCheckedChange = { controller.updateEnabled(it) },
-
+                onCheckedChange = { controller.updateEnabled(it) }
             )
         }
 
@@ -116,7 +115,6 @@ internal fun AudioFxDashboard(
             LumenSwitch(
                 checked = controller.loudnessNormalizationEnabled,
                 onCheckedChange = controller::updateLoudnessNormalizationEnabled,
-,
             )
         }
 
@@ -186,8 +184,7 @@ internal fun AudioFxDashboard(
                 Text(text = "Peak limiter", color = TextBright, fontSize = 12.sp, modifier = Modifier.weight(1f))
                 LumenSwitch(
                     checked = controller.limiterEnabled,
-                    onCheckedChange = { controller.updateLimiterEnabled(it) },
-
+                    onCheckedChange = { controller.updateLimiterEnabled(it) }
                 )
             }
         }
@@ -248,8 +245,7 @@ private fun AdaptiveAudioSection(controller: AudioFxController) {
         Text(text = "Enable adaptive audio", color = TextBright, fontSize = 12.sp, modifier = Modifier.weight(1f))
         LumenSwitch(
             checked = controller.adaptiveAudioEnabled,
-            onCheckedChange = { controller.updateAdaptiveAudioEnabled(it) },
-
+            onCheckedChange = { controller.updateAdaptiveAudioEnabled(it) }
         )
     }
     if (controller.adaptiveAudioEnabled) {
@@ -456,8 +452,7 @@ private fun EqBandRow(label: String, valueDb: Int, rangeDb: IntRange, onValueCha
             value = valueDb.toFloat(),
             onValueChange = { onValueChange(it.toInt()) },
             valueRange = rangeDb.first.toFloat()..rangeDb.last.toFloat(),
-            modifier = Modifier.weight(1f).height(28.dp),
-
+            modifier = Modifier.weight(1f).height(28.dp)
         )
         Text(
             text = "${if (valueDb >= 0) "+" else ""}$valueDb",
@@ -474,8 +469,7 @@ private fun FxSliderRow(valueText: String, value: Float, range: ClosedFloatingPo
             value = value,
             onValueChange = onValueChange,
             valueRange = range,
-            modifier = Modifier.weight(1f).height(28.dp),
-
+            modifier = Modifier.weight(1f).height(28.dp)
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(text = valueText, color = LumenViolet, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(44.dp), textAlign = TextAlign.End)

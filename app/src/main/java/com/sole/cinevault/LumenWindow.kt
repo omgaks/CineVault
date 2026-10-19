@@ -338,7 +338,7 @@ internal fun LumenSlider(
                 ) { change, _ ->
                     change.consume()
                     setFrom(change.position.x, size.width.toFloat())
-                },
+                }
             },
     ) {
         val cy = size.height / 2f
