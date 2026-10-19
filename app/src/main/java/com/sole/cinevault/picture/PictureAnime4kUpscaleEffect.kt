@@ -105,14 +105,22 @@ private class Anime4kUpscaleProgram(
             varying vec2 vTexSamplingCoord;
             void main() {
                 vec2 uv = vTexSamplingCoord;
-                vec2 d = uTexel * 0.25;
-                vec3 c = (
-                    texture2D(uTexSampler, uv + vec2(-d.x, -d.y)).rgb +
-                    texture2D(uTexSampler, uv + vec2( d.x, -d.y)).rgb +
-                    texture2D(uTexSampler, uv + vec2(-d.x,  d.y)).rgb +
-                    texture2D(uTexSampler, uv + vec2( d.x,  d.y)).rgb
-                ) * 0.25;
-                gl_FragColor = vec4(c, 1.0);
+                vec3 center = texture2D(uTexSampler, uv).rgb;
+                vec3 north = texture2D(uTexSampler, uv + vec2(0.0, -uTexel.y)).rgb;
+                vec3 south = texture2D(uTexSampler, uv + vec2(0.0, uTexel.y)).rgb;
+                vec3 west = texture2D(uTexSampler, uv + vec2(-uTexel.x, 0.0)).rgb;
+                vec3 east = texture2D(uTexSampler, uv + vec2(uTexel.x, 0.0)).rgb;
+                vec3 horizontal = (west + east) * 0.5;
+                vec3 vertical = (north + south) * 0.5;
+                float edgeH = length(west - east);
+                float edgeV = length(north - south);
+                float weightH = edgeH / (edgeH + edgeV + 0.0001);
+                vec3 smooth = mix(horizontal, vertical, weightH);
+                float localContrast = max(max(length(center - north), length(center - south)),
+                                          max(length(center - west), length(center - east)));
+                float lineMask = smoothstep(0.06, 0.24, localContrast);
+                vec3 reconstructed = clamp(center + (center - smooth) * (0.10 * lineMask), 0.0, 1.0);
+                gl_FragColor = vec4(reconstructed, 1.0);
             }
         """
     }
