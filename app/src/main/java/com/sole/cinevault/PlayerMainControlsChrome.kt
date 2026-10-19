@@ -63,6 +63,8 @@ internal fun BoxScope.PlayerMainControlsChrome(
     autoSubtitleStatus: String,
     playbackSpeed: Float,
     sleepTimerActive: Boolean,
+    sleepTimerRemainingMs: Long,
+    sleepTimerMinutes: Int,
     topClusterPaddingTop: Dp,
     sidePadding: Dp,
     topIconSize: Dp,
@@ -166,6 +168,8 @@ internal fun BoxScope.PlayerMainControlsChrome(
             diagnostics = diagnostics,
             playbackSpeed = playbackSpeed,
             sleepTimerActive = sleepTimerActive,
+            sleepTimerRemainingMs = sleepTimerRemainingMs,
+            sleepTimerMinutes = sleepTimerMinutes,
             showSpeedMenu = showSpeedMenu,
             showSleepMenu = showSleepMenu,
             onSpeedClick = {
@@ -200,6 +204,7 @@ internal fun BoxScope.PlayerMainControlsChrome(
                     hwNeedsAttention = hwNeedsAttention,
                     hwSoftware = hwSoftware,
                     onHwClick = onHwClick,
+                    isPlaying = isPlaying,
                     autoPlayEnabled = autoPlayEnabled,
                     onToggleAutoplay = {
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)

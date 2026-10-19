@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -407,7 +408,9 @@ internal fun BoxScope.VoiceTalkHost(
                 .size(56.dp)
                 .drawBehind {
                     if (ringOn) {
-                        val c = if (VoiceRuntime.wakeSpeech || listening) GelMint else GelGold
+                        val c = if (inPlayer) {
+                            if (VoiceRuntime.wakeSpeech || listening) Color(0xFF7CE0C3) else Color(0xFFC792FF)
+                        } else if (VoiceRuntime.wakeSpeech || listening) GelMint else GelGold
                         drawCircle(c.copy(alpha = 0.35f), radius = size.minDimension / 2f * (1f + 0.55f * ringScale))
                         drawCircle(c, radius = size.minDimension / 2f * (1.08f + 0.3f * ringScale), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx()))
                     }
@@ -419,8 +422,22 @@ internal fun BoxScope.VoiceTalkHost(
                 .safeDrawingPadding()
                 .padding(end = 16.dp, bottom = if (inPlayer) 0.dp else 96.dp)
                 .size(56.dp)
+                .then(
+                    if (inPlayer) Modifier.shadow(
+                        12.dp, CircleShape, clip = false,
+                        ambientColor = if (listening) Color(0xFF7CE0C3) else Color(0xFFC792FF),
+                        spotColor = if (listening) Color(0xFF7CE0C3) else Color(0xFFC792FF),
+                    ) else Modifier
+                )
                 .clip(CircleShape)
-                .background(if (listening) GelCoral else GelGold)
+                .background(
+                    if (inPlayer) (if (listening) Color(0xFF7CE0C3) else Color(0xFFC792FF))
+                    else if (listening) GelCoral else GelGold
+                )
+                .then(
+                    if (inPlayer) Modifier.border(1.2.dp, Color.White.copy(alpha = 0.55f), CircleShape)
+                    else Modifier
+                )
                 .clickable(role = androidx.compose.ui.semantics.Role.Button) { onMicTap() }
                 .semantics { contentDescription = if (listening) "Stop listening" else "Talk to CineVault" },
             contentAlignment = Alignment.Center
