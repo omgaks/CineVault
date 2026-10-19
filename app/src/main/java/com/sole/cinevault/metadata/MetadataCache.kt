@@ -2,6 +2,7 @@ package com.sole.cinevault.metadata
 
 import com.sole.cinevault.BuildConfig
 import com.sole.cinevault.library.extractEpisodeInfo
+import com.sole.cinevault.library.isBareEpisodeNumberName
 import com.sole.cinevault.VideoWithMetadata
 import com.sole.cinevault.CastEntry
 
@@ -275,6 +276,7 @@ fun shouldEnrichOnlineMetadata(item: VideoWithMetadata): Boolean {
     // automatic metadata cache is cleared. It must not make that otherwise
     // bare movie/episode look fully enriched and block the next lookup.
     if ((item.type == "movie" || item.type == "tv") && item.tmdbId == null) return true
+    if (item.type == "movie" && isBareEpisodeNumberName(item.video.name)) return true
     return !hasUsefulOnlineMetadata(item) ||
             needsRatingsUpgrade(item) ||
             needsGenreUpgrade(item) ||
@@ -472,7 +474,13 @@ suspend fun enrichVideoWithOnlineMetadata(
         // entries used to return here forever, so corrected filenames and
         // newly available results could never recover. Let them fall through
         // to the fresh search below. Known personal videos remain cached.
-        val previousLookupFailed = !hasUsefulOnlineMetadata(applied) && applied.type != "local"
+        // Likewise, "Show Episode 06" files used to be filed as movies. Look them up again as
+        // episodes of a show.
+        val filedAsMovieButIsEpisode =
+            applied.type != "tv" && applied.type != "local" && applied.type != "restricted" &&
+                isBareEpisodeNumberName(item.video.name)
+        val previousLookupFailed =
+            (!hasUsefulOnlineMetadata(applied) && applied.type != "local") || filedAsMovieButIsEpisode
         if (!previousLookupFailed && !needsRatings && !needsGenres && !needsArtwork) return displayed
 
         if (!previousLookupFailed && needsRatings) {
