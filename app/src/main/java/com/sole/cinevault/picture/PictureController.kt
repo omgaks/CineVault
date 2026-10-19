@@ -96,6 +96,9 @@ class PictureEnhanceController(
         outputSurfaceHeight = height.coerceAtLeast(0)
     }
 
+    var anime4kStatus by mutableStateOf("Anime4K · Off")
+        private set
+    private var installedUpscale: PictureAnime4kPolicy.Plan? = null
     private var pipelineInstalled = false
     private var installedAtMs = 0L
     private var badDropWindows = 0
@@ -176,6 +179,7 @@ class PictureEnhanceController(
             try { player.setVideoEffects(emptyList()) } catch (_: Throwable) { }
             pipelineInstalled = false
         }
+        installedUpscale = null
         failureHandled = false
         lockedReason = null
         note = null
@@ -344,6 +348,17 @@ class PictureEnhanceController(
     fun refreshActivity() {
         val now = SystemClock.elapsedRealtime()
         val frames = live.frames
+        anime4kStatus = when {
+            !isActive -> "Anime4K · Off"
+            !pipelineInstalled -> "Anime4K · Waiting"
+            installedUpscale != null -> {
+                val target = installedUpscale!!
+                "Anime4K · GPU ${target.targetWidth}×${target.targetHeight} (requested)"
+            }
+            PictureProfiles.resolveContent(settings.content, detected) == PictureContent.ANIME ->
+                "Anime4K · Enhancement only"
+            else -> "Picture · Standard enhancement"
+        }
         val dt = now - lastPollAtMs
         val delta = frames - lastFrames
         lastFrames = frames
@@ -528,7 +543,7 @@ class PictureEnhanceController(
                     sourceHeight = format?.height ?: 0,
                     outputWidth = outputSurfaceWidth,
                     outputHeight = outputSurfaceHeight,
-                    rendererSupportsOutputScaling = outputSurfaceWidth >= 3840 && outputSurfaceHeight >= 2160,
+                    rendererSupportsOutputScaling = outputSurfaceWidth > 0 && outputSurfaceHeight > 0,
                     hdrSource = hdr,
                     thermalLimited = false,
                     droppedFramePressure = badDropWindows > 0,
@@ -540,6 +555,7 @@ class PictureEnhanceController(
                 listOf(effect)
             }
             player.setVideoEffects(effects)
+            installedUpscale = plan.takeIf { it.mode == PictureAnime4kPolicy.Mode.UPSCALE }
             pipelineInstalled = true
             installedAtMs = SystemClock.elapsedRealtime()
             badDropWindows = 0
@@ -552,6 +568,7 @@ class PictureEnhanceController(
             }
         } catch (_: Throwable) {
             setupFailed = true
+            installedUpscale = null
             pipelineInstalled = false
             availability = PictureAvailability.Unavailable("Video effects aren't available here")
         }
