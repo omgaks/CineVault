@@ -32,9 +32,9 @@ class PictureHdrRoutingTest {
             PictureHdrRouting.decide(format(C.COLOR_TRANSFER_SDR, MimeTypes.VIDEO_DOLBY_VISION)).route)
     }
 
-    @Test fun `missing transfer metadata retains legacy SDR behavior`() {
+    @Test fun `missing transfer metadata protects unknown HDR`() {
         val input = Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H264).build()
-        assertEquals(PictureHdrPolicy.Route.SDR_ENHANCEMENT,
+        assertEquals(PictureHdrPolicy.Route.HDR_PASSTHROUGH,
             PictureHdrRouting.decide(input).route)
     }
 }
