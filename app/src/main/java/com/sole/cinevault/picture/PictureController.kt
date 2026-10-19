@@ -499,7 +499,34 @@ class PictureEnhanceController(
             val needsRestart = restart && player.playbackState != Player.STATE_IDLE
             val resumeAt = player.currentPosition.coerceAtLeast(0L)
             val resumePlaying = player.playWhenReady
-            player.setVideoEffects(listOf(effect))
+            // Keep the existing enhancement as the first pass. Upscaling is allowed only
+            // for confirmed SDR anime with a verified 4K output capability.
+            val format = player.videoFormat
+            val content = PictureProfiles.resolveContent(settings.content, detected)
+            val anime = content == PictureContent.ANIME
+            val hdr = format == null ||
+                PictureHdrRouting.decide(format).route != PictureHdrPolicy.Route.SDR_ENHANCEMENT
+            // The current controller has no verified output-surface dimension provider.
+            // Do not guess from the decoded frame size and accidentally request 4K.
+            val plan = PictureAnime4kPolicy.plan(
+                PictureAnime4kPolicy.Input(
+                    animeSelected = anime,
+                    sourceWidth = format?.width ?: 0,
+                    sourceHeight = format?.height ?: 0,
+                    outputWidth = 0,
+                    outputHeight = 0,
+                    rendererSupportsOutputScaling = false,
+                    hdrSource = hdr,
+                    thermalLimited = false,
+                    droppedFramePressure = badDropWindows > 0,
+                )
+            )
+            val effects = if (plan.mode == PictureAnime4kPolicy.Mode.UPSCALE) {
+                listOf(effect, PictureAnime4kUpscaleEffect(plan.targetWidth, plan.targetHeight))
+            } else {
+                listOf(effect)
+            }
+            player.setVideoEffects(effects)
             pipelineInstalled = true
             installedAtMs = SystemClock.elapsedRealtime()
             badDropWindows = 0
