@@ -1,6 +1,8 @@
 package com.sole.cinevault
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -39,44 +41,51 @@ fun BoxScope.SpeedAndSleepMenuPopups(
     showSleepMenu: Boolean,
     playbackSpeed: Float,
     sleepTimerMinutes: Int,
-    topClusterPaddingTop: Dp,
-    titleRowOffset: Dp,
-    clusterHeightDp: Dp,
-    sidePadding: Dp,
-    smallMenuWidth: Dp,
-    smallMenuMaxHeight: Dp,
+    isLandscape: Boolean,
+    railBottomInset: Dp,
     onSpeedSelected: (Float) -> Unit,
     onDismissSpeedMenu: () -> Unit,
     onSleepSelected: (Int) -> Unit,
     onDismissSleepMenu: () -> Unit,
 ) {
-    AnimatedVisibility(
+    // Both now use the shared Lumen window on the right rail (see LumenWindow.kt).
+    val speedAccent = androidx.compose.ui.graphics.Color(0xFFFFC94D)
+    LumenWindow(
         visible = showSpeedMenu,
-        enter = fadeIn(animationSpec = tween(150)),
-        exit = fadeOut(animationSpec = tween(180)),
-        modifier = Modifier.align(Alignment.TopEnd).padding(top = topClusterPaddingTop + titleRowOffset + clusterHeightDp + 8.dp, end = sidePadding)
+        accent = speedAccent,
+        title = "Speed",
+        icon = androidx.compose.material.icons.Icons.Rounded.Speed,
+        size = LumenSize.S,
+        isLandscape = isLandscape,
+        bottomInset = railBottomInset,
     ) {
-        SpeedMenuPopup(
-            currentSpeed = playbackSpeed,
-            popupWidth = smallMenuWidth,
-            popupMaxHeight = smallMenuMaxHeight,
-            onSpeedSelected = onSpeedSelected,
-            onDismiss = onDismissSpeedMenu
-        )
+        listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f, 2.5f, 3.0f, 4.0f, 5.0f).forEach { speed ->
+            LumenOptionRow(
+                label = if (speed == 1.0f) "1x Normal" else if (speed % 1f == 0f) "${speed.toInt()}x" else "${speed}x",
+                selected = speed == playbackSpeed,
+                accent = speedAccent,
+                onClick = { onSpeedSelected(speed) },
+            )
+        }
     }
 
-    AnimatedVisibility(
+    val sleepAccent = androidx.compose.ui.graphics.Color(0xFFC792FF)
+    LumenWindow(
         visible = showSleepMenu,
-        enter = fadeIn(animationSpec = tween(150)),
-        exit = fadeOut(animationSpec = tween(180)),
-        modifier = Modifier.align(Alignment.TopEnd).padding(top = topClusterPaddingTop + titleRowOffset + clusterHeightDp + 8.dp, end = sidePadding)
+        accent = sleepAccent,
+        title = "Sleep timer",
+        icon = androidx.compose.material.icons.Icons.Rounded.Timer,
+        size = LumenSize.S,
+        isLandscape = isLandscape,
+        bottomInset = railBottomInset,
     ) {
-        SleepMenuPopup(
-            currentMinutes = sleepTimerMinutes,
-            popupWidth = smallMenuWidth,
-            popupMaxHeight = smallMenuMaxHeight,
-            onSelected = onSleepSelected,
-            onDismiss = onDismissSleepMenu
-        )
+        listOf(0 to "Off", 15 to "15 min", 30 to "30 min", 45 to "45 min", 60 to "60 min").forEach { (mins, label) ->
+            LumenOptionRow(
+                label = label,
+                selected = mins == sleepTimerMinutes,
+                accent = sleepAccent,
+                onClick = { onSleepSelected(mins) },
+            )
+        }
     }
 }
