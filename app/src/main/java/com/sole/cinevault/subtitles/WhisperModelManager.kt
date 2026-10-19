@@ -224,6 +224,18 @@ object WhisperModelManager {
     fun isModelReady(context: Context): Boolean =
         isModelInstalledFast(context, selectedModel(context))
 
+    /**
+     * Voice and subtitles share one set of Whisper files. If the chosen model is missing but another
+     * size is already installed, use that one, so nobody has to download a model twice.
+     * Returns true when some Whisper model is ready to use.
+     */
+    fun adoptInstalledModelIfNeeded(context: Context): Boolean {
+        if (isModelReady(context)) return true
+        val other = ModelId.entries.firstOrNull { isModelInstalledFast(context, it) } ?: return false
+        selectModel(context, other)
+        return true
+    }
+
     fun isModelReady(context: Context, id: ModelId): Boolean =
         isModelInstalledFast(context, id)
 
