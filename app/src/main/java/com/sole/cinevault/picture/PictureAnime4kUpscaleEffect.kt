@@ -96,31 +96,43 @@ private class Anime4kUpscaleProgram(
                 vTexSamplingCoord = aFramePosition.xy * 0.5 + 0.5;
             }
         """
-        // Four-tap reconstruction is a baseline only; the licensed Anime4K
-        // shader stages must be adapted and validated separately.
+        // Adapted from bloc97/Anime4K v3.2 Upscale DoG x2 (MIT).
+        // The upstream mpv version uses separate luma, Gaussian-X, Gaussian-Y
+        // and apply stages. This GLES 2.0 single-pass adaptation recomputes the
+        // same separable 5x5 Gaussian at each output pixel to avoid intermediate
+        // textures; it is not a byte-for-byte port of the upstream pipeline.
+        // Copyright (c) bloc97/Anime4K contributors; see bundled upstream GLSL.
         const val FRAGMENT = """
             precision highp float;
             uniform sampler2D uTexSampler;
             uniform vec2 uTexel;
             varying vec2 vTexSamplingCoord;
+            float lum(vec2 uv) {
+                return dot(texture2D(uTexSampler, clamp(uv, 0.0, 1.0)).rgb,
+                           vec3(0.299, 0.587, 0.114));
+            }
             void main() {
                 vec2 uv = vTexSamplingCoord;
-                vec3 center = texture2D(uTexSampler, uv).rgb;
-                vec3 north = texture2D(uTexSampler, uv + vec2(0.0, -uTexel.y)).rgb;
-                vec3 south = texture2D(uTexSampler, uv + vec2(0.0, uTexel.y)).rgb;
-                vec3 west = texture2D(uTexSampler, uv + vec2(-uTexel.x, 0.0)).rgb;
-                vec3 east = texture2D(uTexSampler, uv + vec2(uTexel.x, 0.0)).rgb;
-                vec3 horizontal = (west + east) * 0.5;
-                vec3 vertical = (north + south) * 0.5;
-                float edgeH = length(west - east);
-                float edgeV = length(north - south);
-                float weightH = edgeH / (edgeH + edgeV + 0.0001);
-                vec3 smooth = mix(horizontal, vertical, weightH);
-                float localContrast = max(max(length(center - north), length(center - south)),
-                                          max(length(center - west), length(center - east)));
-                float lineMask = smoothstep(0.06, 0.24, localContrast);
-                vec3 reconstructed = clamp(center + (center - smooth) * (0.10 * lineMask), 0.0, 1.0);
-                gl_FragColor = vec4(reconstructed, 1.0);
+                float center = lum(uv);
+                float gaussian = 0.0;
+                float localMin = center;
+                float localMax = center;
+                // Anime4K DoG's separable Gaussian weights, evaluated directly
+                // as a 5x5 convolution for broad GLES 2.0 compatibility.
+                for (int y = -2; y <= 2; ++y) {
+                    float wy = (y == 0) ? 0.38774 : ((y == -1 || y == 1) ? 0.24477 : 0.06136);
+                    for (int x = -2; x <= 2; ++x) {
+                        float wx = (x == 0) ? 0.38774 : ((x == -1 || x == 1) ? 0.24477 : 0.06136);
+                        float value = lum(uv + vec2(float(x), float(y)) * uTexel);
+                        gaussian += value * wx * wy;
+                        localMin = min(localMin, value);
+                        localMax = max(localMax, value);
+                    }
+                }
+                float dog = (center - gaussian) * 0.8;
+                float adjusted = clamp(center + dog, localMin, localMax);
+                vec4 source = texture2D(uTexSampler, uv);
+                gl_FragColor = vec4(clamp(source.rgb + vec3(adjusted - center), 0.0, 1.0), source.a);
             }
         """
     }
