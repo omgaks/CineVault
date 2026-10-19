@@ -15,6 +15,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -29,6 +30,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -47,7 +49,7 @@ import com.sole.cinevault.ui.theme.*
 import kotlinx.coroutines.delay
 
 @Composable
-internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolean, seed: Int, onPreviewPositionChanged: (Long) -> Unit, onSeekFinished: (Long) -> Unit, markers: List<SeekMarker> = emptyList()) {
+internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolean, seed: Int, onPreviewPositionChanged: (Long) -> Unit, onSeekFinished: (Long) -> Unit, markers: List<SeekMarker> = emptyList(), bufferedMs: Long = 0L, onScrub: (Long, Float) -> Unit = { _, _ -> }) {
     var localPosition by remember { mutableLongStateOf(position) }
     LaunchedEffect(position, isDragging) { if (!isDragging) localPosition = position }
     val haptic = LocalHapticFeedback.current
@@ -63,6 +65,17 @@ internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolea
     val density = LocalDensity.current
     val barStepPx = with(density) { (3.dp + 2.2.dp).toPx() }
     var lastBarIndex by remember { mutableIntStateOf(-1) }
+    // Finer control: slide the thumb up while dragging and the bar moves slower (like the iPhone player).
+    var originMs by remember { mutableLongStateOf(0L) }
+    var fine by remember { mutableFloatStateOf(1f) }
+    var anchorX by remember { mutableFloatStateOf(0f) }
+    var anchorMs by remember { mutableLongStateOf(0L) }
+    var startY by remember { mutableFloatStateOf(0f) }
+    // Scene-break ticks: real quiet gaps in the soundtrack, once the audio has been measured.
+    val cutFractions = remember(FilmLoudness.db, seed, duration) {
+        val db = FilmLoudness.db
+        if (db == null || FilmLoudness.seed != seed || duration <= 0L) emptyList() else sceneBreakFractions(db)
+    }
     fun barIndexOf(x: Float): Int = (x / barStepPx).toInt()
     val bloom by animateFloatAsState(targetValue = if (isDragging || waveformVisible) 1f else 0f, animationSpec = tween(if (isDragging || waveformVisible) 300 else 600, easing = FastOutSlowInEasing), label = "liquidBloom")
     val scenePulse by rememberInfiniteTransition(label = "sceneDot").animateFloat(
@@ -78,9 +91,18 @@ internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolea
         Box(modifier = Modifier.fillMaxWidth().height(38.dp)
             .pointerInput(duration) { detectTapGestures { o -> val p = positionFromX(o.x, size.width.toFloat()); localPosition = p; onPreviewPositionChanged(p); onSeekFinished(p) } }
             .pointerInput(duration) { detectDragGestures(
-                onDragStart = { o -> localPosition = positionFromX(o.x, size.width.toFloat()); lastBarIndex = barIndexOf(o.x); onPreviewPositionChanged(localPosition) },
+                onDragStart = { o ->
+                    originMs = localPosition
+                    localPosition = positionFromX(o.x, size.width.toFloat()); lastBarIndex = barIndexOf(o.x)
+                    anchorX = o.x; anchorMs = localPosition; startY = o.y; fine = 1f
+                    onScrub(originMs, fine)
+                    onPreviewPositionChanged(localPosition) },
                 onDrag = { c, _ ->
-                    localPosition = positionFromX(c.position.x, size.width.toFloat())
+                    val up = (startY - c.position.y) / density.density
+                    val nf = when { up > 150f -> 0.1f; up > 90f -> 0.25f; up > 40f -> 0.5f; else -> 1f }
+                    if (nf != fine) { fine = nf; anchorX = c.position.x; anchorMs = localPosition; onScrub(originMs, fine); haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
+                    val w = size.width.toFloat().coerceAtLeast(1f)
+                    localPosition = (anchorMs + ((c.position.x - anchorX) / w * duration * fine).toLong()).coerceIn(0L, duration)
                     val bar = barIndexOf(c.position.x)
                     if (bar != lastBarIndex) { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); lastBarIndex = bar }
                     onPreviewPositionChanged(localPosition)
@@ -97,7 +119,25 @@ internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolea
                 if (threadAlpha > 0.01f) {
                     val th = 2.2.dp.toPx(); val r = th / 2f
                     drawRoundRect(color = Color.White.copy(alpha = 0.15f * threadAlpha), topLeft = Offset(0f, cy - th / 2f), size = Size(size.width, th), cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r))
+                    drawRoundRect(color = AmberGlow.copy(alpha = 0.22f * threadAlpha), topLeft = Offset(0f, cy - th * 1.6f), size = Size(tx, th * 3.2f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(th * 1.6f, th * 1.6f))
                     drawRoundRect(color = AmberGlow.copy(alpha = 0.95f * threadAlpha), topLeft = Offset(0f, cy - th / 2f), size = Size(tx, th), cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r))
+                    // Buffered dots: how far ahead the film is already loaded.
+                    if (bufferedMs > localPosition && duration > 0L) {
+                        val bx1 = size.width * (bufferedMs.toFloat() / duration).coerceIn(0f, 1f)
+                        var dx = tx + 9.dp.toPx()
+                        while (dx < bx1) { drawCircle(Color.White.copy(alpha = 0.55f * threadAlpha), 1.4.dp.toPx(), Offset(dx, cy)); dx += 9.dp.toPx() }
+                    }
+                    // Scene-break ticks.
+                    cutFractions.forEach { fr ->
+                        val x = size.width * fr
+                        drawLine(Color.White.copy(alpha = (if (x <= tx) 0.55f else 0.30f) * threadAlpha), Offset(x, cy - 5.dp.toPx()), Offset(x, cy + 5.dp.toPx()), 1.dp.toPx())
+                    }
+                }
+                // Dashed bridge from where the drag began to the playhead.
+                if (isDragging && duration > 0L) {
+                    val ox = size.width * (originMs.toFloat() / duration).coerceIn(0f, 1f)
+                    drawLine(Color(0xFFFFF3D6).copy(alpha = 0.8f), Offset(ox, cy), Offset(tx, cy), 2.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(7.dp.toPx(), 5.dp.toPx())))
+                    drawCircle(Color(0xFFFFF3D6).copy(alpha = 0.9f), 3.dp.toPx(), Offset(ox, cy), style = Stroke(1.5.dp.toPx()))
                 }
 
                 if (bloom > 0.01f) {
@@ -136,13 +176,17 @@ internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolea
                             val x0 = size.width * m.startFraction
                             val w = (size.width * (m.endFraction - m.startFraction)).coerceAtLeast(3.dp.toPx())
                             val h = 3.dp.toPx()
-                            val tint = if (m.kind == SeekMarkerKind.SKIPPABLE) AmberGlow else Color.White
-                            drawRoundRect(
-                                color = tint.copy(alpha = 0.50f + 0.25f * bloom),
-                                topLeft = Offset(x0, tickY - h / 2f),
-                                size = Size(w.coerceAtMost(size.width - x0), h),
-                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(h / 2f, h / 2f)
-                            )
+                            val tint = if (m.kind == SeekMarkerKind.SKIPPABLE) AmberGlow else Color(0xFF6FC3FF)
+                            // Striped band so intro and credits can be seen coming.
+                            val bw = w.coerceAtMost(size.width - x0)
+                            val bh = 7.dp.toPx()
+                            val top = tickY - bh / 2f
+                            drawRect(tint.copy(alpha = 0.18f), Offset(x0, top), Size(bw, bh))
+                            clipRect(x0, top, x0 + bw, top + bh) {
+                                var sx = x0 - bh
+                                while (sx < x0 + bw) { drawLine(tint.copy(alpha = 0.85f), Offset(sx, top + bh), Offset(sx + bh, top), 1.6.dp.toPx()); sx += 5.dp.toPx() }
+                            }
+                            drawRect(tint.copy(alpha = 0.7f), Offset(x0, top), Size(bw, bh), style = Stroke(0.8.dp.toPx()))
                         }
                         SeekMarkerKind.SCENE -> {
                             // A steady glowing dot: a scene is known to start here.
@@ -163,26 +207,6 @@ internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolea
                 drawCircle(color = Color(0xFFFFF3D6), radius = if (isDragging) 5.4.dp.toPx() else 4.6.dp.toPx(), center = Offset(tx, cy))
             }
         }
-
-        val prog = (localPosition.toFloat() / duration.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
-        val pillWidthEstimate = 52.dp
-        AnimatedVisibility(
-            visible = isDragging || waveformVisible,
-            enter = fadeIn(animationSpec = tween(120)),
-            exit = fadeOut(animationSpec = tween(200)),
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .offset(
-                    x = (trackWidth * prog - pillWidthEstimate / 2f).coerceIn(0.dp, (trackWidth - pillWidthEstimate).coerceAtLeast(0.dp)),
-                    y = (-30).dp
-                )
-        ) {
-            Text(
-                text = formatTime(localPosition),
-                color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong).padding(horizontal = 10.dp, vertical = 4.dp)
-            )
-        }
     }
 }
 
@@ -195,6 +219,9 @@ internal fun SeekPreviewBubble(
     isLarge: Boolean,
     progress: Float,
     bottomPadding: Dp,
+    deltaMs: Long = 0L,
+    fine: Float = 1f,
+    label: String? = null,
 ) {
     // Landscape has much less vertical room. Keeping the portrait-sized
     // card there made its top half occupy the visual centre even when its
@@ -218,9 +245,22 @@ internal fun SeekPreviewBubble(
             val safe = when { max < 0.dp -> 0.dp; raw < 0.dp -> 0.dp; raw > max -> max; else -> raw }
             Column(modifier = Modifier.align(Alignment.BottomStart).offset(x = hp + safe).padding(bottom = bottomPadding)
                 .graphicsLayer { scaleX = if (isLarge) 1.02f else 0.98f; scaleY = if (isLarge) 1.02f else 0.98f; shadowElevation = if (isLarge) 18f else 10f }
-                .glassPanel(cornerRadius = 18.dp, fill = GlassSurfaceStrong)
+                .clip(androidx.compose.foundation.shape.CutCornerShape(10.dp))
+                .background(GlassSurfaceStrong)
+                .border(1.2.dp, AmberGlow.copy(alpha = 0.8f), androidx.compose.foundation.shape.CutCornerShape(10.dp))
                 .padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                if (bitmap != null) Image(bitmap = bitmap.asImageBitmap(), contentDescription = null, modifier = Modifier.width(pw).height(ph).clip(RoundedCornerShape(14.dp)), contentScale = ContentScale.Crop)
+                val fwd = deltaMs >= 0L
+                val deltaColor = if (fwd) Color(0xFF7CE0C3) else Color(0xFFFF6E8C)
+                Text(
+                    text = (if (fwd) "+" else "−") + formatTime(kotlin.math.abs(deltaMs)),
+                    color = deltaColor, fontSize = 15.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp,
+                )
+                Text(
+                    text = if (fine < 1f) "FINE ×" + (if (fine < 0.2f) "0.1" else if (fine < 0.4f) "0.25" else "0.5") + " · SLIDE DOWN FOR NORMAL" else (label ?: "SLIDE UP FOR FINE CONTROL"),
+                    color = TextMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp,
+                )
+                Spacer(modifier = Modifier.height(5.dp))
+                if (bitmap != null) Image(bitmap = bitmap.asImageBitmap(), contentDescription = null, modifier = Modifier.width(pw).height(ph).clip(androidx.compose.foundation.shape.CutCornerShape(8.dp)), contentScale = ContentScale.Crop)
                 else Box(modifier = Modifier.width(pw).height(ph).clip(RoundedCornerShape(14.dp)).background(GlassSurfaceFaint), contentAlignment = Alignment.Center) { Text(text = timeText, color = AmberCore, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(text = timeText, color = AmberCore, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -229,3 +269,34 @@ internal fun SeekPreviewBubble(
     }
 }
 
+
+
+/**
+ * Likely scene breaks, read from the soundtrack: stretches of near-silence (the quietest ~12% of
+ * the film, at least 2 s long). Returned as fractions of the film, spread out and capped, so the
+ * bar shows a handful of ticks and not a comb. Empty until the audio has been measured.
+ */
+internal fun sceneBreakFractions(db: FloatArray): List<Float> {
+    val n = db.size
+    if (n < 60) return emptyList()
+    val measured = db.filter { !it.isNaN() }.sorted()
+    if (measured.size < 60) return emptyList()
+    val threshold = measured[(measured.size * 0.12f).toInt()]
+    val runs = ArrayList<Pair<Int, Int>>() // start, length
+    var i = 0
+    while (i < n) {
+        if (!db[i].isNaN() && db[i] <= threshold) {
+            var j = i
+            while (j < n && !db[j].isNaN() && db[j] <= threshold) j++
+            if (j - i >= 2) runs.add(i to (j - i))
+            i = j
+        } else i++
+    }
+    val minGap = (n * 0.015f).toInt().coerceAtLeast(5)
+    val picked = ArrayList<Int>()
+    runs.sortedByDescending { it.second }.forEach { (start, len) ->
+        val centre = start + len / 2
+        if (picked.size < 60 && centre in (n / 100)..(n - n / 100) && picked.none { kotlin.math.abs(it - centre) < minGap }) picked.add(centre)
+    }
+    return picked.sorted().map { it.toFloat() / n }
+}

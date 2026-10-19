@@ -60,6 +60,7 @@ internal fun BoxScope.PlayerBottomTransportDock(
     smallButton: Dp,
     playButton: Dp,
     isPlaying: Boolean,
+    episodeProgress: Float = 0f,
     isVideoEnded: Boolean,
     showPrevNextButtons: Boolean,
     hasNextVideo: Boolean,
@@ -108,7 +109,7 @@ internal fun BoxScope.PlayerBottomTransportDock(
             ) {
                 AmberTransportButton(Icons.Rounded.ArrowBack, "Back", sb, AmberCore, onBack)
                 AmberTransportButton(Icons.Rounded.Replay10, "Back 10 seconds", sb, TextBright, onReplay10)
-                FrostedPlayButton(isPlaying = isPlaying, isEnded = isVideoEnded, size = pb, onClick = onPlayPause)
+                FrostedPlayButton(isPlaying = isPlaying, isEnded = isVideoEnded, size = pb, progress = episodeProgress, onClick = onPlayPause)
                 AmberTransportButton(Icons.Rounded.Forward10, "Forward 10 seconds", sb, TextBright, onForward10)
                 if (showPrevNextButtons) {
                     AmberTransportButton(
