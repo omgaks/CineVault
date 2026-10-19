@@ -83,19 +83,22 @@ internal fun BoxScope.PlayerTopControlCluster(
             },
     )
 
-    AnimatedVisibility(
-        visible = topRowVisible,
-        enter = fadeIn(animationSpec = tween(200)),
-        exit = fadeOut(animationSpec = tween(140)),
+    // The left pills stay on screen while the seek bar is dragged; only the title row steps aside.
+    Column(
         modifier = Modifier
             .align(Alignment.TopStart)
             .padding(
                 start = sidePadding,
                 top = topClusterPaddingTop,
                 end = rightWidth + PlayerPillMetrics.end + 10.dp,
-            ),
+            )
+            .fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        AnimatedVisibility(
+            visible = topRowVisible,
+            enter = fadeIn(animationSpec = tween(200)),
+            exit = fadeOut(animationSpec = tween(140)),
+        ) {
             val chips = remember(diagnostics, fileName) { playerSpecChips(diagnostics, fileName) }
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
@@ -111,8 +114,8 @@ internal fun BoxScope.PlayerTopControlCluster(
                 FloatingScoreCapsule(meta = currentMeta, vertical = false)
                 chips.forEach { PlayerSpecChipView(it, compact = isLandscape) }
             }
-            Spacer(Modifier.height(if (isLandscape) 8.dp else 12.dp))
-            leftPills()
         }
+        Spacer(Modifier.height(if (isLandscape) 8.dp else 12.dp))
+        leftPills()
     }
 }

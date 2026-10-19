@@ -119,8 +119,8 @@ internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolea
                 val threadAlpha = 1f - bloom
                 if (threadAlpha > 0.01f) {
                     val th = 2.2.dp.toPx(); val r = th / 2f
-                    // Segmented neon track: dim dashes ahead, glowing dashes behind the playhead.
-                    val dash = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 3.dp.toPx()))
+                    // Straight neon track: dim line ahead, glowing line behind the playhead.
+                    val dash: androidx.compose.ui.graphics.PathEffect? = null
                     drawLine(Color.White.copy(alpha = 0.18f * threadAlpha), Offset(0f, cy), Offset(size.width, cy), th * 1.3f, pathEffect = dash)
                     drawLine(AmberGlow.copy(alpha = 0.25f * threadAlpha), Offset(0f, cy), Offset(tx, cy), th * 4f, pathEffect = dash)
                     drawLine(AmberGlow.copy(alpha = 0.98f * threadAlpha), Offset(0f, cy), Offset(tx, cy), th * 1.3f, pathEffect = dash)
