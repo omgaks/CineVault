@@ -11,7 +11,7 @@ object PictureHdrRouting {
     @OptIn(UnstableApi::class)
     fun decide(format: Format): PictureHdrPolicy.Decision {
         val colorInfo = format.colorInfo
-        val transfer = if (colorInfo == null) PictureHdrPolicy.Transfer.SDR else when (colorInfo.colorTransfer) {
+        val transfer = if (colorInfo == null) PictureHdrPolicy.Transfer.UNKNOWN else when (colorInfo.colorTransfer) {
             C.COLOR_TRANSFER_ST2084 -> PictureHdrPolicy.Transfer.PQ
             C.COLOR_TRANSFER_HLG -> PictureHdrPolicy.Transfer.HLG
             C.COLOR_TRANSFER_SDR -> PictureHdrPolicy.Transfer.SDR
