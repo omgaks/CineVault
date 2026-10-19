@@ -383,7 +383,7 @@ object VideoThumbnailHelper {
         }
     }
 
-    private fun Bitmap.scaleForPreview(): Bitmap {
+    internal fun Bitmap.scaleForPreview(): Bitmap {
         val targetWidth = 280
         val targetHeight = 158
 
@@ -433,7 +433,7 @@ class LivePreviewFrames(private val context: Context, private val videoPath: Str
                 r.getFrameAtTime(
                     positionMs.coerceAtLeast(0L) * 1000L,
                     MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                )?.scaleForPreview()
+                )?.let { frame -> with(VideoThumbnailHelper) { frame.scaleForPreview() } }
             } catch (_: Exception) {
                 null
             }
