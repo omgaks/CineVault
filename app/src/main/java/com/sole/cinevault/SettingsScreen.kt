@@ -604,6 +604,11 @@ fun SettingsScreen(
             Text("Wake-word work: ${formatPercent(stats.processingShare())} of one processor core", color = TextMuted, fontSize = CineType.Label)
             Text("Wake word heard: ${stats.totalHears} times", color = TextMuted, fontSize = CineType.Label)
             Text("Confirmed by the speech check: ${stats.confirmed}, turned away: ${stats.rejected}", color = TextMuted, fontSize = CineType.Label)
+            Text(
+                "Short phrases the detector missed and could not double-check: ${stats.checksSkipped}" +
+                    if (stats.checksSkipped > 0) " (the Whisper speech model is not downloaded; it is the safety net for missed wake words)" else "",
+                color = TextMuted, fontSize = CineType.Label
+            )
             VoiceWakePhrase.values().filter { stats.hearsFor(it.id) > 0 }.forEach { phrase ->
                 Text("   ${phrase.label}: ${stats.hearsFor(phrase.id)}", color = TextFaint, fontSize = CineType.Caption)
             }

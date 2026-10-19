@@ -25,6 +25,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -118,9 +119,11 @@ internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolea
                 val threadAlpha = 1f - bloom
                 if (threadAlpha > 0.01f) {
                     val th = 2.2.dp.toPx(); val r = th / 2f
-                    drawRoundRect(color = Color.White.copy(alpha = 0.15f * threadAlpha), topLeft = Offset(0f, cy - th / 2f), size = Size(size.width, th), cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r))
-                    drawRoundRect(color = AmberGlow.copy(alpha = 0.22f * threadAlpha), topLeft = Offset(0f, cy - th * 1.6f), size = Size(tx, th * 3.2f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(th * 1.6f, th * 1.6f))
-                    drawRoundRect(color = AmberGlow.copy(alpha = 0.95f * threadAlpha), topLeft = Offset(0f, cy - th / 2f), size = Size(tx, th), cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r))
+                    // Segmented neon track: dim dashes ahead, glowing dashes behind the playhead.
+                    val dash = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 3.dp.toPx()))
+                    drawLine(Color.White.copy(alpha = 0.18f * threadAlpha), Offset(0f, cy), Offset(size.width, cy), th * 1.3f, pathEffect = dash)
+                    drawLine(AmberGlow.copy(alpha = 0.25f * threadAlpha), Offset(0f, cy), Offset(tx, cy), th * 4f, pathEffect = dash)
+                    drawLine(AmberGlow.copy(alpha = 0.98f * threadAlpha), Offset(0f, cy), Offset(tx, cy), th * 1.3f, pathEffect = dash)
                     // Buffered dots: how far ahead the film is already loaded.
                     if (bufferedMs > localPosition && duration > 0L) {
                         val bx1 = size.width * (bufferedMs.toFloat() / duration).coerceIn(0f, 1f)
@@ -204,7 +207,13 @@ internal fun CinematicSeekBar(position: Long, duration: Long, isDragging: Boolea
                 if (bloom > 0.01f) {
                     drawLine(color = Color(0xFFFFF3D6).copy(alpha = 0.90f * bloom), start = Offset(tx, cy - size.height * 0.46f), end = Offset(tx, cy + size.height * 0.46f), strokeWidth = 2.dp.toPx())
                 }
-                drawCircle(color = Color(0xFFFFF3D6), radius = if (isDragging) 5.4.dp.toPx() else 4.6.dp.toPx(), center = Offset(tx, cy))
+                drawLine(color = Color(0xFFFFF3D6), start = Offset(tx, cy - 10.dp.toPx()), end = Offset(tx, cy + 10.dp.toPx()), strokeWidth = 2.dp.toPx())
+                val dm = if (isDragging) 6.dp.toPx() else 5.dp.toPx()
+                val diamond = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(tx, cy - dm); lineTo(tx + dm, cy); lineTo(tx, cy + dm); lineTo(tx - dm, cy); close()
+                }
+                drawPath(diamond, Color(0xFFFFF3D6))
+                drawPath(diamond, Color(0xFFFF6E8C).copy(alpha = 0.9f), style = Stroke(1.2.dp.toPx()))
             }
         }
     }
@@ -245,9 +254,9 @@ internal fun SeekPreviewBubble(
             val safe = when { max < 0.dp -> 0.dp; raw < 0.dp -> 0.dp; raw > max -> max; else -> raw }
             Column(modifier = Modifier.align(Alignment.BottomStart).offset(x = hp + safe).padding(bottom = bottomPadding)
                 .graphicsLayer { scaleX = if (isLarge) 1.02f else 0.98f; scaleY = if (isLarge) 1.02f else 0.98f; shadowElevation = if (isLarge) 18f else 10f }
-                .clip(androidx.compose.foundation.shape.CutCornerShape(10.dp))
+                .clip(HudShape)
                 .background(GlassSurfaceStrong)
-                .border(1.2.dp, AmberGlow.copy(alpha = 0.8f), androidx.compose.foundation.shape.CutCornerShape(10.dp))
+                .border(1.4.dp, HudEdge, HudShape)
                 .padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 val fwd = deltaMs >= 0L
                 val deltaColor = if (fwd) Color(0xFF7CE0C3) else Color(0xFFFF6E8C)
@@ -299,4 +308,20 @@ internal fun sceneBreakFractions(db: FloatArray): List<Float> {
         if (picked.size < 60 && centre in (n / 100)..(n - n / 100) && picked.none { kotlin.math.abs(it - centre) < minGap }) picked.add(centre)
     }
     return picked.sorted().map { it.toFloat() / n }
+}
+
+
+/** Cyberpunk HUD panel: opposite corners cut hard, the other two nearly square. */
+internal val HudShape = androidx.compose.foundation.shape.CutCornerShape(topStart = 16.dp, topEnd = 3.dp, bottomEnd = 16.dp, bottomStart = 3.dp)
+
+/** Neon edge that runs amber, through rose, to sky. */
+internal val HudEdge: androidx.compose.ui.graphics.Brush
+    get() = androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color(0xFFFFC24D), Color(0xFFFF6E8C), Color(0xFF6FC3FF)))
+
+/** Faint horizontal scanlines over a panel. */
+internal fun Modifier.scanlines(alpha: Float = 0.06f): Modifier = drawWithContent {
+    drawContent()
+    var y = 0f
+    val step = 3.dp.toPx()
+    while (y < size.height) { drawLine(Color.White.copy(alpha = alpha), Offset(0f, y), Offset(size.width, y), 1f); y += step }
 }

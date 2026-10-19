@@ -96,12 +96,15 @@ internal fun BoxScope.PlayerBottomTransportDock(
             val sb = smallButton * (1.12f * fit)
             val pb = playButton * (1.08f * fit)
             val sc = scale * fit
-            val barShape = RoundedCornerShape(42.dp)
+            val barShape = HudShape
             Row(
                 modifier = Modifier
                     .padding(bottom = bottomDockPadding, start = sidePadding, end = sidePadding)
-                    .glassPanel(cornerRadius = 42.dp, fill = GlassSurfaceStrong)
-                    .border(0.8.dp, Color.White.copy(alpha = 0.10f), barShape)
+                    .shadow(8.dp, barShape, ambientColor = AmberCore, spotColor = AmberCore)
+                    .clip(barShape)
+                    .background(GlassSurfaceStrong)
+                    .scanlines()
+                    .border(1.3.dp, HudEdge, barShape)
                     .padding(horizontal = (14 * sc).dp, vertical = (7 * sc).dp)
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy((5 * sc).dp),
@@ -137,8 +140,9 @@ private fun AmberTransportButton(
     Box(
         modifier = Modifier
             .size(size)
-            .clip(CircleShape)
+            .clip(HudShape)
             .background(Color.White.copy(alpha = 0.07f))
+            .border(0.8.dp, AmberGlow.copy(alpha = 0.35f), HudShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
