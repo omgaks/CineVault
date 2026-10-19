@@ -296,6 +296,15 @@ private fun MainPage(
         )
     }
 
+    Text(
+        controller.anime4kStatus,
+        color = if (controller.statusLive) AmberCore else TextMuted,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.fillMaxWidth().padding(top = 3.dp),
+        maxLines = 2,
+    )
+
     val message = unavailable?.reason ?: controller.note
     if (message != null) {
         Text(message, color = AmberCore, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
