@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -55,7 +56,7 @@ internal fun GlassTransportButton(icon: ImageVector, size: Dp, onClick: () -> Un
 }
 
 @Composable
-internal fun FrostedPlayButton(isPlaying: Boolean, isEnded: Boolean, size: Dp, onClick: () -> Unit) {
+internal fun FrostedPlayButton(isPlaying: Boolean, isEnded: Boolean, size: Dp, progress: Float = 0f, onClick: () -> Unit) {
     val infinite = rememberInfiniteTransition(label = "playGlow")
     val glowAlpha by infinite.animateFloat(
         initialValue = 0.45f,
@@ -70,6 +71,25 @@ internal fun FrostedPlayButton(isPlaying: Boolean, isEnded: Boolean, size: Dp, o
             .size(size)
             .clip(CircleShape)
             .background(GlassSurfaceStrong)
+            .drawWithContent {
+                drawContent()
+                // Lumen Ring: the ring is the episode progress, and a glowing dot rides it.
+                val sw = 3.dp.toPx()
+                val inset = sw / 2f + 1.dp.toPx()
+                val arcSize = androidx.compose.ui.geometry.Size(this.size.width - inset * 2, this.size.height - inset * 2)
+                val tl = androidx.compose.ui.geometry.Offset(inset, inset)
+                drawArc(Color.White.copy(alpha = 0.14f), 0f, 360f, false, tl, arcSize, style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
+                val sweep = 360f * progress.coerceIn(0f, 1f)
+                if (sweep > 0.5f) {
+                    drawArc(AmberGlow.copy(alpha = 0.25f), -90f, sweep, false, tl, arcSize, style = androidx.compose.ui.graphics.drawscope.Stroke(sw * 2.4f, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+                    drawArc(AmberGlow, -90f, sweep, false, tl, arcSize, style = androidx.compose.ui.graphics.drawscope.Stroke(sw, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+                }
+                val ang = Math.toRadians((-90f + sweep).toDouble())
+                val rad = arcSize.width / 2f
+                val c = androidx.compose.ui.geometry.Offset(this.size.width / 2f + (rad * Math.cos(ang)).toFloat(), this.size.height / 2f + (rad * Math.sin(ang)).toFloat())
+                drawCircle(AmberGlow.copy(alpha = 0.35f), sw * 2.6f, c)
+                drawCircle(Color(0xFFFFF3D6), sw * 1.1f, c)
+            }
             .background(Brush.verticalGradient(0f to GlassHighlight, 0.45f to Color.Transparent, 1f to Color.Transparent))
             .background(Brush.radialGradient(colors = listOf(AmberGlow.copy(alpha = glowAlpha * 0.55f), Color.Transparent), radius = glowRadiusPx))
             .border(

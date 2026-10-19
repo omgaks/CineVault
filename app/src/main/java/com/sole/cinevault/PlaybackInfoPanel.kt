@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,7 +32,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+private val DiagnosticsMint = Color(0xFF7CE0C3)
+private val DiagnosticsSky = Color(0xFF6FC3FF)
+private val DiagnosticsViolet = Color(0xFFC792FF)
+private val DiagnosticsRose = Color(0xFFFF6E8C)
 private val DiagnosticsAmber = Color(0xFFFFB547)
+
+/** Each report line gets its own neon colour, matching the pill colour code. */
+private fun diagnosticLabelColor(label: String): Color = when {
+    label.contains("AUDIO") -> DiagnosticsSky
+    label.contains("VIDEO") || label.contains("CODEC") || label.contains("PIPELINE") -> DiagnosticsMint
+    label.contains("FAIL") || label.contains("RECOVER") || label.contains("RESCUE") -> DiagnosticsRose
+    label.contains("COMPAT") || label.contains("READINESS") || label.contains("HEALTH") -> DiagnosticsViolet
+    else -> DiagnosticsAmber
+}
 private val DiagnosticsGlass = Color(0xE617181D)
 private val DiagnosticsBorder = Color(0x33FFFFFF)
 private val DiagnosticsPrimary = Color(0xFFF5F5F7)
@@ -126,14 +140,20 @@ fun PlaybackInfoPanel(
             append(value)
         }
     }
-    val shape = RoundedCornerShape(18.dp)
+    val shape = androidx.compose.foundation.shape.CutCornerShape(12.dp)
+    val edge = when {
+        snapshot.activeDecoderKind == ActiveVideoDecoderKind.SOFTWARE -> DiagnosticsRose
+        snapshot.fallbackOccurred -> DiagnosticsAmber
+        else -> DiagnosticsMint
+    }
 
     Column(
         modifier = modifier
             .widthIn(min = 280.dp, max = 330.dp)
             .fillMaxHeight(0.78f)
+            .shadow(10.dp, shape, ambientColor = edge, spotColor = edge)
             .background(DiagnosticsGlass, shape)
-            .border(1.dp, DiagnosticsBorder, shape)
+            .border(1.3.dp, edge.copy(alpha = 0.85f), shape)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(11.dp),
@@ -146,19 +166,19 @@ fun PlaybackInfoPanel(
                 modifier = Modifier
                     .width(4.dp)
                     .height(22.dp)
-                    .background(DiagnosticsAmber, RoundedCornerShape(4.dp)),
+                    .background(edge, RoundedCornerShape(4.dp)),
             )
             Spacer(Modifier.width(9.dp))
             Column {
                 Text(
                     text = "PLAYBACK INFO",
-                    color = DiagnosticsPrimary,
+                    color = edge,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.8.sp,
                 )
                 Text(
-                    text = "CineVault diagnostics",
+                    text = "PLAYBACK REPORT · TAP PILL TO CLOSE",
                     color = DiagnosticsSecondary,
                     fontSize = 10.sp,
                 )
@@ -185,10 +205,33 @@ fun PlaybackInfoPanel(
         }
 
         val context = LocalContext.current
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "SHARE  ↗",
+            modifier = Modifier
+                .weight(1f)
+                .background(DiagnosticsSky.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
+                .border(1.dp, DiagnosticsSky.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                .clickable {
+                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(android.content.Intent.EXTRA_TEXT, reportText)
+                    }
+                    context.startActivity(
+                        android.content.Intent.createChooser(send, "Share playback report")
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }
+                .padding(horizontal = 11.dp, vertical = 9.dp),
+            color = DiagnosticsSky,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp,
+        )
         Text(
             text = "COPY REPORT  ⧉",
             modifier = Modifier
-                .fillMaxWidth()
+                .weight(1f)
                 .background(
                     DiagnosticsAmber.copy(alpha = 0.10f),
                     RoundedCornerShape(10.dp),
@@ -212,6 +255,7 @@ fun PlaybackInfoPanel(
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.5.sp,
         )
+        }
 
         Text(
             text = "COMPATIBILITY REPORT  ›",
@@ -272,7 +316,7 @@ private fun DiagnosticSection(
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(
             text = label,
-            color = if (emphasize) DiagnosticsAmber else DiagnosticsSecondary,
+            color = if (emphasize) DiagnosticsAmber else diagnosticLabelColor(label),
             fontSize = 9.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.9.sp,
@@ -283,6 +327,7 @@ private fun DiagnosticSection(
             fontSize = 12.sp,
             lineHeight = 16.sp,
             fontWeight = if (emphasize) FontWeight.Medium else FontWeight.Normal,
+            modifier = Modifier.padding(start = 2.dp),
         )
     }
 }

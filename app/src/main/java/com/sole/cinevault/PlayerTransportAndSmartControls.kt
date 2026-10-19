@@ -187,6 +187,7 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
         smallButton = smallButton,
         playButton = playButton,
         isPlaying = isPlaying,
+        episodeProgress = if (duration > 0L) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f,
         isVideoEnded = isVideoEnded,
         showPrevNextButtons = showPrevNextButtons,
         hasNextVideo = hasNextVideo,
@@ -243,6 +244,7 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
         position = position,
         isDraggingSeekbar = isDraggingSeekbar,
         seed = currentVideoPath.hashCode(),
+        bufferedProvider = { player.bufferedPosition },
         markers = remember(smartSegmentResult, duration) { seekMarkersFor(smartSegmentResult, duration) },
         onPreviewPositionChanged = { pos ->
             onDraggingSeekbarChanged(true)
