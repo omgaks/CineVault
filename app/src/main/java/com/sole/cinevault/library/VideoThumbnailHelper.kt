@@ -383,7 +383,7 @@ object VideoThumbnailHelper {
         }
     }
 
-    private fun Bitmap.scaleForPreview(): Bitmap {
+    internal fun Bitmap.scaleForPreview(): Bitmap {
         val targetWidth = 280
         val targetHeight = 158
 
@@ -406,6 +406,44 @@ object VideoThumbnailHelper {
             Bitmap.createScaledBitmap(this, targetWidth, targetHeight, true)
         } catch (_: Exception) {
             this
+        }
+    }
+}
+
+/**
+ * Live preview frames while the seek bar is dragged. Keeps one retriever open for the whole drag
+ * and asks for the nearest keyframe, which is fast enough to follow a finger. Calls are serialised
+ * because MediaMetadataRetriever is not thread safe.
+ */
+class LivePreviewFrames(private val context: Context, private val videoPath: String) {
+    private val lock = Any()
+    private var retriever: MediaMetadataRetriever? = null
+
+    suspend fun frameAt(positionMs: Long): Bitmap? = withContext(Dispatchers.IO) {
+        synchronized(lock) {
+            try {
+                val r = retriever ?: MediaMetadataRetriever().also { m ->
+                    if (videoPath.startsWith("content://")) m.setDataSource(context, Uri.parse(videoPath))
+                    else {
+                        if (!File(videoPath).exists()) return@synchronized null
+                        m.setDataSource(videoPath)
+                    }
+                    retriever = m
+                }
+                r.getFrameAtTime(
+                    positionMs.coerceAtLeast(0L) * 1000L,
+                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                )?.let { frame -> with(VideoThumbnailHelper) { frame.scaleForPreview() } }
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
+    fun release() {
+        synchronized(lock) {
+            try { retriever?.release() } catch (_: Exception) {}
+            retriever = null
         }
     }
 }

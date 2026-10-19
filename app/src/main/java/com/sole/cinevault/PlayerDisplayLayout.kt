@@ -42,7 +42,7 @@ internal fun calculatePlayerDisplayLayout(maxWidth: Dp, maxHeight: Dp): PlayerDi
         isSmallPhone && !isLandscape -> 0.78f
         isSmallPhone -> 0.82f
         isLandscape -> 0.90f
-        else -> 1f
+        else -> 0.85f // large portrait screens: slightly smaller controls
     }
     val deckNaturalWidth = 66f * 6 + 98f + 7f * 7 + 24f
     val fitScale = ((maxWidth.value - 32f) / deckNaturalWidth).coerceAtMost(1f)

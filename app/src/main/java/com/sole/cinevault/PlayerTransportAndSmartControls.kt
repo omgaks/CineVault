@@ -14,6 +14,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.unit.Dp
 import androidx.media3.exoplayer.ExoPlayer
+import com.sole.cinevault.library.LivePreviewFrames
 import com.sole.cinevault.library.VideoThumbnailHelper
 import com.sole.cinevault.segments.SegmentType
 import com.sole.cinevault.segments.seekMarkersFor
@@ -102,6 +103,11 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
             showSpeedMenu ||
             showSleepMenu ||
             showSrtBrowser
+
+    // Live seek-preview frames: one retriever per video, released when the video changes.
+    val livePreview = remember(currentVideoPath) { LivePreviewFrames(context, currentVideoPath) }
+    val liveFrameJob = remember { androidx.compose.runtime.mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    androidx.compose.runtime.DisposableEffect(livePreview) { onDispose { livePreview.release() } }
 
     val suppressCreditsPillForScene =
         activeSmartSegment?.type == SegmentType.CREDITS &&
@@ -254,9 +260,19 @@ internal fun BoxScope.PlayerTransportAndSmartControls(
             val bounded = playerBoundedSeekPosition(pos, duration)
             onPositionChanged(bounded)
             onPreviewPositionChanged(bounded)
+            // Show the nearest cached frame straight away, then replace it with the real frame
+            // at this exact spot. Older requests are dropped as the finger moves on.
             VideoThumbnailHelper
                 .nearestPreviewFrame(previewFrames, bounded)
                 ?.let(onPreviewBitmapChanged)
+            if (!isStreamMedia) {
+                liveFrameJob.value?.cancel()
+                liveFrameJob.value = scope.launch {
+                    delay(40)
+                    val bmp = livePreview.frameAt(bounded)
+                    if (bmp != null && isDraggingSeekbarNow()) onPreviewBitmapChanged(bmp)
+                }
+            }
         },
         onSeekFinished = { finalPos ->
             val safe =
