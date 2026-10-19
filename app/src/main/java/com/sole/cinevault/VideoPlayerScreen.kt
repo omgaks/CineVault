@@ -60,6 +60,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -1371,11 +1372,14 @@ fun VideoPlayerScreen(
             onPreviewBitmapChanged = { gestureUi.previewBitmap = it },
         )
 
-        AnimatedVisibility(
+        LumenWindow(
             visible = showAudioFxDashboard,
-            enter = fadeIn(animationSpec = tween(150)),
-            exit = fadeOut(animationSpec = tween(180)),
-            modifier = Modifier.align(Alignment.CenterEnd).padding(end = playerLayout.sidePadding),
+            accent = LumenViolet,
+            title = "Sound FX",
+            icon = androidx.compose.material.icons.Icons.Filled.Equalizer,
+            size = LumenSize.L,
+            isLandscape = playerLayout.isLandscape,
+            bottomInset = playerLayout.bottomDockPadding + playerLayout.playButton + 64.dp,
         ) {
             AudioFxDashboard(
                 controller = audioFxController,
