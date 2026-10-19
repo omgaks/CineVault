@@ -35,4 +35,20 @@ class PictureAnime4kPolicyTest {
         assertEquals(PictureAnime4kPolicy.Mode.ENHANCE_ONLY,
             PictureAnime4kPolicy.plan(input().copy(outputWidth = 1920, outputHeight = 1080)).mode)
     }
+    @Test fun xiaomiPad7NativeResolutionUpscalesWithoutClaiming4k() {
+        val plan = PictureAnime4kPolicy.plan(
+            input().copy(outputWidth = 3200, outputHeight = 2136)
+        )
+        assertEquals(PictureAnime4kPolicy.Mode.UPSCALE, plan.mode)
+        assertEquals(3200, plan.targetWidth)
+        assertEquals(1800, plan.targetHeight)
+    }
+
+    @Test fun neverDownscalesWhenSurfaceSmallerThanSource() {
+        val plan = PictureAnime4kPolicy.plan(
+            input().copy(outputWidth = 1280, outputHeight = 720)
+        )
+        assertEquals(PictureAnime4kPolicy.Mode.ENHANCE_ONLY, plan.mode)
+    }
+
 }
