@@ -9,15 +9,15 @@ import org.junit.Test
 class PlayerDisplayLayoutTest {
 
     @Test
-    fun tabletPortraitUsesFullSizeLayout() {
+    fun tabletPortraitUsesSlightlyReducedLayout() {
         val layout = calculatePlayerDisplayLayout(800.dp, 1280.dp)
 
         assertFalse(layout.isLandscape)
         assertFalse(layout.isSmallPhone)
         assertFalse(layout.isCompactLandscape)
-        assertEquals(1f, layout.scale, 0.001f)
-        assertEquals(98.dp, layout.playButton)
-        assertEquals(66.dp, layout.smallButton)
+        assertEquals(0.85f, layout.scale, 0.001f)
+        assertEquals((98 * 0.85f).dp, layout.playButton)
+        assertEquals((66 * 0.85f).dp, layout.smallButton)
         assertEquals(152.dp, layout.bottomDockPadding)
         assertEquals(92.dp, layout.seekBottomPadding)
         assertEquals(18.dp, layout.topClusterPaddingTop)
