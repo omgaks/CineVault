@@ -1371,11 +1371,14 @@ fun VideoPlayerScreen(
             onPreviewBitmapChanged = { gestureUi.previewBitmap = it },
         )
 
-        AnimatedVisibility(
+        LumenWindow(
             visible = showAudioFxDashboard,
-            enter = fadeIn(animationSpec = tween(150)),
-            exit = fadeOut(animationSpec = tween(180)),
-            modifier = Modifier.align(Alignment.CenterEnd).padding(end = playerLayout.sidePadding),
+            accent = LumenViolet,
+            title = "Sound FX",
+            icon = androidx.compose.material.icons.Icons.Filled.Equalizer,
+            size = LumenSize.L,
+            isLandscape = playerLayout.isLandscape,
+            bottomInset = playerLayout.bottomDockPadding + playerLayout.playButton + 64.dp,
         ) {
             AudioFxDashboard(
                 controller = audioFxController,

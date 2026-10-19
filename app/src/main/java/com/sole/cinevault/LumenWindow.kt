@@ -11,6 +11,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -32,6 +35,19 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -239,5 +255,118 @@ internal fun LumenOptionRow(label: String, selected: Boolean, accent: Color, tra
             modifier = Modifier.weight(1f),
         )
         if (trailing != null) Text(trailing, color = accent, fontSize = LumenType.caption, fontWeight = FontWeight.Bold)
+    }
+}
+
+
+/** Violet used by Sound FX; other windows pass their own pill colour. */
+internal val LumenViolet = Color(0xFFC792FF)
+
+/** Cut-corner on/off switch in the window's accent colour. */
+@Composable
+internal fun LumenSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, accent: Color = LumenViolet) {
+    val shape = CutCornerShape(topStart = 5.dp, topEnd = 0.dp, bottomEnd = 5.dp, bottomStart = 0.dp)
+    val thumbX by animateDpAsState(if (checked) 22.dp else 2.dp, tween(180), label = "lumenSwitch")
+    Box(
+        modifier = Modifier
+            .size(width = 40.dp, height = 20.dp)
+            .background(if (checked) accent.copy(alpha = 0.30f) else Color.White.copy(alpha = 0.08f), shape)
+            .border(1.2.dp, if (checked) accent else accent.copy(alpha = 0.45f), shape)
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange),
+    ) {
+        Box(
+            Modifier
+                .offset(x = thumbX, y = 3.dp)
+                .size(14.dp)
+                .background(if (checked) TextBright else TextMuted, CutCornerShape(topStart = 3.dp, topEnd = 0.dp, bottomEnd = 3.dp, bottomStart = 0.dp))
+        )
+    }
+}
+
+/** A choice chip: filled and glowing when selected. */
+@Composable
+internal fun LumenChip(text: String, selected: Boolean, accent: Color = LumenViolet, onClick: () -> Unit) {
+    Text(
+        text = text.uppercase(),
+        color = if (selected) Color(0xFF05060A) else TextBright,
+        fontSize = LumenType.caption,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.2.sp,
+        modifier = Modifier
+            .background(if (selected) accent else Color.Transparent, LumenChipShape)
+            .border(1.2.dp, accent.copy(alpha = if (selected) 1f else 0.6f), LumenChipShape)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    )
+}
+
+/**
+ * Waveform slider: the part you have filled is a live wave (it ripples while you drag), the rest is
+ * a flat dim line, and the handle is a diamond. Standing still it is calm; reduced motion freezes it.
+ */
+@Composable
+internal fun LumenSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    modifier: Modifier = Modifier,
+    accent: Color = LumenViolet,
+) {
+    val motion = rememberMotionEnabled()
+    var dragging by remember { mutableStateOf(false) }
+    val phase by rememberLoop(enabled = motion, from = 0f, to = 6.2832f, periodMs = if (dragging) 700 else 2600)
+    val span = valueRange.endInclusive - valueRange.start
+    val fraction = if (span <= 0f) 0f else ((value - valueRange.start) / span).coerceIn(0f, 1f)
+    val latestChange by androidx.compose.runtime.rememberUpdatedState(onValueChange)
+
+    fun setFrom(x: Float, width: Float) {
+        val f = (x / width).coerceIn(0f, 1f)
+        latestChange(valueRange.start + f * span)
+    }
+
+    Canvas(
+        modifier = modifier
+            .height(28.dp)
+            .pointerInput(valueRange) {
+                detectTapGestures(onTap = { setFrom(it.x, size.width.toFloat()) })
+            }
+            .pointerInput(valueRange) {
+                detectDragGestures(
+                    onDragStart = { dragging = true; setFrom(it.x, size.width.toFloat()) },
+                    onDragEnd = { dragging = false },
+                    onDragCancel = { dragging = false },
+                ) { change, _ ->
+                    change.consume()
+                    setFrom(change.position.x, size.width.toFloat())
+                },
+            },
+    ) {
+        val cy = size.height / 2f
+        val tx = size.width * fraction
+        val inset = 6.dp.toPx()
+        // Flat dim line for the part still to fill.
+        drawLine(Color.White.copy(alpha = 0.25f), Offset(tx, cy), Offset(size.width, cy), 2.dp.toPx())
+        // Live wave for the filled part.
+        if (tx > 1f) {
+            val amp = (if (dragging) 5.dp else 3.dp).toPx()
+            val path = Path()
+            var x = 0f
+            val step = 3.dp.toPx()
+            path.moveTo(0f, cy)
+            while (x <= tx) {
+                val fade = (x / (tx.coerceAtLeast(1f))).coerceIn(0f, 1f)
+                path.lineTo(x, cy + kotlin.math.sin(x / 7.dp.toPx() * 1f + phase) * amp * fade)
+                x += step
+            }
+            drawPath(path, accent.copy(alpha = 0.30f), style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round))
+            drawPath(path, accent, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+        }
+        // Diamond handle.
+        val d = (if (dragging) 8.dp else 6.dp).toPx()
+        val diamond = Path().apply {
+            moveTo(tx, cy - d); lineTo(tx + d, cy); lineTo(tx, cy + d); lineTo(tx - d, cy); close()
+        }
+        drawPath(diamond, TextBright)
+        drawPath(diamond, Color(0xFFFF6E8C), style = Stroke(width = 1.5.dp.toPx()))
     }
 }

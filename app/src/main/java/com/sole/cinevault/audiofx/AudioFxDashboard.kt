@@ -15,10 +15,11 @@ import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
+import com.sole.cinevault.LumenSwitch
+import com.sole.cinevault.LumenSlider
+import com.sole.cinevault.LumenChip
+import com.sole.cinevault.LumenSectionLabel
+import com.sole.cinevault.LumenViolet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -46,7 +47,7 @@ import com.sole.cinevault.ui.theme.*
  *
  * Compose UI for AudioFxController — Phase 0's dashboard, built entirely
  * on android.media.audiofx. Same visual language as the rest of the
- * player (glassPanel, AmberCore accents) rather than a new style
+ * player (glassPanel, LumenViolet accents) rather than a new style
  * introduced just for this.
  *
  * One honesty note carried over from the controller: every number here
@@ -62,19 +63,7 @@ import com.sole.cinevault.ui.theme.*
 // belongs to a different concern.
 @Composable
 private fun AmberSectionPill(text: String) {
-    Text(
-        text = text.uppercase(),
-        color = AmberCore,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 0.45.sp,
-        modifier = Modifier
-            .padding(bottom = 6.dp)
-            .clip(RoundedCornerShape(50))
-            .background(AmberCore.copy(alpha = 0.12f))
-            .border(1.dp, AmberCore.copy(alpha = 0.30f), RoundedCornerShape(50))
-            .padding(horizontal = 10.dp, vertical = 4.dp)
-    )
+    LumenSectionLabel(text, LumenViolet)
 }
 
 @Composable
@@ -89,41 +78,8 @@ internal fun AudioFxDashboard(
     val resolvedWidth = popupWidth ?: CineResponsive.popupMaxWidth(windowInfo)
     val resolvedMaxHeight = popupMaxHeight ?: CineResponsive.popupMaxHeight(windowInfo)
 
-    Column(
-        modifier = Modifier
-            .width(resolvedWidth)
-            .heightIn(max = resolvedMaxHeight)
-            .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.90f))
-            .border(1.dp, AmberCore.copy(alpha = 0.20f), RoundedCornerShape(20.dp))
-            .verticalScroll(rememberScrollState())
-            .padding(tokens.componentGap)
-    ) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Icon(imageVector = Icons.Filled.Equalizer, contentDescription = null, tint = AmberCore, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = "AUDIO FX",
-                color = AmberCore,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(50))
-                    .background(AmberCore.copy(alpha = 0.12f))
-                    .border(1.dp, AmberCore.copy(alpha = 0.28f), RoundedCornerShape(50))
-                    .padding(horizontal = 10.dp, vertical = 5.dp)
-            )
-            Icon(
-                imageVector = Icons.Filled.Close, contentDescription = "Close", tint = AmberCore,
-                modifier = Modifier
-                    .sizeIn(minWidth = tokens.minimumTouchTarget, minHeight = tokens.minimumTouchTarget)
-                    .clip(CircleShape)
-                    .background(GlassSurface)
-                    .clickable { onDismiss() }
-                    .padding(14.dp)
-            )
-        }
-
+    // The frame, title and close behaviour now come from LumenWindow; this is just the content.
+    Column(modifier = Modifier.fillMaxWidth()) {
         Spacer(modifier = Modifier.height(10.dp))
 
         Row(
@@ -131,10 +87,10 @@ internal fun AudioFxDashboard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(text = "Enabled", color = TextBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            Switch(
+            LumenSwitch(
                 checked = controller.enabled,
                 onCheckedChange = { controller.updateEnabled(it) },
-                colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
+
             )
         }
 
@@ -157,13 +113,10 @@ internal fun AudioFxDashboard(
                 }
                 Text(status, color = TextMuted, fontSize = 9.5.sp)
             }
-            Switch(
+            LumenSwitch(
                 checked = controller.loudnessNormalizationEnabled,
                 onCheckedChange = controller::updateLoudnessNormalizationEnabled,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = AmberCore,
-                    checkedTrackColor = AmberGlow.copy(alpha = 0.4f),
-                ),
+,
             )
         }
 
@@ -231,10 +184,10 @@ internal fun AudioFxDashboard(
             )
             Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(text = "Peak limiter", color = TextBright, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                Switch(
+                LumenSwitch(
                     checked = controller.limiterEnabled,
                     onCheckedChange = { controller.updateLimiterEnabled(it) },
-                    colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
+
                 )
             }
         }
@@ -251,18 +204,7 @@ internal fun AudioFxDashboard(
             modifier = Modifier.padding(top = 6.dp)
         ) {
             AudioFxController.REVERB_PRESETS.forEach { (value, label) ->
-                val selected = controller.reverbPreset == value
-                Text(
-                    text = label,
-                    color = if (selected) Color.Black else TextBright,
-                    fontSize = 10.5.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(if (selected) AmberCore else GlassSurface)
-                        .clickable { controller.updateReverbPreset(value) }
-                        .padding(horizontal = 12.dp, vertical = 7.dp)
-                )
+                LumenChip(label, controller.reverbPreset == value) { controller.updateReverbPreset(value) }
             }
         }
 
@@ -275,15 +217,15 @@ internal fun AudioFxDashboard(
         Spacer(modifier = Modifier.height(14.dp))
         Text(
             text = "↺  Reset All",
-            color = AmberCore,
+            color = LumenViolet,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(50))
-                .background(AmberCore.copy(alpha = 0.10f))
-                .border(1.dp, AmberCore.copy(alpha = 0.30f), RoundedCornerShape(50))
+                .background(LumenViolet.copy(alpha = 0.10f))
+                .border(1.dp, LumenViolet.copy(alpha = 0.30f), RoundedCornerShape(50))
                 .clickable { controller.resetAll() }
                 .padding(vertical = 8.dp)
         )
@@ -304,16 +246,16 @@ private fun AdaptiveAudioSection(controller: AudioFxController) {
     )
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(text = "Enable adaptive audio", color = TextBright, fontSize = 12.sp, modifier = Modifier.weight(1f))
-        Switch(
+        LumenSwitch(
             checked = controller.adaptiveAudioEnabled,
             onCheckedChange = { controller.updateAdaptiveAudioEnabled(it) },
-            colors = SwitchDefaults.colors(checkedThumbColor = AmberCore, checkedTrackColor = AmberGlow.copy(alpha = 0.4f))
+
         )
     }
     if (controller.adaptiveAudioEnabled) {
         Spacer(modifier = Modifier.height(6.dp))
         val sceneColor = when (controller.detectedScene) {
-            AudioScene.DIALOGUE -> AmberCore
+            AudioScene.DIALOGUE -> LumenViolet
             AudioScene.ACTION -> Color(0xFFFF6B5B)
             AudioScene.MUSIC -> Color(0xFF7FB8FF)
             AudioScene.NEUTRAL -> TextMuted
@@ -355,8 +297,8 @@ private fun PresetsSection(controller: AudioFxController) {
             textStyle = TextStyle(fontSize = 12.sp, color = TextBright),
             modifier = Modifier.weight(1f).height(52.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = AmberCore.copy(alpha = 0.6f),
-                unfocusedBorderColor = AmberCore.copy(alpha = 0.25f)
+                focusedBorderColor = LumenViolet.copy(alpha = 0.6f),
+                unfocusedBorderColor = LumenViolet.copy(alpha = 0.25f)
             )
         )
         Spacer(modifier = Modifier.width(8.dp))
@@ -373,7 +315,7 @@ private fun PresetsSection(controller: AudioFxController) {
             fontWeight = FontWeight.Black,
             modifier = Modifier
                 .clip(RoundedCornerShape(10.dp))
-                .background(AmberGlow)
+                .background(LumenViolet)
                 .clickable(onClick = onSave)
                 .padding(horizontal = 14.dp, vertical = 14.dp)
         )
@@ -426,7 +368,7 @@ private fun AutoSwitchSection(controller: AudioFxController) {
         val assigned = controller.profileAssignments[profile]
         Text(
             text = profile.label,
-            color = if (profile == controller.currentOutputProfile) AmberCore else Color(0xFFC9A765),
+            color = if (profile == controller.currentOutputProfile) LumenViolet else Color(0xFFC9A765),
             fontSize = 10.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(top = 6.dp, bottom = 3.dp)
         )
@@ -446,7 +388,7 @@ private fun AutoSwitchSection(controller: AudioFxController) {
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(if (selected) AmberCore else GlassSurface)
+                        .background(if (selected) LumenViolet else GlassSurface)
                         .clickable(onClick = onToggle)
                         .padding(horizontal = 10.dp, vertical = 5.dp)
                 )
@@ -497,7 +439,7 @@ private fun SpectrumVisualizer(fft: ByteArray, waveform: ByteArray) {
                 val normalized = (magnitude / 40f).coerceIn(0f, 1f)
                 val barHeight = size.height * normalized
                 drawRect(
-                    color = AmberGlow.copy(alpha = 0.85f),
+                    color = LumenViolet.copy(alpha = 0.85f),
                     topLeft = Offset(bin * barWidth, size.height - barHeight),
                     size = androidx.compose.ui.geometry.Size(barWidth * 0.7f, barHeight)
                 )
@@ -510,16 +452,16 @@ private fun SpectrumVisualizer(fft: ByteArray, waveform: ByteArray) {
 private fun EqBandRow(label: String, valueDb: Int, rangeDb: IntRange, onValueChange: (Int) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
         Text(text = label, color = TextMuted, fontSize = 9.5.sp, modifier = Modifier.width(42.dp))
-        Slider(
+        LumenSlider(
             value = valueDb.toFloat(),
             onValueChange = { onValueChange(it.toInt()) },
             valueRange = rangeDb.first.toFloat()..rangeDb.last.toFloat(),
             modifier = Modifier.weight(1f).height(28.dp),
-            colors = SliderDefaults.colors(thumbColor = AmberCore, activeTrackColor = AmberGlow, inactiveTrackColor = GlassSurface)
+
         )
         Text(
             text = "${if (valueDb >= 0) "+" else ""}$valueDb",
-            color = AmberCore, fontSize = 9.5.sp, fontWeight = FontWeight.Bold,
+            color = LumenViolet, fontSize = 9.5.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.width(28.dp), textAlign = TextAlign.End
         )
     }
@@ -528,15 +470,15 @@ private fun EqBandRow(label: String, valueDb: Int, rangeDb: IntRange, onValueCha
 @Composable
 private fun FxSliderRow(valueText: String, value: Float, range: ClosedFloatingPointRange<Float>, onValueChange: (Float) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-        Slider(
+        LumenSlider(
             value = value,
             onValueChange = onValueChange,
             valueRange = range,
             modifier = Modifier.weight(1f).height(28.dp),
-            colors = SliderDefaults.colors(thumbColor = AmberCore, activeTrackColor = AmberGlow, inactiveTrackColor = GlassSurface)
+
         )
         Spacer(modifier = Modifier.width(8.dp))
-        Text(text = valueText, color = AmberCore, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(44.dp), textAlign = TextAlign.End)
+        Text(text = valueText, color = LumenViolet, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(44.dp), textAlign = TextAlign.End)
     }
 }
 
