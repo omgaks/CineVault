@@ -212,7 +212,22 @@ suspend fun applyCachedMetadataIfAvailable(
     } else {
         item
     }
-    return applyManualArtworkPreference(context, cachedItem)
+    return applyManualArtworkPreference(context, fileAsEpisodeIfNamedLikeOne(cachedItem))
+}
+
+/**
+ * "Show Name Episode 06" files are episodes, whatever an earlier scan or lookup said. File them
+ * under their show right away, without waiting for the online lookup, so Shows never depends on
+ * the network. The lookup later replaces the title with the official show name for every episode.
+ */
+internal fun fileAsEpisodeIfNamedLikeOne(item: VideoWithMetadata): VideoWithMetadata {
+    if (item.type != "movie" || !isBareEpisodeNumberName(item.video.name)) return item
+    val info = extractEpisodeInfo(item.video.name) ?: return item
+    return item.copy(
+        type = "tv",
+        title = info.showName,
+        subtitle = "S${info.season.toString().padStart(2, '0')}E${info.episode.toString().padStart(2, '0')} • ",
+    )
 }
 
 fun hasUsefulOnlineMetadata(item: VideoWithMetadata): Boolean {
