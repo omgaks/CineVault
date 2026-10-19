@@ -82,6 +82,20 @@ class PictureEnhanceController(
     private val performance = PicturePerformanceRuntime()
     private var performancePlan = performance.plan(settings.intensity)
 
+    // The playback surface owner must report real pixel dimensions; density-based
+    // screen metrics are not a valid substitute for the video output surface.
+    private var outputSurfaceWidth = 0
+    private var outputSurfaceHeight = 0
+
+    /**
+     * Called by the playback surface owner with its measured physical pixel size.
+     * A size change never rebuilds an active pipeline mid-playback.
+     */
+    fun updateOutputSurfaceSize(width: Int, height: Int) {
+        outputSurfaceWidth = width.coerceAtLeast(0)
+        outputSurfaceHeight = height.coerceAtLeast(0)
+    }
+
     private var pipelineInstalled = false
     private var installedAtMs = 0L
     private var badDropWindows = 0
@@ -506,16 +520,15 @@ class PictureEnhanceController(
             val anime = content == PictureContent.ANIME
             val hdr = format == null ||
                 PictureHdrRouting.decide(format).route != PictureHdrPolicy.Route.SDR_ENHANCEMENT
-            // The current controller has no verified output-surface dimension provider.
-            // Do not guess from the decoded frame size and accidentally request 4K.
+            // Fail closed until the surface owner supplies actual pixel dimensions.
             val plan = PictureAnime4kPolicy.plan(
                 PictureAnime4kPolicy.Input(
                     animeSelected = anime,
                     sourceWidth = format?.width ?: 0,
                     sourceHeight = format?.height ?: 0,
-                    outputWidth = 0,
-                    outputHeight = 0,
-                    rendererSupportsOutputScaling = false,
+                    outputWidth = outputSurfaceWidth,
+                    outputHeight = outputSurfaceHeight,
+                    rendererSupportsOutputScaling = outputSurfaceWidth >= 3840 && outputSurfaceHeight >= 2160,
                     hdrSource = hdr,
                     thermalLimited = false,
                     droppedFramePressure = badDropWindows > 0,
