@@ -159,8 +159,8 @@ internal fun BoxScope.LumenWindow(
                         drawContent()
                         val p = wipe.value
                         if (p < 1f) {
-                            val y = size.height * p
-                            drawLine(accent.copy(alpha = 1f - p), Offset(0f, y), Offset(size.width, y), 3.dp.toPx())
+                            val y = this.size.height * p
+                            drawLine(accent.copy(alpha = 1f - p), Offset(0f, y), Offset(this.size.width, y), 3.dp.toPx())
                         }
                     }
                     .padding(horizontal = 16.dp, vertical = 14.dp),
