@@ -11,11 +11,17 @@ object PictureHdrRouting {
     @OptIn(UnstableApi::class)
     fun decide(format: Format): PictureHdrPolicy.Decision {
         val colorInfo = format.colorInfo
-        val transfer = if (colorInfo == null) PictureHdrPolicy.Transfer.UNKNOWN else when (colorInfo.colorTransfer) {
+        // Some ordinary SDR AVC files omit container colour-transfer metadata.
+        // Only treat missing transfer as SDR for a narrowly known SDR-only codec.
+        // HEVC, VP9, AV1 and Dolby Vision remain protected when metadata is absent.
+        val missingTransferIsKnownSdr = format.sampleMimeType == MimeTypes.VIDEO_H264 ||
+            format.sampleMimeType == MimeTypes.VIDEO_H263 ||
+            format.sampleMimeType == MimeTypes.VIDEO_MP4V
+        val transfer = when (colorInfo?.colorTransfer) {
             C.COLOR_TRANSFER_ST2084 -> PictureHdrPolicy.Transfer.PQ
             C.COLOR_TRANSFER_HLG -> PictureHdrPolicy.Transfer.HLG
             C.COLOR_TRANSFER_SDR -> PictureHdrPolicy.Transfer.SDR
-            else -> PictureHdrPolicy.Transfer.UNKNOWN
+            else -> if (missingTransferIsKnownSdr) PictureHdrPolicy.Transfer.SDR else PictureHdrPolicy.Transfer.UNKNOWN
         }
         val kind = if (format.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION)
             PictureHdrPolicy.Format.DOLBY_VISION else PictureHdrPolicy.Format.STANDARD
