@@ -112,6 +112,9 @@ internal fun PlayerSubtitleStudioSurfaces(
                 studioUi.menuTouchKey++
             },
             onReset = { subtitleResetCoordinator.reset() },
+            onTracks = { subtitleStudioNavigation.onDockItemTapped(SubtitleDockItem.TRACK) },
+            onAutoSync = { autoSyncCoordinator.runAutoSync() },
+            onSmartSearch = { subtitleStudioNavigation.onDockItemTapped(SubtitleDockItem.SUPER_SUBS) },
             containerSize = containerPx,
             initialOffset = Offset(
                 quickHudOffsetX,
