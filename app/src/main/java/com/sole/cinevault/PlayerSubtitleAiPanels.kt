@@ -70,6 +70,7 @@ fun BoxScope.PlayerSubtitleAiPanels(
         label = speechJobLabel ?: "Speech",
         progress = speechJobProgress,
         onOpen = onShowSpeechPanel,
+        slot = 0,
     )
 
     PlayerFloatingJobOverlay(
@@ -82,6 +83,7 @@ fun BoxScope.PlayerSubtitleAiPanels(
         label = translationJobLabel ?: "Translate",
         progress = translationJobProgress,
         onOpen = onShowTranslationPanel,
+        slot = if (speechJobLabel != null && !showSpeechPanel) 1 else 0,
     )
 
     if (

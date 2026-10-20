@@ -27,6 +27,9 @@ internal object PlayerPillMetrics {
     /** Height of the right-hand column, so floating status pills can stack right under its last pill. */
     var rightColumnHeight: Dp by mutableStateOf(Dp.Unspecified)
 
+    /** Height taken by the auto-sync floating pill when it is showing (0 otherwise), so later pills stack under it. */
+    var autoSyncStackHeight: Dp by mutableStateOf(0.dp)
+
     /** Top offset for a floating pill that sits under the last right pill. */
     fun floatingTop(landscape: Boolean): Dp =
         top(landscape) + (if (rightColumnHeight.isSpecified) rightColumnHeight else 0.dp) + gap(landscape)

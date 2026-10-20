@@ -36,12 +36,9 @@ import com.sole.cinevault.ui.theme.TextBright
 import kotlin.math.roundToInt
 
 /**
- * Long-running job pill.
- *
- * The pill owns normalized coordinates rather than raw pixels. This keeps it
- * on-screen when the player rotates or changes window size. The default safe
- * home is top-right, away from the centre/right subtitle panels seen during
- * Tracks/Studio use. Long-press + drag still lets the user move it.
+ * Long-running job pill. Floating status pills always stack under the last
+ * right-hand pill (and under the auto-sync pill when that is showing).
+ * [slot] is the position in the stack (0 = first). Tapping reopens the window.
  */
 @Composable
 internal fun BoxScope.PlayerFloatingJobOverlay(
@@ -51,49 +48,20 @@ internal fun BoxScope.PlayerFloatingJobOverlay(
     label: String,
     progress: Int?,
     onOpen: () -> Unit,
+    slot: Int = 0,
 ) {
     if (!visible) return
 
-    val density = LocalDensity.current
-    val popupWidth = 190.dp
-    val popupHeight = 56.dp
-    val edgePadding = 14.dp
-
-    var bias by remember { mutableStateOf(DefaultFloatingJobBias) }
-
-    val maxX = with(density) {
-        ((containerWidth - popupWidth) / 2 - edgePadding).coerceAtLeast(0.dp).toPx()
-    }
-    val maxY = with(density) {
-        ((containerHeight - popupHeight) / 2 - edgePadding).coerceAtLeast(0.dp).toPx()
-    }
-
-    // Re-clamp normalized state whenever dimensions change. Because position is
-    // normalized, rotation expands/contracts the travel area without stranding
-    // the pill at stale portrait pixel coordinates.
-    LaunchedEffect(containerWidth, containerHeight) {
-        bias = clampFloatingJobBias(bias.x, bias.y)
-    }
-
+    val landscape = containerWidth > containerHeight
+    val stackStep = 44.dp
     Box(
         modifier = Modifier
-            .align(Alignment.Center)
-            .offset {
-                IntOffset(
-                    x = (bias.x * maxX).roundToInt(),
-                    y = (bias.y * maxY).roundToInt(),
-                )
-            }
-            .pointerInput(maxX, maxY) {
-                detectDragGesturesAfterLongPress { change, dragAmount ->
-                    change.consume()
-                    val nextX =
-                        if (maxX > 0f) bias.x + (dragAmount.x / maxX) else bias.x
-                    val nextY =
-                        if (maxY > 0f) bias.y + (dragAmount.y / maxY) else bias.y
-                    bias = clampFloatingJobBias(nextX, nextY)
-                }
-            }
+            .align(Alignment.TopEnd)
+            .padding(
+                top = PlayerPillMetrics.floatingTop(landscape) +
+                    PlayerPillMetrics.autoSyncStackHeight + stackStep * slot,
+                end = PlayerPillMetrics.end,
+            )
     ) {
         FloatingJobPill(
             label = label,
@@ -126,13 +94,8 @@ private fun FloatingJobPill(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .widthIn(max = 190.dp)
-            .clip(RoundedCornerShape(50))
-            .background(SpaceDeep.copy(alpha = 0.86f))
-            .border(
-                width = 1.dp,
-                color = AmberGlow.copy(alpha = 0.55f),
-                shape = RoundedCornerShape(50),
-            )
+            .lumenFrame(LumenGold)
+            .clip(LumenShape)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 9.dp),
     ) {
