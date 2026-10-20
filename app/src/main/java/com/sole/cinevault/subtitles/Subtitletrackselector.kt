@@ -1,5 +1,7 @@
 package com.sole.cinevault.subtitles
 
+import com.sole.cinevault.lumenFrame
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -76,8 +78,7 @@ fun SubtitleTrackSelectorSheet(
                 min = (popupMaxHeight * 0.72f).coerceAtMost(popupMaxHeight),
                 max = popupMaxHeight
             )
-            .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.84f))
-            .border(1.dp, AmberCore.copy(alpha = 0.20f), RoundedCornerShape(20.dp))
+            .lumenFrame(com.sole.cinevault.LumenGold)
             .padding(13.dp)
     ) {
         Row(

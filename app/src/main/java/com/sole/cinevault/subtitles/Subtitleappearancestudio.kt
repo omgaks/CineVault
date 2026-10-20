@@ -1,5 +1,7 @@
 package com.sole.cinevault.subtitles
 
+import com.sole.cinevault.lumenFrame
+
 import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -92,7 +94,7 @@ fun SubtitleAppearanceStudioSheet(
         modifier = Modifier
             .width(popupWidth)
             .heightIn(max = popupMaxHeight)
-            .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.82f))
+            .lumenFrame(com.sole.cinevault.LumenGold)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {

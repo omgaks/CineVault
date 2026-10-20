@@ -1,5 +1,7 @@
 package com.sole.cinevault.subtitles
 
+import com.sole.cinevault.lumenFrame
+
 import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -88,7 +90,7 @@ fun SubtitleSettingsMenu(
     Column(
         modifier = Modifier
             .width(popupWidth)
-            .glassPanel(cornerRadius = if (isLandscape) 18.dp else 22.dp, fill = SpaceMid.copy(alpha = 0.97f))
+            .lumenFrame(com.sole.cinevault.LumenGold)
             .clickable { onUserInteraction() }
             .padding(horizontal = if (isLandscape) 11.dp else 13.dp, vertical = if (isLandscape) 10.dp else 12.dp),
         verticalArrangement = Arrangement.spacedBy(if (isLandscape) 9.dp else 11.dp)

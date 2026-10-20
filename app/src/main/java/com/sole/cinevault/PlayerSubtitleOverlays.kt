@@ -115,7 +115,7 @@ fun BoxScope.SubtitleQuickMenuAndTrackSelector(
         visible = showTrackSelector,
         enter = fadeIn(animationSpec = tween(150)),
         exit = fadeOut(animationSpec = tween(180)),
-        modifier = Modifier.align(Alignment.CenterEnd).padding(end = studioRightInset)
+        modifier = Modifier.align(Alignment.BottomEnd).padding(end = LumenRailState.endInset, bottom = LumenRailState.bottomInset)
     ) {
         DraggableFloatingPopup(
             containerWidth = containerWidth,
@@ -188,7 +188,7 @@ fun BoxScope.SubtitleAcquisitionFlow(
         visible = showSubtitleSearch,
         enter = fadeIn(animationSpec = tween(150)),
         exit = fadeOut(animationSpec = tween(180)),
-        modifier = Modifier.align(Alignment.CenterEnd).padding(end = studioRightInset)
+        modifier = Modifier.align(Alignment.BottomEnd).padding(end = LumenRailState.endInset, bottom = LumenRailState.bottomInset)
     ) {
         SubtitleSearchSheet(
             initialQuery = initialSearchQuery,
@@ -322,7 +322,7 @@ fun BoxScope.SubtitleSyncAndAppearancePopups(
         visible = showAppearanceStudio,
         enter = fadeIn(animationSpec = tween(150)),
         exit = fadeOut(animationSpec = tween(180)),
-        modifier = Modifier.align(Alignment.CenterEnd).padding(end = studioRightInset)
+        modifier = Modifier.align(Alignment.BottomEnd).padding(end = LumenRailState.endInset, bottom = LumenRailState.bottomInset)
     ) {
         DraggableFloatingPopup(
             containerWidth = containerWidth,

@@ -1,4 +1,6 @@
 package com.sole.cinevault.subtitles
+
+import com.sole.cinevault.lumenFrame
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -115,8 +117,7 @@ fun SubtitleFallbackSheet(
             modifier = Modifier
                 .widthIn(min = 300.dp, max = 390.dp)
                 .heightIn(max = 560.dp)
-                .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.84f))
-                .border(1.dp, AmberCore.copy(alpha = 0.20f), RoundedCornerShape(20.dp))
+                .lumenFrame(com.sole.cinevault.LumenGold)
                 .verticalScroll(rememberScrollState())
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -231,7 +232,7 @@ fun EmbeddedSubtitleBrowser(query: String, preferredLanguage: String, onImported
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.42f)).padding(end = 20.dp), contentAlignment = Alignment.CenterEnd) {
-        Column(Modifier.padding(12.dp).widthIn(min = 420.dp, max = 720.dp).fillMaxWidth(0.72f).heightIn(min = 58.dp, max = 620.dp).glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.92f)).border(1.dp, AmberCore.copy(alpha = 0.18f), RoundedCornerShape(20.dp))) {
+        Column(Modifier.padding(12.dp).widthIn(min = 420.dp, max = 720.dp).fillMaxWidth(0.72f).heightIn(min = 58.dp, max = 620.dp).lumenFrame(com.sole.cinevault.LumenGold)) {
             Row(Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.Language, null, tint = AmberCore)
                 Text("  WEB · OpenSubtitles", color = AmberCore, fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, modifier = Modifier.weight(1f))
