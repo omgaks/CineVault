@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import com.sole.cinevault.lumenFrame
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -48,7 +49,7 @@ import kotlin.math.roundToInt
 private enum class PicturePage { MAIN, FINE }
 
 @Composable
-fun PicturePanelHost(controller: PictureEnhanceController) {
+fun PicturePanelHost(controller: PictureEnhanceController, railBottomInset: Dp = 120.dp) {
     val configuration = LocalConfiguration.current
     LaunchedEffect(configuration.orientation, configuration.screenWidthDp, configuration.screenHeightDp) {
         delay(450)
@@ -113,15 +114,15 @@ fun PicturePanelHost(controller: PictureEnhanceController) {
                 controller = controller,
                 page = page,
                 onPage = { page = it },
-                maxPanelHeight = maxHeight - 32.dp,
+                maxPanelHeight = (maxHeight - railBottomInset - 12.dp).coerceAtLeast(160.dp),
                 dragHandle = Modifier.pointerInput(containerW, containerH, panelSize) {
                     detectDragGestures { change, drag ->
                         change.consume()
                         val minX = -(containerW - panelSize.width - marginPx).coerceAtLeast(0f)
-                        val maxY = ((containerH - panelSize.height) / 2f).coerceAtLeast(0f)
+                        val maxUp = (containerH - panelSize.height - marginPx).coerceAtLeast(0f)
                         panelOffset = Offset(
                             (panelOffset.x + drag.x).coerceIn(minX, marginPx),
-                            (panelOffset.y + drag.y).coerceIn(-maxY, maxY),
+                            (panelOffset.y + drag.y).coerceIn(-maxUp, 0f),
                         )
                     }
                 },
@@ -129,8 +130,8 @@ fun PicturePanelHost(controller: PictureEnhanceController) {
                 onToggleSplit = { controller.toggleSplit() },
                 onResetAll = { controller.resetAll() },
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 12.dp)
+                    .align(Alignment.BottomEnd)
+                    .padding(end = com.sole.cinevault.lumenRailEndInset(), bottom = railBottomInset)
                     .offset { IntOffset(panelOffset.x.roundToInt(), panelOffset.y.roundToInt()) }
                     .onSizeChanged { panelSize = it }
                     .graphicsLayer(alpha = panelAlpha),
@@ -232,9 +233,8 @@ private fun PicturePanel(
     val on = settings.preset != PicturePreset.OFF
 
     Column(
-        modifier.widthIn(min = 292.dp, max = 360.dp).heightIn(max = maxPanelHeight)
-            .glassPanel(cornerRadius = 24.dp, fill = GlassSurfaceStrong.copy(alpha = .90f))
-            .border(1.dp, AmberCore.copy(alpha = .24f), RoundedCornerShape(24.dp))
+        modifier.widthIn(min = 280.dp, max = 340.dp).heightIn(max = maxPanelHeight)
+            .lumenFrame(com.sole.cinevault.LumenRose)
             .blockTaps().verticalScroll(rememberScrollState()).padding(14.dp)
     ) {
         if (page == PicturePage.MAIN) {

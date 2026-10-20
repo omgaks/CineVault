@@ -52,5 +52,6 @@ internal fun rememberPlayerMenuCloseRuntime(
                 setShowDualSubsWindow = onShowDualSubsWindowChanged,
             )
         },
+        closeConnect = { PlayerConnectUi.visible = false },
     )
 }

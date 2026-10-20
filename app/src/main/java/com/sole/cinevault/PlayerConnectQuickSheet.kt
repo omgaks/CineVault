@@ -20,8 +20,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.sole.cinevault.network.CineVaultConnectState
 import com.sole.cinevault.network.CineVaultNearbyRuntime
 import com.sole.cinevault.network.DiscoveredNetworkDevice
@@ -33,127 +31,116 @@ private val ConnectCyan = Color(0xFF39D9FF)
 private val ConnectViolet = Color(0xFF9C7CFF)
 private val ConnectGreen = Color(0xFF5BE39D)
 
+/** Shared on/off for the Connect window: the pill toggles it, the close coordinator closes it. */
+internal object PlayerConnectUi {
+    var visible by mutableStateOf(false)
+}
+
 @Composable
-internal fun PlayerConnectQuickSheet(
-    runtime: CineVaultNearbyRuntime,
-    state: CineVaultConnectState,
-    onDismiss: () -> Unit,
+internal fun BoxScope.PlayerConnectWindow(
+    isLandscape: Boolean,
+    railBottomInset: Dp,
+    keepControlsVisible: () -> Unit,
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        BoxWithConstraints(
-            Modifier.fillMaxSize().padding(16.dp),
-            contentAlignment = Alignment.TopEnd,
-        ) {
-            val width = when {
-                maxWidth >= 1000.dp -> 460.dp
-                maxWidth >= 600.dp -> 420.dp
-                else -> maxWidth.coerceAtMost(380.dp)
-            }
-            Column(
-                Modifier.width(width)
-                    .heightIn(max = maxHeight - 32.dp)
-                    .background(Color(0xF217191F), RoundedCornerShape(28.dp))
-                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(28.dp))
-                    .verticalScroll(rememberScrollState())
-                    .padding(18.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        Modifier.size(42.dp)
-                            .background(AmberCore.copy(alpha = 0.13f), CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Rounded.CastConnected, null, tint = AmberCore)
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Quick Connect", color = TextBright, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text(state.statusLabel, color = statusAccent(state), fontSize = 12.sp)
-                    }
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Rounded.Close, "Close", tint = TextMuted)
-                    }
-                }
-
-                Spacer(Modifier.height(16.dp))
-                ProviderStrip(
-                    title = "CineVault",
-                    subtitle = "Nearby library • direct stream",
-                    icon = Icons.Rounded.Devices,
-                    accent = ConnectViolet,
-                    active = state.isConnected || state.isProviding,
-                )
-                ProviderStrip(
-                    title = "Cast",
-                    subtitle = "Chromecast / Google TV",
-                    icon = Icons.Rounded.Cast,
-                    accent = ConnectCyan,
-                    active = false,
-                    note = "Cast integration follows Connect 3",
-                )
-                ProviderStrip(
-                    title = "Media Servers",
-                    subtitle = "Jellyfin • Emby • DLNA",
-                    icon = Icons.Rounded.Dns,
-                    accent = AmberCore,
-                    active = false,
-                    note = "Available from Network",
-                )
-
-                Spacer(Modifier.height(12.dp))
-                if (state.remoteConnection != null) {
-                    ConnectedPeerCard(
-                        state.remoteConnection.device,
-                        onDisconnect = runtime::disconnectPeer,
-                    )
-                } else {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        QuickAction(
-                            label = if (state.isBusy) "Finding…" else "Find CineVaults",
-                            icon = Icons.Rounded.Radar,
-                            accent = ConnectCyan,
-                            enabled = !state.isBusy,
-                            onClick = runtime::findCineVaultPeers,
-                        )
-                    }
-
-                    if (state.discoveredPeers.isNotEmpty()) {
-                        Spacer(Modifier.height(14.dp))
-                        Text("NEARBY", color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(7.dp))
-                        state.discoveredPeers.forEach { peer ->
-                            NearbyPeer(
-                                peer = peer,
-                                connecting = state.connectingPeer?.id == peer.id,
-                                onClick = { runtime.connectToPeer(peer) },
-                            )
-                            Spacer(Modifier.height(7.dp))
-                        }
-                    } else {
-                        Spacer(Modifier.height(14.dp))
-                        Text(
-                            "Tap Find CineVaults. Devices sharing on the same local network will appear here.",
-                            color = TextMuted,
-                            fontSize = 12.sp,
-                            lineHeight = 17.sp,
-                        )
-                    }
-                }
-
-                if (state.isProviding) {
-                    Spacer(Modifier.height(14.dp))
-                    Text(
-                        "Your library is also visible nearby — sharing stays active while you connect.",
-                        color = ConnectViolet,
-                        fontSize = 11.sp,
-                    )
-                }
-            }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val runtime = remember(context) { CineVaultNearbyRuntime.get(context) }
+    val state by runtime.connectState.collectAsState()
+    val visible = PlayerConnectUi.visible
+    LaunchedEffect(visible) {
+        while (visible) {
+            keepControlsVisible()
+            kotlinx.coroutines.delay(1500)
         }
     }
+    LumenWindow(
+        visible = visible,
+        accent = LumenSky,
+        title = "Quick Connect",
+        icon = Icons.Rounded.CastConnected,
+        size = LumenSize.M,
+        isLandscape = isLandscape,
+        bottomInset = railBottomInset,
+    ) {
+        Text(state.statusLabel, color = statusAccent(state), fontSize = LumenType.caption, fontWeight = FontWeight.Bold)
+        ConnectContent(runtime, state)
+    }
+}
+
+@Composable
+private fun ConnectContent(runtime: CineVaultNearbyRuntime, state: CineVaultConnectState) {
+        Spacer(Modifier.height(16.dp))
+        ProviderStrip(
+            title = "CineVault",
+            subtitle = "Nearby library • direct stream",
+            icon = Icons.Rounded.Devices,
+            accent = ConnectViolet,
+            active = state.isConnected || state.isProviding,
+        )
+        ProviderStrip(
+            title = "Cast",
+            subtitle = "Chromecast / Google TV",
+            icon = Icons.Rounded.Cast,
+            accent = ConnectCyan,
+            active = false,
+            note = "Cast integration follows Connect 3",
+        )
+        ProviderStrip(
+            title = "Media Servers",
+            subtitle = "Jellyfin • Emby • DLNA",
+            icon = Icons.Rounded.Dns,
+            accent = AmberCore,
+            active = false,
+            note = "Available from Network",
+        )
+
+        Spacer(Modifier.height(12.dp))
+        if (state.remoteConnection != null) {
+            ConnectedPeerCard(
+                state.remoteConnection.device,
+                onDisconnect = runtime::disconnectPeer,
+            )
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                QuickAction(
+                    label = if (state.isBusy) "Finding…" else "Find CineVaults",
+                    icon = Icons.Rounded.Radar,
+                    accent = ConnectCyan,
+                    enabled = !state.isBusy,
+                    onClick = runtime::findCineVaultPeers,
+                )
+            }
+
+            if (state.discoveredPeers.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                Text("NEARBY", color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(7.dp))
+                state.discoveredPeers.forEach { peer ->
+                    NearbyPeer(
+                        peer = peer,
+                        connecting = state.connectingPeer?.id == peer.id,
+                        onClick = { runtime.connectToPeer(peer) },
+                    )
+                    Spacer(Modifier.height(7.dp))
+                }
+            } else {
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "Tap Find CineVaults. Devices sharing on the same local network will appear here.",
+                    color = TextMuted,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                )
+            }
+        }
+
+        if (state.isProviding) {
+            Spacer(Modifier.height(14.dp))
+            Text(
+                "Your library is also visible nearby — sharing stays active while you connect.",
+                color = ConnectViolet,
+                fontSize = 11.sp,
+            )
+        }
 }
 
 @Composable
@@ -168,8 +155,8 @@ private fun ProviderStrip(
     Row(
         Modifier.fillMaxWidth()
             .padding(vertical = 4.dp)
-            .background(accent.copy(alpha = if (active) 0.12f else 0.055f), RoundedCornerShape(16.dp))
-            .border(1.dp, accent.copy(alpha = if (active) 0.42f else 0.16f), RoundedCornerShape(16.dp))
+            .background(accent.copy(alpha = if (active) 0.12f else 0.055f), LumenCardShape)
+            .border(1.dp, accent.copy(alpha = if (active) 0.42f else 0.16f), LumenCardShape)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -200,11 +187,11 @@ private fun NearbyPeer(
     )
     Row(
         Modifier.fillMaxWidth()
-            .background(ConnectViolet.copy(alpha = 0.07f), RoundedCornerShape(15.dp))
+            .background(ConnectViolet.copy(alpha = 0.07f), LumenCardShape)
             .border(
                 1.dp,
                 ConnectViolet.copy(alpha = if (connecting) pulse else 0.20f),
-                RoundedCornerShape(15.dp),
+                LumenCardShape,
             )
             .clickable(enabled = !connecting, onClick = onClick)
             .padding(12.dp),
@@ -231,8 +218,8 @@ private fun ConnectedPeerCard(
 ) {
     Column(
         Modifier.fillMaxWidth()
-            .background(ConnectGreen.copy(alpha = 0.09f), RoundedCornerShape(18.dp))
-            .border(1.dp, ConnectGreen.copy(alpha = 0.36f), RoundedCornerShape(18.dp))
+            .background(ConnectGreen.copy(alpha = 0.09f), LumenCardShape)
+            .border(1.dp, ConnectGreen.copy(alpha = 0.36f), LumenCardShape)
             .padding(14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -257,8 +244,8 @@ private fun QuickAction(
     onClick: () -> Unit,
 ) {
     Row(
-        Modifier.background(accent.copy(alpha = 0.10f), RoundedCornerShape(50))
-            .border(1.dp, accent.copy(alpha = 0.40f), RoundedCornerShape(50))
+        Modifier.background(accent.copy(alpha = 0.10f), LumenCardShape)
+            .border(1.dp, accent.copy(alpha = 0.40f), LumenCardShape)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 13.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,

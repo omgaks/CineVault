@@ -184,6 +184,12 @@ internal fun BoxScope.PlayerMainControlsChrome(
                 onShowSleepMenuChanged(!wasOpen)
                 onShowControlsChanged(true)
             },
+            onConnectClick = {
+                val wasOpen = PlayerConnectUi.visible
+                playerMenuCloseCoordinator.closeAll()
+                PlayerConnectUi.visible = !wasOpen
+                onShowControlsChanged(true)
+            },
             onPipClick = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     val actions =

@@ -150,10 +150,7 @@ fun PlaybackInfoPanel(
     Column(
         modifier = modifier
             .widthIn(min = 280.dp, max = 330.dp)
-            .fillMaxHeight(0.78f)
-            .shadow(10.dp, shape, ambientColor = edge, spotColor = edge)
-            .background(DiagnosticsGlass, shape)
-            .border(1.3.dp, edge.copy(alpha = 0.85f), shape)
+            .lumenFrame(edge)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(11.dp),

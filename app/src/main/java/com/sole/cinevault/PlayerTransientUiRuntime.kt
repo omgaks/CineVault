@@ -25,6 +25,7 @@ internal fun playerTransientUiSnapshot(
     speedMenu: Boolean,
     sleepMenu: Boolean,
     srtBrowser: Boolean,
+    connectWindow: Boolean = false,
 ): PlayerTransientUiSnapshot = PlayerTransientUiSnapshot(
     audioSelector = audioSelector,
     audioFxDashboard = audioFxDashboard,
@@ -43,4 +44,5 @@ internal fun playerTransientUiSnapshot(
     speedMenu = speedMenu,
     sleepMenu = sleepMenu,
     srtBrowser = srtBrowser,
+    connectWindow = connectWindow,
 )
