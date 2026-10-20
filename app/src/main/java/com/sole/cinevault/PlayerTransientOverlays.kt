@@ -61,7 +61,7 @@ private fun cleanEpisodeDisplayName(fileName: String): String {
 internal fun NextEpisodeCountdownOverlay(nextEpisode: VideoWithMetadata?, countdown: Int, isLandscape: Boolean, onPlayNow: () -> Unit, onCancel: () -> Unit) {
     if (nextEpisode == null) return
     Column(modifier = Modifier.widthIn(min = if (isLandscape) 260.dp else 270.dp, max = if (isLandscape) 330.dp else 310.dp)
-        .glassPanel(cornerRadius = 22.dp, fill = GlassSurfaceStrong)
+        .lumenFrame(LumenGold)
         .padding(horizontal = 16.dp, vertical = 14.dp), horizontalAlignment = Alignment.Start) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Text(text = "UP NEXT", color = AmberCore, fontSize = 11.sp, fontWeight = FontWeight.Black)
@@ -71,8 +71,8 @@ internal fun NextEpisodeCountdownOverlay(nextEpisode: VideoWithMetadata?, countd
         Text(text = if (nextEpisode.type.equals("tv", ignoreCase = true)) nextEpisode.subtitle.ifBlank { cleanEpisodeDisplayName(nextEpisode.video.name) } else nextEpisode.title.ifBlank { cleanEpisodeDisplayName(nextEpisode.video.name) }, color = TextBright, fontSize = if (isLandscape) 13.sp else 14.sp, fontWeight = FontWeight.Bold, maxLines = 2)
         Spacer(modifier = Modifier.height(11.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(text = "Play Now", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.clip(RoundedCornerShape(50)).background(AmberCore).clickable { onPlayNow() }.padding(horizontal = 15.dp, vertical = 8.dp))
-            Text(text = "Cancel", color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.12f)).clickable { onCancel() }.padding(horizontal = 15.dp, vertical = 8.dp))
+            Text(text = "Play Now", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.clip(LumenShape).background(LumenGold).clickable { onPlayNow() }.padding(horizontal = 15.dp, vertical = 8.dp))
+            Text(text = "Cancel", color = TextBright, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clip(LumenShape).background(Color.White.copy(alpha = 0.12f)).clickable { onCancel() }.padding(horizontal = 15.dp, vertical = 8.dp))
         }
     }
 }
