@@ -15,6 +15,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import kotlin.math.roundToInt
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.graphicsLayer
 
 /**
@@ -57,12 +58,18 @@ fun DraggableStudioWindow(
     var userMoved by remember(initialOffset) { mutableStateOf(false) }
     var windowSize by remember { mutableStateOf(IntSize.Zero) }
 
+    // Every subtitle window now opens on the Lumen right rail (bottom right, clear of the right
+    // pills and above the seek bar) until the user drags it somewhere else.
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val railEndPx = with(density) { com.sole.cinevault.LumenRailState.endInset.toPx() }
+    val railBottomPx = with(density) { com.sole.cinevault.LumenRailState.bottomInset.toPx() }
+    val topMarginPx = with(density) { 12.dp.toPx() }
     val measured = windowSize != IntSize.Zero
-    val anchored = anchorCenterEnd && !userMoved && measured
+    val anchored = !userMoved && measured
     val effective = if (anchored) {
         Offset(
-            x = (containerSize.width - windowSize.width - anchorMarginPx).coerceAtLeast(0f),
-            y = ((containerSize.height - windowSize.height) / 2f).coerceAtLeast(0f),
+            x = (containerSize.width - windowSize.width - railEndPx).coerceAtLeast(0f),
+            y = (containerSize.height - windowSize.height - railBottomPx).coerceAtLeast(topMarginPx),
         )
     } else {
         offset
@@ -87,7 +94,7 @@ fun DraggableStudioWindow(
             .onGloballyPositioned { windowSize = it.size }
             // Stay invisible for the one frame before the window has been measured, so an
             // anchored window never flashes at the wrong spot.
-            .graphicsLayer(alpha = if (anchorCenterEnd && !measured) 0f else 1f)
+            .graphicsLayer(alpha = if (!measured) 0f else 1f)
             .offset { IntOffset(effective.x.roundToInt(), effective.y.roundToInt()) }
     ) {
         content(dragModifier)

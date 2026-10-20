@@ -1373,6 +1373,13 @@ fun VideoPlayerScreen(
             onPreviewBitmapChanged = { gestureUi.previewBitmap = it },
         )
 
+        val lumenEndInset = lumenRailEndInset()
+        val lumenBottomInset = playerLayout.bottomDockPadding + playerLayout.playButton + 64.dp
+        androidx.compose.runtime.SideEffect {
+            LumenRailState.endInset = lumenEndInset
+            LumenRailState.bottomInset = lumenBottomInset
+        }
+
         LumenWindow(
             visible = showAudioFxDashboard,
             accent = LumenViolet,

@@ -36,6 +36,8 @@ import com.sole.cinevault.ui.theme.TextBright
 import com.sole.cinevault.ui.theme.TextFaint
 import com.sole.cinevault.ui.theme.TextMuted
 import com.sole.cinevault.ui.theme.glassPanel
+import com.sole.cinevault.lumenFrame
+import com.sole.cinevault.LumenGold
 
 private const val DELAY_STEP_SECONDS = 0.1f
 
@@ -70,9 +72,8 @@ fun QuickHud(
             modifier = Modifier
                 // Width comes from the player's current adaptive window policy.
                 .width(windowWidth)
-                .glassPanel(cornerRadius = 16.dp, fill = GlassSurfaceStrong.copy(alpha = 0.82f))
-                .border(1.dp, AmberCore.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
-                .padding(10.dp)
+                .lumenFrame(LumenGold)
+                .padding(12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().then(dragHandleModifier),
