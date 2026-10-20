@@ -393,3 +393,10 @@ internal val LumenRose = Color(0xFFFF6E8C)
 internal val LumenSky = Color(0xFF6FC3FF)
 internal val LumenMint = Color(0xFF7CE0C3)
 internal val LumenGold = Color(0xFFFFC94D)
+
+
+/** Where the right rail sits, shared with windows that position themselves (the subtitle windows). */
+internal object LumenRailState {
+    var bottomInset: Dp by mutableStateOf(150.dp)
+    var endInset: Dp by mutableStateOf(150.dp)
+}

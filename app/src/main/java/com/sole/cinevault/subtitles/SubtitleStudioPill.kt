@@ -62,6 +62,8 @@ import com.sole.cinevault.ui.theme.TextBright
 import com.sole.cinevault.ui.theme.TextFaint
 import com.sole.cinevault.ui.theme.TextMuted
 import com.sole.cinevault.ui.theme.glassPanel
+import com.sole.cinevault.lumenFrame
+import com.sole.cinevault.LumenGold
 import com.sole.cinevault.blockTapThrough
 
 enum class StudioCategory { DOWNLOAD, STYLE, POWER_TOOLS, SETTINGS }
@@ -153,8 +155,7 @@ fun StudioListWindow(
         Column(
             modifier = Modifier
                 .widthIn(min = 232.dp, max = 286.dp)
-                .glassPanel(cornerRadius = 16.dp, fill = GlassSurfaceStrong.copy(alpha = 0.82f))
-                .border(1.dp, AmberCore.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
+                .lumenFrame(LumenGold)
                 .padding(10.dp)
         ) {
             Row(
@@ -276,9 +277,7 @@ fun DualSubsWindow(
         Column(
             modifier = Modifier
                 .widthIn(min = 230.dp, max = 270.dp)
-                .clip(RoundedCornerShape(16.dp))
-                // Mostly opaque so the text stays readable over bright pictures.
-                .background(GlassSurfaceStrong.copy(alpha = 0.94f))
+                .lumenFrame(LumenGold)
                 .blockTapThrough()
                 .padding(12.dp)
         ) {
@@ -671,7 +670,7 @@ fun SubtitleBehaviourWindow(
 ) {
     val density = androidx.compose.ui.platform.LocalDensity.current
     val containerHeightDp = with(density) { containerSize.height.toDp() }
-    val maxWindowHeight = (containerHeightDp - 40.dp).coerceAtLeast(220.dp)
+    val maxWindowHeight = (containerHeightDp - com.sole.cinevault.LumenRailState.bottomInset - 12.dp).coerceAtLeast(220.dp)
 
     DraggableStudioWindow(
         initialOffset = initialOffset,
@@ -682,8 +681,7 @@ fun SubtitleBehaviourWindow(
             modifier = Modifier
                 .widthIn(min = 280.dp, max = 330.dp)
                 .heightIn(max = maxWindowHeight)
-                .glassPanel(cornerRadius = 18.dp, fill = GlassSurfaceStrong.copy(alpha = 0.82f))
-                .border(1.dp, AmberCore.copy(alpha = 0.18f), RoundedCornerShape(18.dp))
+                .lumenFrame(LumenGold)
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false)
