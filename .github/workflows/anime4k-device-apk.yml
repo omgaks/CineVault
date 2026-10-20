@@ -26,6 +26,18 @@ jobs:
           java-version: "17"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
+      # A distinct application ID allows side-by-side installation without
+      # touching the user's existing signed CineVault or its private data.
+      - name: Set separate test application ID
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("app/build.gradle.kts")
+          text = path.read_text()
+          original = 'applicationId = "com.sole.cinevault"'
+          assert text.count(original) == 1, "Unexpected application ID configuration"
+          path.write_text(text.replace(original, 'applicationId = "com.sole.cinevault.anime4ktest"'))
+          PY
       - name: Build device-test APK
         run: bash gradlew assembleDebug --no-daemon
       - name: Upload installable APK
