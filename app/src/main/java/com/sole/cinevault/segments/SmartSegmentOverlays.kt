@@ -39,7 +39,9 @@ import com.sole.cinevault.ui.theme.AmberCore
 import com.sole.cinevault.ui.theme.AmberGlow
 import com.sole.cinevault.ui.theme.GlassSurfaceStrong
 import com.sole.cinevault.ui.theme.TextBright
-import com.sole.cinevault.ui.theme.glassPanel
+import com.sole.cinevault.LumenGold
+import com.sole.cinevault.LumenShape
+import com.sole.cinevault.lumenFrame
 
 @Composable
 fun SmartSkipPill(segment: SmartSegment, remainingMs: Long, onClick: () -> Unit) {
@@ -53,8 +55,8 @@ fun SmartSkipPill(segment: SmartSegment, remainingMs: Long, onClick: () -> Unit)
     }
     Column(horizontalAlignment = Alignment.End) {
         Row(
-            modifier = Modifier.clip(RoundedCornerShape(24.dp))
-                .background(Brush.horizontalGradient(listOf(AmberCore, AmberGlow)))
+            modifier = Modifier.clip(LumenShape)
+                .background(Brush.horizontalGradient(listOf(LumenGold, AmberGlow)))
                 .clickable(onClick = onClick)
                 .padding(horizontal = 16.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -65,8 +67,8 @@ fun SmartSkipPill(segment: SmartSegment, remainingMs: Long, onClick: () -> Unit)
         Spacer(Modifier.height(4.dp))
         Text(
             text = "${(remainingMs.coerceAtLeast(0L) / 1000L)}s remaining · ${segment.source}",
-            color = TextBright.copy(alpha = 0.72f), fontSize = 10.sp,
-            modifier = Modifier.glassPanel(12.dp, GlassSurfaceStrong).padding(horizontal = 8.dp, vertical = 3.dp)
+            color = TextBright.copy(alpha = 0.72f), fontSize = 10.5.sp,
+            modifier = Modifier.lumenFrame(LumenGold).padding(horizontal = 10.dp, vertical = 4.dp)
         )
     }
 }
@@ -84,7 +86,7 @@ fun PostCreditNotice(
 ) {
     Column(
         modifier = Modifier.widthIn(min = 240.dp, max = 320.dp)
-            .glassPanel(24.dp, GlassSurfaceStrong)
+            .lumenFrame(LumenGold)
             .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -122,7 +124,7 @@ fun PostCreditNotice(
             }
             evidence?.let {
                 Spacer(Modifier.height(3.dp))
-                Text("from $it", color = TextBright.copy(alpha = 0.60f), fontSize = 10.sp)
+                Text("from $it", color = TextBright.copy(alpha = 0.60f), fontSize = 10.5.sp)
             }
         }
 
@@ -143,7 +145,7 @@ fun PostCreditNotice(
             Spacer(Modifier.height(6.dp))
             Text(
                 "Couldn't pin the time. $detail",
-                color = TextBright.copy(alpha = 0.55f), fontSize = 10.sp, lineHeight = 13.sp
+                color = TextBright.copy(alpha = 0.55f), fontSize = 10.5.sp, lineHeight = 13.sp
             )
         }
     }
