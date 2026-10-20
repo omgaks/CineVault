@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
 
 /**
  * Shared sizes for the floating player pills so the lock pill, the right-hand
@@ -22,4 +23,11 @@ internal object PlayerPillMetrics {
 
     /** Width of the right-hand column, reported by the column so the lock pill can match it. */
     var rightColumnWidth: Dp by mutableStateOf(Dp.Unspecified)
+
+    /** Height of the right-hand column, so floating status pills can stack right under its last pill. */
+    var rightColumnHeight: Dp by mutableStateOf(Dp.Unspecified)
+
+    /** Top offset for a floating pill that sits under the last right pill. */
+    fun floatingTop(landscape: Boolean): Dp =
+        top(landscape) + (if (rightColumnHeight.isSpecified) rightColumnHeight else 0.dp) + gap(landscape)
 }
