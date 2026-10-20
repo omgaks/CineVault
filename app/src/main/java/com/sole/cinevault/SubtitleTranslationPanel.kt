@@ -89,10 +89,7 @@ fun SubtitleTranslationPanel(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .glassPanel(
-                cornerRadius = 20.dp,
-                fill = GlassSurfaceStrong.copy(alpha = 0.82f),
-            )
+            .lumenFrame(com.sole.cinevault.LumenGold)
             .border(
                 1.dp,
                 AmberCore.copy(alpha = 0.20f),

@@ -80,10 +80,7 @@ fun SubtitleGenerationMenu(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .glassPanel(
-                cornerRadius = 22.dp,
-                fill = GlassSurfaceStrong,
-            )
+            .lumenFrame(com.sole.cinevault.LumenGold)
             .padding(16.dp)
     ) {
         Row(

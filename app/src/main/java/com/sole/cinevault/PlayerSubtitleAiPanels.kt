@@ -107,10 +107,10 @@ fun BoxScope.PlayerSubtitleAiPanels(
             )
             Box(
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 12.dp)
+                    .align(Alignment.BottomEnd)
+                    .padding(end = LumenRailState.endInset, bottom = LumenRailState.bottomInset)
                     .width(panelWidth)
-                    .heightIn(max = (containerHeight * 0.85f).coerceAtMost(440.dp))
+                    .heightIn(max = (containerHeight - LumenRailState.bottomInset - 12.dp).coerceAtLeast(200.dp))
                     .blockTapThrough()
             ) {
                     SpeechSubtitlePanel(
@@ -158,10 +158,10 @@ fun BoxScope.PlayerSubtitleAiPanels(
             // The 59-language list used to stretch this panel to the full screen height.
             Box(
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 12.dp)
+                    .align(Alignment.BottomEnd)
+                    .padding(end = LumenRailState.endInset, bottom = LumenRailState.bottomInset)
                     .width(panelWidth)
-                    .heightIn(max = (containerHeight * 0.80f).coerceAtMost(420.dp))
+                    .heightIn(max = (containerHeight - LumenRailState.bottomInset - 12.dp).coerceAtLeast(200.dp))
                     .blockTapThrough()
             ) {
                     SubtitleTranslationPanel(

@@ -1,5 +1,7 @@
 package com.sole.cinevault.subtitles
 
+import com.sole.cinevault.lumenFrame
+
 import com.sole.cinevault.CineVaultToast
 
 import androidx.compose.foundation.background
@@ -97,10 +99,7 @@ fun SubtitleSearchSheet(
             }
             .width(popupWidth)
             .heightIn(max = popupMaxHeight)
-            .glassPanel(
-                cornerRadius = 20.dp,
-                fill = SpaceMid.copy(alpha = 0.84f)
-            )
+            .lumenFrame(com.sole.cinevault.LumenGold)
             .border(
                 1.dp,
                 AmberCore.copy(alpha = 0.20f),

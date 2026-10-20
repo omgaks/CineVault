@@ -1,5 +1,7 @@
 package com.sole.cinevault.subtitles
 
+import com.sole.cinevault.lumenFrame
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -168,7 +170,7 @@ fun SubtitleStudioSheet(
             .offset { IntOffset(dragOffsetX.roundToInt(), dragOffsetY.roundToInt()) }
             .width(panelWidth)
             .heightIn(max = panelMaxHeight)
-            .glassPanel(cornerRadius = 26.dp, fill = SpaceMid.copy(alpha = 0.98f))
+            .lumenFrame(com.sole.cinevault.LumenGold)
             // FIX: root containment. Whatever the exact internal cause of
             // a touch on a small child control (back arrow, close button)
             // occasionally not resolving cleanly — a hair of finger jitter

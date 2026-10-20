@@ -1,5 +1,7 @@
 package com.sole.cinevault.subtitles
 
+import com.sole.cinevault.lumenFrame
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -120,8 +122,7 @@ fun DriftCorrectionSheet(
         modifier = Modifier
             .width(popupWidth)
             .heightIn(max = popupMaxHeight)
-            .glassPanel(cornerRadius = 20.dp, fill = SpaceMid.copy(alpha = 0.82f))
-            .border(1.dp, AmberCore.copy(alpha = 0.18f), RoundedCornerShape(20.dp))
+            .lumenFrame(com.sole.cinevault.LumenGold)
             .padding(11.dp)
     ) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
