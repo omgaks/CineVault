@@ -107,6 +107,7 @@ internal fun TopIconCluster(
             .width(IntrinsicSize.Max)
             .onGloballyPositioned {
                 PlayerPillMetrics.rightColumnWidth = with(density) { it.size.width.toDp() }
+                PlayerPillMetrics.rightColumnHeight = with(density) { it.size.height.toDp() }
             },
         verticalArrangement = Arrangement.spacedBy(gap),
         horizontalAlignment = Alignment.End,

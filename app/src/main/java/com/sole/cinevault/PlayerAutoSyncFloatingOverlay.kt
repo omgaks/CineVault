@@ -23,24 +23,17 @@ internal fun BoxScope.PlayerAutoSyncFloatingOverlay(
 ) {
     if (!visible) return
 
+    // Floating status pills stack under the last right-hand pill, always.
     Box(
         modifier = Modifier
-            .align(Alignment.CenterEnd)
-            .padding(end = 14.dp)
+            .align(Alignment.TopEnd)
+            .padding(top = PlayerPillMetrics.floatingTop(containerWidth > containerHeight), end = PlayerPillMetrics.end)
     ) {
-        DraggableFloatingPopup(
-            containerWidth = containerWidth,
-            containerHeight = containerHeight,
-            popupWidth = 260.dp,
-            popupMaxHeight = 200.dp,
-            onUserInteraction = {}
-        ) {
-            AutoSyncFloatingIndicator(
-                status = status,
-                onApply = onApply,
-                onCancel = onCancel,
-                onRetry = onRetry
-            )
-        }
+        AutoSyncFloatingIndicator(
+            status = status,
+            onApply = onApply,
+            onCancel = onCancel,
+            onRetry = onRetry
+        )
     }
 }
