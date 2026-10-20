@@ -285,14 +285,16 @@ internal fun LumenSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, a
 
 /** A choice chip: filled and glowing when selected. */
 @Composable
-internal fun LumenChip(text: String, selected: Boolean, accent: Color = LumenViolet, onClick: () -> Unit) {
+internal fun LumenChip(text: String, selected: Boolean, accent: Color = LumenViolet, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Text(
         text = text.uppercase(),
         color = if (selected) Color(0xFF05060A) else TextBright,
         fontSize = LumenType.caption,
         fontWeight = FontWeight.Bold,
         letterSpacing = 1.2.sp,
-        modifier = Modifier
+        maxLines = 1,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        modifier = modifier
             .background(if (selected) accent else Color.Transparent, LumenChipShape)
             .border(1.2.dp, accent.copy(alpha = if (selected) 1f else 0.6f), LumenChipShape)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)

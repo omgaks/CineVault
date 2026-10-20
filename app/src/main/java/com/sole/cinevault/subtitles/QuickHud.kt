@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -58,6 +59,9 @@ fun QuickHud(
     bottomPadding: Float,
     onBottomPaddingChange: (Float) -> Unit,
     onReset: () -> Unit,
+    onTracks: (() -> Unit)? = null,
+    onAutoSync: (() -> Unit)? = null,
+    onSmartSearch: (() -> Unit)? = null,
     containerSize: IntSize,
     initialOffset: Offset,
     windowWidth: androidx.compose.ui.unit.Dp = 264.dp,
@@ -89,12 +93,25 @@ fun QuickHud(
                 Text(
                     text = subtitleFileName ?: "No subtitle loaded",
                     color = TextBright,
-                    fontSize = 10.sp,
+                    fontSize = com.sole.cinevault.LumenType.body,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
+            }
+
+            if (onTracks != null || onAutoSync != null || onSmartSearch != null) {
+                // The three things people look for first, one tap away.
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    if (onTracks != null) com.sole.cinevault.LumenChip("Tracks", false, com.sole.cinevault.LumenGold, Modifier.weight(1f)) { onTracks() }
+                    if (onAutoSync != null) com.sole.cinevault.LumenChip("Auto-sync", false, com.sole.cinevault.LumenGold, Modifier.weight(1f)) { onAutoSync() }
+                }
+                if (onSmartSearch != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    com.sole.cinevault.LumenChip("Smart search", false, com.sole.cinevault.LumenGold, Modifier.fillMaxWidth()) { onSmartSearch() }
+                }
             }
 
             Spacer(modifier = Modifier.height(7.dp))
@@ -105,7 +122,7 @@ fun QuickHud(
             // fine drag — cramming that into the generic single-line
             // HudRow would either hide the buttons or crush the slider.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "Delay", color = TextMuted, fontSize = 9.sp, modifier = Modifier.weight(1f))
+                Text(text = "Delay", color = TextMuted, fontSize = com.sole.cinevault.LumenType.caption, modifier = Modifier.weight(1f))
                 HudValuePill(formatDelay(delaySeconds))
             }
             Spacer(modifier = Modifier.height(3.dp))
@@ -152,7 +169,7 @@ fun QuickHud(
             Text(
                 text = "↺  RESET",
                 color = AmberCore,
-                fontSize = 9.sp,
+                fontSize = com.sole.cinevault.LumenType.caption,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
@@ -173,7 +190,7 @@ private fun DelayStepButton(symbol: String, onClick: () -> Unit) {
     Text(
         text = symbol,
         color = AmberCore,
-        fontSize = 12.sp,
+        fontSize = com.sole.cinevault.LumenType.value,
         fontWeight = FontWeight.Medium,
         textAlign = TextAlign.Center,
         modifier = Modifier
@@ -192,7 +209,7 @@ private fun HudValuePill(text: String) {
     Text(
         text = text,
         color = AmberCore,
-        fontSize = 9.sp,
+        fontSize = com.sole.cinevault.LumenType.caption,
         fontWeight = FontWeight.Medium,
         modifier = Modifier
             .clip(RoundedCornerShape(50))
@@ -204,7 +221,7 @@ private fun HudValuePill(text: String) {
 @Composable
 private fun HudRow(label: String, valueText: String?, slider: @Composable () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(text = label, color = TextMuted, fontSize = 9.sp, modifier = Modifier.width(34.dp))
+        Text(text = label, color = TextMuted, fontSize = com.sole.cinevault.LumenType.caption, modifier = Modifier.width(34.dp))
         slider()
         if (valueText != null) {
             Spacer(modifier = Modifier.width(5.dp))
