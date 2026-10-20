@@ -127,6 +127,8 @@ internal fun BoxScope.PlayerSubtitleSelectionAndAcquisitionSurfaces(
             onShowControlsChanged(true)
         },
         showAudioSelector = showAudioSelector,
+        isLandscape = isLandscape,
+        railBottomInset = popupBottomPadding + 46.dp,
         audioTracks = audioTracksForPopup,
         audioPopupWidth = audioPopupWidth,
         audioBottomPadding = popupBottomPadding,
