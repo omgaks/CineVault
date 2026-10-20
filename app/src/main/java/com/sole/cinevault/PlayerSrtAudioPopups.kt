@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -56,6 +59,8 @@ fun BoxScope.SrtAndAudioTrackPopups(
     onAudioSyncChange: (Int) -> Unit,
     onAudioMenuInteraction: () -> Unit,
     onCloseAudioSelector: () -> Unit,
+    isLandscape: Boolean = false,
+    railBottomInset: Dp = 150.dp,
 ) {
     AnimatedVisibility(
         visible = showSrtBrowser,
@@ -75,20 +80,44 @@ fun BoxScope.SrtAndAudioTrackPopups(
         )
     }
 
-    AnimatedVisibility(
+    // Audio now uses the shared Lumen window on the right rail (sky blue, same as the AUDIO pill).
+    LumenWindow(
         visible = showAudioSelector,
-        enter = fadeIn(animationSpec = tween(150)),
-        exit = fadeOut(animationSpec = tween(180)),
-        modifier = Modifier.align(Alignment.BottomStart).padding(bottom = audioBottomPadding).offset { IntOffset(audioOffsetX, 0) }
+        accent = LumenSky,
+        title = "Audio",
+        icon = androidx.compose.material.icons.Icons.Rounded.MusicNote,
+        size = LumenSize.M,
+        isLandscape = isLandscape,
+        bottomInset = railBottomInset,
     ) {
-        FloatingTrackPopup(
-            title = "Audio",
-            modifier = Modifier.width(audioPopupWidth),
-            audioSyncMs = audioSyncMs,
-            onAudioSyncChange = onAudioSyncChange,
-            rows = audioTracks,
-            onAnyClick = onAudioMenuInteraction,
-            onClose = onCloseAudioSelector
-        )
+        LumenSectionLabel("Tracks", LumenSky)
+        audioTracks.forEach { row ->
+            LumenOptionRow(
+                label = row.title,
+                selected = row.selected,
+                accent = LumenSky,
+                trailing = row.subtitle.takeIf { it.isNotBlank() },
+                onClick = { onAudioMenuInteraction(); row.onClick() },
+            )
+        }
+        LumenSectionLabel("Audio delay", LumenSky)
+        androidx.compose.foundation.layout.Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+        ) {
+            LumenChip("−50", false, LumenSky) {
+                onAudioMenuInteraction(); onAudioSyncChange((audioSyncMs - 50).coerceAtLeast(-2000))
+            }
+            androidx.compose.material3.Text(
+                text = if (audioSyncMs == 0) "0 ms" else "${if (audioSyncMs > 0) "+" else ""}$audioSyncMs ms",
+                color = if (audioSyncMs == 0) com.sole.cinevault.ui.theme.TextBright else LumenSky,
+                fontSize = LumenType.value,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            )
+            LumenChip("+50", false, LumenSky) {
+                onAudioMenuInteraction(); onAudioSyncChange((audioSyncMs + 50).coerceAtMost(2000))
+            }
+        }
     }
 }
