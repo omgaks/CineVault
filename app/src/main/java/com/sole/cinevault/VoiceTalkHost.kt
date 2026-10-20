@@ -306,9 +306,7 @@ internal fun BoxScope.VoiceTalkHost(
                     .padding(bottom = 90.dp)
                     .widthIn(max = 420.dp)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(26.dp))
-                    .background(Color(0xF010131C))
-                    .border(1.dp, GelGold.copy(alpha = 0.5f), RoundedCornerShape(26.dp))
+                    .lumenFrame(LumenViolet)
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
                     .padding(20.dp)
             ) {

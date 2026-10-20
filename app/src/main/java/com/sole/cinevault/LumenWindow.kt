@@ -370,3 +370,26 @@ internal fun LumenSlider(
         drawPath(diamond, Color(0xFFFF6E8C), style = Stroke(width = 1.5.dp.toPx()))
     }
 }
+
+
+/** Card corner used for rows and tiles inside Lumen windows. */
+internal val LumenCardShape = CutCornerShape(topStart = 10.dp, topEnd = 0.dp, bottomEnd = 10.dp, bottomStart = 0.dp)
+
+/** The frame look (glow, glass, neon edge, scanlines) for windows that still draw their own content. */
+internal fun Modifier.lumenFrame(accent: Color): Modifier = this
+    .shadow(14.dp, LumenShape, ambientColor = accent, spotColor = accent)
+    .background(Color(0x9E080A10), LumenShape)
+    .border(1.6.dp, Brush.linearGradient(listOf(accent, accent.copy(alpha = 0.35f), accent)), LumenShape)
+    .scanlines(0.035f)
+
+/** Distance from the screen's right edge to the rail: pill column plus a small gap. */
+@Composable
+internal fun lumenRailEndInset(): Dp {
+    val rc = PlayerPillMetrics.rightColumnWidth
+    return LumenRail.endInsetDp(PlayerPillMetrics.end.value, if (rc.isSpecified) rc.value else null).dp
+}
+
+internal val LumenRose = Color(0xFFFF6E8C)
+internal val LumenSky = Color(0xFF6FC3FF)
+internal val LumenMint = Color(0xFF7CE0C3)
+internal val LumenGold = Color(0xFFFFC94D)

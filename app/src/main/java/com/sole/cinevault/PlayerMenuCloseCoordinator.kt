@@ -21,6 +21,7 @@ class PlayerMenuCloseCoordinator(
     private val closeDualSubsWindow: () -> Unit,
     private val closeSubtitleBehaviourWindow: () -> Unit,
     private val closeSubtitleSurfaces: () -> Unit,
+    private val closeConnect: () -> Unit = {},
 ) {
     fun closeAll() {
         closeAudioSelector()
@@ -36,5 +37,6 @@ class PlayerMenuCloseCoordinator(
         closeDualSubsWindow()
         closeSubtitleBehaviourWindow()
         closeSubtitleSurfaces()
+        closeConnect()
     }
 }

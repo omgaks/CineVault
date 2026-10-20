@@ -89,6 +89,7 @@ internal fun TopIconCluster(
     onSpeedClick: () -> Unit,
     onSleepClick: () -> Unit,
     onPipClick: () -> Unit,
+    onConnectClick: () -> Unit = { PlayerConnectUi.visible = !PlayerConnectUi.visible },
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -96,7 +97,6 @@ internal fun TopIconCluster(
     val motion = rememberMotionEnabled()
     val nearby = remember(context) { CineVaultNearbyRuntime.get(context) }
     val connectState by nearby.connectState.collectAsState()
-    var showConnect by remember { mutableStateOf(false) }
 
     val gap = PlayerPillMetrics.gap(isLandscape)
     val pillHeight = PlayerPillMetrics.height(isLandscape)
@@ -189,7 +189,7 @@ internal fun TopIconCluster(
                 else -> PillPulse(3200)
             },
             bobPhaseMs = 900,
-            onClick = { showConnect = true },
+            onClick = onConnectClick,
         )
 
         // PICTURE: the sliders drift while the picture panel is open or a filter is on.
@@ -237,13 +237,6 @@ internal fun TopIconCluster(
         VoiceRoundButton(compact = isLandscape, motion = motion)
     }
 
-    if (showConnect) {
-        PlayerConnectQuickSheet(
-            runtime = nearby,
-            state = connectState,
-            onDismiss = { showConnect = false },
-        )
-    }
 }
 
 private fun formatSpeedLabel(speed: Float): String =

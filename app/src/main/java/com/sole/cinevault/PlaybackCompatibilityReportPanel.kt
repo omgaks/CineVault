@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -51,9 +52,8 @@ fun PlaybackCompatibilityReportPanel(
 
     Column(
         modifier = modifier
-            .width(420.dp)
-            .background(ReportGlass, shape)
-            .border(1.dp, ReportBorder, shape)
+            .widthIn(min = 280.dp, max = 340.dp)
+            .lumenFrame(LumenMint)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(11.dp),
     ) {

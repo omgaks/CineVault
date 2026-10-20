@@ -54,6 +54,7 @@ internal fun BoxScope.PlayerTopControlCluster(
     onSpeedClick: () -> Unit,
     onSleepClick: () -> Unit,
     onPipClick: () -> Unit,
+    onConnectClick: () -> Unit,
     onClusterHeightMeasured: (Float) -> Unit,
     leftPills: @Composable () -> Unit,
 ) {
@@ -71,6 +72,7 @@ internal fun BoxScope.PlayerTopControlCluster(
         onSpeedClick = onSpeedClick,
         onSleepClick = onSleepClick,
         onPipClick = onPipClick,
+        onConnectClick = onConnectClick,
         modifier = Modifier
             .align(Alignment.TopEnd)
             .padding(

@@ -987,6 +987,7 @@ fun VideoPlayerScreen(
         val transientUiSnapshot = playerTransientUiSnapshot(
             audioSelector = chromeUi.showAudioSelector,
             audioFxDashboard = showAudioFxDashboard,
+            connectWindow = PlayerConnectUi.visible,
             subtitleSettings = coreUi.showSettings,
             trackSelector = trackUi.showSelector,
             subtitleSearch = searchUi.showSearch,
@@ -1391,8 +1392,14 @@ fun VideoPlayerScreen(
             )
         }
 
+        PlayerConnectWindow(
+            isLandscape = playerLayout.isLandscape,
+            railBottomInset = playerLayout.bottomDockPadding + playerLayout.playButton + 64.dp,
+            keepControlsVisible = { chromeUi.showControls = true },
+        )
+
         // Picture enhancement panel (draws nothing while closed).
-        PicturePanelHost(pictureController)
+        PicturePanelHost(pictureController, railBottomInset = playerLayout.bottomDockPadding + playerLayout.playButton + 64.dp)
 
         // Slice 60: all non-main-control overlay surfaces are now hosted
         // together: lock/Auto-Sync/delete feedback, Subtitle Studio surfaces,
@@ -1474,6 +1481,8 @@ fun VideoPlayerScreen(
             onInfoRequestedChange = { hwInfoOpen = it },
             topPadding = playerLayout.topClusterPaddingTop,
             sidePadding = playerLayout.sidePadding,
+            railBottomInset = playerLayout.bottomDockPadding + playerLayout.playButton + 64.dp,
+            railMaxHeight = playerMaxHeight - (playerLayout.bottomDockPadding + playerLayout.playButton + 64.dp) - 12.dp,
         )
 
     }

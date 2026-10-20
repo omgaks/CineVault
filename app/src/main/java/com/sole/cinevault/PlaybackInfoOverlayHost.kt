@@ -9,6 +9,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +37,8 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
     onInfoRequestedChange: (Boolean) -> Unit,
     topPadding: Dp,
     sidePadding: Dp,
+    railBottomInset: Dp = 120.dp,
+    railMaxHeight: Dp = 400.dp,
 ) {
     var surface by remember { mutableStateOf(PlaybackInfoSurface.NONE) }
 
@@ -89,11 +92,9 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
         enter = fadeIn(),
         exit = fadeOut(),
         modifier = Modifier
-            .align(Alignment.TopStart)
-            .padding(
-                top = topPadding,
-                start = sidePadding,
-            ),
+            .align(Alignment.BottomEnd)
+            .padding(end = lumenRailEndInset(), bottom = railBottomInset)
+            .heightIn(max = railMaxHeight),
     ) {
         PlaybackInfoPanel(
             snapshot = snapshot,
@@ -109,11 +110,9 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
         enter = fadeIn(),
         exit = fadeOut(),
         modifier = Modifier
-            .align(Alignment.TopStart)
-            .padding(
-                top = topPadding,
-                start = sidePadding,
-            ),
+            .align(Alignment.BottomEnd)
+            .padding(end = lumenRailEndInset(), bottom = railBottomInset)
+            .heightIn(max = railMaxHeight),
     ) {
         val entries = compatibilityRecorder.entries()
 
@@ -133,11 +132,9 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
         enter = fadeIn(),
         exit = fadeOut(),
         modifier = Modifier
-            .align(Alignment.TopStart)
-            .padding(
-                top = topPadding,
-                start = sidePadding,
-            ),
+            .align(Alignment.BottomEnd)
+            .padding(end = lumenRailEndInset(), bottom = railBottomInset)
+            .heightIn(max = railMaxHeight),
     ) {
         PlaybackCompatibilityMatrixPanel(
             entries = compatibilityRecorder.entries(),
