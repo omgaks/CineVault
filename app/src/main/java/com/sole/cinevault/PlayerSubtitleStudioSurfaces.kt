@@ -326,6 +326,7 @@ internal fun PlayerSubtitleStudioSurfaces(
                 saveSubtitleBehaviorPrefs(context, it)
                 studioUi.menuTouchKey++
             },
+            onResetAll = { subtitleResetCoordinator.reset() },
             cleaningOptions = coreUi.cleaningOptions,
             onCleaningOptionsChange = {
                 coreUi.cleaningOptions = it
