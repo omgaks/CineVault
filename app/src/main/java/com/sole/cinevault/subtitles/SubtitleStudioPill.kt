@@ -666,6 +666,7 @@ fun SubtitleBehaviourWindow(
     containerSize: IntSize,
     initialOffset: Offset,
     onUserInteraction: () -> Unit = {},
+    onResetAll: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val density = androidx.compose.ui.platform.LocalDensity.current
@@ -727,6 +728,28 @@ fun SubtitleBehaviourWindow(
                     cleaningOptions = cleaningOptions,
                     onCleaningOptionsChange = onCleaningOptionsChange
                 )
+            }
+            if (onResetAll != null) {
+                // Guarded reset: switch it on to arm it, then press the button.
+                var armed by remember { mutableStateOf(false) }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "Reset subtitle look and timing",
+                        color = com.sole.cinevault.LumenRose,
+                        fontSize = com.sole.cinevault.LumenType.body,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    com.sole.cinevault.LumenSwitch(checked = armed, onCheckedChange = { armed = it }, accent = com.sole.cinevault.LumenRose)
+                }
+                if (armed) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    com.sole.cinevault.LumenChip("Reset now", true, com.sole.cinevault.LumenRose) {
+                        onResetAll()
+                        armed = false
+                    }
+                }
             }
         }
     }
