@@ -21,7 +21,7 @@ object PictureHdrRouting {
             C.COLOR_TRANSFER_ST2084 -> PictureHdrPolicy.Transfer.PQ
             C.COLOR_TRANSFER_HLG -> PictureHdrPolicy.Transfer.HLG
             C.COLOR_TRANSFER_SDR -> PictureHdrPolicy.Transfer.SDR
-            else -> if (missingTransferIsKnownSdr) PictureHdrPolicy.Transfer.SDR else PictureHdrPolicy.Transfer.UNKNOWN
+            else -> PictureHdrPolicy.Transfer.UNKNOWN
         }
         val kind = if (format.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION)
             PictureHdrPolicy.Format.DOLBY_VISION else PictureHdrPolicy.Format.STANDARD
