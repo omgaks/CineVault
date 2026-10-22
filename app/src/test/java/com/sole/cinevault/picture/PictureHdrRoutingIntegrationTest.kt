@@ -40,8 +40,8 @@ class PictureHdrRoutingIntegrationTest {
         PictureHdrRouting.decide(format(Format.NO_VALUE)).route,
     )
 
-    @Test fun missingMetadataPreservesLegacyBehavior() = assertEquals(
-        PictureHdrPolicy.Route.SDR_ENHANCEMENT,
+    @Test fun missingMetadataProtectsUnknownHdr() = assertEquals(
+        PictureHdrPolicy.Route.HDR_PASSTHROUGH,
         PictureHdrRouting.decide(Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H264).build()).route,
     )
 

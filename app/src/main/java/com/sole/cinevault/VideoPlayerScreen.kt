@@ -981,7 +981,10 @@ fun VideoPlayerScreen(
                 localPlayerView = pv
                 studioUi.playerView = pv
             },
-            onResizeModeChanged = { _ -> }
+            onResizeModeChanged = { _ -> },
+            onOutputSurfaceSizeChanged = { width, height ->
+                pictureController.updateOutputSurfaceSize(width, height)
+            },
         )
 
         val transientUiSnapshot = playerTransientUiSnapshot(
