@@ -32,6 +32,20 @@ class PictureHdrRoutingTest {
             PictureHdrRouting.decide(format(C.COLOR_TRANSFER_SDR, MimeTypes.VIDEO_DOLBY_VISION)).route)
     }
 
+    @Test fun `BT709 AVC without transfer can use SDR enhancement`() {
+        val input = Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H264)
+            .setColorInfo(ColorInfo.Builder().setColorSpace(C.COLOR_SPACE_BT709).build()).build()
+        assertEquals(PictureHdrPolicy.Route.SDR_ENHANCEMENT,
+            PictureHdrRouting.decide(input).route)
+    }
+
+    @Test fun `BT709 HEVC without transfer remains protected`() {
+        val input = Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H265)
+            .setColorInfo(ColorInfo.Builder().setColorSpace(C.COLOR_SPACE_BT709).build()).build()
+        assertEquals(PictureHdrPolicy.Route.HDR_PASSTHROUGH,
+            PictureHdrRouting.decide(input).route)
+    }
+
     @Test fun `missing transfer metadata protects unknown HDR`() {
         val input = Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H264).build()
         assertEquals(PictureHdrPolicy.Route.HDR_PASSTHROUGH,
