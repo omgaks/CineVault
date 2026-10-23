@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.os.PowerManager
 import android.os.SystemClock
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.getValue
@@ -108,6 +109,7 @@ class PictureEnhanceController(
     private var lockedReason: String? = null
     private var lastPreset = PicturePreset.NATURAL
     private var thermalListener: Any? = null
+    private var loggedFormatSignature: String? = null
     private var lastFrames = 0L
     private var lastPollAtMs = 0L
 
@@ -181,6 +183,8 @@ class PictureEnhanceController(
         }
         installedUpscale = null
         failureHandled = false
+        setupFailed = false
+        loggedFormatSignature = null
         lockedReason = null
         note = null
         comparing = false
@@ -474,6 +478,19 @@ class PictureEnhanceController(
     private fun evaluateAvailability() {
         if (!setupFailed) {
             val format = player.videoFormat
+            if (format != null) {
+                val color = format.colorInfo
+                val signature = listOf(format.sampleMimeType, format.codecs,
+                    color?.colorSpace, color?.colorTransfer,
+                    color?.hdrStaticInfo?.size, format.width, format.height).joinToString("|")
+                if (loggedFormatSignature != signature) {
+                    loggedFormatSignature = signature
+                    Log.i("CineVaultPicture", "Video format: mime=${format.sampleMimeType}, " +
+                        "codecs=${format.codecs}, colourSpace=${color?.colorSpace}, " +
+                        "transfer=${color?.colorTransfer}, hdrStaticBytes=${color?.hdrStaticInfo?.size ?: 0}, " +
+                        "size=${format.width}x${format.height}, route=${PictureHdrRouting.decide(format).route}")
+                }
+            }
             val reason: String? = when {
                 lockedReason != null -> lockedReason
                 format == null -> "Detecting video format…"
