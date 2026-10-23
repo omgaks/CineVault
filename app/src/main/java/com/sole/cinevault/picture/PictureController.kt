@@ -368,7 +368,7 @@ class PictureEnhanceController(
         when {
             !isActive -> {
                 statusLive = false
-                statusLine = if (availability is PictureAvailability.Unavailable) "Not available" else "Off"
+                statusLine = (availability as? PictureAvailability.Unavailable)?.reason ?: "Off"
             }
             !pipelineInstalled -> {
                 statusLive = false
@@ -413,8 +413,9 @@ class PictureEnhanceController(
         lastError = "${error.errorCodeName}${if (cause.isNotBlank()) ": " + cause.take(140) else ""}"
         lockedReason = "Stopped: the GPU filter failed on this video"
         availability = PictureAvailability.Unavailable(lockedReason.orEmpty())
-        settings = settings.copy(preset = PicturePreset.OFF)
-        persist() // forgets the saved "on" so the title opens normally next time
+        // Keep the user's saved preset. This failure is session-scoped: the current
+        // controller stays locked until a new playback session is bound.
+        // Persisting OFF here would silently erase the user's preference.
         live.current = PictureShaderParams.OFF
         live.performanceScale = 1f
         try {
