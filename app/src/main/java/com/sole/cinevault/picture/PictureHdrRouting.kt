@@ -42,6 +42,12 @@ object PictureHdrRouting {
             colorInfo?.colorTransfer == C.COLOR_TRANSFER_SDR ||
                 colorInfo?.colorTransfer == C.COLOR_TRANSFER_LINEAR ->
                 PictureHdrPolicy.Transfer.SDR
+            // BT.601/BT.709 are SDR colour spaces even if transfer is omitted.
+            // Never use this fallback for explicitly HDR-signalled material.
+            (colorInfo?.colorSpace == C.COLOR_SPACE_BT601 ||
+                colorInfo?.colorSpace == C.COLOR_SPACE_BT709) &&
+                format.sampleMimeType != MimeTypes.VIDEO_DOLBY_VISION ->
+                PictureHdrPolicy.Transfer.SDR
             // Common metadata-light AVC files are SDR-compatible, unless HDR is signalled.
             // This is a conservative compatibility heuristic, not proof of SDR.
             format.sampleMimeType == MimeTypes.VIDEO_H264 &&
