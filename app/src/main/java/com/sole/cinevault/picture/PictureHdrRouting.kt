@@ -31,18 +31,23 @@ object PictureHdrRouting {
     @OptIn(UnstableApi::class)
     fun decide(format: Format): PictureHdrPolicy.Decision {
         val colorInfo = format.colorInfo
-        // Missing transfer alone is not proof of SDR. However, an 8-bit AVC
-        // stream explicitly marked BT.709 with no HDR static metadata is an
-        // SDR-compatible case we can handle without guessing from resolution.
-        val knownSdrAvc = format.sampleMimeType == MimeTypes.VIDEO_H264 &&
-            colorInfo?.colorSpace == C.COLOR_SPACE_BT709 &&
-            colorInfo.hdrStaticInfo == null &&
-            (format.codecs == null || !format.codecs!!.contains("hvc", ignoreCase = true))
-        val transfer = when (colorInfo?.colorTransfer) {
-            C.COLOR_TRANSFER_ST2084 -> PictureHdrPolicy.Transfer.PQ
-            C.COLOR_TRANSFER_HLG -> PictureHdrPolicy.Transfer.HLG
-            C.COLOR_TRANSFER_SDR -> PictureHdrPolicy.Transfer.SDR
-            else -> if (knownSdrAvc) PictureHdrPolicy.Transfer.SDR else PictureHdrPolicy.Transfer.UNKNOWN
+        // Explicit HDR evidence always wins, including contradictory SDR transfer tags.
+        // Unknown HEVC/VP9/AV1 remains protected until metadata confirms SDR.
+        val hdrSignalled = colorInfo?.hdrStaticInfo != null ||
+            colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 ||
+            colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG ||
+            colorInfo?.colorSpace == C.COLOR_SPACE_BT2020
+        val transfer = when {
+            hdrSignalled -> PictureHdrPolicy.Transfer.PQ
+            colorInfo?.colorTransfer == C.COLOR_TRANSFER_SDR ||
+                colorInfo?.colorTransfer == C.COLOR_TRANSFER_LINEAR ->
+                PictureHdrPolicy.Transfer.SDR
+            // Common metadata-light AVC files are SDR-compatible, unless HDR is signalled.
+            // This is a conservative compatibility heuristic, not proof of SDR.
+            format.sampleMimeType == MimeTypes.VIDEO_H264 &&
+                (format.codecs == null || !format.codecs!!.contains("hvc", ignoreCase = true)) ->
+                PictureHdrPolicy.Transfer.SDR
+            else -> PictureHdrPolicy.Transfer.UNKNOWN
         }
         val kind = if (format.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION)
             PictureHdrPolicy.Format.DOLBY_VISION else PictureHdrPolicy.Format.STANDARD
