@@ -46,9 +46,29 @@ class PictureHdrRoutingTest {
             PictureHdrRouting.decide(input).route)
     }
 
-    @Test fun `missing transfer metadata protects unknown HDR`() {
+    @Test fun `metadata light AVC enables enhancement`() {
         val input = Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H264).build()
         assertEquals(PictureHdrPolicy.Route.HDR_PASSTHROUGH,
             PictureHdrRouting.decide(input).route)
     }
+    @Test fun `metadata light HEVC remains protected`() {
+        val input = Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H265).build()
+        assertEquals(PictureHdrPolicy.Route.HDR_PASSTHROUGH,
+            PictureHdrRouting.decide(input).route)
+    }
+
+    @Test fun `linear transfer enables SDR enhancement`() {
+        assertEquals(PictureHdrPolicy.Route.SDR_ENHANCEMENT,
+            PictureHdrRouting.decide(format(C.COLOR_TRANSFER_LINEAR)).route)
+    }
+
+    @Test fun `BT2020 overrides nominal SDR transfer`() {
+        val input = Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H264)
+            .setColorInfo(ColorInfo.Builder()
+                .setColorTransfer(C.COLOR_TRANSFER_SDR)
+                .setColorSpace(C.COLOR_SPACE_BT2020).build()).build()
+        assertEquals(PictureHdrPolicy.Route.HDR_PASSTHROUGH,
+            PictureHdrRouting.decide(input).route)
+    }
+
 }
