@@ -353,10 +353,10 @@ class PictureEnhanceController(
             !pipelineInstalled -> "Anime4K · Waiting"
             installedUpscale != null -> {
                 val target = installedUpscale!!
-                "Anime4K · GPU ${target.targetWidth}×${target.targetHeight} (requested)"
+                "Anime4K · Upscale requested ${target.targetWidth}×${target.targetHeight} (unverified)"
             }
             PictureProfiles.resolveContent(settings.content, detected) == PictureContent.ANIME ->
-                "Anime4K · Enhancement only"
+                "Anime4K · Enhancement only (upscale unverified)"
             else -> "Picture · Standard enhancement"
         }
         val dt = now - lastPollAtMs
@@ -476,7 +476,7 @@ class PictureEnhanceController(
             val format = player.videoFormat
             val reason: String? = when {
                 lockedReason != null -> lockedReason
-                format == null -> null
+                format == null -> "Detecting video format…"
                 PictureHdrRouting.decide(format).route == PictureHdrPolicy.Route.HDR_PASSTHROUGH ->
                     PictureHdrRouting.blockReason(format)
                 format.height > 1440 || format.width > 2560 -> "Not needed for 4K video"
@@ -544,7 +544,9 @@ class PictureEnhanceController(
                     sourceHeight = format?.height ?: 0,
                     outputWidth = outputSurfaceWidth,
                     outputHeight = outputSurfaceHeight,
-                    rendererSupportsOutputScaling = outputSurfaceWidth > 0 && outputSurfaceHeight > 0,
+                    // A measured surface is not proof of renderer resize support.
+                    // Until capability is verified on-device, use enhancement only.
+                    rendererSupportsOutputScaling = false,
                     hdrSource = hdr,
                     thermalLimited = false,
                     droppedFramePressure = badDropWindows > 0,
