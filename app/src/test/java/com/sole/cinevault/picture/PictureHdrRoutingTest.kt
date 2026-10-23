@@ -39,9 +39,25 @@ class PictureHdrRoutingTest {
             PictureHdrRouting.decide(input).route)
     }
 
-    @Test fun `BT709 HEVC without transfer remains protected`() {
+    @Test fun `BT709 HEVC without transfer is recognized as SDR`() {
         val input = Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H265)
             .setColorInfo(ColorInfo.Builder().setColorSpace(C.COLOR_SPACE_BT709).build()).build()
+        assertEquals(PictureHdrPolicy.Route.SDR_ENHANCEMENT,
+            PictureHdrRouting.decide(input).route)
+    }
+
+    @Test fun `BT601 HEVC without transfer is recognized as SDR`() {
+        val input = Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H265)
+            .setColorInfo(ColorInfo.Builder().setColorSpace(C.COLOR_SPACE_BT601).build()).build()
+        assertEquals(PictureHdrPolicy.Route.SDR_ENHANCEMENT,
+            PictureHdrRouting.decide(input).route)
+    }
+
+    @Test fun `BT709 HEVC with PQ remains HDR protected`() {
+        val input = Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H265)
+            .setColorInfo(ColorInfo.Builder()
+                .setColorSpace(C.COLOR_SPACE_BT709)
+                .setColorTransfer(C.COLOR_TRANSFER_ST2084).build()).build()
         assertEquals(PictureHdrPolicy.Route.HDR_PASSTHROUGH,
             PictureHdrRouting.decide(input).route)
     }
