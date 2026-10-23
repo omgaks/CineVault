@@ -49,7 +49,16 @@ object PictureHdrRouting {
                 PictureHdrPolicy.Transfer.SDR
             else -> PictureHdrPolicy.Transfer.UNKNOWN
         }
-        val kind = if (format.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION)
+        // Some containers expose Dolby Vision as HEVC with a DV codec identifier.
+        // Protect these even when the transfer is absent or nominally SDR.
+        val codecId = format.codecs.orEmpty().lowercase()
+        val dolbyVision = format.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION ||
+            codecId.split(',').any { token ->
+                val id = token.trim()
+                id.startsWith("dvh1") || id.startsWith("dvhe") ||
+                    id.startsWith("dvc1") || id.startsWith("dvav")
+            }
+        val kind = if (dolbyVision)
             PictureHdrPolicy.Format.DOLBY_VISION else PictureHdrPolicy.Format.STANDARD
 
         // P8-S7: The existing PictureController already calls decide() when video tracks change.
