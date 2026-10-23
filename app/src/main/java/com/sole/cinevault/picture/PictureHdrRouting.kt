@@ -8,6 +8,26 @@ import androidx.media3.common.util.UnstableApi
 
 /** Media3 -> P8 policy adapter. Production HDR GPU remains unverified and disabled. */
 object PictureHdrRouting {
+    /** Explains why the current local video is protected, without treating missing metadata as SDR. */
+    @OptIn(UnstableApi::class)
+    fun blockReason(format: Format): String {
+        val info = format.colorInfo
+        val codec = format.sampleMimeType ?: "unknown codec"
+        val transfer = when (info?.colorTransfer) {
+            C.COLOR_TRANSFER_ST2084 -> "PQ HDR"
+            C.COLOR_TRANSFER_HLG -> "HLG HDR"
+            C.COLOR_TRANSFER_SDR -> "SDR"
+            else -> "unknown"
+        }
+        val colourSpace = when (info?.colorSpace) {
+            C.COLOR_SPACE_BT709 -> "BT.709"
+            C.COLOR_SPACE_BT2020 -> "BT.2020"
+            C.COLOR_SPACE_BT601 -> "BT.601"
+            else -> "unknown"
+        }
+        return "Enhancement protected: $codec, transfer $transfer, colour $colourSpace"
+    }
+
     @OptIn(UnstableApi::class)
     fun decide(format: Format): PictureHdrPolicy.Decision {
         val colorInfo = format.colorInfo
