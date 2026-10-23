@@ -2,7 +2,7 @@ name: Anime4K Device Test APK
 
 on:
   push:
-    branches: [feat/hdr-anime4k-completion]
+    branches: [feat/hdr-anime4k-completion, fix/picture-local-metadata-diagnostics]
   workflow_dispatch:
 
 permissions:
