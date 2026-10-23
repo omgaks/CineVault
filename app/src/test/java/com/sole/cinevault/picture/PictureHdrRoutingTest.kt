@@ -48,13 +48,22 @@ class PictureHdrRoutingTest {
 
     @Test fun `metadata light AVC enables enhancement`() {
         val input = Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H264).build()
-        assertEquals(PictureHdrPolicy.Route.HDR_PASSTHROUGH,
+        assertEquals(PictureHdrPolicy.Route.SDR_ENHANCEMENT,
             PictureHdrRouting.decide(input).route)
     }
     @Test fun `metadata light HEVC remains protected`() {
         val input = Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H265).build()
         assertEquals(PictureHdrPolicy.Route.HDR_PASSTHROUGH,
             PictureHdrRouting.decide(input).route)
+    }
+
+    @Test fun `Dolby Vision codec identifier protects HEVC with absent colour metadata`() {
+        for (codec in listOf("dvh1.05.06", "dvhe.08.04", "dvc1.05.06", "dvav.01.01")) {
+            val input = Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H265)
+                .setCodecs(codec).build()
+            assertEquals(codec, PictureHdrPolicy.Route.HDR_PASSTHROUGH,
+                PictureHdrRouting.decide(input).route)
+        }
     }
 
     @Test fun `linear transfer enables SDR enhancement`() {
