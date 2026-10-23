@@ -477,7 +477,7 @@ class PictureEnhanceController(
                 lockedReason != null -> lockedReason
                 format == null -> null
                 PictureHdrRouting.decide(format).route == PictureHdrPolicy.Route.HDR_PASSTHROUGH ->
-                    "HDR or unknown colour transfer — original playback protected"
+                    PictureHdrRouting.blockReason(format)
                 format.height > 1440 || format.width > 2560 -> "Not needed for 4K video"
                 else -> null
             }
