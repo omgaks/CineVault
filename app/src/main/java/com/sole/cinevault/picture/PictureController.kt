@@ -11,6 +11,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
@@ -457,8 +459,16 @@ class PictureEnhanceController(
         live.current = PictureProfiles.toShaderParams(settings, comparing, isActive, splitView, splitPosition)
     }
 
+    private fun resolvedVideoFormat(): Format? = player.videoFormat
+        ?: player.currentTracks.groups.firstOrNull { group ->
+            group.type == C.TRACK_TYPE_VIDEO && group.isSelected
+        }?.let { group ->
+            (0 until group.length).firstOrNull { group.isTrackSelected(it) }
+                ?.let(group::getTrackFormat)
+        }
+
     private fun updatePerformanceSource() {
-        val format = player.videoFormat ?: return
+        val format = resolvedVideoFormat() ?: return
         performance.setSource(format.width, format.height, format.frameRate)
         updatePerformancePlan()
     }
@@ -477,7 +487,7 @@ class PictureEnhanceController(
 
     private fun evaluateAvailability() {
         if (!setupFailed) {
-            val format = player.videoFormat
+            val format = resolvedVideoFormat()
             if (format != null) {
                 val color = format.colorInfo
                 val signature = listOf(format.sampleMimeType, format.codecs,
@@ -503,8 +513,8 @@ class PictureEnhanceController(
                 if (reason == null) PictureAvailability.Available else PictureAvailability.Unavailable(reason)
             if (next != availability) availability = next
         }
-        if (pipelineInstalled && player.videoFormat != null &&
-            PictureHdrRouting.decide(player.videoFormat!!).route ==
+        if (pipelineInstalled && resolvedVideoFormat() != null &&
+            PictureHdrRouting.decide(resolvedVideoFormat()!!).route ==
                 PictureHdrPolicy.Route.HDR_PASSTHROUGH
         ) {
             // Only at an SDR -> protected HDR boundary: detach the incompatible
@@ -532,7 +542,7 @@ class PictureEnhanceController(
     private fun applyEffects() {
         refreshLive() // values must be ready before the first frame reaches the shader
         // Fail closed while transfer metadata is unavailable: never assume SDR.
-        if (isActive && player.videoFormat != null && !pipelineInstalled && !failureHandled) {
+        if (isActive && resolvedVideoFormat() != null && !pipelineInstalled && !failureHandled) {
             installPipeline(restart = true)
         }
     }
@@ -548,7 +558,7 @@ class PictureEnhanceController(
             val resumePlaying = player.playWhenReady
             // Keep the existing enhancement as the first pass. Upscaling is allowed only
             // for confirmed SDR anime with a verified 4K output capability.
-            val format = player.videoFormat
+            val format = resolvedVideoFormat()
             val content = PictureProfiles.resolveContent(settings.content, detected)
             val anime = content == PictureContent.ANIME
             val hdr = format == null ||
