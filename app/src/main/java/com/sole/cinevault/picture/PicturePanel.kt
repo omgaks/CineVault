@@ -484,7 +484,7 @@ private fun PictureMasterPill(enabled: Boolean, usable: Boolean, onToggle: (Bool
         Column(Modifier.weight(1f)) {
             Text("Picture Enhance", color = if (enabled) AmberCore else TextMuted,
                 fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            Text(if (enabled) "Processing live" else "Original picture",
+            Text(if (!enabled) "Original picture" else if (usable) "Processing requested" else "Waiting for compatible video",
                 color = TextMuted, fontSize = 8.sp)
         }
         Box(
