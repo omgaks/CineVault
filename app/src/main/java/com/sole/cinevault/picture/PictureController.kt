@@ -571,9 +571,13 @@ class PictureEnhanceController(
                     sourceHeight = format?.height ?: 0,
                     outputWidth = outputSurfaceWidth,
                     outputHeight = outputSurfaceHeight,
-                    // A measured surface is not proof of renderer resize support.
-                    // Until capability is verified on-device, use enhancement only.
-                    rendererSupportsOutputScaling = false,
+                    // Media3's GlEffect supports output resizing through configure().
+                    // Enable only for a measured physical output surface, confirmed SDR,
+                    // and the software-independent Media3 video effects route.
+                    // The UI continues to label this as a request until device-verified.
+                    rendererSupportsOutputScaling =
+                        outputSurfaceWidth > 0 && outputSurfaceHeight > 0 &&
+                        format != null && !hdr && !setupFailed,
                     hdrSource = hdr,
                     thermalLimited = false,
                     droppedFramePressure = badDropWindows > 0,
