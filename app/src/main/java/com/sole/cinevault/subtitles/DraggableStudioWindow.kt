@@ -2,7 +2,7 @@ package com.sole.cinevault.subtitles
 
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.animateIntOffsetAsState
+import androidx.compose.animation.core.animateIntOffsetAsState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.LaunchedEffect
@@ -94,7 +94,7 @@ fun DraggableStudioWindow(
     }
     val shown by animateIntOffsetAsState(
         targetValue = IntOffset(effective.x.roundToInt(), effective.y.roundToInt()),
-        animationSpec = if (dragging || !measured) snap() else tween(250),
+        animationSpec = if (dragging || !measured) snap<IntOffset>() else tween<IntOffset>(250),
         label = "windowSnap",
     )
 
