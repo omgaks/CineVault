@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
+      # Manual refresh of the Anime4K test APK after enabling guarded upscaling.
       - name: Check out source
         uses: actions/checkout@v5
       - name: Set up Java 17
