@@ -38,6 +38,31 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.draw.drawBehind
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Size
@@ -86,10 +111,10 @@ internal enum class LumenSize(val fraction: Float, val minDp: Float, val maxDp: 
 /** One type scale for every window. */
 internal object LumenType {
     val title = 14.sp
-    val section = 11.sp
+    val section = 12.sp
     val body = 13.sp
     val value = 15.sp
-    val caption = 10.5.sp
+    val caption = 12.sp
 }
 
 /** Pure rail maths, kept free of Compose so it can be unit tested. */
@@ -158,11 +183,19 @@ internal fun BoxScope.LumenWindow(
         ) {
             val wipe = remember { Animatable(if (motion) 0f else 1f) }
             LaunchedEffect(Unit) { if (motion) wipe.animateTo(1f, tween(520)) }
+            val ghost = remember { LumenGhost() }
+            val ghostAlpha by animateFloatAsState(
+                if (ghost.active) LUMEN_GHOST_ALPHA else 1f,
+                tween(if (ghost.active) 120 else 250),
+                label = "lumenGhost",
+            )
 
+            CompositionLocalProvider(LocalLumenGhost provides ghost) {
             Column(
                 modifier = Modifier
                     .width(width)
                     .heightIn(max = maxH)
+                    .graphicsLayer { alpha = ghostAlpha }
                     .shadow(14.dp, LumenShape, ambientColor = accent, spotColor = accent)
                     .background(Color(0x9E080A10), LumenShape)
                     .border(
@@ -187,6 +220,7 @@ internal fun BoxScope.LumenWindow(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                     content = content,
                 )
+            }
             }
         }
     }
@@ -320,6 +354,8 @@ internal fun LumenSlider(
     val span = valueRange.endInclusive - valueRange.start
     val fraction = if (span <= 0f) 0f else ((value - valueRange.start) / span).coerceIn(0f, 1f)
     val latestChange by androidx.compose.runtime.rememberUpdatedState(onValueChange)
+    val ghost = LocalLumenGhost.current
+    DisposableEffect(Unit) { onDispose { if (dragging) ghost.active = false } }
 
     fun setFrom(x: Float, width: Float) {
         val f = (x / width).coerceIn(0f, 1f)
@@ -334,9 +370,9 @@ internal fun LumenSlider(
             }
             .pointerInput(valueRange) {
                 detectDragGestures(
-                    onDragStart = { dragging = true; setFrom(it.x, size.width.toFloat()) },
-                    onDragEnd = { dragging = false },
-                    onDragCancel = { dragging = false },
+                    onDragStart = { dragging = true; ghost.active = true; setFrom(it.x, size.width.toFloat()) },
+                    onDragEnd = { dragging = false; ghost.active = false },
+                    onDragCancel = { dragging = false; ghost.active = false },
                 ) { change, _ ->
                     change.consume()
                     setFrom(change.position.x, size.width.toFloat())

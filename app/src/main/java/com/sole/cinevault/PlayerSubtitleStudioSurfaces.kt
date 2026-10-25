@@ -45,6 +45,7 @@ internal fun PlayerSubtitleStudioSurfaces(
     appearanceUi: SubtitleAppearanceUiState,
     driftUi: DriftCorrectionState,
     autoSyncSpeechTimeline: FloatArray?,
+    autoSyncStatus: AutoSyncStatus,
     dualSecondaryColorHex: String,
     pendingDualAiLanguage: String?,
     subtitleStudioNavigation: SubtitleStudioNavigationCoordinator,
@@ -115,6 +116,45 @@ internal fun PlayerSubtitleStudioSurfaces(
             onTracks = { subtitleStudioNavigation.onDockItemTapped(SubtitleDockItem.TRACK) },
             onAutoSync = { autoSyncCoordinator.runAutoSync() },
             onSmartSearch = { subtitleStudioNavigation.onDockItemTapped(SubtitleDockItem.SUPER_SUBS) },
+            autoSyncStatus = autoSyncStatus,
+            onManageDownloads = {
+                subtitleStudioNavigation.onDockItemTapped(SubtitleDockItem.TRACK)
+                onTrackSelectorManageModeChanged(true)
+            },
+            onWebSearch = {
+                subtitleStudioNavigation.closeDock()
+                searchUi.showFallback = true
+            },
+            onSpeechToSubs = {
+                subtitleStudioNavigation.closeDock()
+                onShowSpeechSubtitlePanelChanged(true)
+            },
+            onTranslate = {
+                subtitleStudioNavigation.closeDock()
+                onShowSubtitleTranslationPanelChanged(true)
+            },
+            onDialogueSync = {
+                subtitleStudioNavigation.closeDock()
+                subtitleSyncTools.armDialogueSync()
+            },
+            onDriftSync = {
+                subtitleStudioNavigation.closeDock()
+                driftUi.showDialog = true
+            },
+            onDualSubs = {
+                subtitleStudioNavigation.closeDock()
+                onShowDualSubsWindowChanged(true)
+            },
+            onBehaviour = {
+                subtitleStudioNavigation.closeDock()
+                onShowSubtitleBehaviourWindowChanged(true)
+            },
+            onMoreLooks = { subtitleStudioNavigation.onDockItemTapped(SubtitleDockItem.STYLE) },
+            autoDownload = coreUi.behaviorPrefs.autoDownloadWhenMissing,
+            onAutoDownloadChange = { on ->
+                coreUi.behaviorPrefs = coreUi.behaviorPrefs.copy(autoDownloadWhenMissing = on)
+                saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
+            },
             containerSize = containerPx,
             initialOffset = Offset(
                 quickHudOffsetX,

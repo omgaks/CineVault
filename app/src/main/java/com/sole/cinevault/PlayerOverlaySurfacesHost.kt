@@ -173,6 +173,7 @@ internal fun BoxScope.PlayerOverlaySurfacesHost(
         dualUi = dualUi,
         appearanceUi = appearanceUi,
         driftUi = driftUi,
+        autoSyncStatus = autoSyncStatus,
         autoSyncSpeechTimeline = autoSyncSpeechTimeline,
         dualSecondaryColorHex = dualSecondaryColorHex,
         pendingDualAiLanguage = pendingDualAiLanguage,

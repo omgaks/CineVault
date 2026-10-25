@@ -45,6 +45,12 @@ class SubtitleStudioNavigationCoordinator(
         }
     }
 
+    /** Closes the Sub Deck (used when a tool opens its own window from the Deck). */
+    fun closeDock() {
+        setActiveDockItem(null)
+        setShowSubtitleDock(false)
+    }
+
     fun onStudioCategoryTapped(category: StudioCategory) {
         setStudioCategory(category)
 
