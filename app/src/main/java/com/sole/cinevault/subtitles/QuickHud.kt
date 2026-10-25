@@ -131,6 +131,8 @@ fun QuickHud(
     autoDownload: Boolean = false,
     onAutoDownloadChange: ((Boolean) -> Unit)? = null,
     initialTab: DeckTab = DeckTab.SYNC,
+    tracks: DeckTracksModel? = null,
+    dual: DeckDualModel? = null,
 ) {
     val density = LocalDensity.current
     var tab by remember { mutableStateOf(initialTab) }
@@ -196,7 +198,7 @@ fun QuickHud(
                     ) { current ->
                         Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                             when (current) {
-                                DeckTab.TRACKS -> TracksPage(subtitleFileName, onTracks, onManageDownloads, onDualSubs)
+                                DeckTab.TRACKS -> if (tracks != null) DeckTracksContent(tracks, dual) else TracksPage(subtitleFileName, onTracks, onManageDownloads, onDualSubs)
                                 DeckTab.FIND -> FindPage(onSmartSearch, onWebSearch, autoDownload, onAutoDownloadChange)
                                 DeckTab.SYNC -> SyncPage(
                                     delaySeconds = delaySeconds,

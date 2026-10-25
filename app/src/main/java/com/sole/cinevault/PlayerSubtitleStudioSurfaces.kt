@@ -46,6 +46,13 @@ internal fun PlayerSubtitleStudioSurfaces(
     driftUi: DriftCorrectionState,
     autoSyncSpeechTimeline: FloatArray?,
     autoSyncStatus: AutoSyncStatus,
+    embeddedTrackChoices: List<SubtitleTrackChoice.Embedded>,
+    downloadedTrackChoices: List<SubtitleTrackChoice.Downloaded>,
+    localFileChoices: List<java.io.File>,
+    generatedSubtitleFiles: List<GeneratedSubtitleFile>,
+    subtitleSearchCoordinator: SubtitleSearchCoordinator,
+    subtitleDeletionCoordinator: SubtitleDeletionCoordinator,
+    onLaunchSrtPicker: (Array<String>) -> Unit,
     dualSecondaryColorHex: String,
     pendingDualAiLanguage: String?,
     subtitleStudioNavigation: SubtitleStudioNavigationCoordinator,
@@ -117,6 +124,62 @@ internal fun PlayerSubtitleStudioSurfaces(
             onAutoSync = { autoSyncCoordinator.runAutoSync() },
             onSmartSearch = { subtitleStudioNavigation.onDockItemTapped(SubtitleDockItem.SUPER_SUBS) },
             autoSyncStatus = autoSyncStatus,
+            tracks = DeckTracksModel(
+                embedded = embeddedTrackChoices,
+                downloaded = downloadedTrackChoices,
+                local = localFileChoices,
+                generated = generatedSubtitleFiles,
+                selectedKey = trackUi.selectedKey,
+                onSelect = { choice -> subtitleSearchCoordinator.selectSubtitleTrack(choice) },
+                onDeleteFile = { file -> subtitleDeletionCoordinator.requestDeleteSubtitle(file) },
+                onDeleteGenerated = { generated ->
+                    val path = generated.uri.path
+                    if (path != null) subtitleDeletionCoordinator.requestDeleteSubtitle(java.io.File(path))
+                },
+                onOpenFilePicker = {
+                    subtitleStudioNavigation.closeDock()
+                    onLaunchSrtPicker(arrayOf("application/x-subrip", "text/plain", "*/*"))
+                },
+            ),
+            dual = run {
+                val languages = SubtitleLanguageRegistry.allLanguages()
+                DeckDualModel(
+                    enabled = dualUi.enabled,
+                    canEnable = trackUi.primaryUri != null || trackUi.selectedKey?.startsWith("embedded:") == true,
+                    primaryLabel = quickHudFileName ?: "None",
+                    secondaryLanguage = dualUi.secondaryLanguage,
+                    secondaryLanguageLabel = languages.firstOrNull { it.first == dualUi.secondaryLanguage }?.second
+                        ?: dualUi.secondaryLanguage.uppercase(),
+                    sourceLabel = dualUi.secondarySourceLabel,
+                    availableLanguages = languages,
+                    gapLines = dualUi.gapLines,
+                    colorHex = dualSecondaryColorHex,
+                    statusText = dualUi.statusText,
+                    onEnabledChange = { enabled ->
+                        dualUi.enabled = enabled
+                        if (enabled) subtitleSyncTools.fetchAndApplyDualSecondary() else subtitleSyncTools.disableDualSubtitles()
+                        studioUi.menuTouchKey++
+                    },
+                    onLanguageChange = { lang ->
+                        onPendingDualAiLanguageChanged(null)
+                        dualUi.secondaryLanguage = lang
+                        coreUi.behaviorPrefs = coreUi.behaviorPrefs.copy(dualSecondaryLanguage = lang)
+                        saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
+                        if (dualUi.enabled) subtitleSyncTools.fetchAndApplyDualSecondary()
+                        studioUi.menuTouchKey++
+                    },
+                    onGapChange = { gap ->
+                        dualUi.gapLines = gap
+                        if (dualUi.enabled) subtitleSyncTools.reapplyDualStyle()
+                        studioUi.menuTouchKey++
+                    },
+                    onColorChange = { color ->
+                        onDualSecondaryColorHexChanged(color)
+                        if (dualUi.enabled) subtitleSyncTools.reapplyDualStyle(color)
+                        studioUi.menuTouchKey++
+                    },
+                )
+            },
             onManageDownloads = {
                 subtitleStudioNavigation.onDockItemTapped(SubtitleDockItem.TRACK)
                 onTrackSelectorManageModeChanged(true)
