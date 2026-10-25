@@ -1,52 +1,104 @@
 package com.sole.cinevault.subtitles
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.sizeIn
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.DragHandle
+import androidx.compose.material.icons.rounded.List
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.sole.cinevault.ui.theme.AmberCore
-import com.sole.cinevault.ui.theme.GlassSurfaceStrong
+import com.sole.cinevault.LumenActionButton
+import com.sole.cinevault.LumenChip
+import com.sole.cinevault.LumenGhostScope
+import com.sole.cinevault.LumenGold
+import com.sole.cinevault.LumenHoldButton
+import com.sole.cinevault.LumenMint
+import com.sole.cinevault.LumenRailState
+import com.sole.cinevault.LumenRose
+import com.sole.cinevault.LumenSectionLabel
+import com.sole.cinevault.LumenSky
+import com.sole.cinevault.LumenSlider
+import com.sole.cinevault.LumenStepper
+import com.sole.cinevault.LumenSwitch
+import com.sole.cinevault.LumenTab
+import com.sole.cinevault.LumenTabStrip
+import com.sole.cinevault.LumenType
+import com.sole.cinevault.LUMEN_GHOST_ALPHA
+import com.sole.cinevault.lumenFrame
+import com.sole.cinevault.rememberLumenGhost
 import com.sole.cinevault.ui.theme.TextBright
 import com.sole.cinevault.ui.theme.TextFaint
 import com.sole.cinevault.ui.theme.TextMuted
-import com.sole.cinevault.ui.theme.glassPanel
-import com.sole.cinevault.lumenFrame
-import com.sole.cinevault.LumenGold
+import kotlin.math.roundToInt
 
-private const val DELAY_STEP_SECONDS = 0.1f
+/** The six tabs of the Sub Deck. */
+enum class DeckTab(val label: String) { TRACKS("Tracks"), FIND("Find"), SYNC("Sync"), STYLE("Style"), AI("AI"), SETTINGS("Settings") }
+
+private val deckTabs = listOf(
+    LumenTab("Tracks", Icons.Rounded.List),
+    LumenTab("Find", Icons.Rounded.Search),
+    LumenTab("Sync", Icons.Rounded.Schedule),
+    LumenTab("Style", Icons.Rounded.Palette),
+    LumenTab("AI", Icons.Rounded.AutoAwesome),
+    LumenTab("Settings", Icons.Rounded.Tune),
+)
+
+private val delayStepChoices = listOf(0.01f, 0.1f, 0.5f, 1f)
+
+private val positionPresetsHud = listOf(
+    "Bottom" to 0.02f,
+    "Above controls" to 0.16f,
+    "Centre" to 0.45f,
+    "Top" to 0.85f,
+)
 
 /**
- * Tap-CC destination — replaces the old 4-item Dock entirely. A single
- * draggable strip: filename, Delay (drag or +/- step, real waveform once
- * Auto-Sync has run), Size, and Position. Position is vertical-only — see
- * the call site for why a real "x,y" control isn't built here yet.
+ * The Sub Deck (the Tap-CC window): one Lumen window with six tabs that holds everything the
+ * old Quick HUD, the Download / Power tools lists and the standalone subtitle windows did.
+ * Delay, Size and Position each have big − / + steppers (hold to repeat) plus a live slider.
+ * Heavier tools (track list, search, dual subs, looks, behaviour, AI panels) open from here
+ * and are moved inside the Deck step by step.
  */
 @Composable
 fun QuickHud(
@@ -64,172 +116,414 @@ fun QuickHud(
     onSmartSearch: (() -> Unit)? = null,
     containerSize: IntSize,
     initialOffset: Offset,
-    windowWidth: androidx.compose.ui.unit.Dp = 264.dp,
-    modifier: Modifier = Modifier
+    windowWidth: Dp = 264.dp,
+    modifier: Modifier = Modifier,
+    autoSyncStatus: AutoSyncStatus = AutoSyncStatus.Idle,
+    onManageDownloads: (() -> Unit)? = null,
+    onWebSearch: (() -> Unit)? = null,
+    onSpeechToSubs: (() -> Unit)? = null,
+    onTranslate: (() -> Unit)? = null,
+    onDialogueSync: (() -> Unit)? = null,
+    onDriftSync: (() -> Unit)? = null,
+    onDualSubs: (() -> Unit)? = null,
+    onBehaviour: (() -> Unit)? = null,
+    onMoreLooks: (() -> Unit)? = null,
+    autoDownload: Boolean = false,
+    onAutoDownloadChange: ((Boolean) -> Unit)? = null,
+    initialTab: DeckTab = DeckTab.SYNC,
 ) {
+    val density = LocalDensity.current
+    var tab by remember { mutableStateOf(initialTab) }
+    var delayStep by remember { mutableStateOf(0.1f) }
+    val (ghost, ghostAlpha) = rememberLumenGhost()
+
+    val maxHeight = with(density) { containerSize.height.toDp() } - LumenRailState.bottomInset - 12.dp
+
     DraggableStudioWindow(
         initialOffset = initialOffset,
         containerSize = containerSize,
-        modifier = modifier
+        modifier = modifier,
     ) { dragHandleModifier ->
-        Column(
-            modifier = Modifier
-                // Width comes from the player's current adaptive window policy.
-                .width(windowWidth)
-                .lumenFrame(LumenGold)
-                .padding(12.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().then(dragHandleModifier),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    Icons.Rounded.DragHandle,
-                    contentDescription = "Drag to move",
-                    tint = TextFaint,
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(modifier = Modifier.width(5.dp))
-                Text(
-                    text = subtitleFileName ?: "No subtitle loaded",
-                    color = TextBright,
-                    fontSize = com.sole.cinevault.LumenType.body,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+        LumenGhostScope(ghost) {
+            Box {
+                Column(
+                    modifier = Modifier
+                        .width(windowWidth)
+                        .heightIn(max = maxHeight.coerceAtLeast(200.dp))
+                        .graphicsLayer { alpha = ghostAlpha }
+                        .lumenFrame(LumenGold)
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    // Header: drag handle, title and the file that is showing.
+                    Row(
+                        modifier = Modifier.fillMaxWidth().then(dragHandleModifier),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Rounded.DragHandle, contentDescription = "Drag to move", tint = TextFaint, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "SUB DECK",
+                            color = LumenGold,
+                            fontSize = LumenType.title,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 2.5.sp,
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = subtitleFileName ?: "No subtitle loaded",
+                            color = TextMuted,
+                            fontSize = LumenType.caption,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    LumenTabStrip(
+                        tabs = deckTabs,
+                        selected = tab.ordinal,
+                        accent = LumenGold,
+                        iconOnly = windowWidth < 300.dp,
+                        onSelect = { tab = DeckTab.values()[it] },
+                    )
+                    Spacer(Modifier.height(10.dp))
 
-            if (onTracks != null || onAutoSync != null || onSmartSearch != null) {
-                // The three things people look for first, one tap away.
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                    if (onTracks != null) com.sole.cinevault.LumenChip("Tracks", false, com.sole.cinevault.LumenGold, Modifier.weight(1f)) { onTracks() }
-                    if (onAutoSync != null) com.sole.cinevault.LumenChip("Auto-sync", false, com.sole.cinevault.LumenGold, Modifier.weight(1f)) { onAutoSync() }
+                    Crossfade(
+                        targetState = tab,
+                        animationSpec = tween(160),
+                        modifier = Modifier.weight(1f, fill = false),
+                        label = "deckTab",
+                    ) { current ->
+                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                            when (current) {
+                                DeckTab.TRACKS -> TracksPage(subtitleFileName, onTracks, onManageDownloads, onDualSubs)
+                                DeckTab.FIND -> FindPage(onSmartSearch, onWebSearch, autoDownload, onAutoDownloadChange)
+                                DeckTab.SYNC -> SyncPage(
+                                    delaySeconds = delaySeconds,
+                                    onDelayChange = onDelayChange,
+                                    delayStep = delayStep,
+                                    onDelayStepChange = { delayStep = it },
+                                    speechTimeline = speechTimeline,
+                                    autoSyncStatus = autoSyncStatus,
+                                    onAutoSync = onAutoSync,
+                                    onDialogueSync = onDialogueSync,
+                                    onDriftSync = onDriftSync,
+                                    onBubble = { ghost.bubble = it },
+                                )
+                                DeckTab.STYLE -> StylePage(
+                                    fontSizeSp = fontSizeSp,
+                                    onFontSizeChange = onFontSizeChange,
+                                    bottomPadding = bottomPadding,
+                                    onBottomPaddingChange = onBottomPaddingChange,
+                                    onMoreLooks = onMoreLooks,
+                                    onBubble = { ghost.bubble = it },
+                                )
+                                DeckTab.AI -> AiPage(onSpeechToSubs, onTranslate)
+                                DeckTab.SETTINGS -> SettingsPage(onBehaviour, onReset)
+                            }
+                        }
+                    }
                 }
-                if (onSmartSearch != null) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    com.sole.cinevault.LumenChip("Smart search", false, com.sole.cinevault.LumenGold, Modifier.fillMaxWidth()) { onSmartSearch() }
+
+                // Pop-up number over the picture while a control is being adjusted.
+                val bubble = ghost.bubble
+                if (ghost.active && bubble != null) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .offset(x = (-104).dp)
+                            .width(92.dp)
+                            .lumenFrame(LumenGold)
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(bubble, color = LumenGold, fontSize = LumenType.value, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
                 }
             }
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(7.dp))
+@Composable
+private fun TracksPage(
+    fileName: String?,
+    onTracks: (() -> Unit)?,
+    onManage: (() -> Unit)?,
+    onDual: (() -> Unit)?,
+) {
+    LumenSectionLabel("Now showing", LumenGold)
+    Text(
+        text = fileName ?: "No subtitle loaded",
+        color = TextBright,
+        fontSize = LumenType.body,
+        fontWeight = FontWeight.Medium,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+    )
+    Spacer(Modifier.height(10.dp))
+    if (onTracks != null) LumenActionButton("Choose track", LumenGold) { onTracks() }
+    Spacer(Modifier.height(8.dp))
+    if (onManage != null) LumenActionButton("Downloaded files", LumenMint) { onManage() }
+    Spacer(Modifier.height(8.dp))
+    if (onDual != null) LumenActionButton("Dual subtitles", LumenSky) { onDual() }
+}
 
-            // Delay gets its own layout (label + value pill on one line,
-            // step buttons either side of the slider on the next) since
-            // it's the one control that needs both a quick nudge and a
-            // fine drag — cramming that into the generic single-line
-            // HudRow would either hide the buttons or crush the slider.
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "Delay", color = TextMuted, fontSize = com.sole.cinevault.LumenType.caption, modifier = Modifier.weight(1f))
-                HudValuePill(formatDelay(delaySeconds))
-            }
-            Spacer(modifier = Modifier.height(3.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                DelayStepButton(symbol = "\u2212") { onDelayChange((delaySeconds - DELAY_STEP_SECONDS).coerceIn(-10f, 10f)) }
-                Spacer(modifier = Modifier.width(4.dp))
-                WaveformSlider(
-                    value = delaySeconds.coerceIn(-10f, 10f),
-                    onValueChange = onDelayChange,
-                    valueRange = -10f..10f,
-                    speechTimeline = speechTimeline,
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                DelayStepButton(symbol = "+") { onDelayChange((delaySeconds + DELAY_STEP_SECONDS).coerceIn(-10f, 10f)) }
-            }
+@Composable
+private fun FindPage(
+    onSmartSearch: (() -> Unit)?,
+    onWeb: (() -> Unit)?,
+    autoDownload: Boolean,
+    onAutoDownloadChange: ((Boolean) -> Unit)?,
+) {
+    if (onSmartSearch != null) LumenActionButton("Smart search", LumenGold) { onSmartSearch() }
+    Text(
+        "Matches by file fingerprint first, so timing usually fits straight away.",
+        color = TextMuted,
+        fontSize = LumenType.caption,
+        modifier = Modifier.padding(top = 6.dp),
+    )
+    Spacer(Modifier.height(10.dp))
+    if (onWeb != null) LumenActionButton("Search the web", LumenSky) { onWeb() }
+    if (onAutoDownloadChange != null) {
+        LumenSectionLabel("Automatic", LumenGold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Download when none found", color = TextBright, fontSize = LumenType.body, modifier = Modifier.weight(1f))
+            LumenSwitch(autoDownload, onAutoDownloadChange, LumenGold)
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(6.dp))
+@Composable
+private fun SyncPage(
+    delaySeconds: Float,
+    onDelayChange: (Float) -> Unit,
+    delayStep: Float,
+    onDelayStepChange: (Float) -> Unit,
+    speechTimeline: FloatArray?,
+    autoSyncStatus: AutoSyncStatus,
+    onAutoSync: (() -> Unit)?,
+    onDialogueSync: (() -> Unit)?,
+    onDriftSync: (() -> Unit)?,
+    onBubble: (String) -> Unit,
+) {
+    fun setDelay(v: Float) {
+        val clamped = (((v * 100f).roundToInt()) / 100f).coerceIn(-10f, 10f)
+        onDelayChange(clamped)
+        onBubble(formatDelay(clamped) + " s")
+    }
+    LumenStepper(
+        label = "Delay",
+        valueText = formatDelay(delaySeconds),
+        unit = "s",
+        accent = LumenGold,
+        onStep = { n -> setDelay(delaySeconds + n * delayStep) },
+    )
+    Spacer(Modifier.height(4.dp))
+    WaveformSlider(
+        value = delaySeconds.coerceIn(-10f, 10f),
+        onValueChange = { setDelay(it) },
+        valueRange = -10f..10f,
+        speechTimeline = speechTimeline,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Spacer(Modifier.height(8.dp))
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Step", color = TextMuted, fontSize = LumenType.caption)
+        delayStepChoices.forEach { s ->
+            LumenChip(formatStep(s), delayStep == s, LumenMint) { onDelayStepChange(s) }
+        }
+    }
+    Spacer(Modifier.height(4.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        LumenChip("Zero", false, LumenRose) { setDelay(0f) }
+    }
+    Text(
+        "Hold − or + to repeat. It speeds up the longer you hold.",
+        color = TextMuted,
+        fontSize = LumenType.caption,
+        modifier = Modifier.padding(top = 6.dp),
+    )
 
-            HudRow(label = "Size", valueText = "${fontSizeSp.toInt()}sp") {
-                DotThumbSlider(
-                    value = fontSizeSp,
-                    onValueChange = onFontSizeChange,
-                    valueRange = 12f..32f,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+    LumenSectionLabel("Auto-sync", LumenGold)
+    AutoSyncCard(autoSyncStatus, onAutoSync)
+    Spacer(Modifier.height(8.dp))
+    if (onDialogueSync != null) LumenActionButton("Dialogue sync", LumenSky) { onDialogueSync() }
+    Spacer(Modifier.height(8.dp))
+    if (onDriftSync != null) LumenActionButton("Drift sync", LumenSky) { onDriftSync() }
+}
 
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Vertical-only, deliberately — see doc comment on the public
-            // function above. Labeled "Position", not "x,y", so the UI
-            // never claims a capability that isn't actually there.
-            HudRow(label = "Position", valueText = null) {
-                DotThumbSlider(
-                    value = bottomPadding,
-                    onValueChange = onBottomPaddingChange,
-                    valueRange = 0.02f..0.90f,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(7.dp))
-            Text(
-                text = "↺  RESET",
-                color = AmberCore,
-                fontSize = com.sole.cinevault.LumenType.caption,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
+@Composable
+private fun AutoSyncCard(status: AutoSyncStatus, onAutoSync: (() -> Unit)?) {
+    when (status) {
+        is AutoSyncStatus.Analyzing -> {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(50))
-                    .background(AmberCore.copy(alpha = 0.10f))
-                    .border(1.dp, AmberCore.copy(alpha = 0.30f), RoundedCornerShape(50))
-                    .clickable { onReset() }
-                    .sizeIn(minHeight = 48.dp)
-                    .padding(vertical = 5.dp)
+                    .background(LumenGold.copy(alpha = 0.08f))
+                    .border(1.5.dp, LumenGold)
+                    .padding(10.dp)
+            ) {
+                Text(status.stage.ifBlank { "Listening to the film" }, color = LumenGold, fontSize = LumenType.body, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.height(6.dp))
+                MarchingBar(LumenGold)
+                Spacer(Modifier.height(6.dp))
+                Text("Safe to close. A pill on the right keeps the job.", color = TextMuted, fontSize = LumenType.caption)
+            }
+        }
+        is AutoSyncStatus.Failed -> {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(LumenRose.copy(alpha = 0.08f))
+                    .border(1.5.dp, LumenRose)
+                    .padding(10.dp)
+            ) {
+                Text("Couldn't sync", color = LumenRose, fontSize = LumenType.body, fontWeight = FontWeight.Bold)
+                Text(status.reason, color = TextBright, fontSize = LumenType.caption, modifier = Modifier.padding(top = 4.dp))
+            }
+            Spacer(Modifier.height(8.dp))
+            if (onAutoSync != null) LumenActionButton("Try again", LumenGold) { onAutoSync() }
+        }
+        else -> {
+            if (onAutoSync != null) LumenActionButton("Start auto-sync", LumenGold) { onAutoSync() }
+            Text(
+                "Listens at several points in the film and scores the best fit, so slow drift is caught too.",
+                color = TextMuted,
+                fontSize = LumenType.caption,
+                modifier = Modifier.padding(top = 6.dp),
             )
         }
     }
 }
 
 @Composable
-private fun DelayStepButton(symbol: String, onClick: () -> Unit) {
-    Text(
-        text = symbol,
-        color = AmberCore,
-        fontSize = com.sole.cinevault.LumenType.value,
-        fontWeight = FontWeight.Medium,
-        textAlign = TextAlign.Center,
-        modifier = Modifier
-            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-            .clip(CircleShape)
-            .background(AmberCore.copy(alpha = 0.14f))
-            .clickable { onClick() }
+private fun MarchingBar(accent: Color) {
+    val phase by com.sole.cinevault.rememberLoop(
+        enabled = com.sole.cinevault.rememberMotionEnabled(),
+        from = 0f,
+        to = 24f,
+        periodMs = 800,
     )
-}
-
-// The "amber glow" value badge used everywhere a control's current value
-// is shown — replaces bare Text, which read too small and too easy to
-// miss against the glass background at this size.
-@Composable
-private fun HudValuePill(text: String) {
-    Text(
-        text = text,
-        color = AmberCore,
-        fontSize = com.sole.cinevault.LumenType.caption,
-        fontWeight = FontWeight.Medium,
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(AmberCore.copy(alpha = 0.16f))
-            .padding(horizontal = 8.dp, vertical = 2.dp)
-    )
-}
-
-@Composable
-private fun HudRow(label: String, valueText: String?, slider: @Composable () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(text = label, color = TextMuted, fontSize = com.sole.cinevault.LumenType.caption, modifier = Modifier.width(34.dp))
-        slider()
-        if (valueText != null) {
-            Spacer(modifier = Modifier.width(5.dp))
-            HudValuePill(valueText)
+    Canvas(modifier = Modifier.fillMaxWidth().height(6.dp)) {
+        var x = -24f + phase
+        val dash = 12.dp.toPx()
+        while (x < size.width) {
+            val start = x.coerceAtLeast(0f)
+            val end = (x + dash).coerceAtMost(size.width)
+            if (end > start) {
+                drawRect(accent.copy(alpha = 0.9f), topLeft = Offset(start, 0f), size = androidx.compose.ui.geometry.Size(end - start, size.height))
+            }
+            x += dash * 2
         }
     }
 }
 
-private fun formatDelay(seconds: Float): String =
-    if (seconds >= 0f) "+${"%.1f".format(seconds)}s" else "${"%.1f".format(seconds)}s"
+@Composable
+private fun StylePage(
+    fontSizeSp: Float,
+    onFontSizeChange: (Float) -> Unit,
+    bottomPadding: Float,
+    onBottomPaddingChange: (Float) -> Unit,
+    onMoreLooks: (() -> Unit)?,
+    onBubble: (String) -> Unit,
+) {
+    fun setSize(v: Float) {
+        val c = v.roundToInt().coerceIn(12, 32).toFloat()
+        onFontSizeChange(c)
+        onBubble("${c.toInt()} sp")
+    }
+    fun setPos(v: Float) {
+        val c = (((v * 100f).roundToInt()) / 100f).coerceIn(0.02f, 0.90f)
+        onBottomPaddingChange(c)
+        onBubble("${(c * 100).roundToInt()} % up")
+    }
 
+    LumenStepper(
+        label = "Size",
+        valueText = fontSizeSp.roundToInt().toString(),
+        unit = "sp",
+        accent = LumenMint,
+        onStep = { n -> setSize(fontSizeSp + n) },
+    )
+    LumenSlider(
+        value = fontSizeSp,
+        onValueChange = { setSize(it) },
+        valueRange = 12f..32f,
+        accent = LumenMint,
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    LumenStepper(
+        label = "Position",
+        valueText = (bottomPadding * 100).roundToInt().toString(),
+        unit = "% up",
+        accent = LumenSky,
+        onStep = { n -> setPos(bottomPadding + n * 0.01f) },
+    )
+    LumenSlider(
+        value = bottomPadding,
+        onValueChange = { setPos(it) },
+        valueRange = 0.02f..0.90f,
+        accent = LumenSky,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Spacer(Modifier.height(8.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+        positionPresetsHud.forEach { (label, value) ->
+            LumenChip(label, kotlin.math.abs(bottomPadding - value) < 0.005f, LumenSky) { setPos(value) }
+        }
+    }
+    Spacer(Modifier.height(10.dp))
+    if (onMoreLooks != null) LumenActionButton("Colours and background", LumenGold) { onMoreLooks() }
+}
+
+@Composable
+private fun AiPage(onSpeech: (() -> Unit)?, onTranslate: (() -> Unit)?) {
+    LumenSectionLabel("Speech to subtitles", LumenGold)
+    Text("Writes subtitles from the film's audio with Whisper on this device.", color = TextMuted, fontSize = LumenType.caption)
+    Spacer(Modifier.height(8.dp))
+    if (onSpeech != null) LumenActionButton("Create from audio", LumenGold) { onSpeech() }
+    LumenSectionLabel("Translate", LumenSky)
+    Text("Translates the current track into another language.", color = TextMuted, fontSize = LumenType.caption)
+    Spacer(Modifier.height(8.dp))
+    if (onTranslate != null) LumenActionButton("Translate track", LumenSky) { onTranslate() }
+    Text("Both run on this device. Nothing is uploaded.", color = TextMuted, fontSize = LumenType.caption, modifier = Modifier.padding(top = 8.dp))
+}
+
+@Composable
+private fun SettingsPage(onBehaviour: (() -> Unit)?, onReset: () -> Unit) {
+    if (onBehaviour != null) {
+        LumenActionButton("Behaviour and cleaning", LumenGold) { onBehaviour() }
+    }
+    LumenSectionLabel("Reset", LumenRose)
+    var armed by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (armed) "Armed. Hold the button to reset." else "Reset all subtitle settings",
+            color = if (armed) LumenRose else TextBright,
+            fontSize = LumenType.body,
+            modifier = Modifier.weight(1f),
+        )
+        LumenSwitch(armed, { armed = it }, LumenRose)
+    }
+    if (armed) {
+        Spacer(Modifier.height(8.dp))
+        LumenHoldButton("Hold to reset all", LumenRose) {
+            onReset()
+            armed = false
+        }
+        Text(
+            "Clears style, position, delay and remembered choices. Downloaded files stay.",
+            color = TextMuted,
+            fontSize = LumenType.caption,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+    }
+}
+
+private fun formatDelay(seconds: Float): String =
+    (if (seconds >= 0f) "+" else "−") + "%.2f".format(kotlin.math.abs(seconds))
+
+private fun formatStep(step: Float): String =
+    if (step < 0.1f) "0.01" else if (step == 0.1f) "0.1" else if (step == 0.5f) "0.5" else "1"
