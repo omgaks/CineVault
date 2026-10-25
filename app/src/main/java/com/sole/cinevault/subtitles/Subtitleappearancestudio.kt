@@ -60,12 +60,12 @@ object SubtitlePresets {
     )
 }
 
-private val textColorSwatches = listOf(
+internal val textColorSwatches = listOf(
     "Warm White" to 0xFFFFF3D6.toInt(), "White" to AndroidColor.WHITE, "Yellow" to AndroidColor.YELLOW,
     "Cyan" to AndroidColor.CYAN, "Amber" to 0xFFFFC857.toInt(), "Light Gray" to 0xFFD9D9D9.toInt()
 )
-private val edgeColorSwatches = listOf("Black" to AndroidColor.BLACK, "Dark Gray" to 0xFF333333.toInt(), "None" to AndroidColor.TRANSPARENT)
-private val backgroundSwatches = listOf(
+internal val edgeColorSwatches = listOf("Black" to AndroidColor.BLACK, "Dark Gray" to 0xFF333333.toInt(), "None" to AndroidColor.TRANSPARENT)
+internal val backgroundSwatches = listOf(
     "None" to AndroidColor.TRANSPARENT, "Soft Black" to 0x99000000.toInt(), "Solid Black" to 0xFF000000.toInt()
 )
 
@@ -295,7 +295,7 @@ fun SubtitleAppearanceStudioSheet(
 }
 
 @Composable
-private fun StyledPreviewText(appearance: SubtitleAppearance, fontSizeSp: Float) {
+internal fun StyledPreviewText(appearance: SubtitleAppearance, fontSizeSp: Float) {
     val textColor = Color(appearance.foregroundColor)
     val bgColor = Color(appearance.backgroundColor)
     Box(

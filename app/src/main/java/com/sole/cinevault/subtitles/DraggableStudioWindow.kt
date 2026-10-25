@@ -1,6 +1,11 @@
 package com.sole.cinevault.subtitles
 
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateIntOffsetAsState
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
@@ -75,8 +80,35 @@ fun DraggableStudioWindow(
         offset
     }
 
-    val dragModifier = Modifier.pointerInput(containerSize, windowSize, anchored) {
-        detectDragGestures { change, dragAmount ->
+    // Fall back to the rail when the window is no longer fully on screen (rotation, split-screen,
+    // a taller window opened after a drag): it slides home instead of hiding behind an edge.
+    var dragging by remember { mutableStateOf(false) }
+    LaunchedEffect(containerSize, windowSize) {
+        if (userMoved && measured) {
+            val off = offset
+            val outside = off.x < 0f || off.y < 0f ||
+                off.x + windowSize.width > containerSize.width ||
+                off.y + windowSize.height > containerSize.height
+            if (outside) userMoved = false
+        }
+    }
+    val shown by animateIntOffsetAsState(
+        targetValue = IntOffset(effective.x.roundToInt(), effective.y.roundToInt()),
+        animationSpec = if (dragging || !measured) snap() else tween(250),
+        label = "windowSnap",
+    )
+
+    val dragModifier = Modifier
+        .pointerInput(Unit) {
+            // Double-tap the header to send the window back to the rail.
+            detectTapGestures(onDoubleTap = { userMoved = false })
+        }
+        .pointerInput(containerSize, windowSize, anchored) {
+        detectDragGestures(
+            onDragStart = { dragging = true },
+            onDragEnd = { dragging = false },
+            onDragCancel = { dragging = false },
+        ) { change, dragAmount ->
             change.consume()
             val maxX = (containerSize.width - windowSize.width).coerceAtLeast(0).toFloat()
             val maxY = (containerSize.height - windowSize.height).coerceAtLeast(0).toFloat()
@@ -95,7 +127,7 @@ fun DraggableStudioWindow(
             // Stay invisible for the one frame before the window has been measured, so an
             // anchored window never flashes at the wrong spot.
             .graphicsLayer(alpha = if (!measured) 0f else 1f)
-            .offset { IntOffset(effective.x.roundToInt(), effective.y.roundToInt()) }
+            .offset { shown }
     ) {
         content(dragModifier)
     }

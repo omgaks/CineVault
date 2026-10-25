@@ -1433,6 +1433,7 @@ fun VideoPlayerScreen(
             subtitleSearchCoordinator = subtitleSearchCoordinator,
             subtitleDeletionCoordinator = subtitleDeletionCoordinator,
             onLaunchSrtPicker = subtitleFileRuntime.launchSrtPicker,
+            isAssOrSsaFormat = isAssOrSsaFormat,
             pendingDeleteFile = pendingDeleteConfirmFile,
             snackbarHostState = snackbarHostState,
             pendingDeletePaths = pendingDeletePaths,

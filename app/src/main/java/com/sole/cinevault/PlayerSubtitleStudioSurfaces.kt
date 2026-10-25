@@ -53,6 +53,7 @@ internal fun PlayerSubtitleStudioSurfaces(
     subtitleSearchCoordinator: SubtitleSearchCoordinator,
     subtitleDeletionCoordinator: SubtitleDeletionCoordinator,
     onLaunchSrtPicker: (Array<String>) -> Unit,
+    isAssOrSsaFormat: Boolean,
     dualSecondaryColorHex: String,
     pendingDualAiLanguage: String?,
     subtitleStudioNavigation: SubtitleStudioNavigationCoordinator,
@@ -180,6 +181,55 @@ internal fun PlayerSubtitleStudioSurfaces(
                     },
                 )
             },
+            looks = DeckLooksModel(
+                presetName = appearanceUi.preset,
+                appearance = appearanceUi.appearance,
+                isAssOrSsa = isAssOrSsaFormat,
+                preserveOriginalStyling = appearanceUi.preserveOriginalStyling,
+                onApplyPreset = { name, preset ->
+                    appearanceUi.preset = name
+                    appearanceUi.appearance = preset
+                    studioUi.menuTouchKey++
+                },
+                onForeground = { color ->
+                    appearanceUi.preset = "Custom"
+                    appearanceUi.appearance = appearanceUi.appearance.copy(foregroundColor = color)
+                    studioUi.menuTouchKey++
+                },
+                onEdgeType = { type ->
+                    appearanceUi.preset = "Custom"
+                    appearanceUi.appearance = appearanceUi.appearance.copy(edgeType = type)
+                    studioUi.menuTouchKey++
+                },
+                onEdgeColor = { color ->
+                    appearanceUi.preset = "Custom"
+                    appearanceUi.appearance = appearanceUi.appearance.copy(edgeColor = color)
+                    studioUi.menuTouchKey++
+                },
+                onBackground = { color ->
+                    appearanceUi.preset = "Custom"
+                    appearanceUi.appearance = appearanceUi.appearance.copy(backgroundColor = color)
+                    studioUi.menuTouchKey++
+                },
+                onPreserveChange = {
+                    appearanceUi.preserveOriginalStyling = it
+                    studioUi.menuTouchKey++
+                },
+            ),
+            behaviour = DeckBehaviourModel(
+                prefs = coreUi.behaviorPrefs,
+                onPrefsChange = {
+                    coreUi.behaviorPrefs = it
+                    saveSubtitleBehaviorPrefs(context, it)
+                    studioUi.menuTouchKey++
+                },
+                cleaning = coreUi.cleaningOptions,
+                onCleaningChange = {
+                    coreUi.cleaningOptions = it
+                    saveSubtitleCleaningOptions(context, it)
+                    studioUi.menuTouchKey++
+                },
+            ),
             onManageDownloads = {
                 subtitleStudioNavigation.onDockItemTapped(SubtitleDockItem.TRACK)
                 onTrackSelectorManageModeChanged(true)
