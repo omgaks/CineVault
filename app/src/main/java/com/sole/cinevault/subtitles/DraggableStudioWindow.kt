@@ -2,7 +2,7 @@ package com.sole.cinevault.subtitles
 
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.animateIntOffsetAsState
+import androidx.compose.animation.animateIntOffsetAsState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.LaunchedEffect
