@@ -62,8 +62,8 @@ fun PicturePanelHost(controller: PictureEnhanceController, railBottomInset: Dp =
     var panelSize by remember { mutableStateOf(IntSize.Zero) }
 
     fun closePanelOnly() {
-        // Closing settings must not cancel the explicit Split viewing mode.
-        controller.panelOpen = false
+        // Closing Picture also ends split comparison; never leave the overlay behind.
+        controller.closePanel()
     }
 
     BackHandler(enabled = controller.panelOpen) {
