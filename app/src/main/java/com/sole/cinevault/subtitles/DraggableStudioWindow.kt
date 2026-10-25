@@ -2,7 +2,7 @@ package com.sole.cinevault.subtitles
 
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.animateIntOffsetAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.LaunchedEffect
@@ -92,10 +92,15 @@ fun DraggableStudioWindow(
             if (outside) userMoved = false
         }
     }
-    val shown by animateIntOffsetAsState(
-        targetValue = IntOffset(effective.x.roundToInt(), effective.y.roundToInt()),
-        animationSpec = if (dragging || !measured) snap<IntOffset>() else tween<IntOffset>(250),
-        label = "windowSnap",
+    val shownX by animateFloatAsState(
+        targetValue = effective.x,
+        animationSpec = if (dragging || !measured) snap() else tween(250),
+        label = "windowSnapX",
+    )
+    val shownY by animateFloatAsState(
+        targetValue = effective.y,
+        animationSpec = if (dragging || !measured) snap() else tween(250),
+        label = "windowSnapY",
     )
 
     val dragModifier = Modifier
@@ -127,7 +132,7 @@ fun DraggableStudioWindow(
             // Stay invisible for the one frame before the window has been measured, so an
             // anchored window never flashes at the wrong spot.
             .graphicsLayer(alpha = if (!measured) 0f else 1f)
-            .offset { shown }
+            .offset { IntOffset(shownX.roundToInt(), shownY.roundToInt()) }
     ) {
         content(dragModifier)
     }
