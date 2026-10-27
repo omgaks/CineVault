@@ -1,5 +1,3 @@
-@file:OptIn(androidx.media3.common.util.UnstableApi::class)
-
 package com.sole.cinevault.subtitles
 
 import androidx.compose.foundation.background
@@ -76,7 +74,8 @@ internal fun DeckLooksPreview(looks: DeckLooksModel, fontSizeSp: Float) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@kotlin.OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun DeckLooksContent(looks: DeckLooksModel, fontSizeSp: Float) {
     LumenSectionLabel("Look", LumenGold)
