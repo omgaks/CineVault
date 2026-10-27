@@ -1,3 +1,5 @@
+@file:OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package com.sole.cinevault.subtitles
 
 import androidx.compose.foundation.background
