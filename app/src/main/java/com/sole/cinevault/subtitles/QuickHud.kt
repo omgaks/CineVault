@@ -133,6 +133,8 @@ fun QuickHud(
     initialTab: DeckTab = DeckTab.SYNC,
     tracks: DeckTracksModel? = null,
     dual: DeckDualModel? = null,
+    looks: DeckLooksModel? = null,
+    behaviour: DeckBehaviourModel? = null,
 ) {
     val density = LocalDensity.current
     var tab by remember { mutableStateOf(initialTab) }
@@ -218,10 +220,11 @@ fun QuickHud(
                                     bottomPadding = bottomPadding,
                                     onBottomPaddingChange = onBottomPaddingChange,
                                     onMoreLooks = onMoreLooks,
+                                    looks = looks,
                                     onBubble = { ghost.bubble = it },
                                 )
                                 DeckTab.AI -> AiPage(onSpeechToSubs, onTranslate)
-                                DeckTab.SETTINGS -> SettingsPage(onBehaviour, onReset)
+                                DeckTab.SETTINGS -> SettingsPage(onBehaviour, behaviour, onReset)
                             }
                         }
                     }
@@ -428,6 +431,7 @@ private fun StylePage(
     bottomPadding: Float,
     onBottomPaddingChange: (Float) -> Unit,
     onMoreLooks: (() -> Unit)?,
+    looks: DeckLooksModel?,
     onBubble: (String) -> Unit,
 ) {
     fun setSize(v: Float) {
@@ -476,8 +480,12 @@ private fun StylePage(
             LumenChip(label, kotlin.math.abs(bottomPadding - value) < 0.005f, LumenSky) { setPos(value) }
         }
     }
-    Spacer(Modifier.height(10.dp))
-    if (onMoreLooks != null) LumenActionButton("Colours and background", LumenGold) { onMoreLooks() }
+    if (looks != null) {
+        DeckLooksContent(looks, fontSizeSp)
+    } else if (onMoreLooks != null) {
+        Spacer(Modifier.height(10.dp))
+        LumenActionButton("Colours and background", LumenGold) { onMoreLooks() }
+    }
 }
 
 @Composable
@@ -494,8 +502,10 @@ private fun AiPage(onSpeech: (() -> Unit)?, onTranslate: (() -> Unit)?) {
 }
 
 @Composable
-private fun SettingsPage(onBehaviour: (() -> Unit)?, onReset: () -> Unit) {
-    if (onBehaviour != null) {
+private fun SettingsPage(onBehaviour: (() -> Unit)?, behaviour: DeckBehaviourModel?, onReset: () -> Unit) {
+    if (behaviour != null) {
+        DeckBehaviourContent(behaviour)
+    } else if (onBehaviour != null) {
         LumenActionButton("Behaviour and cleaning", LumenGold) { onBehaviour() }
     }
     LumenSectionLabel("Reset", LumenRose)
