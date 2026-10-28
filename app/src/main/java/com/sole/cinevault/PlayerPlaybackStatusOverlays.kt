@@ -128,8 +128,8 @@ internal fun BoxScope.PlayerPlaybackStatusOverlays(
         enter = fadeIn(),
         exit = fadeOut(),
         modifier = Modifier
-            .align(if (isLandscape) Alignment.TopEnd else Alignment.CenterEnd)
-            .padding(top = if (isLandscape) 86.dp else 0.dp, end = 28.dp),
+            .align(Alignment.CenterEnd)
+            .padding(end = if (isLandscape) 116.dp else 28.dp),
     ) {
         VerticalBrightnessHud(value = brightnessPercent, size = hudSize)
     }
@@ -139,8 +139,8 @@ internal fun BoxScope.PlayerPlaybackStatusOverlays(
         enter = fadeIn(),
         exit = fadeOut(),
         modifier = Modifier
-            .align(if (isLandscape) Alignment.TopStart else Alignment.CenterStart)
-            .padding(top = if (isLandscape) 86.dp else 0.dp, start = 28.dp),
+            .align(Alignment.CenterStart)
+            .padding(start = if (isLandscape) 116.dp else 28.dp),
     ) {
         val volumeColor = when {
             volumePercent > 120 -> Color.Red

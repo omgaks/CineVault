@@ -4,12 +4,15 @@ import android.content.Context
 import android.os.Build
 import android.os.PowerManager
 import android.os.SystemClock
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
@@ -108,6 +111,7 @@ class PictureEnhanceController(
     private var lockedReason: String? = null
     private var lastPreset = PicturePreset.NATURAL
     private var thermalListener: Any? = null
+    private var loggedFormatSignature: String? = null
     private var lastFrames = 0L
     private var lastPollAtMs = 0L
 
@@ -181,6 +185,8 @@ class PictureEnhanceController(
         }
         installedUpscale = null
         failureHandled = false
+        setupFailed = false
+        loggedFormatSignature = null
         lockedReason = null
         note = null
         comparing = false
@@ -353,10 +359,10 @@ class PictureEnhanceController(
             !pipelineInstalled -> "Anime4K · Waiting"
             installedUpscale != null -> {
                 val target = installedUpscale!!
-                "Anime4K · GPU ${target.targetWidth}×${target.targetHeight} (requested)"
+                "Anime4K · Upscale requested ${target.targetWidth}×${target.targetHeight} (unverified)"
             }
             PictureProfiles.resolveContent(settings.content, detected) == PictureContent.ANIME ->
-                "Anime4K · Enhancement only"
+                "Anime4K · Enhancement only (upscale unverified)"
             else -> "Picture · Standard enhancement"
         }
         val dt = now - lastPollAtMs
@@ -368,7 +374,7 @@ class PictureEnhanceController(
         when {
             !isActive -> {
                 statusLive = false
-                statusLine = if (availability is PictureAvailability.Unavailable) "Not available" else "Off"
+                statusLine = (availability as? PictureAvailability.Unavailable)?.reason ?: "Off"
             }
             !pipelineInstalled -> {
                 statusLive = false
@@ -413,8 +419,9 @@ class PictureEnhanceController(
         lastError = "${error.errorCodeName}${if (cause.isNotBlank()) ": " + cause.take(140) else ""}"
         lockedReason = "Stopped: the GPU filter failed on this video"
         availability = PictureAvailability.Unavailable(lockedReason.orEmpty())
-        settings = settings.copy(preset = PicturePreset.OFF)
-        persist() // forgets the saved "on" so the title opens normally next time
+        // Keep the user's saved preset. This failure is session-scoped: the current
+        // controller stays locked until a new playback session is bound.
+        // Persisting OFF here would silently erase the user's preference.
         live.current = PictureShaderParams.OFF
         live.performanceScale = 1f
         try {
@@ -452,8 +459,16 @@ class PictureEnhanceController(
         live.current = PictureProfiles.toShaderParams(settings, comparing, isActive, splitView, splitPosition)
     }
 
+    private fun resolvedVideoFormat(): Format? = player.videoFormat
+        ?: player.currentTracks.groups.firstOrNull { group ->
+            group.type == C.TRACK_TYPE_VIDEO && group.isSelected
+        }?.let { group ->
+            (0 until group.length).firstOrNull { group.isTrackSelected(it) }
+                ?.let(group::getTrackFormat)
+        }
+
     private fun updatePerformanceSource() {
-        val format = player.videoFormat ?: return
+        val format = resolvedVideoFormat() ?: return
         performance.setSource(format.width, format.height, format.frameRate)
         updatePerformancePlan()
     }
@@ -472,12 +487,25 @@ class PictureEnhanceController(
 
     private fun evaluateAvailability() {
         if (!setupFailed) {
-            val format = player.videoFormat
+            val format = resolvedVideoFormat()
+            if (format != null) {
+                val color = format.colorInfo
+                val signature = listOf(format.sampleMimeType, format.codecs,
+                    color?.colorSpace, color?.colorTransfer,
+                    color?.hdrStaticInfo?.size, format.width, format.height).joinToString("|")
+                if (loggedFormatSignature != signature) {
+                    loggedFormatSignature = signature
+                    Log.i("CineVaultPicture", "Video format: mime=${format.sampleMimeType}, " +
+                        "codecs=${format.codecs}, colourSpace=${color?.colorSpace}, " +
+                        "transfer=${color?.colorTransfer}, hdrStaticBytes=${color?.hdrStaticInfo?.size ?: 0}, " +
+                        "size=${format.width}x${format.height}, route=${PictureHdrRouting.decide(format).route}")
+                }
+            }
             val reason: String? = when {
                 lockedReason != null -> lockedReason
-                format == null -> null
+                format == null -> "Detecting video format…"
                 PictureHdrRouting.decide(format).route == PictureHdrPolicy.Route.HDR_PASSTHROUGH ->
-                    "HDR or unknown colour transfer — original playback protected"
+                    PictureHdrRouting.blockReason(format)
                 format.height > 1440 || format.width > 2560 -> "Not needed for 4K video"
                 else -> null
             }
@@ -485,8 +513,8 @@ class PictureEnhanceController(
                 if (reason == null) PictureAvailability.Available else PictureAvailability.Unavailable(reason)
             if (next != availability) availability = next
         }
-        if (pipelineInstalled && player.videoFormat != null &&
-            PictureHdrRouting.decide(player.videoFormat!!).route ==
+        if (pipelineInstalled && resolvedVideoFormat() != null &&
+            PictureHdrRouting.decide(resolvedVideoFormat()!!).route ==
                 PictureHdrPolicy.Route.HDR_PASSTHROUGH
         ) {
             // Only at an SDR -> protected HDR boundary: detach the incompatible
@@ -514,7 +542,7 @@ class PictureEnhanceController(
     private fun applyEffects() {
         refreshLive() // values must be ready before the first frame reaches the shader
         // Fail closed while transfer metadata is unavailable: never assume SDR.
-        if (isActive && player.videoFormat != null && !pipelineInstalled && !failureHandled) {
+        if (isActive && resolvedVideoFormat() != null && !pipelineInstalled && !failureHandled) {
             installPipeline(restart = true)
         }
     }
@@ -530,7 +558,7 @@ class PictureEnhanceController(
             val resumePlaying = player.playWhenReady
             // Keep the existing enhancement as the first pass. Upscaling is allowed only
             // for confirmed SDR anime with a verified 4K output capability.
-            val format = player.videoFormat
+            val format = resolvedVideoFormat()
             val content = PictureProfiles.resolveContent(settings.content, detected)
             val anime = content == PictureContent.ANIME
             val hdr = format == null ||
@@ -543,7 +571,13 @@ class PictureEnhanceController(
                     sourceHeight = format?.height ?: 0,
                     outputWidth = outputSurfaceWidth,
                     outputHeight = outputSurfaceHeight,
-                    rendererSupportsOutputScaling = outputSurfaceWidth > 0 && outputSurfaceHeight > 0,
+                    // Media3's GlEffect supports output resizing through configure().
+                    // Enable only for a measured physical output surface, confirmed SDR,
+                    // and the software-independent Media3 video effects route.
+                    // The UI continues to label this as a request until device-verified.
+                    rendererSupportsOutputScaling =
+                        outputSurfaceWidth > 0 && outputSurfaceHeight > 0 &&
+                        format != null && !hdr && !setupFailed,
                     hdrSource = hdr,
                     thermalLimited = false,
                     droppedFramePressure = badDropWindows > 0,

@@ -62,8 +62,8 @@ fun PicturePanelHost(controller: PictureEnhanceController, railBottomInset: Dp =
     var panelSize by remember { mutableStateOf(IntSize.Zero) }
 
     fun closePanelOnly() {
-        // Closing settings must not cancel the explicit Split viewing mode.
-        controller.panelOpen = false
+        // Closing Picture also ends split comparison; never leave the overlay behind.
+        controller.closePanel()
     }
 
     BackHandler(enabled = controller.panelOpen) {
@@ -243,7 +243,7 @@ private fun PicturePanel(
                 onClose, onToggleSplit, onResetAll
             ) { onPage(PicturePage.FINE) }
         } else {
-            FinePage(controller, settings, available && on, dragHandle) { onPage(PicturePage.MAIN) }
+            FinePage(controller, settings, on, dragHandle) { onPage(PicturePage.MAIN) }
         }
     }
 }
@@ -335,7 +335,7 @@ private fun MainPage(
     Spacer(Modifier.height(8.dp))
     PictureExperienceGallery(
         cards = PictureExperiencePresentation.cards(selectedFamily, recommendation),
-        enabled = available,
+        enabled = true,
         onSelect = { family ->
             controller.setContent(PictureExperienceBridge.contentFor(family))
             if (!on) controller.setEnabled(true)
@@ -345,7 +345,7 @@ private fun MainPage(
     SectionLabel("QUALITY")
     PictureQualityRail(
         choices = PictureQualityPresentation.choices(PictureExperienceBridge.qualityFor(settings)),
-        enabled = available && on,
+        enabled = on,
         onSelect = { tier ->
             controller.setIntensity(PictureExperienceBridge.intensityFor(tier))
             controller.commit()
@@ -357,7 +357,7 @@ private fun MainPage(
         listOf(PicturePreset.NATURAL, PicturePreset.CINEMA, PicturePreset.VIVID, PicturePreset.SHARP)
             .forEach { preset ->
                 Chip(
-                    preset.label, settings.preset == preset, available,
+                    preset.label, settings.preset == preset, true,
                     Modifier.weight(1f)
                 ) { controller.selectPreset(preset) }
             }
@@ -365,15 +365,15 @@ private fun MainPage(
 
     SectionLabel("INTENSITY · ${(settings.intensity * 100).toInt()}%")
     PictureSlider(
-        settings.intensity, available && on,
+        settings.intensity, on,
         { controller.setIntensity(it) }, { controller.commit() }
     )
 
     Spacer(Modifier.height(6.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-        Chip("Fine Tune  ›", false, available && on, Modifier.weight(1f), onFine)
+        Chip("Fine Tune  ›", false, on, Modifier.weight(1f), onFine)
         Chip("Split", controller.splitView, available && on, Modifier.weight(1f), onToggleSplit)
-        Chip("Reset", false, available, Modifier.weight(1f), onResetAll)
+        Chip("Reset", false, true, Modifier.weight(1f), onResetAll)
     }
 
     Spacer(Modifier.height(12.dp))
@@ -484,7 +484,7 @@ private fun PictureMasterPill(enabled: Boolean, usable: Boolean, onToggle: (Bool
         Column(Modifier.weight(1f)) {
             Text("Picture Enhance", color = if (enabled) AmberCore else TextMuted,
                 fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            Text(if (enabled) "Processing live" else "Original picture",
+            Text(if (!enabled) "Original picture" else if (usable) "Processing requested" else "Waiting for compatible video",
                 color = TextMuted, fontSize = 8.sp)
         }
         Box(

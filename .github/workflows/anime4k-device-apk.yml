@@ -2,7 +2,7 @@ name: Anime4K Device Test APK
 
 on:
   push:
-    branches: [feat/hdr-anime4k-completion]
+    branches: [feat/hdr-anime4k-completion, fix/picture-local-metadata-diagnostics]
   workflow_dispatch:
 
 permissions:
@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
+      # Manual refresh of the Anime4K test APK after enabling guarded upscaling.
       - name: Check out source
         uses: actions/checkout@v5
       - name: Set up Java 17
