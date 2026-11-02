@@ -44,6 +44,15 @@ class PictureAnime4kPolicyTest {
         assertEquals(1800, plan.targetHeight)
     }
 
+    @Test fun shaderX2NeverClaimsThreeTimesUpscaling() {
+        val plan = PictureAnime4kPolicy.plan(
+            input().copy(sourceWidth = 1280, sourceHeight = 720)
+        )
+        assertEquals(PictureAnime4kPolicy.Mode.UPSCALE, plan.mode)
+        assertEquals(2560, plan.targetWidth)
+        assertEquals(1440, plan.targetHeight)
+    }
+
     @Test fun neverDownscalesWhenSurfaceSmallerThanSource() {
         val plan = PictureAnime4kPolicy.plan(
             input().copy(outputWidth = 1280, outputHeight = 720)
