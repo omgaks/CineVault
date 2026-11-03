@@ -18,6 +18,23 @@ class PictureAnime4kPolicyTest {
         assertEquals(2160, plan.targetHeight)
     }
 
+    @Test fun elevatedGpuLoadPreventsUpscaleRequest() {
+        val load = PictureAdaptivePerformancePolicy.plan(
+            PictureAdaptivePerformancePolicy.Input(
+                sourceWidth = 1920, sourceHeight = 1080,
+                frameRate = 60f, intensity = 0.9f,
+                droppedFrames = 6, observedFrames = 100
+            )
+        )
+        assertEquals(PictureAdaptivePerformancePolicy.Load.ELEVATED, load.load)
+        assertEquals(
+            PictureAnime4kPolicy.Mode.ENHANCE_ONLY,
+            PictureAnime4kPolicy.plan(
+                input().copy(thermalLimited = load.load != PictureAdaptivePerformancePolicy.Load.NORMAL)
+            ).mode
+        )
+    }
+
     @Test fun noRendererNeverClaimsUpscaling() {
         assertEquals(PictureAnime4kPolicy.Mode.ENHANCE_ONLY,
             PictureAnime4kPolicy.plan(input().copy(rendererSupportsOutputScaling = false)).mode)
