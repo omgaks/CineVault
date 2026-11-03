@@ -20,6 +20,10 @@ class SubtitleTranslationResultCoordinator(
     private val applyPrimaryTranslation: (GeneratedSubtitleFile, String) -> Unit,
     private val showTranslationSuccess: (String) -> Unit,
     private val clearTranslationSuccess: () -> Unit,
+    // A finished translation of the subtitle that is showing is added UNDER it (as the second
+    // language) instead of replacing it, so the original stays on screen.
+    private val shouldAddAsSecondary: (String) -> Boolean = { false },
+    private val addAsSecondary: (GeneratedSubtitleFile, String) -> Unit = { _, _ -> },
 ) {
     fun onTranslationReady(
         file: GeneratedSubtitleFile,
@@ -37,7 +41,11 @@ class SubtitleTranslationResultCoordinator(
             return
         }
 
-        applyPrimaryTranslation(file, language)
+        if (shouldAddAsSecondary(language)) {
+            addAsSecondary(file, language)
+        } else {
+            applyPrimaryTranslation(file, language)
+        }
         showTranslationSuccess(language)
 
         scope.launch {

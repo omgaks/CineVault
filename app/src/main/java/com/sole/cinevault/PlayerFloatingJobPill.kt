@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,9 +55,13 @@ internal fun BoxScope.PlayerFloatingJobOverlay(
 
     val landscape = containerWidth > containerHeight
     val stackStep = 44.dp
+    val density = LocalDensity.current
+    val widthKey = "job$slot"
+    DisposableEffect(widthKey) { onDispose { PlayerPillMetrics.floatingWidths.remove(widthKey) } }
     Box(
         modifier = Modifier
             .align(Alignment.TopEnd)
+            .onSizeChanged { PlayerPillMetrics.floatingWidths[widthKey] = with(density) { it.width.toDp() } }
             .padding(
                 top = PlayerPillMetrics.floatingTop(landscape) +
                     PlayerPillMetrics.autoSyncStackHeight + stackStep * slot,

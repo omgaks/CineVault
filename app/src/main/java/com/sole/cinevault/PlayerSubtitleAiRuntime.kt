@@ -175,6 +175,18 @@ fun rememberPlayerSubtitleAiRuntime(
             clearTranslationSuccess = {
                 latestTranslationSuccessChanged(null)
             },
+            shouldAddAsSecondary = { language ->
+                val active = trackUi.primaryUri != null
+                val mainLanguage = SubtitleLanguageRegistry.normalize(trackUi.primaryLanguage ?: "")
+                active && mainLanguage != SubtitleLanguageRegistry.normalize(language)
+            },
+            addAsSecondary = { file, language ->
+                dualUi.secondaryLanguage = language
+                dualUi.enabled = true
+                coreUi.behaviorPrefs = coreUi.behaviorPrefs.copy(dualSecondaryLanguage = language)
+                saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
+                latestSubtitleSyncTools.applyDualSecondaryUri(file.uri, "AI")
+            },
         )
     }
 

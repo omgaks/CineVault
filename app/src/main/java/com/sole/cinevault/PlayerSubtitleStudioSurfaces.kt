@@ -157,8 +157,15 @@ internal fun PlayerSubtitleStudioSurfaces(
                     colorHex = dualSecondaryColorHex,
                     statusText = dualUi.statusText,
                     onEnabledChange = { enabled ->
-                        dualUi.enabled = enabled
-                        if (enabled) subtitleSyncTools.fetchAndApplyDualSecondary() else subtitleSyncTools.disableDualSubtitles()
+                        val mainLang = SubtitleLanguageRegistry.normalize(trackUi.primaryLanguage ?: "")
+                        val sameLanguage = mainLang != null && mainLang == SubtitleLanguageRegistry.normalize(dualUi.secondaryLanguage)
+                        if (enabled && sameLanguage) {
+                            // Two copies of one language would overlap and never line up.
+                            dualUi.statusText = "Main and second are both the same language. Pick a different second language first."
+                        } else {
+                            dualUi.enabled = enabled
+                            if (enabled) subtitleSyncTools.fetchAndApplyDualSecondary() else subtitleSyncTools.disableDualSubtitles()
+                        }
                         studioUi.menuTouchKey++
                     },
                     onLanguageChange = { lang ->

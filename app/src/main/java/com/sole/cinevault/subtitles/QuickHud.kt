@@ -72,6 +72,11 @@ import com.sole.cinevault.ui.theme.TextFaint
 import com.sole.cinevault.ui.theme.TextMuted
 import kotlin.math.roundToInt
 
+/** Remembers the tab the Deck was last on, so it reopens where you left it. */
+internal object DeckMemory {
+    var lastTab: DeckTab? = null
+}
+
 /** The six tabs of the Sub Deck. */
 enum class DeckTab(val label: String) { TRACKS("Tracks"), FIND("Find"), SYNC("Sync"), STYLE("Style"), AI("AI"), SETTINGS("Settings") }
 
@@ -81,7 +86,7 @@ private val deckTabs = listOf(
     LumenTab("Sync", Icons.Rounded.Schedule),
     LumenTab("Style", Icons.Rounded.Palette),
     LumenTab("AI", Icons.Rounded.AutoAwesome),
-    LumenTab("Settings", Icons.Rounded.Tune),
+    LumenTab("Setup", Icons.Rounded.Tune),
 )
 
 private val delayStepChoices = listOf(0.01f, 0.1f, 0.5f, 1f)
@@ -137,7 +142,7 @@ fun QuickHud(
     behaviour: DeckBehaviourModel? = null,
 ) {
     val density = LocalDensity.current
-    var tab by remember { mutableStateOf(initialTab) }
+    var tab by remember { mutableStateOf(DeckMemory.lastTab ?: initialTab) }
     var delayStep by remember { mutableStateOf(0.1f) }
     val (ghost, ghostAlpha) = rememberLumenGhost()
 
@@ -188,7 +193,10 @@ fun QuickHud(
                         selected = tab.ordinal,
                         accent = LumenGold,
                         iconOnly = windowWidth < 300.dp,
-                        onSelect = { tab = DeckTab.values()[it] },
+                        onSelect = {
+                            tab = DeckTab.values()[it]
+                            DeckMemory.lastTab = tab
+                        },
                     )
                     Spacer(Modifier.height(10.dp))
 
@@ -317,6 +325,13 @@ private fun SyncPage(
         onDelayChange(clamped)
         onBubble(formatDelay(clamped) + " s")
     }
+    var note by remember { mutableStateOf<String?>(null) }
+    androidx.compose.runtime.LaunchedEffect(note) {
+        if (note != null) {
+            kotlinx.coroutines.delay(1800)
+            note = null
+        }
+    }
     LumenStepper(
         label = "Delay",
         valueText = formatDelay(delaySeconds),
@@ -336,16 +351,22 @@ private fun SyncPage(
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("Step", color = TextMuted, fontSize = LumenType.caption)
         delayStepChoices.forEach { s ->
-            LumenChip(formatStep(s), delayStep == s, LumenMint) { onDelayStepChange(s) }
+            LumenChip(formatStep(s), delayStep == s, LumenMint) {
+                onDelayStepChange(s)
+                note = "Each tap moves ${formatStep(s)} s"
+            }
         }
     }
     Spacer(Modifier.height(4.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        LumenChip("Zero", false, LumenRose) { setDelay(0f) }
+        LumenChip("Zero", false, LumenRose) {
+            setDelay(0f)
+            note = "Delay set back to 0.00 s"
+        }
     }
     Text(
-        "Hold − or + to repeat. It speeds up the longer you hold.",
-        color = TextMuted,
+        note ?: "Each tap moves ${formatStep(delayStep)} s. Hold − or + to repeat. Zero puts the subtitles back on their original timing.",
+        color = if (note != null) LumenMint else TextMuted,
         fontSize = LumenType.caption,
         modifier = Modifier.padding(top = 6.dp),
     )
@@ -526,7 +547,7 @@ private fun SettingsPage(onBehaviour: (() -> Unit)?, behaviour: DeckBehaviourMod
             armed = false
         }
         Text(
-            "Clears style, position, delay and remembered choices. Downloaded files stay.",
+            "Clears style, position, delay, behaviour and cleaning options. Downloaded files stay.",
             color = TextMuted,
             fontSize = LumenType.caption,
             modifier = Modifier.padding(top = 6.dp),

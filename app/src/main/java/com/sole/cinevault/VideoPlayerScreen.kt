@@ -216,7 +216,7 @@ fun VideoPlayerScreen(
         setShowSubtitleDock = { showSubtitleDock = it },
         setTrackSelectorManageMode = { trackSelectorManageMode = it },
         setShowTrackSelector = { trackUi.showSelector = it },
-        setShowSubtitleBloom = { showSubtitleBloom = it },
+        setShowSubtitleBloom = { if (it) showSubtitleDock = true else showSubtitleBloom = false },
         setStudioCategory = { studioCategory = it },
         setShowAppearanceStudio = { coreUi.showAppearanceStudio = it },
         setShowSubtitleSearch = { searchUi.showSearch = it },
@@ -354,7 +354,7 @@ fun VideoPlayerScreen(
         subtitleStudioNavigation = subtitleStudioNavigation,
         onShowAudioFxDashboardChanged = { showAudioFxDashboard = it },
         onShowSubtitleDockChanged = { showSubtitleDock = it },
-        onShowSubtitleBloomChanged = { showSubtitleBloom = it },
+        onShowSubtitleBloomChanged = { if (it) showSubtitleDock = true else showSubtitleBloom = false },
         onStudioCategoryCleared = { studioCategory = null },
         onShowDualSubsWindowChanged = { showDualSubsWindow = it },
         onShowSubtitleBehaviourWindowChanged = { showSubtitleBehaviourWindow = it },
@@ -1222,7 +1222,7 @@ fun VideoPlayerScreen(
             onAudioMenuInteraction = { menuTouchKey++ },
             onShowControlsChanged = { chromeUi.showControls = it },
             onShowTopBarChanged = { chromeUi.showTopBar = it },
-            onShowSubtitleBloomChanged = { showSubtitleBloom = it },
+            onShowSubtitleBloomChanged = { if (it) showSubtitleDock = true else showSubtitleBloom = false },
             onStudioCategoryChanged = { studioCategory = it },
             onLaunchSrtPicker = subtitleFileRuntime.launchSrtPicker,
         )
@@ -1365,7 +1365,7 @@ fun VideoPlayerScreen(
             onSubtitleLongClick = {
                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                 playerMenuCloseCoordinator.closeAll()
-                showSubtitleBloom = true
+                showSubtitleDock = true
                 chromeUi.showControls = false
                 chromeUi.showTopBar = false
             },
@@ -1479,7 +1479,7 @@ fun VideoPlayerScreen(
             },
             onStudioCategoryChanged = { studioCategory = it },
             onTrackSelectorManageModeChanged = { trackSelectorManageMode = it },
-            onShowSubtitleBloomChanged = { showSubtitleBloom = it },
+            onShowSubtitleBloomChanged = { if (it) showSubtitleDock = true else showSubtitleBloom = false },
             onShowSubtitleBehaviourWindowChanged = { showSubtitleBehaviourWindow = it },
             onShowDualSubsWindowChanged = { showDualSubsWindow = it },
             onShowSpeechSubtitlePanelChanged = { subtitleAiUi.showSpeechSubtitlePanel = it },

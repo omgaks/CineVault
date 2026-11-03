@@ -104,8 +104,9 @@ internal fun rememberDownloadedSubtitleChoices(
     videoPath: String,
     preferredLanguages: List<String>,
     selectorVisible: Boolean,
-    canDownloadExternalSubtitles: Boolean
-): List<SubtitleTrackChoice.Downloaded> = remember(videoPath, selectorVisible) {
+    canDownloadExternalSubtitles: Boolean,
+    refreshKey: Any? = null,
+): List<SubtitleTrackChoice.Downloaded> = remember(videoPath, selectorVisible, refreshKey) {
     if (!canDownloadExternalSubtitles) {
         emptyList()
     } else {
@@ -127,8 +128,9 @@ internal fun rememberDownloadedSubtitleChoices(
 internal fun rememberAvailableLocalSubtitleFiles(
     videoPath: String,
     selectorVisible: Boolean,
-    pendingDeletePaths: List<String>
-): List<java.io.File> = remember(videoPath, selectorVisible, pendingDeletePaths) {
+    pendingDeletePaths: List<String>,
+    refreshKey: Any? = null,
+): List<java.io.File> = remember(videoPath, selectorVisible, pendingDeletePaths, refreshKey) {
     findNearbySrtFiles(videoPath)
         .filter { it.absolutePath !in pendingDeletePaths }
 }

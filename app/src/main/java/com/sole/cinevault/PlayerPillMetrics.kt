@@ -30,6 +30,12 @@ internal object PlayerPillMetrics {
     /** Height taken by the auto-sync floating pill when it is showing (0 otherwise), so later pills stack under it. */
     var autoSyncStackHeight: Dp by mutableStateOf(0.dp)
 
+    /** Widths of floating pills that are showing (keyed by pill), so windows can keep clear of them. */
+    val floatingWidths = androidx.compose.runtime.mutableStateMapOf<String, Dp>()
+
+    /** Widest floating pill right now, or 0. */
+    fun widestFloating(): Dp = floatingWidths.values.maxOfOrNull { it } ?: 0.dp
+
     /** Top offset for a floating pill that sits under the last right pill. */
     fun floatingTop(landscape: Boolean): Dp =
         top(landscape) + (if (rightColumnHeight.isSpecified) rightColumnHeight else 0.dp) + gap(landscape)

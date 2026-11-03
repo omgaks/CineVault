@@ -26,18 +26,29 @@ internal fun BoxScope.PlayerAutoSyncFloatingOverlay(
     onRetry: () -> Unit,
 ) {
     if (!visible) {
-        SideEffect { PlayerPillMetrics.autoSyncStackHeight = 0.dp }
+        SideEffect {
+            PlayerPillMetrics.autoSyncStackHeight = 0.dp
+            PlayerPillMetrics.floatingWidths.remove("autosync")
+        }
         return
     }
     val density = LocalDensity.current
-    DisposableEffect(Unit) { onDispose { PlayerPillMetrics.autoSyncStackHeight = 0.dp } }
+    DisposableEffect(Unit) {
+        onDispose {
+            PlayerPillMetrics.autoSyncStackHeight = 0.dp
+            PlayerPillMetrics.floatingWidths.remove("autosync")
+        }
+    }
 
     // Floating status pills stack under the last right-hand pill, always.
     Box(
         modifier = Modifier
             .align(Alignment.TopEnd)
             .padding(top = PlayerPillMetrics.floatingTop(containerWidth > containerHeight), end = PlayerPillMetrics.end)
-            .onSizeChanged { PlayerPillMetrics.autoSyncStackHeight = with(density) { it.height.toDp() } + 6.dp }
+            .onSizeChanged {
+                PlayerPillMetrics.autoSyncStackHeight = with(density) { it.height.toDp() } + 6.dp
+                PlayerPillMetrics.floatingWidths["autosync"] = with(density) { it.width.toDp() }
+            }
     ) {
         AutoSyncFloatingIndicator(
             status = status,
