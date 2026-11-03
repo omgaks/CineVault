@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -40,55 +42,34 @@ fun DialogueTapSyncBar(isLandscape: Boolean, onTap: () -> Unit, onCancel: () -> 
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .widthIn(max = 560.dp)
-            .amberGlow(radius = 18.dp, alpha = 0.45f)
-            .glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong.copy(alpha = 0.82f))
-            .border(1.dp, AmberCore.copy(alpha = 0.22f), RoundedCornerShape(50))
-            .padding(start = 13.dp, end = 4.dp, top = 4.dp, bottom = 4.dp)
+            .lumenFrame(LumenSky)
+            .padding(start = 14.dp, end = 4.dp, top = 6.dp, bottom = 6.dp)
     ) {
-        Text(
-            text = "LISTENING",
-            color = AmberCore,
-            fontSize = if (isLandscape) 10.sp else 11.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .background(AmberCore.copy(alpha = 0.12f))
-                .border(1.dp, AmberCore.copy(alpha = 0.26f), RoundedCornerShape(50))
-                .padding(horizontal = 9.dp, vertical = 4.dp)
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = if (isLandscape) "Hear the matching line" else "Tap when you hear the matching line",
-            color = TextBright,
-            fontSize = if (isLandscape) 10.5.sp else 11.5.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 2,
-            modifier = Modifier.weight(1f, fill = false)
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .heightIn(min = 48.dp)
-                .clip(RoundedCornerShape(50))
-                .background(AmberCore)
-                .clickable { onTap() }
-                .padding(horizontal = 14.dp)
-        ) {
-            Icon(imageVector = Icons.Default.TouchApp, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(5.dp))
-            Text(text = "Tap Now", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Black)
-        }
-        IconButton(
-            onClick = onCancel,
-            modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = "Cancel dialogue sync",
-                tint = TextMuted,
-                modifier = Modifier.size(20.dp)
+        Column(modifier = Modifier.weight(1f, fill = false)) {
+            Text(
+                text = "LISTENING",
+                color = LumenSky,
+                fontSize = LumenType.section,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp,
             )
+            Text(
+                text = if (isLandscape) "Hear the matching line" else "Tap when you hear the matching line",
+                color = TextBright,
+                fontSize = LumenType.body,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+            )
+        }
+        Spacer(modifier = Modifier.width(10.dp))
+        LumenSmallButton("Tap now", LumenSky, filled = true) { onTap() }
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clickable { onCancel() },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("×", color = TextMuted, fontSize = 22.sp)
         }
     }
 }
@@ -122,69 +103,45 @@ fun DriftCorrectionSheet(
         modifier = Modifier
             .width(popupWidth)
             .heightIn(max = popupMaxHeight)
-            .lumenFrame(com.sole.cinevault.LumenGold)
-            .padding(11.dp)
+            .lumenFrame(LumenGold)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Icon(imageVector = Icons.Default.TrendingUp, contentDescription = null, tint = AmberCore, modifier = Modifier.size(15.dp))
-            Spacer(modifier = Modifier.width(6.dp))
+        LumenPanelHeader("FIX GRADUAL DRIFT", LumenGold, onDismiss)
+        Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
             Text(
-                text = "FIX GRADUAL DRIFT",
-                color = AmberCore,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(50))
-                    .background(AmberCore.copy(alpha = 0.12f))
-                    .border(1.dp, AmberCore.copy(alpha = 0.28f), RoundedCornerShape(50))
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                text = "Play to a spot early in the film, set the delay until it is perfect, and mark it. Do the same later where it has drifted. CineVault fixes the slope between the two.",
+                color = TextMuted, fontSize = LumenType.caption,
+                modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
             )
-            Icon(
-                imageVector = Icons.Default.Close, contentDescription = "Close", tint = TextBright,
-                modifier = Modifier.size(16.dp).clip(CircleShape).background(GlassSurface).padding(2.dp).clickable { onDismiss() }
+
+            DriftPointRow(
+                label = "Point A (early)",
+                positionMs = pointA?.positionMs,
+                correctionText = draftCorrectionA,
+                onCorrectionChange = { draftCorrectionA = it },
+                onMark = { onMarkPointA(draftCorrectionA.toFloatOrNull() ?: 0f) },
+                currentPositionMs = currentPositionMs
             )
-        }
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = "Play to a spot early in the video, dial in perfect sync, mark it. Do the same later in the video where it's drifted. CineVault fixes the slope between them.",
-            color = TextMuted, fontSize = 9.5.sp, lineHeight = 12.sp
-        )
-        Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+            DriftPointRow(
+                label = "Point B (later)",
+                positionMs = pointB?.positionMs,
+                correctionText = draftCorrectionB,
+                onCorrectionChange = { draftCorrectionB = it },
+                onMark = { onMarkPointB(draftCorrectionB.toFloatOrNull() ?: 0f) },
+                currentPositionMs = currentPositionMs
+            )
 
-        DriftPointRow(
-            label = "Point A (early)",
-            positionMs = pointA?.positionMs,
-            correctionText = draftCorrectionA,
-            onCorrectionChange = { draftCorrectionA = it },
-            onMark = { onMarkPointA(draftCorrectionA.toFloatOrNull() ?: 0f) },
-            currentPositionMs = currentPositionMs
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        DriftPointRow(
-            label = "Point B (later)",
-            positionMs = pointB?.positionMs,
-            correctionText = draftCorrectionB,
-            onCorrectionChange = { draftCorrectionB = it },
-            onMark = { onMarkPointB(draftCorrectionB.toFloatOrNull() ?: 0f) },
-            currentPositionMs = currentPositionMs
-        )
-
-        Spacer(modifier = Modifier.height(9.dp))
-        val canApply = pointA != null && pointB != null && pointA.positionMs != pointB.positionMs
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(50))
-                .background(if (canApply) AmberCore else GlassSurface)
-                .clickable(enabled = canApply) { onApply() }
-                .padding(vertical = 9.dp),
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Icon(imageVector = Icons.Default.Adjust, contentDescription = null, tint = if (canApply) Color.Black else TextMuted, modifier = Modifier.size(14.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(text = "Apply Drift Fix", color = if (canApply) Color.Black else TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Black)
+            Spacer(modifier = Modifier.height(10.dp))
+            val canApply = pointA != null && pointB != null && pointA.positionMs != pointB.positionMs
+            LumenActionButton("Apply drift fix", LumenGold, enabled = canApply) { onApply() }
+            if (!canApply) {
+                Text(
+                    "Mark two different spots to apply.",
+                    color = TextMuted, fontSize = LumenType.caption,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
         }
     }
 }
@@ -201,34 +158,30 @@ private fun DriftPointRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(SpaceDeep.copy(alpha = 0.6f))
-            .border(1.dp, Brush.verticalGradient(listOf(AmberGlow.copy(alpha = if (positionMs != null) 0.6f else 0.2f), AmberDeep.copy(alpha = 0.2f))), RoundedCornerShape(12.dp))
-            .padding(9.dp)
+            .background(Color.White.copy(alpha = 0.05f), LumenCardShape)
+            .border(if (positionMs != null) 1.6.dp else 1.dp, if (positionMs != null) LumenGold else Color.White.copy(alpha = 0.22f), LumenCardShape)
+            .padding(10.dp)
     ) {
-        Text(text = label, color = Color(0xFFC9A765), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        Text(text = label, color = LumenGold, fontSize = LumenType.body, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = if (positionMs != null) "Marked at ${formatSyncTime(positionMs)}" else "Not marked yet — currently at ${formatSyncTime(currentPositionMs)}",
-            color = if (positionMs != null) AmberCore else TextMuted, fontSize = 10.sp
+            text = if (positionMs != null) "Marked at ${formatSyncTime(positionMs)}" else "Not marked yet. Now at ${formatSyncTime(currentPositionMs)}",
+            color = if (positionMs != null) LumenMint else TextMuted, fontSize = LumenType.caption
         )
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = correctionText,
                 onValueChange = onCorrectionChange,
                 singleLine = true,
-                label = { Text("Correction (sec)", fontSize = 8.5.sp) },
-                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = TextBright),
+                label = { Text("Correction (s)", fontSize = LumenType.caption) },
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = LumenType.body, color = TextBright),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier.weight(1f).height(52.dp),
-                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AmberCore.copy(alpha = 0.6f), unfocusedBorderColor = AmberCore.copy(alpha = 0.25f))
+                modifier = Modifier.weight(1f),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = LumenGold.copy(alpha = 0.8f), unfocusedBorderColor = LumenGold.copy(alpha = 0.3f))
             )
             Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Mark Here", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Black,
-                modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(AmberGlow).clickable { onMark() }.padding(horizontal = 12.dp, vertical = 10.dp)
-            )
+            LumenSmallButton("Mark here", LumenGold, filled = true) { onMark() }
         }
     }
 }

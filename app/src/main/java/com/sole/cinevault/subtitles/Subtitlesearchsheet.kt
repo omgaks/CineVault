@@ -100,11 +100,6 @@ fun SubtitleSearchSheet(
             .width(popupWidth)
             .heightIn(max = popupMaxHeight)
             .lumenFrame(com.sole.cinevault.LumenGold)
-            .border(
-                1.dp,
-                AmberCore.copy(alpha = 0.20f),
-                RoundedCornerShape(20.dp)
-            )
             .padding(12.dp)
     ) {
         Row(
@@ -139,47 +134,33 @@ fun SubtitleSearchSheet(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (onBack != null) {
-                Text(
-                    text = "‹",
-                    color = AmberCore,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
+                Box(
                     modifier = Modifier
-                        .clip(CircleShape)
-                        .background(AmberCore.copy(alpha = 0.10f))
+                        .size(40.dp)
                         .clickable {
                             onUserInteraction()
                             onBack()
-                        }
-                        .padding(
-                            horizontal = 8.dp,
-                            vertical = 1.dp
-                        )
-                )
-                Spacer(Modifier.width(7.dp))
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "‹",
+                        color = com.sole.cinevault.LumenGold,
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
 
             Text(
                 text = "SMART SEARCH",
-                color = AmberCore,
-                fontSize = 12.sp,
+                color = com.sole.cinevault.LumenGold,
+                fontSize = com.sole.cinevault.LumenType.title,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(50))
-                    .background(AmberCore.copy(alpha = 0.12f))
-                    .border(
-                        1.dp,
-                        AmberCore.copy(alpha = 0.28f),
-                        RoundedCornerShape(50)
-                    )
-                    .padding(
-                        horizontal = 10.dp,
-                        vertical = 5.dp
-                    )
+                letterSpacing = 2.sp,
+                modifier = Modifier.weight(1f)
             )
 
-            Spacer(Modifier.width(7.dp))
             SearchCloseButton {
                 onUserInteraction()
                 onDismiss()
@@ -257,8 +238,8 @@ fun SubtitleSearchSheet(
                         "▾ TV show: Season / Episode"
                     else
                         "▸ TV show? Set Season / Episode",
-                color = AmberCore,
-                fontSize = 11.sp,
+                color = com.sole.cinevault.LumenGold,
+                fontSize = com.sole.cinevault.LumenType.body,
                 fontWeight = FontWeight.Bold
             )
         }
@@ -273,7 +254,7 @@ fun SubtitleSearchSheet(
                         onUserInteraction()
                     },
                     singleLine = true,
-                    label = { Text("Season", fontSize = 9.sp) },
+                    label = { Text("Season", fontSize = 12.sp) },
                     keyboardOptions =
                         KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f)
@@ -285,7 +266,7 @@ fun SubtitleSearchSheet(
                         onUserInteraction()
                     },
                     singleLine = true,
-                    label = { Text("Episode", fontSize = 9.sp) },
+                    label = { Text("Episode", fontSize = 12.sp) },
                     keyboardOptions =
                         KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f)
@@ -293,20 +274,7 @@ fun SubtitleSearchSheet(
             }
 
             Spacer(Modifier.height(6.dp))
-            Text(
-                text = "Search",
-                color = Color.Black,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Black,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(AmberCore)
-                    .clickable { fireSearch() }
-                    .padding(
-                        horizontal = 14.dp,
-                        vertical = 6.dp
-                    )
-            )
+            com.sole.cinevault.LumenSmallButton("Search", com.sole.cinevault.LumenGold, filled = true) { fireSearch() }
         }
 
         Spacer(Modifier.height(8.dp))
@@ -331,7 +299,7 @@ fun SubtitleSearchSheet(
                     Text(
                         "Searching…",
                         color = TextMuted,
-                        fontSize = 11.sp
+                        fontSize = com.sole.cinevault.LumenType.body
                     )
                 }
             }
@@ -347,30 +315,13 @@ fun SubtitleSearchSheet(
                             "No results yet — try Search"
                         },
                         color = TextMuted,
-                        fontSize = 11.sp,
+                        fontSize = com.sole.cinevault.LumenType.body,
                         modifier = Modifier.padding(vertical = 10.dp)
                     )
-                    Text(
-                        text = "Search website",
-                        color = AmberCore,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .border(
-                                1.dp,
-                                AmberCore.copy(alpha = 0.4f),
-                                RoundedCornerShape(50)
-                            )
-                            .clickable {
-                                onUserInteraction()
-                                onWebsiteFallback()
-                            }
-                            .padding(
-                                horizontal = 14.dp,
-                                vertical = 8.dp
-                            )
-                    )
+                    com.sole.cinevault.LumenSmallButton("Search website", com.sole.cinevault.LumenGold) {
+                        onUserInteraction()
+                        onWebsiteFallback()
+                    }
                 }
             }
 
@@ -429,7 +380,7 @@ private fun RowScope.SearchProviderColumn(
         Text(
             text = title,
             color = titleColor,
-            fontSize = 10.5.sp,
+            fontSize = com.sole.cinevault.LumenType.body,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = 6.dp)
         )
@@ -438,7 +389,7 @@ private fun RowScope.SearchProviderColumn(
             Text(
                 text = emptyText,
                 color = TextMuted,
-                fontSize = 11.sp
+                fontSize = com.sole.cinevault.LumenType.body
             )
         } else {
             Column(
@@ -477,42 +428,28 @@ private fun SubtitleResultCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(SpaceDeep.copy(alpha = 0.65f))
+                .background(Color.White.copy(alpha = 0.05f), com.sole.cinevault.LumenCardShape)
                 .border(
-                    1.dp,
-                    if (isBestMatch)
-                        Brush.verticalGradient(
-                            listOf(
-                                AmberGlow.copy(alpha = 0.75f),
-                                AmberDeep.copy(alpha = 0.30f)
-                            )
-                        )
-                    else
-                        Brush.verticalGradient(
-                            listOf(
-                                GlassBorderTop,
-                                GlassBorderBottom
-                            )
-                        ),
-                    RoundedCornerShape(14.dp)
+                    if (isBestMatch) 1.6.dp else 1.dp,
+                    if (isBestMatch) com.sole.cinevault.LumenGold else Color.White.copy(alpha = 0.22f),
+                    com.sole.cinevault.LumenCardShape
                 )
                 .padding(10.dp)
         ) {
             Text(
                 text = SubtitleLanguageRegistry.displayName(result.language),
                 color = TextBright,
-                fontSize = 12.5.sp,
+                fontSize = com.sole.cinevault.LumenType.value,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(end = 56.dp)
+                modifier = Modifier.padding(end = 70.dp)
             )
 
             Text(
                 text = result.release,
                 color = TextMuted,
-                fontSize = 10.sp,
+                fontSize = com.sole.cinevault.LumenType.caption,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -530,66 +467,14 @@ private fun SubtitleResultCard(
                     result.fps?.let { append(" · ${it}fps") }
                 },
                 color = TextMuted,
-                fontSize = 9.5.sp
+                fontSize = com.sole.cinevault.LumenType.caption
             )
 
             Spacer(Modifier.height(8.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(AmberCore)
-                        .clickable { onDownloadAndApply() }
-                        .padding(vertical = 7.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.PlayCircle,
-                        contentDescription = null,
-                        tint = Color.Black,
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        "Apply",
-                        color = Color.Black,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Black
-                    )
-                }
-
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(SpaceDeep)
-                        .border(
-                            1.dp,
-                            AmberCore.copy(alpha = 0.35f),
-                            RoundedCornerShape(10.dp)
-                        )
-                        .clickable { onDownloadOnly() }
-                        .padding(vertical = 7.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Download,
-                        contentDescription = null,
-                        tint = TextBright,
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        "Save only",
-                        color = TextBright,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                com.sole.cinevault.LumenSmallButton("Apply", com.sole.cinevault.LumenGold, Modifier.weight(1f), filled = true) { onDownloadAndApply() }
+                com.sole.cinevault.LumenSmallButton("Save only", com.sole.cinevault.LumenSky, Modifier.weight(1f)) { onDownloadOnly() }
             }
         }
 
@@ -605,13 +490,12 @@ private fun SubtitleResultCard(
             Text(
                 text = label,
                 color = Color.Black,
-                fontSize = 9.5.sp,
+                fontSize = com.sole.cinevault.LumenType.caption,
                 fontWeight = FontWeight.Black,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(top = 8.dp, end = 8.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(color)
+                    .background(color, androidx.compose.foundation.shape.CutCornerShape(topStart = 6.dp, bottomEnd = 6.dp))
                     .padding(
                         horizontal = 8.dp,
                         vertical = 4.dp
@@ -625,19 +509,11 @@ private fun SubtitleResultCard(
 private fun SearchCloseButton(onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .height(34.dp)
-            .clip(RoundedCornerShape(50))
-            .background(AmberCore)
-            .clickable { onClick() }
-            .padding(horizontal = 9.dp),
+            .size(40.dp)
+            .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        Icon(
-            imageVector = Icons.Default.Close,
-            contentDescription = "Close",
-            tint = Color.Black,
-            modifier = Modifier.size(15.dp)
-        )
+        Text("×", color = TextMuted, fontSize = 22.sp)
     }
 }
 

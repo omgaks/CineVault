@@ -3,25 +3,30 @@ package com.sole.cinevault
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material3.*
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.sole.cinevault.subtitles.SpeechSubtitleStatus
 import com.sole.cinevault.subtitles.WhisperModelManager
-import com.sole.cinevault.ui.theme.*
+import com.sole.cinevault.ui.theme.TextBright
+import com.sole.cinevault.ui.theme.TextMuted
 
+/** Speech to subtitles, in the Lumen frame: pick a Whisper model, download it, generate. */
 @Composable
 fun SpeechSubtitlePanel(
     status: SpeechSubtitleStatus,
@@ -37,54 +42,23 @@ fun SpeechSubtitlePanel(
     val downloading = status is SpeechSubtitleStatus.DownloadingModel
     val busy = generating || downloading
     val selected = models.firstOrNull { it.selected }
-    val scrollState = rememberScrollState()
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .glassPanel(cornerRadius = 20.dp, fill = GlassSurfaceStrong.copy(alpha = 0.82f))
-            .border(1.dp, AmberCore.copy(alpha = 0.18f), RoundedCornerShape(20.dp))
-            .padding(12.dp)
+            .lumenFrame(LumenGold)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "SPEECH → SUBTITLES",
-                color = AmberCore,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(50))
-                    .background(AmberCore.copy(alpha = 0.12f))
-                    .border(1.dp, AmberCore.copy(alpha = 0.28f), RoundedCornerShape(50))
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-            )
-            IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Rounded.Close, "Close", tint = TextMuted)
-            }
-        }
+        LumenPanelHeader("SPEECH TO SUBTITLES", LumenGold, onDismiss)
 
-        // Keep the header reachable while every model/status/action below it can
-        // scroll on portrait, split-screen and other constrained windows.
+        // The header stays reachable while the models and actions scroll on small windows.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f, fill = false)
-                .verticalScroll(scrollState)
+                .verticalScroll(rememberScrollState())
         ) {
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "SPEECH MODEL",
-                color = AmberCore,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(AmberCore.copy(alpha = 0.10f))
-                    .padding(horizontal = 9.dp, vertical = 4.dp)
-            )
-            Spacer(Modifier.height(5.dp))
-
+            LumenSectionLabel("Speech model", LumenGold)
             models.forEach { model ->
                 ModelRow(
                     model = model,
@@ -93,65 +67,49 @@ fun SpeechSubtitlePanel(
                     onDownload = { onDownloadModel(model.id) },
                     onDelete = { onDeleteModel(model.id) },
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(6.dp))
             }
 
             if (selected?.installed == true) {
-                Button(
-                    onClick = onGenerate,
-                    enabled = !busy,
-                    modifier = Modifier.fillMaxWidth().padding(top = 5.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AmberCore)
-                ) {
-                    Text(
-                        "Generate with ${selected.displayName}",
-                        color = Color.Black,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                Spacer(Modifier.height(2.dp))
+                LumenActionButton("Generate with ${selected.displayName}", LumenGold, enabled = !busy) { onGenerate() }
             }
 
             when (status) {
                 is SpeechSubtitleStatus.DownloadingModel ->
-                    SpeechProgress("Downloading & verifying ${status.fileName}", status.percent)
+                    SpeechProgress("Downloading and checking ${status.fileName}", status.percent, LumenSky)
 
                 is SpeechSubtitleStatus.Generating -> {
-                    SpeechProgress(status.phase, status.percent)
-                    OutlinedButton(
-                        onClick = onStop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                    ) {
-                        Text("Stop transcription")
-                    }
+                    SpeechProgress(status.phase, status.percent, LumenGold)
+                    Spacer(Modifier.height(8.dp))
+                    LumenActionButton("Stop transcription", LumenRose) { onStop() }
                 }
 
                 is SpeechSubtitleStatus.Ready ->
                     Text(
-                        "Ready • ${status.cueCount} ${if (status.cueCount == 1) "cue" else "cues"}",
-                        color = TextBright,
-                        fontSize = 10.sp,
-                        modifier = Modifier.padding(top = 8.dp),
+                        "Ready. ${status.cueCount} ${if (status.cueCount == 1) "line" else "lines"} written.",
+                        color = LumenMint,
+                        fontSize = LumenType.body,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 10.dp),
                     )
 
                 is SpeechSubtitleStatus.Failed ->
                     Text(
                         status.reason,
-                        color = AmberCore,
-                        fontSize = 9.5.sp,
-                        modifier = Modifier.padding(top = 8.dp),
+                        color = LumenRose,
+                        fontSize = LumenType.body,
+                        modifier = Modifier.padding(top = 10.dp),
                     )
 
                 SpeechSubtitleStatus.Idle -> Unit
             }
 
             Text(
-                "Every downloaded model file is SHA-256 verified before CineVault installs or loads it.",
+                "Every model file is checked (SHA-256) before CineVault installs or loads it. Everything runs on this device.",
                 color = TextMuted,
-                fontSize = 8.5.sp,
-                lineHeight = 11.sp,
-                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                fontSize = LumenType.caption,
+                modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
             )
         }
     }
@@ -165,102 +123,50 @@ private fun ModelRow(
     onDownload: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(if (model.selected) AmberCore.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.035f))
-            .border(
-                1.dp,
-                AmberCore.copy(alpha = if (model.selected) 0.32f else 0.10f),
-                RoundedCornerShape(10.dp)
-            )
-            .clickable(enabled = enabled && model.installed) { onSelect() }
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .background(if (model.selected) LumenGold.copy(alpha = 0.14f) else Color_White05, LumenCardShape)
+            .border(1.dp, if (model.selected) LumenGold else LumenGold.copy(alpha = 0.25f), LumenCardShape)
+            .clickable(
+                enabled = enabled && model.installed,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) { onSelect() }
+            .padding(10.dp),
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(model.displayName, color = TextBright, fontSize = 9.5.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.width(5.dp))
-                Text(
-                    model.tierLabel,
-                    color = AmberCore,
-                    fontSize = 7.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(AmberCore.copy(alpha = 0.10f))
-                        .padding(horizontal = 5.dp, vertical = 1.dp)
-                )
-            }
-            Text(
-                "${model.sizeLabel} • ${model.description}",
-                color = TextMuted,
-                fontSize = 7.8.sp,
-                maxLines = 2,
-            )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(model.displayName, color = TextBright, fontSize = LumenType.body, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f, fill = false))
+            Spacer(Modifier.width(8.dp))
+            Text(model.tierLabel.uppercase(), color = LumenGold, fontSize = LumenType.caption, fontWeight = FontWeight.Bold)
         }
-
-        when {
-            model.installed && model.selected -> Text(
-                "USE",
-                color = Color.Black,
-                fontSize = 7.5.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(AmberCore)
-                    .padding(horizontal = 7.dp, vertical = 4.dp)
-            )
-            model.installed -> {
-                Text(
-                    "USE",
-                    color = AmberCore,
-                    fontSize = 7.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .border(1.dp, AmberCore.copy(alpha = 0.35f), RoundedCornerShape(50))
-                        .clickable(enabled = enabled) { onSelect() }
-                        .padding(horizontal = 7.dp, vertical = 4.dp)
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    "DEL",
-                    color = TextMuted,
-                    fontSize = 7.sp,
-                    modifier = Modifier
-                        .clickable(enabled = enabled) { onDelete() }
-                        .padding(4.dp)
-                )
+        Text("${model.sizeLabel}. ${model.description}", color = TextMuted, fontSize = LumenType.caption, modifier = Modifier.padding(top = 2.dp))
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            when {
+                model.installed && model.selected ->
+                    LumenSmallButton("In use", LumenGold, filled = true, enabled = false) {}
+                model.installed -> {
+                    LumenSmallButton("Use", LumenGold, enabled = enabled) { onSelect() }
+                    LumenSmallButton("Delete", LumenRose, enabled = enabled) { onDelete() }
+                }
+                else -> LumenSmallButton("Download", LumenGold, enabled = enabled) { onDownload() }
             }
-            else -> Text(
-                "DOWNLOAD",
-                color = AmberCore,
-                fontSize = 7.5.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .border(1.dp, AmberCore.copy(alpha = 0.35f), RoundedCornerShape(50))
-                    .clickable(enabled = enabled) { onDownload() }
-                    .padding(horizontal = 7.dp, vertical = 4.dp)
-            )
         }
     }
 }
 
+private val Color_White05 = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.05f)
+
 @Composable
-private fun SpeechProgress(label: String, percent: Int) {
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+private fun SpeechProgress(label: String, percent: Int, accent: androidx.compose.ui.graphics.Color) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(label, color = TextBright, fontSize = 9.sp, modifier = Modifier.weight(1f))
+            Text(label, color = TextBright, fontSize = LumenType.body, modifier = Modifier.weight(1f))
             Spacer(Modifier.width(8.dp))
-            Text("$percent%", color = TextMuted, fontSize = 9.sp)
+            Text("$percent%", color = accent, fontSize = LumenType.value, fontWeight = FontWeight.Bold)
         }
-        LinearProgressIndicator(
-            progress = { percent.coerceIn(0, 100) / 100f },
-            modifier = Modifier.fillMaxWidth().padding(top = 5.dp),
-        )
+        Spacer(Modifier.height(6.dp))
+        LumenProgressBar(percent, accent)
     }
 }
