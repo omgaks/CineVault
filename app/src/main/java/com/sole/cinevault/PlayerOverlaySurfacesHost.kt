@@ -117,11 +117,14 @@ internal fun BoxScope.PlayerOverlaySurfacesHost(
         preferredLanguages = coreUi.behaviorPrefs.preferredLanguages,
         selectorVisible = trackUi.showSelector,
         canDownloadExternalSubtitles = canDownloadExternalSubtitles,
+        // The Deck never opens the old selector, so re-read whenever the Deck opens or the track changes.
+        refreshKey = listOf(showSubtitleDock, trackUi.selectedKey, generatedSubtitleFiles.size),
     )
     val localFileChoices = rememberAvailableLocalSubtitleFiles(
         videoPath = currentVideoPath,
         selectorVisible = trackUi.showSelector,
         pendingDeletePaths = pendingDeletePaths,
+        refreshKey = listOf(showSubtitleDock, trackUi.selectedKey),
     )
 
     val quickHudFileName = remember(

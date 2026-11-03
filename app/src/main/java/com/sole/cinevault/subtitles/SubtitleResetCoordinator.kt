@@ -57,6 +57,12 @@ class SubtitleResetCoordinator(
         coreUi.syncOffset = 0f
         trackUi.appliedOffsetMs = 0L
 
+        // Behaviour and cleaning go back to their defaults too, so "reset all" means all.
+        coreUi.behaviorPrefs = SubtitleBehaviorPrefs()
+        saveSubtitleBehaviorPrefs(context, coreUi.behaviorPrefs)
+        coreUi.cleaningOptions = SubtitleCleaningOptions()
+        saveSubtitleCleaningOptions(context, coreUi.cleaningOptions)
+
         driftUi.scale = 1f
         driftUi.appliedScale = 1f
         driftUi.pointA = null

@@ -66,7 +66,17 @@ fun DraggableStudioWindow(
     // Every subtitle window now opens on the Lumen right rail (bottom right, clear of the right
     // pills and above the seek bar) until the user drags it somewhere else.
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val railEndPx = with(density) { com.sole.cinevault.LumenRailState.endInset.toPx() }
+    // Keep clear of the wider job pills (AI Translate, Syncing) that stack at the top right.
+    val floating = com.sole.cinevault.PlayerPillMetrics.widestFloating()
+    val railEndDp = if (floating > 0.dp) {
+        maxOf(
+            com.sole.cinevault.LumenRailState.endInset,
+            floating + com.sole.cinevault.PlayerPillMetrics.end + 10.dp,
+        )
+    } else {
+        com.sole.cinevault.LumenRailState.endInset
+    }
+    val railEndPx = with(density) { railEndDp.toPx() }
     val railBottomPx = with(density) { com.sole.cinevault.LumenRailState.bottomInset.toPx() }
     val topMarginPx = with(density) { 12.dp.toPx() }
     val measured = windowSize != IntSize.Zero
