@@ -35,13 +35,13 @@ class PictureHdrRoutingIntegrationTest {
         PictureHdrRouting.decide(format(C.COLOR_TRANSFER_SDR, MimeTypes.VIDEO_DOLBY_VISION)).route,
     )
 
-    @Test fun unknownTransferIsProtected() = assertEquals(
-        PictureHdrPolicy.Route.HDR_PASSTHROUGH,
+    @Test fun metadataLightAvcIsEnhanceable() = assertEquals(
+        PictureHdrPolicy.Route.SDR_ENHANCEMENT,
         PictureHdrRouting.decide(format(Format.NO_VALUE)).route,
     )
 
-    @Test fun missingMetadataProtectsUnknownHdr() = assertEquals(
-        PictureHdrPolicy.Route.HDR_PASSTHROUGH,
+    @Test fun missingMetadataAvcIsEnhanceable() = assertEquals(
+        PictureHdrPolicy.Route.SDR_ENHANCEMENT,
         PictureHdrRouting.decide(Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H264).build()).route,
     )
 
