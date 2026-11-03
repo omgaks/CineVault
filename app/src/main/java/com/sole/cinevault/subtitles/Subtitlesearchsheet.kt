@@ -1,6 +1,11 @@
 package com.sole.cinevault.subtitles
 
 import com.sole.cinevault.lumenFrame
+import com.sole.cinevault.LumenCardShape
+import com.sole.cinevault.LumenGold
+import com.sole.cinevault.LumenSky
+import com.sole.cinevault.LumenSmallButton
+import com.sole.cinevault.LumenType
 
 import com.sole.cinevault.CineVaultToast
 

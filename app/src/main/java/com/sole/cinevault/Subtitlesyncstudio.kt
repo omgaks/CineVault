@@ -1,6 +1,14 @@
 package com.sole.cinevault.subtitles
 
 import com.sole.cinevault.lumenFrame
+import com.sole.cinevault.LumenActionButton
+import com.sole.cinevault.LumenCardShape
+import com.sole.cinevault.LumenGold
+import com.sole.cinevault.LumenMint
+import com.sole.cinevault.LumenPanelHeader
+import com.sole.cinevault.LumenSky
+import com.sole.cinevault.LumenSmallButton
+import com.sole.cinevault.LumenType
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
