@@ -545,7 +545,7 @@ class PictureEnhanceController(
                     outputHeight = outputSurfaceHeight,
                     rendererSupportsOutputScaling = outputSurfaceWidth > 0 && outputSurfaceHeight > 0,
                     hdrSource = hdr,
-                    thermalLimited = false,
+                    thermalLimited = performancePlan.load != PictureAdaptivePerformancePolicy.Load.NORMAL,
                     droppedFramePressure = badDropWindows > 0,
                 )
             )
