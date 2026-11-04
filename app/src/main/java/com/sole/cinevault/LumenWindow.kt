@@ -438,3 +438,15 @@ internal object LumenRailState {
     var bottomInset: Dp by mutableStateOf(150.dp)
     var endInset: Dp by mutableStateOf(150.dp)
 }
+
+/** Screens shorter than this (a phone in landscape) get compact, taller-than-before windows. */
+internal val LumenShortScreen = 480.dp
+
+internal fun isLumenShortScreen(containerHeight: Dp): Boolean = containerHeight < LumenShortScreen
+
+/**
+ * Space kept free below Lumen windows. On a short screen the transport bar is hidden while a window
+ * is open, so only a thin margin is kept and the window can use almost the whole height.
+ */
+internal fun lumenBottomInsetFor(containerHeight: Dp): Dp =
+    if (isLumenShortScreen(containerHeight)) minOf(LumenRailState.bottomInset, 12.dp) else LumenRailState.bottomInset
