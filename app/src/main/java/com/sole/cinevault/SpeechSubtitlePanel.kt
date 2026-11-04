@@ -37,6 +37,7 @@ fun SpeechSubtitlePanel(
     onGenerate: () -> Unit,
     onStop: () -> Unit,
     onDismiss: () -> Unit,
+    onBack: (() -> Unit)? = null,
 ) {
     val generating = status is SpeechSubtitleStatus.Generating
     val downloading = status is SpeechSubtitleStatus.DownloadingModel
@@ -49,7 +50,7 @@ fun SpeechSubtitlePanel(
             .lumenFrame(LumenGold)
             .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        LumenPanelHeader("SPEECH TO SUBTITLES", LumenGold, onDismiss)
+        LumenPanelHeader("SPEECH TO SUBTITLES", LumenGold, onDismiss, onBack)
 
         // The header stays reachable while the models and actions scroll on small windows.
         Column(

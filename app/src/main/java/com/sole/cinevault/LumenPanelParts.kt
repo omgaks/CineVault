@@ -31,8 +31,17 @@ import com.sole.cinevault.ui.theme.TextMuted
 
 /** Title row for the standalone Lumen panels: the title in the accent colour and a 40 dp close button. */
 @Composable
-internal fun LumenPanelHeader(title: String, accent: Color, onClose: (() -> Unit)?) {
+internal fun LumenPanelHeader(title: String, accent: Color, onClose: (() -> Unit)?, onBack: (() -> Unit)? = null) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        if (onBack != null) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .semantics { contentDescription = "Back to Sub Deck"; role = Role.Button }
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onBack),
+                contentAlignment = Alignment.Center,
+            ) { Text("‹", color = accent, fontSize = 26.sp) }
+        }
         Text(
             title,
             color = accent,

@@ -1483,6 +1483,7 @@ fun VideoPlayerScreen(
             onShowSubtitleBehaviourWindowChanged = { showSubtitleBehaviourWindow = it },
             onShowDualSubsWindowChanged = { showDualSubsWindow = it },
             onShowSpeechSubtitlePanelChanged = { subtitleAiUi.showSpeechSubtitlePanel = it },
+            onShowSubtitleDockChanged = { showSubtitleDock = it },
             onShowSubtitleTranslationPanelChanged = { subtitleAiUi.showSubtitleTranslationPanel = it },
             onPendingDualAiLanguageChanged = { pendingDualAiLanguage = it },
             onDualSecondaryColorHexChanged = { dualSecondaryColorHex = it },
