@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,16 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Star
-import androidx.compose.material.icons.rounded.StarBorder
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,7 +27,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -84,283 +78,135 @@ fun SubtitleTranslationPanel(
         }
     val favorites = visibleLanguages.filter { it.mlKitCode in favoriteCodes }
     val others = visibleLanguages.filterNot { it.mlKitCode in favoriteCodes }
-    val scrollState = rememberScrollState()
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .lumenFrame(com.sole.cinevault.LumenGold)
-            .border(
-                1.dp,
-                AmberCore.copy(alpha = 0.20f),
-                RoundedCornerShape(20.dp),
-            )
-            .verticalScroll(scrollState)
-            .padding(12.dp),
+            .lumenFrame(LumenGold)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(
-                "AI TRANSLATION",
-                color = AmberCore,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(50))
-                    .background(AmberCore.copy(alpha = 0.12f))
-                    .border(
-                        1.dp,
-                        AmberCore.copy(alpha = 0.30f),
-                        RoundedCornerShape(50),
-                    )
-                    .padding(horizontal = 11.dp, vertical = 6.dp),
-            )
-            IconButton(
-                onClick = onDismiss,
-                modifier = Modifier.size(34.dp),
-            ) {
-                Icon(
-                    Icons.Rounded.Close,
-                    "Close",
-                    tint = TextMuted,
-                )
-            }
-        }
+        LumenPanelHeader("AI TRANSLATION", LumenGold, onDismiss)
 
-        Text(
-            activeSource?.let { "Active: ${friendlySourceLabel(it.label)} • ${it.source}" }
-                ?: "Load a Subtitle Studio download or local/generated SRT first.",
-            color = if (activeSource != null) TextBright else AmberCore,
-            fontSize = 11.5.sp,
-            modifier = Modifier.padding(top = 7.dp),
-        )
-
-        Text(
-            "Whisper download is not required for translation.",
-            color = TextMuted,
-            fontSize = 10.5.sp,
-            modifier = Modifier.padding(top = 3.dp),
-        )
-
-        // Embedded subtitles are saved after the first read; this clears that copy so the next
-        // translation shows the "Reading subtitle · N%" step again.
-        if (onRereadEmbedded != null && activeSource?.source == "read from the movie" && !busy) {
-            Text(
-                "↻ Re-read from movie",
-                color = AmberCore,
-                fontSize = 10.5.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .padding(top = 8.dp)
-                    .clip(RoundedCornerShape(50))
-                    .border(1.dp, AmberCore.copy(alpha = 0.4f), RoundedCornerShape(50))
-                    .clickable { onRereadEmbedded() }
-                    .padding(horizontal = 12.dp, vertical = 5.dp),
-            )
-        }
-
-        when (status) {
-            is SubtitleTranslationStatus.Translating -> {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp),
-                ) {
-                    Text(
-                        status.phase,
-                        color = TextBright,
-                        fontSize = 10.5.sp,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        "${status.percent}%",
-                        color = TextMuted,
-                        fontSize = 10.5.sp,
-                    )
-                }
-                LinearProgressIndicator(
-                    progress = {
-                        status.percent.coerceIn(0, 100) / 100f
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 5.dp),
-                )
-                OutlinedButton(
-                    onClick = onStop,
-                    modifier = Modifier.padding(top = 6.dp),
-                ) {
-                    Text("Stop translation", fontSize = 10.5.sp)
-                }
-            }
-
-            is SubtitleTranslationStatus.Ready ->
-                Text(
-                    "Translation ready • ${status.cueCount} cues",
-                    color = TextBright,
-                    fontSize = 10.5.sp,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-
-            is SubtitleTranslationStatus.Failed ->
-                Text(
-                    status.reason,
-                    color = AmberCore,
-                    fontSize = 10.5.sp,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-
-            SubtitleTranslationStatus.Idle -> Unit
-        }
-
-        if (generatedFiles.isNotEmpty()) {
-            SectionPill("GENERATED / TRANSLATED FILES")
-            generatedFiles.forEach { file ->
-                val selected =
-                    activeSubtitleUri?.toString() == file.uri.toString()
-
-                OutlinedButton(
-                    onClick = { onLoadGenerated(file) },
-                    enabled = !busy,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 5.dp),
-                ) {
-                    if (selected) {
-                        Icon(
-                            Icons.Rounded.Check,
-                            null,
-                            modifier = Modifier.size(14.dp),
-                        )
-                        Spacer(Modifier.width(5.dp))
-                    }
-                    Text(
-                        if (file.cueCount >= 0) {
-                            "${file.label} • ${file.cueCount}"
-                        } else {
-                            file.label
-                        },
-                        fontSize = 10.5.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
-
-        SectionPill("TRANSLATE TO")
-
-        OutlinedTextField(
-            value = languageQuery,
-            onValueChange = { languageQuery = it },
-            enabled = !busy,
-            singleLine = true,
-            leadingIcon = {
-                Icon(
-                    Icons.Rounded.Search,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-            },
-            trailingIcon = {
-                if (languageQuery.isNotEmpty()) {
-                    IconButton(
-                        onClick = { languageQuery = "" },
-                        modifier = Modifier.size(34.dp),
-                    ) {
-                        Icon(
-                            Icons.Rounded.Close,
-                            contentDescription = "Clear language search",
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                }
-            },
-            placeholder = {
-                Text(
-                    "Search language",
-                    fontSize = 10.5.sp,
-                )
-            },
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 7.dp),
-        )
-
-        if (visibleLanguages.isEmpty()) {
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState()),
+        ) {
             Text(
-                text =
-                    "“$normalizedQuery” isn't available for AI translation on this device.",
-                color = AmberCore,
-                fontSize = 10.5.sp,
-                modifier = Modifier.padding(vertical = 8.dp),
+                activeSource?.let { "Translating: ${friendlySourceLabel(it.label)}, ${it.source}" }
+                    ?: "Load a subtitle first: a download, a local file or a generated one.",
+                color = if (activeSource != null) TextBright else LumenGold,
+                fontSize = LumenType.body,
+                modifier = Modifier.padding(top = 6.dp),
             )
-        } else {
-            if (favorites.isNotEmpty()) {
-                SectionPill("FAVORITES")
-                favorites.forEach { language ->
+            Text(
+                "The translation is added under your subtitle, so both stay on screen. No speech model is needed.",
+                color = TextMuted,
+                fontSize = LumenType.caption,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+
+            // Embedded subtitles are saved after the first read; this clears that copy so the next
+            // translation shows the "Reading subtitle" step again.
+            if (onRereadEmbedded != null && activeSource?.source == "read from the movie" && !busy) {
+                Spacer(Modifier.height(8.dp))
+                LumenSmallButton("Re-read from movie", LumenSky) { onRereadEmbedded() }
+            }
+
+            when (status) {
+                is SubtitleTranslationStatus.Translating -> {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                        Text(status.phase, color = TextBright, fontSize = LumenType.body, modifier = Modifier.weight(1f))
+                        Text("${status.percent}%", color = LumenGold, fontSize = LumenType.value, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    LumenProgressBar(status.percent, LumenGold)
+                    Spacer(Modifier.height(8.dp))
+                    LumenActionButton("Stop translation", LumenRose) { onStop() }
+                }
+
+                is SubtitleTranslationStatus.Ready ->
+                    Text(
+                        "Translation ready. ${status.cueCount} lines.",
+                        color = LumenMint,
+                        fontSize = LumenType.body,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+
+                is SubtitleTranslationStatus.Failed ->
+                    Text(
+                        status.reason,
+                        color = LumenRose,
+                        fontSize = LumenType.body,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+
+                SubtitleTranslationStatus.Idle -> Unit
+            }
+
+            if (generatedFiles.isNotEmpty()) {
+                LumenSectionLabel("Generated and translated", LumenSky)
+                generatedFiles.forEach { file ->
+                    val selected = activeSubtitleUri?.toString() == file.uri.toString()
+                    LumenOptionRow(
+                        label = if (file.cueCount >= 0) "${file.label} (${file.cueCount})" else file.label,
+                        selected = selected,
+                        accent = LumenSky,
+                    ) { if (!busy) onLoadGenerated(file) }
+                }
+            }
+
+            LumenSectionLabel("Translate to", LumenGold)
+            OutlinedTextField(
+                value = languageQuery,
+                onValueChange = { languageQuery = it },
+                enabled = !busy,
+                singleLine = true,
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = LumenType.body),
+                placeholder = { Text("Search language", fontSize = LumenType.body) },
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            )
+
+            if (visibleLanguages.isEmpty()) {
+                Text(
+                    "\u201c$normalizedQuery\u201d is not available for AI translation on this device.",
+                    color = LumenGold,
+                    fontSize = LumenType.body,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+            } else {
+                if (favorites.isNotEmpty()) {
+                    LumenSectionLabel("Favourites", LumenGold)
+                    favorites.forEach { language ->
+                        LanguageChoiceRow(
+                            language = language,
+                            favorite = true,
+                            enabled = !busy && activeSource != null,
+                            onTranslate = { onTranslate(language) },
+                            onFavorite = {
+                                favoriteCodes = toggleFavoriteLanguage(context, favoriteCodes, language.mlKitCode)
+                            },
+                        )
+                    }
+                }
+                LumenSectionLabel("Languages", LumenSky)
+                others.forEach { language ->
                     LanguageChoiceRow(
                         language = language,
-                        favorite = true,
+                        favorite = false,
                         enabled = !busy && activeSource != null,
                         onTranslate = { onTranslate(language) },
                         onFavorite = {
-                            favoriteCodes =
-                                toggleFavoriteLanguage(
-                                    context,
-                                    favoriteCodes,
-                                    language.mlKitCode,
-                                )
+                            favoriteCodes = toggleFavoriteLanguage(context, favoriteCodes, language.mlKitCode)
                         },
                     )
                 }
             }
-
-            SectionPill("LANGUAGES")
-            others.forEach { language ->
-                LanguageChoiceRow(
-                    language = language,
-                    favorite = false,
-                    enabled = !busy && activeSource != null,
-                    onTranslate = { onTranslate(language) },
-                    onFavorite = {
-                        favoriteCodes =
-                            toggleFavoriteLanguage(
-                                context,
-                                favoriteCodes,
-                                language.mlKitCode,
-                            )
-                    },
-                )
-            }
+            Spacer(Modifier.height(4.dp))
         }
-
-        Spacer(Modifier.height(4.dp))
     }
-}
-
-@Composable
-private fun SectionPill(text: String) {
-    Text(
-        text,
-        color = AmberCore,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier
-            .padding(top = 10.dp, bottom = 6.dp)
-            .clip(RoundedCornerShape(50))
-            .background(AmberCore.copy(alpha = 0.10f))
-            .border(
-                1.dp,
-                AmberCore.copy(alpha = 0.24f),
-                RoundedCornerShape(50),
-            )
-            .padding(horizontal = 9.dp, vertical = 4.dp),
-    )
 }
 
 @Composable
@@ -372,52 +218,20 @@ private fun LanguageChoiceRow(
     onFavorite: () -> Unit,
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        OutlinedButton(
-            onClick = onTranslate,
-            enabled = enabled,
-            modifier = Modifier.weight(1f),
-        ) {
-            if (favorite) {
-                Icon(
-                    Icons.Rounded.Star,
-                    null,
-                    tint = AmberCore,
-                    modifier = Modifier.size(14.dp),
-                )
-                Spacer(Modifier.width(5.dp))
-            }
-            Text(
-                language.label,
-                maxLines = 1,
-                fontSize = 10.5.sp,
-            )
+        Box(modifier = Modifier.weight(1f).alpha(if (enabled) 1f else 0.4f)) {
+            LumenOptionRow(language.label, false, if (favorite) LumenGold else LumenSky) { if (enabled) onTranslate() }
         }
-
-        Spacer(Modifier.width(5.dp))
-
-        IconButton(
-            onClick = onFavorite,
-            modifier = Modifier.size(34.dp),
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .semantics { contentDescription = if (favorite) "Remove favourite" else "Add favourite" }
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onFavorite),
+            contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                if (favorite) {
-                    Icons.Rounded.Star
-                } else {
-                    Icons.Rounded.StarBorder
-                },
-                if (favorite) {
-                    "Remove favorite"
-                } else {
-                    "Add favorite"
-                },
-                tint = if (favorite) AmberCore else TextMuted,
-                modifier = Modifier.size(17.dp),
-            )
+            Text(if (favorite) "★" else "☆", color = if (favorite) LumenGold else TextMuted, fontSize = LumenType.title)
         }
     }
 }
