@@ -83,6 +83,7 @@ internal fun BoxScope.PlayerOverlaySurfacesHost(
     onShowSubtitleBehaviourWindowChanged: (Boolean) -> Unit,
     onShowDualSubsWindowChanged: (Boolean) -> Unit,
     onShowSpeechSubtitlePanelChanged: (Boolean) -> Unit,
+    onShowSubtitleDockChanged: (Boolean) -> Unit,
     onShowSubtitleTranslationPanelChanged: (Boolean) -> Unit,
     onPendingDualAiLanguageChanged: (String?) -> Unit,
     onDualSecondaryColorHexChanged: (String) -> Unit,
@@ -247,6 +248,12 @@ internal fun BoxScope.PlayerOverlaySurfacesHost(
         },
         onHideTranslationPanel = {
             onShowSubtitleTranslationPanelChanged(false)
+        },
+        onBackToDeck = {
+            onShowSpeechSubtitlePanelChanged(false)
+            onShowSubtitleTranslationPanelChanged(false)
+            com.sole.cinevault.subtitles.DeckMemory.lastTab = com.sole.cinevault.subtitles.DeckTab.AI
+            onShowSubtitleDockChanged(true)
         },
     )
 }

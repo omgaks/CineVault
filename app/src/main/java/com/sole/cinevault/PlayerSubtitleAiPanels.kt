@@ -7,6 +7,10 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -51,6 +55,7 @@ fun BoxScope.PlayerSubtitleAiPanels(
     onHideSpeechPanel: () -> Unit,
     onShowTranslationPanel: () -> Unit,
     onHideTranslationPanel: () -> Unit,
+    onBackToDeck: () -> Unit,
 ) {
     val renderDestination = LocalCineVaultRenderDestination.current
     val subtitleAiSurfacesAvailable =
@@ -100,6 +105,7 @@ fun BoxScope.PlayerSubtitleAiPanels(
                 .coerceAtMost(340.dp)
                 .coerceAtLeast(240.dp)
 
+        var modelTick by remember { mutableIntStateOf(0) }
         Box(modifier = Modifier.fillMaxSize()) {
             // Tap on empty space minimises the panel (a running job keeps going as a pill).
             Box(
@@ -117,10 +123,16 @@ fun BoxScope.PlayerSubtitleAiPanels(
             ) {
                     SpeechSubtitlePanel(
                         status = speechStatus,
-                        models = WhisperModelManager.modelCatalog(context),
-                        onSelectModel = speechCoordinator::selectModel,
+                        models = remember(modelTick, speechStatus) { WhisperModelManager.modelCatalog(context) },
+                        onSelectModel = { id ->
+                            speechCoordinator.selectModel(id)
+                            modelTick++
+                        },
                         onDownloadModel = speechCoordinator::downloadModel,
-                        onDeleteModel = speechCoordinator::deleteModel,
+                        onDeleteModel = { id ->
+                            speechCoordinator.deleteModel(id)
+                            modelTick++
+                        },
                         onGenerate = {
                             speechCoordinator.generateSubtitles()
                             // Minimise to the floating pill straight away so the movie stays
@@ -131,6 +143,7 @@ fun BoxScope.PlayerSubtitleAiPanels(
                             speechCoordinator.cancelTranscription()
                         },
                         onDismiss = onHideSpeechPanel,
+                        onBack = onBackToDeck,
                     )
             }
         }
@@ -198,6 +211,7 @@ fun BoxScope.PlayerSubtitleAiPanels(
                         },
                         onRereadEmbedded = { translationCoordinator.rereadEmbeddedNextTime() },
                         onDismiss = onHideTranslationPanel,
+                        onBack = onBackToDeck,
                     )
             }
         }
