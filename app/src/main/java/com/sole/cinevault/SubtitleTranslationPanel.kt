@@ -58,6 +58,7 @@ fun SubtitleTranslationPanel(
     onTranslate: (SubtitleTranslationEngine.SupportedLanguage) -> Unit,
     onStop: () -> Unit,
     onDismiss: () -> Unit,
+    onBack: (() -> Unit)? = null,
     onRereadEmbedded: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
@@ -85,7 +86,7 @@ fun SubtitleTranslationPanel(
             .lumenFrame(LumenGold)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        LumenPanelHeader("AI TRANSLATION", LumenGold, onDismiss)
+        LumenPanelHeader("AI TRANSLATION", LumenGold, onDismiss, onBack)
 
         Column(
             modifier = Modifier
