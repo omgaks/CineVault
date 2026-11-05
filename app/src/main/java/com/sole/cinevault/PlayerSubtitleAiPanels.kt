@@ -116,9 +116,9 @@ fun BoxScope.PlayerSubtitleAiPanels(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = LumenRailState.endInset, bottom = LumenRailState.bottomInset)
+                    .padding(end = LumenRailState.endInset, bottom = lumenBottomInsetFor(containerHeight))
                     .width(panelWidth)
-                    .heightIn(max = (containerHeight - LumenRailState.bottomInset - 12.dp).coerceAtLeast(200.dp))
+                    .heightIn(max = (containerHeight - lumenBottomInsetFor(containerHeight) - 12.dp).coerceAtLeast(200.dp))
                     .blockTapThrough()
             ) {
                     SpeechSubtitlePanel(
@@ -174,9 +174,9 @@ fun BoxScope.PlayerSubtitleAiPanels(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = LumenRailState.endInset, bottom = LumenRailState.bottomInset)
+                    .padding(end = LumenRailState.endInset, bottom = lumenBottomInsetFor(containerHeight))
                     .width(panelWidth)
-                    .heightIn(max = (containerHeight - LumenRailState.bottomInset - 12.dp).coerceAtLeast(200.dp))
+                    .heightIn(max = (containerHeight - lumenBottomInsetFor(containerHeight) - 12.dp).coerceAtLeast(200.dp))
                     .blockTapThrough()
             ) {
                     SubtitleTranslationPanel(

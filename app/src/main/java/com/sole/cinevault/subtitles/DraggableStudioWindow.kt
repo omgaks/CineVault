@@ -77,7 +77,7 @@ fun DraggableStudioWindow(
         com.sole.cinevault.LumenRailState.endInset
     }
     val railEndPx = with(density) { railEndDp.toPx() }
-    val railBottomPx = with(density) { com.sole.cinevault.LumenRailState.bottomInset.toPx() }
+    val railBottomPx = with(density) { com.sole.cinevault.lumenBottomInsetFor(containerSize.height.toDp()).toPx() }
     val topMarginPx = with(density) { 12.dp.toPx() }
     val measured = windowSize != IntSize.Zero
     val anchored = !userMoved && measured

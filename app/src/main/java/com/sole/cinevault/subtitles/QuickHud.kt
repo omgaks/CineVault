@@ -146,7 +146,9 @@ fun QuickHud(
     var delayStep by remember { mutableStateOf(0.1f) }
     val (ghost, ghostAlpha) = rememberLumenGhost()
 
-    val maxHeight = with(density) { containerSize.height.toDp() } - LumenRailState.bottomInset - 12.dp
+    val containerHeightDp = with(density) { containerSize.height.toDp() }
+    val short = com.sole.cinevault.isLumenShortScreen(containerHeightDp)
+    val maxHeight = containerHeightDp - com.sole.cinevault.lumenBottomInsetFor(containerHeightDp) - 12.dp
 
     DraggableStudioWindow(
         initialOffset = initialOffset,
@@ -161,7 +163,7 @@ fun QuickHud(
                         .heightIn(max = maxHeight.coerceAtLeast(200.dp))
                         .graphicsLayer { alpha = ghostAlpha }
                         .lumenFrame(LumenGold)
-                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .padding(horizontal = 12.dp, vertical = if (short) 6.dp else 10.dp)
                 ) {
                     // Header: drag handle, title and the file that is showing.
                     Row(
@@ -187,18 +189,18 @@ fun QuickHud(
                             modifier = Modifier.weight(1f),
                         )
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(if (short) 2.dp else 8.dp))
                     LumenTabStrip(
                         tabs = deckTabs,
                         selected = tab.ordinal,
                         accent = LumenGold,
-                        iconOnly = windowWidth < 300.dp,
+                        iconOnly = windowWidth < 300.dp || short,
                         onSelect = {
                             tab = DeckTab.values()[it]
                             DeckMemory.lastTab = tab
                         },
                     )
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(if (short) 4.dp else 10.dp))
 
                     Crossfade(
                         targetState = tab,
