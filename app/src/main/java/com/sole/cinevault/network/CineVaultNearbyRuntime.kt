@@ -28,6 +28,7 @@ class CineVaultNearbyRuntime(context: Context) {
     private val authorization = CineVaultDirectAuthorization()
     private val policy = NearbyPairingPolicy()
     private val advertiser = CineVaultLanAdvertiser(app)
+    private val sharingLocks = CineVaultSharingLocks(app)
     private val discovery = CineVaultLanDiscoveryProvider(app)
     private val directClient = CineVaultDirectClient()
     private val reconnectStore = CineVaultReconnectStore(app)
@@ -36,6 +37,7 @@ class CineVaultNearbyRuntime(context: Context) {
         authorization = authorization,
         mediaProvider = { mediaSnapshot },
         selectionProvider = { selection },
+        onActivity = sharingLocks::onActivity,
     )
     private var mediaSnapshot: List<CineVaultDirectMedia> = emptyList()
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -80,6 +82,7 @@ class CineVaultNearbyRuntime(context: Context) {
                     error("CineVault could not determine this device's Wi-Fi address.")
                 }
                 advertiser.start(deviceId, deviceName, port)
+                sharingLocks.onSharingStarted()
                 val invite = policy.createInvite(deviceId, deviceName)
                 val sharing = publish(CineVaultSharingState(true, "http://$host:$port", invite))
 
@@ -99,6 +102,7 @@ class CineVaultNearbyRuntime(context: Context) {
                 stopHostApprovalWatcher()
                 advertiser.stop()
                 server.stop()
+                sharingLocks.releaseAll()
                 mediaSnapshot = emptyList()
                 update { it.withError(failure.message ?: "Could not start CineVault sharing.") }
                 throw failure
@@ -155,11 +159,15 @@ class CineVaultNearbyRuntime(context: Context) {
         stopHostApprovalWatcher()
         advertiser.stop()
         server.stop()
+        sharingLocks.releaseAll()
         mediaSnapshot = emptyList()
         val stopped = publish(CineVaultSharingState())
         app.stopService(Intent(app, CineVaultNearbySharingService::class.java))
         return stopped
     }
+
+    /** Safety net for the foreground owner: never leave locks held if it goes away. */
+    fun releaseSharingLocks() = sharingLocks.releaseAll()
 
     /** Used by the foreground owner without exposing the server itself. */
     fun isSharingActive(): Boolean = server.isRunning() && _connectState.value.sharing.running

@@ -45,6 +45,12 @@ class CineVaultNearbySharingService : Service() {
         return START_NOT_STICKY
     }
 
+    override fun onDestroy() {
+        // Whatever ended the service, do not leave the Wi-Fi / wake locks held.
+        CineVaultNearbyRuntime.get(applicationContext).releaseSharingLocks()
+        super.onDestroy()
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun createChannel() {
