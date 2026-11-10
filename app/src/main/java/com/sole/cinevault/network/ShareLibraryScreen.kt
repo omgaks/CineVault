@@ -22,6 +22,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.rounded.BatteryAlert
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.sole.cinevault.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -43,6 +47,19 @@ fun ShareLibraryScreen(
     var selectedFolders by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectedOnly by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var ignoringBattery by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
+    var tipDismissed by remember { mutableStateOf(isSharingBatteryTipDismissed(context)) }
+
+    // Re-check when the user comes back from the system battery screen, so the tip
+    // disappears on its own once CineVault is allowed.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) ignoringBattery = isIgnoringBatteryOptimizations(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LaunchedEffect(Unit) { folders = runtime.availableFolders() }
     LaunchedEffect(state.running) {
@@ -139,6 +156,29 @@ fun ShareLibraryScreen(
                 ShareCard("Connected securely", Icons.Rounded.Security) {
                     Text("Temporary Nearby session active", color=Color(0xFF55D98B), fontWeight=FontWeight.Bold)
                     Text("Access expires automatically. Vault / Restricted content remains excluded.", color=TextMuted, fontSize=12.sp)
+                }
+            }
+
+            if (shouldShowSharingBatteryTip(state.running, ignoringBattery, tipDismissed)) {
+                Spacer(Modifier.height(16.dp))
+                ShareCard("Keep sharing with the screen off", Icons.Rounded.BatteryAlert) {
+                    Text(
+                        "Some phones (vivo, Xiaomi, Samsung and others) pause background apps to save battery, " +
+                            "so the other device may stall when this screen turns off. " +
+                            "Set CineVault to Unrestricted / Don't optimize in battery settings. " +
+                            "On vivo, also allow it under background power consumption and Autostart.",
+                        color = TextMuted, fontSize = 12.sp,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        ShareButton("BATTERY SETTINGS") { openBatterySettings(context) }
+                        Text(
+                            "DON'T SHOW AGAIN", color = TextFaint, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable {
+                                dismissSharingBatteryTip(context); tipDismissed = true
+                            }.padding(vertical = 10.dp),
+                        )
+                    }
                 }
             }
 
