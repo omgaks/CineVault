@@ -97,6 +97,27 @@ class PictureEnhanceController(
     fun updateOutputSurfaceSize(width: Int, height: Int) {
         outputSurfaceWidth = width.coerceAtLeast(0)
         outputSurfaceHeight = height.coerceAtLeast(0)
+        refreshViewing()
+    }
+
+    /** Honest "what will this screen do to this video" read-out, shown in the panel. */
+    var viewing by mutableStateOf(PictureViewing.assess(0, 0, 0, 0))
+        private set
+    /** Real source size as reported by the player (0 until known). */
+    var sourceWidth by mutableStateOf(0)
+        private set
+    var sourceHeight by mutableStateOf(0)
+        private set
+    private var probe = PictureStageProbe()
+
+    private fun refreshViewing() {
+        val format = player.videoFormat
+        sourceWidth = format?.width?.takeIf { it > 0 } ?: 0
+        sourceHeight = format?.height?.takeIf { it > 0 } ?: 0
+        viewing = PictureViewing.assess(
+            sourceWidth, sourceHeight, outputSurfaceWidth, outputSurfaceHeight,
+            PictureProfiles.resolveContent(settings.content, detected),
+        )
     }
 
     var anime4kStatus by mutableStateOf("Anime4K · Off")
@@ -117,11 +138,13 @@ class PictureEnhanceController(
 
     private val playerListener = object : Player.Listener {
         override fun onVideoSizeChanged(videoSize: VideoSize) {
+            refreshViewing()
             updatePerformanceSource()
             evaluateAvailability()
         }
 
         override fun onTracksChanged(tracks: Tracks) {
+            refreshViewing()
             updatePerformanceSource()
             evaluateAvailability()
         }
@@ -195,7 +218,9 @@ class PictureEnhanceController(
         performance.reset()
         live.performanceScale = 1f
         updatePerformanceSource()
+        refreshViewing()
         settings = PictureMemory.load(context, path) ?: PictureSettings()
+        refreshViewing()
         if (settings.preset != PicturePreset.OFF && settings.preset != PicturePreset.CUSTOM) {
             lastPreset = settings.preset
         }
@@ -250,6 +275,7 @@ class PictureEnhanceController(
 
     fun setContent(content: PictureContent) {
         settings = settings.copy(content = content)
+        refreshViewing()
         // A named preset follows the content type; Custom keeps the user's sliders.
         if (settings.preset != PicturePreset.OFF && settings.preset != PicturePreset.CUSTOM) {
             settings = PictureProfiles.withPreset(
@@ -359,10 +385,11 @@ class PictureEnhanceController(
             !pipelineInstalled -> "Anime4K · Waiting"
             installedUpscale != null -> {
                 val target = installedUpscale!!
-                "Anime4K · Upscale requested ${target.targetWidth}×${target.targetHeight} (unverified)"
+                probe.summary()?.let { "Anime4K · $it · ${probe.frames} frames" }
+                    ?: "Anime4K · Upscale to ${target.targetWidth}×${target.targetHeight} requested — waiting for first frame"
             }
             PictureProfiles.resolveContent(settings.content, detected) == PictureContent.ANIME ->
-                "Anime4K · Enhancement only (upscale unverified)"
+                "Anime4K · Enhancement only — ${viewing.advice}"
             else -> "Picture · Standard enhancement"
         }
         val dt = now - lastPollAtMs
@@ -584,7 +611,8 @@ class PictureEnhanceController(
                 )
             )
             val effects = if (plan.mode == PictureAnime4kPolicy.Mode.UPSCALE) {
-                listOf(effect, PictureAnime4kUpscaleEffect(plan.targetWidth, plan.targetHeight))
+                probe = PictureStageProbe()
+                listOf(effect, PictureAnime4kUpscaleEffect(plan.targetWidth, plan.targetHeight, probe))
             } else {
                 listOf(effect)
             }

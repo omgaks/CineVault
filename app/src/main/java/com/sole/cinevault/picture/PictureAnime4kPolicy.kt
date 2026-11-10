@@ -32,7 +32,9 @@ object PictureAnime4kPolicy {
         if (input.outputWidth < 2 || input.outputHeight < 2) return enhanced
         // Preserve aspect ratio, cap at the Anime4K x2 pass and 4K, and never exceed the surface.
         val scale = minOf(2.0, input.outputWidth.toDouble() / input.sourceWidth, input.outputHeight.toDouble() / input.sourceHeight, 3840.0 / input.sourceWidth, 2160.0 / input.sourceHeight)
-        if (scale <= 1.0) return enhanced
+        if (scale < PictureViewing.MIN_USEFUL_SCALE) {
+            return enhanced.copy(reason = "Screen is too close to source size for upscaling to help")
+        }
         val width = ((input.sourceWidth * scale).toInt() / 2) * 2
         val height = ((input.sourceHeight * scale).toInt() / 2) * 2
         return Plan(Mode.UPSCALE, width, height, "Adaptive output upscale")

@@ -317,10 +317,12 @@ private fun MainPage(
     PictureMasterPill(on, available) { controller.setEnabled(it) }
 
     val selectedFamily = PictureExperienceBridge.selectedFamily(settings)
-    val sourceProfile = remember(controller.detected) {
+    val sourceProfile = remember(controller.detected, controller.sourceWidth, controller.sourceHeight) {
         PictureSourceProfile(
             content = controller.detected,
-            resolution = PictureSourceResolution.UNKNOWN,
+            resolution = PictureSourceIntelligence.classifyResolution(
+                controller.sourceWidth, controller.sourceHeight,
+            ),
             quality = PictureSourceQuality.UNKNOWN,
             scalingNeed = PictureSourceScalingNeed.UNKNOWN,
         )
@@ -332,6 +334,16 @@ private fun MainPage(
 
     SectionLabel("EXPERIENCE")
     PictureSourceBadgeView(sourceProfile.toSourceBadge(), Modifier.fillMaxWidth())
+    Text(
+        controller.viewing.headline,
+        color = AmberCore, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+    )
+    Text(
+        controller.viewing.advice,
+        color = TextMuted, fontSize = 9.sp,
+        modifier = Modifier.fillMaxWidth().padding(top = 1.dp),
+    )
     Spacer(Modifier.height(8.dp))
     PictureExperienceGallery(
         cards = PictureExperiencePresentation.cards(selectedFamily, recommendation),
