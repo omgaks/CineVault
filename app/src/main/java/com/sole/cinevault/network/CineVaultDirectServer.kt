@@ -22,6 +22,8 @@ class CineVaultDirectServer(
     private val mediaProvider: () -> List<CineVaultDirectMedia>,
     private val selectionProvider: () -> ShareLibrarySelection,
     private val gson: Gson = Gson(),
+    /** Called on authorized requests and while media bytes stream, so the host can stay awake. */
+    private val onActivity: () -> Unit = {},
 ) {
     private val running = AtomicBoolean(false)
     private val pool = Executors.newCachedThreadPool()
@@ -218,6 +220,7 @@ class CineVaultDirectServer(
         if (authorizedSession == null) {
             return respond(client, 401, "Unauthorized")
         }
+        onActivity()
 
         when {
             path == CineVaultLanProtocol.LIBRARY_PATH ->
@@ -296,6 +299,7 @@ class CineVaultDirectServer(
                 if (read <= 0) break
                 out.write(buffer, 0, read)
                 remaining -= read
+                onActivity() // throttled by the caller; keeps long streams awake
             }
         }
         out.flush()
