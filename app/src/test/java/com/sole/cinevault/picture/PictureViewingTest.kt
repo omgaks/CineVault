@@ -27,7 +27,7 @@ class PictureViewingTest {
 
     @Test fun padSeventhOnFullHdIsModerate() {
         val a = PictureViewing.assess(1920, 1080, 3200, 2136, PictureContent.ANIME)
-        assertEquals(PictureViewClass.LIGHT.takeIf { a.fitRatio < 1.5 } ?: PictureViewClass.MODERATE, a.viewClass)
+        assertEquals(PictureViewClass.MODERATE, a.viewClass)
         assertTrue(a.upscaleWorthIt)
     }
 
