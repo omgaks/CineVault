@@ -23,8 +23,10 @@ class PlaybackFailureRootCauseTest {
     fun parserExceptionMessageIsReported() {
         val parser = ParserException.createForMalformedContainer("Unexpected element ID 0x1F", null)
         val wrapper = RuntimeException(parser)
-        val cause = playbackFailureRootCause(wrapper)
-        assertEquals("ParserException: Unexpected element ID 0x1F", cause)
+        val cause = playbackFailureRootCause(wrapper)!!
+        // Media3 may decorate ParserException messages (e.g. contentIsMalformed / dataType),
+        // so only the leading, human-readable part is asserted.
+        assertTrue(cause, cause.startsWith("ParserException: Unexpected element ID 0x1F"))
     }
 
     @Test
