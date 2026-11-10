@@ -105,7 +105,7 @@ fun PlaybackInfoPanel(
             add(
                 Triple(
                     if (failure.severity == PlaybackFailureSeverity.TERMINAL) "LAST FAILURE" else "LAST RECOVERY",
-                    playbackFailureDiagnosticSummary(failure),
+                    playbackFailureDiagnosticDetailedSummary(failure),
                     true,
                 )
             )

@@ -206,6 +206,7 @@ internal fun PlayerEventListener(
                     buildPlaybackFailureDiagnostic(
                         attribution = attribution,
                         recovery = recovery,
+                        detail = playbackFailureRootCause(error),
                     )
                 )
 
