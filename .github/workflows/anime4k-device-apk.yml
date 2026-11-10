@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: anime4k-device-apk-${{ github.ref }}
@@ -47,3 +47,13 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Publish APK as a pre-release download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="picture-test-${{ github.run_number }}"
+          cp app/build/outputs/apk/debug/*.apk "CineVault-Picture-Test-${{ github.run_number }}.apk"
+          gh release create "$TAG" "CineVault-Picture-Test-${{ github.run_number }}.apk" \
+            --prerelease --target "${{ github.sha }}" \
+            --title "Picture test build ${{ github.run_number }}" \
+            --notes "Test build (installs as Anime4K Device Test, separate from CineVault). Commit ${{ github.sha }}."
