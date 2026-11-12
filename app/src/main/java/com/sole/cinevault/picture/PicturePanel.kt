@@ -309,6 +309,21 @@ private fun MainPage(
     if (message != null) {
         Text(message, color = AmberCore, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
     }
+    if (controller.assumingSdr || controller.keptProtected) {
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (controller.keptProtected) "Kept protected (colour info missing)."
+                else "Colour info missing — assuming standard SDR.",
+                color = TextMuted, fontSize = 9.sp, modifier = Modifier.weight(1f),
+            )
+            Text(
+                if (controller.keptProtected) "USE ENHANCEMENT" else "KEEP PROTECTED",
+                color = AmberCore, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable { controller.setKeptProtected(!controller.keptProtected) }
+                    .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
+            )
+        }
+    }
     controller.lastError?.let {
         Text("Reason: $it", color = TextMuted, fontSize = 9.sp, modifier = Modifier.padding(top = 2.dp))
     }
@@ -317,9 +332,11 @@ private fun MainPage(
     PictureMasterPill(on, available) { controller.setEnabled(it) }
 
     val selectedFamily = PictureExperienceBridge.selectedFamily(settings)
-    val sourceProfile = remember(controller.detected, controller.sourceWidth, controller.sourceHeight) {
+    val sourceProfile = remember(
+        controller.detected, settings.content, controller.sourceWidth, controller.sourceHeight,
+    ) {
         PictureSourceProfile(
-            content = controller.detected,
+            content = PictureProfiles.resolveContent(settings.content, controller.detected),
             resolution = PictureSourceIntelligence.classifyResolution(
                 controller.sourceWidth, controller.sourceHeight,
             ),

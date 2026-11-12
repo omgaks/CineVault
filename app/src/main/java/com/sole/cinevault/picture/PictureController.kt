@@ -110,6 +110,25 @@ class PictureEnhanceController(
         private set
     private var probe = PictureStageProbe()
 
+    /** The user chose to keep this (untagged) title protected — no enhancement. Per title. */
+    var keptProtected by mutableStateOf(false)
+        private set
+    /** True while an untagged ≤1080p file is being treated as standard SDR. */
+    var assumingSdr by mutableStateOf(false)
+        private set
+    /** Why no upscale pass is installed although the screen would benefit (honest, specific). */
+    private var upscaleNote: String? = null
+
+    private fun hdrDecision(format: Format) =
+        PictureHdrRouting.decide(format, assumeUntaggedSdr = !keptProtected)
+
+    fun setKeptProtected(protect: Boolean) {
+        if (keptProtected == protect) return
+        keptProtected = protect
+        if (currentPath.isNotEmpty()) PictureMemory.setKeptProtected(context, currentPath, protect)
+        evaluateAvailability()
+    }
+
     private fun refreshViewing() {
         val format = player.videoFormat
         sourceWidth = format?.width?.takeIf { it > 0 } ?: 0
@@ -183,6 +202,7 @@ class PictureEnhanceController(
             val saved = PictureMemory.load(context, initialPath)
             if (saved != null && saved.preset != PicturePreset.OFF) {
                 currentPath = initialPath
+                keptProtected = PictureMemory.isKeptProtected(context, initialPath)
                 settings = saved
                 if (saved.preset != PicturePreset.CUSTOM) lastPreset = saved.preset
                 refreshLive()
@@ -218,6 +238,7 @@ class PictureEnhanceController(
         performance.reset()
         live.performanceScale = 1f
         updatePerformanceSource()
+        keptProtected = PictureMemory.isKeptProtected(context, path)
         refreshViewing()
         settings = PictureMemory.load(context, path) ?: PictureSettings()
         refreshViewing()
@@ -378,6 +399,8 @@ class PictureEnhanceController(
 
     /** Called by the panel while it is open so the status line reflects reality. */
     fun refreshActivity() {
+        // Size events can fire before the player knows the format; re-read while the panel is open.
+        refreshViewing()
         val now = SystemClock.elapsedRealtime()
         val frames = live.frames
         anime4kStatus = when {
@@ -389,7 +412,7 @@ class PictureEnhanceController(
                     ?: "Anime4K · Upscale to ${target.targetWidth}×${target.targetHeight} requested — waiting for first frame"
             }
             PictureProfiles.resolveContent(settings.content, detected) == PictureContent.ANIME ->
-                "Anime4K · Enhancement only — ${viewing.advice}"
+                "Anime4K · Enhancement only — ${upscaleNote ?: viewing.advice}"
             else -> "Picture · Standard enhancement"
         }
         val dt = now - lastPollAtMs
@@ -525,14 +548,17 @@ class PictureEnhanceController(
                     Log.i("CineVaultPicture", "Video format: mime=${format.sampleMimeType}, " +
                         "codecs=${format.codecs}, colourSpace=${color?.colorSpace}, " +
                         "transfer=${color?.colorTransfer}, hdrStaticBytes=${color?.hdrStaticInfo?.size ?: 0}, " +
-                        "size=${format.width}x${format.height}, route=${PictureHdrRouting.decide(format).route}")
+                        "size=${format.width}x${format.height}, route=${hdrDecision(format).route}")
                 }
             }
+            assumingSdr = format != null && !keptProtected &&
+                PictureHdrRouting.isUntaggedAssumable(format)
             val reason: String? = when {
                 lockedReason != null -> lockedReason
                 format == null -> "Detecting video format…"
-                PictureHdrRouting.decide(format).route == PictureHdrPolicy.Route.HDR_PASSTHROUGH ->
-                    PictureHdrRouting.blockReason(format)
+                hdrDecision(format).route == PictureHdrPolicy.Route.HDR_PASSTHROUGH ->
+                    PictureHdrRouting.blockReason(format) +
+                        if (keptProtected) " · kept protected by you" else ""
                 format.height > 1440 || format.width > 2560 -> "Not needed for 4K video"
                 else -> null
             }
@@ -541,7 +567,7 @@ class PictureEnhanceController(
             if (next != availability) availability = next
         }
         if (pipelineInstalled && resolvedVideoFormat() != null &&
-            PictureHdrRouting.decide(resolvedVideoFormat()!!).route ==
+            hdrDecision(resolvedVideoFormat()!!).route ==
                 PictureHdrPolicy.Route.HDR_PASSTHROUGH
         ) {
             // Only at an SDR -> protected HDR boundary: detach the incompatible
@@ -589,7 +615,7 @@ class PictureEnhanceController(
             val content = PictureProfiles.resolveContent(settings.content, detected)
             val anime = content == PictureContent.ANIME
             val hdr = format == null ||
-                PictureHdrRouting.decide(format).route != PictureHdrPolicy.Route.SDR_ENHANCEMENT
+                hdrDecision(format).route != PictureHdrPolicy.Route.SDR_ENHANCEMENT
             // Fail closed until the surface owner supplies actual pixel dimensions.
             val plan = PictureAnime4kPolicy.plan(
                 PictureAnime4kPolicy.Input(
@@ -610,6 +636,15 @@ class PictureEnhanceController(
                     droppedFramePressure = badDropWindows > 0,
                 )
             )
+            upscaleNote = when {
+                plan.mode == PictureAnime4kPolicy.Mode.UPSCALE || !anime -> null
+                performancePlan.load != PictureAdaptivePerformancePolicy.Load.NORMAL ->
+                    "upscale skipped: device load too high at this quality"
+                badDropWindows > 0 -> "upscale skipped: frames were being dropped"
+                outputSurfaceWidth <= 0 || outputSurfaceHeight <= 0 -> "upscale skipped: screen size not measured yet"
+                hdr -> "upscale skipped: protected video"
+                else -> plan.reason.lowercase()
+            }
             val effects = if (plan.mode == PictureAnime4kPolicy.Mode.UPSCALE) {
                 probe = PictureStageProbe()
                 listOf(effect, PictureAnime4kUpscaleEffect(plan.targetWidth, plan.targetHeight, probe))
