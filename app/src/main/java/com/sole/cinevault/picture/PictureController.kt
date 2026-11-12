@@ -110,6 +110,14 @@ class PictureEnhanceController(
         private set
     private var probe = PictureStageProbe()
 
+    // Plain playback health counters (counted with the picture filter on OR off, so the two
+    // can be compared when a movie stalls).
+    private var droppedFramesTotal = 0L
+    private var stallCount = 0
+    private var lastPlayerState = Player.STATE_IDLE
+    var playbackStats by mutableStateOf("")
+        private set
+
     /** The user chose to keep this (untagged) title protected — no enhancement. Per title. */
     var keptProtected by mutableStateOf(false)
         private set
@@ -162,6 +170,11 @@ class PictureEnhanceController(
             evaluateAvailability()
         }
 
+        override fun onPlaybackStateChanged(state: Int) {
+            if (state == Player.STATE_BUFFERING && lastPlayerState == Player.STATE_READY) stallCount++
+            lastPlayerState = state
+        }
+
         override fun onTracksChanged(tracks: Tracks) {
             refreshViewing()
             updatePerformanceSource()
@@ -175,6 +188,7 @@ class PictureEnhanceController(
             droppedFrames: Int,
             elapsedMs: Long,
         ) {
+            droppedFramesTotal += droppedFrames.coerceAtLeast(0)
             if (!pipelineInstalled || !isActive || comparing) return
             // Analytics reports dropped frames in an elapsed window; estimate total frames
             // from source fps, including the dropped frames themselves.
@@ -235,6 +249,8 @@ class PictureEnhanceController(
         comparing = false
         splitView = false
         badDropWindows = 0
+        droppedFramesTotal = 0L
+        stallCount = 0
         performance.reset()
         live.performanceScale = 1f
         updatePerformanceSource()
@@ -401,6 +417,8 @@ class PictureEnhanceController(
     fun refreshActivity() {
         // Size events can fire before the player knows the format; re-read while the panel is open.
         refreshViewing()
+        playbackStats = "Playback: $droppedFramesTotal frames dropped · $stallCount stalls · " +
+            if (isActive && pipelineInstalled) "picture filter ON" else "picture filter OFF"
         val now = SystemClock.elapsedRealtime()
         val frames = live.frames
         anime4kStatus = when {

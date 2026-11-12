@@ -305,6 +305,14 @@ private fun MainPage(
         maxLines = 2,
     )
 
+    if (controller.playbackStats.isNotEmpty()) {
+        Text(
+            controller.playbackStats,
+            color = TextMuted, fontSize = 9.sp,
+            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+        )
+    }
+
     val message = unavailable?.reason ?: controller.note
     if (message != null) {
         Text(message, color = AmberCore, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
@@ -364,10 +372,11 @@ private fun MainPage(
     Spacer(Modifier.height(8.dp))
     PictureExperienceGallery(
         cards = PictureExperiencePresentation.cards(selectedFamily, recommendation),
-        enabled = true,
+        // With Picture Enhance off, nothing in the panel can switch processing on:
+        // the master switch is the only way in.
+        enabled = on,
         onSelect = { family ->
             controller.setContent(PictureExperienceBridge.contentFor(family))
-            if (!on) controller.setEnabled(true)
         },
     )
 
