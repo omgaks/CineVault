@@ -56,6 +56,7 @@ fun PlaybackInfoPanel(
     snapshot: PlaybackDiagnosticsSnapshot,
     onDismiss: () -> Unit,
     onShowCompatibilityReport: () -> Unit = {},
+    onSwitchDecoder: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val presentation = presentPlaybackDiagnostics(snapshot)
@@ -252,6 +253,29 @@ fun PlaybackInfoPanel(
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.5.sp,
         )
+        }
+
+        val switchLabel = when {
+            onSwitchDecoder == null -> null
+            snapshot.decoderMode == PlaybackEngineMode.SOFTWARE -> "SWITCH TO HARDWARE DECODING"
+            snapshot.softwareFallbackAvailable -> "SWITCH TO SOFTWARE DECODING"
+            else -> null
+        }
+        if (switchLabel != null) {
+            Text(
+                text = "$switchLabel  ⇄",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+                    .background(DiagnosticsSky.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
+                    .border(1.dp, DiagnosticsSky.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                    .clickable { onSwitchDecoder?.invoke() }
+                    .padding(horizontal = 11.dp, vertical = 9.dp),
+                color = DiagnosticsSky,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp,
+            )
         }
 
         Text(

@@ -39,6 +39,7 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
     sidePadding: Dp,
     railBottomInset: Dp = 120.dp,
     railMaxHeight: Dp = 400.dp,
+    onSwitchDecoder: (() -> Unit)? = null,
 ) {
     var surface by remember { mutableStateOf(PlaybackInfoSurface.NONE) }
 
@@ -101,6 +102,12 @@ internal fun BoxScope.PlaybackInfoOverlayHost(
             onDismiss = { closeInfo() },
             onShowCompatibilityReport = {
                 surface = PlaybackInfoSurface.REPORT
+            },
+            onSwitchDecoder = onSwitchDecoder?.let { switch ->
+                {
+                    closeInfo()
+                    switch()
+                }
             },
         )
     }

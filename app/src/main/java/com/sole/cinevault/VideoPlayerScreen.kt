@@ -1498,6 +1498,16 @@ fun VideoPlayerScreen(
             sidePadding = playerLayout.sidePadding,
             railBottomInset = playerLayout.bottomDockPadding + playerLayout.playButton + 64.dp,
             railMaxHeight = playerMaxHeight - (playerLayout.bottomDockPadding + playerLayout.playButton + 64.dp) - 12.dp,
+            onSwitchDecoder = {
+                val resumeAt = exoPlayer.currentPosition.coerceAtLeast(0L)
+                if (playbackRecovery.engineMode == PlaybackEngineMode.SOFTWARE) {
+                    playerRuntime.decoderSelector.engineMode = PlaybackEngineMode.HARDWARE
+                    playbackRecovery.restoreHardware()
+                    replaySubtitlePreservingTiming(resumeAt)
+                } else {
+                    playbackRecovery.requestManualSoftware(resumeAt, trackUi.originalUri)
+                }
+            },
         )
 
     }
