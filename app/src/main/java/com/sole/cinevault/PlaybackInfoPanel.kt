@@ -176,15 +176,16 @@ fun PlaybackInfoPanel(
                     letterSpacing = 0.8.sp,
                 )
                 Text(
-                    text = "PLAYBACK REPORT · TAP PILL TO CLOSE",
+                    text = "PLAYBACK REPORT · TAP HW OR SW TO SWITCH",
                     color = DiagnosticsSecondary,
                     fontSize = 10.sp,
                 )
             }
             Spacer(Modifier.weight(1f))
-            DecoderModeBadge(
+            DecoderModeToggle(
                 mode = snapshot.decoderMode,
-                kind = snapshot.activeDecoderKind,
+                softwareAvailable = snapshot.softwareFallbackAvailable,
+                onSelect = onSwitchDecoder,
             )
             Spacer(Modifier.width(7.dp))
             Text(
@@ -255,29 +256,6 @@ fun PlaybackInfoPanel(
         )
         }
 
-        val switchLabel = when {
-            onSwitchDecoder == null -> null
-            snapshot.decoderMode == PlaybackEngineMode.SOFTWARE -> "SWITCH TO HARDWARE DECODING"
-            snapshot.softwareFallbackAvailable -> "SWITCH TO SOFTWARE DECODING"
-            else -> null
-        }
-        if (switchLabel != null) {
-            Text(
-                text = "$switchLabel  ⇄",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp)
-                    .background(DiagnosticsSky.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
-                    .border(1.dp, DiagnosticsSky.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
-                    .clickable { onSwitchDecoder?.invoke() }
-                    .padding(horizontal = 11.dp, vertical = 9.dp),
-                color = DiagnosticsSky,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.5.sp,
-            )
-        }
-
         Text(
             text = "COMPATIBILITY REPORT  ›",
             modifier = Modifier
@@ -302,30 +280,49 @@ fun PlaybackInfoPanel(
 }
 
 @Composable
-private fun DecoderModeBadge(
+private fun DecoderModeToggle(
     mode: PlaybackEngineMode,
-    kind: ActiveVideoDecoderKind,
+    softwareAvailable: Boolean,
+    onSelect: (() -> Unit)?,
 ) {
-    val text = when (kind) {
-        ActiveVideoDecoderKind.HARDWARE -> "HW"
-        ActiveVideoDecoderKind.SOFTWARE -> "SW"
-        ActiveVideoDecoderKind.UNKNOWN -> when (mode) {
-            PlaybackEngineMode.HARDWARE -> "HW"
-            PlaybackEngineMode.SOFTWARE -> "SW"
-        }
-    }
+    val context = LocalContext.current
     val shape = RoundedCornerShape(999.dp)
-    Text(
-        text = text,
+    Row(
         modifier = Modifier
-            .background(DiagnosticsAmber.copy(alpha = 0.12f), shape)
+            .background(DiagnosticsAmber.copy(alpha = 0.08f), shape)
             .border(1.dp, DiagnosticsAmber.copy(alpha = 0.38f), shape)
-            .padding(horizontal = 9.dp, vertical = 4.dp),
-        color = DiagnosticsAmber,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 0.7.sp,
-    )
+            .padding(2.dp),
+    ) {
+        listOf(PlaybackEngineMode.HARDWARE to "HW", PlaybackEngineMode.SOFTWARE to "SW")
+            .forEach { (target, label) ->
+                val selected = mode == target
+                Text(
+                    text = label,
+                    modifier = Modifier
+                        .background(
+                            if (selected) DiagnosticsAmber.copy(alpha = 0.30f) else Color.Transparent,
+                            shape,
+                        )
+                        .clickable {
+                            when {
+                                selected || onSelect == null -> Unit
+                                target == PlaybackEngineMode.SOFTWARE && !softwareAvailable ->
+                                    Toast.makeText(
+                                        context,
+                                        "No software decoder available for this video",
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                else -> onSelect()
+                            }
+                        }
+                        .padding(horizontal = 11.dp, vertical = 6.dp),
+                    color = if (selected) DiagnosticsPrimary else DiagnosticsAmber.copy(alpha = 0.75f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.7.sp,
+                )
+            }
+    }
 }
 
 @Composable
