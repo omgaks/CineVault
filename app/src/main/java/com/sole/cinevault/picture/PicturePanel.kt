@@ -144,7 +144,7 @@ fun PicturePanelHost(controller: PictureEnhanceController, railBottomInset: Dp =
                 color = TextBright,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 28.dp)
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 112.dp)
                     .glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong)
                     .padding(horizontal = 16.dp, vertical = 7.dp),
             )
@@ -162,12 +162,12 @@ private fun BoxScope.SplitViewOverlay(
     val dividerX = containerW * position
     SplitLabel(
         "LIVE · ENHANCED", true,
-        Modifier.align(Alignment.TopStart).padding(top = 28.dp)
+        Modifier.align(Alignment.TopStart).padding(top = 112.dp)
             .offset { IntOffset((dividerX * .5f).roundToInt() - with(density) { 44.dp.roundToPx() }, 0) }
     )
     SplitLabel(
         "ORIGINAL", false,
-        Modifier.align(Alignment.TopStart).padding(top = 28.dp)
+        Modifier.align(Alignment.TopStart).padding(top = 112.dp)
             .offset { IntOffset(((dividerX + containerW) * .5f).roundToInt() - with(density) { 36.dp.roundToPx() }, 0) }
     )
 

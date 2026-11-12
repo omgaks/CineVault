@@ -150,6 +150,14 @@ class PictureEnhanceController(
     var anime4kStatus by mutableStateOf("Anime4K · Off")
         private set
     private var installedUpscale: PictureAnime4kPolicy.Plan? = null
+    private var installedWantedUpscale = false
+
+    /** Anime always asks for the upscale pass; Max quality asks for it on any SDR content. */
+    private fun wantsUpscale(): Boolean {
+        val content = PictureProfiles.resolveContent(settings.content, detected)
+        return content == PictureContent.ANIME ||
+            PictureExperienceBridge.qualityFor(settings) == PictureQualityTier.MAX
+    }
     private var pipelineInstalled = false
     private var installedAtMs = 0L
     private var badDropWindows = 0
@@ -328,6 +336,11 @@ class PictureEnhanceController(
     fun setIntensity(value: Float) {
         settings = settings.copy(intensity = value.coerceIn(0f, 1f))
         refreshLive()
+        // Moving into or out of Max adds or removes the resize pass, which needs a
+        // brief re-prepare at the same position. Eco <-> Balanced never does.
+        if (isActive && pipelineInstalled && !setupFailed && wantsUpscale() != installedWantedUpscale) {
+            installPipeline(restart = true)
+        }
     }
 
     fun setFineTune(
@@ -631,7 +644,7 @@ class PictureEnhanceController(
             // for confirmed SDR anime with a verified 4K output capability.
             val format = resolvedVideoFormat()
             val content = PictureProfiles.resolveContent(settings.content, detected)
-            val anime = content == PictureContent.ANIME
+            val anime = wantsUpscale()
             val hdr = format == null ||
                 hdrDecision(format).route != PictureHdrPolicy.Route.SDR_ENHANCEMENT
             // Fail closed until the surface owner supplies actual pixel dimensions.
@@ -650,14 +663,15 @@ class PictureEnhanceController(
                         outputSurfaceWidth > 0 && outputSurfaceHeight > 0 &&
                         format != null && !hdr && !setupFailed,
                     hdrSource = hdr,
-                    thermalLimited = performancePlan.load != PictureAdaptivePerformancePolicy.Load.NORMAL,
+                    // Elevated load only trims repair strength; only critical load blocks the upscale.
+                    thermalLimited = performancePlan.load == PictureAdaptivePerformancePolicy.Load.CRITICAL,
                     droppedFramePressure = badDropWindows > 0,
                 )
             )
             upscaleNote = when {
                 plan.mode == PictureAnime4kPolicy.Mode.UPSCALE || !anime -> null
-                performancePlan.load != PictureAdaptivePerformancePolicy.Load.NORMAL ->
-                    "upscale skipped: device load too high at this quality"
+                performancePlan.load == PictureAdaptivePerformancePolicy.Load.CRITICAL ->
+                    "upscale skipped: device is too hot or busy right now"
                 badDropWindows > 0 -> "upscale skipped: frames were being dropped"
                 outputSurfaceWidth <= 0 || outputSurfaceHeight <= 0 -> "upscale skipped: screen size not measured yet"
                 hdr -> "upscale skipped: protected video"
@@ -671,6 +685,7 @@ class PictureEnhanceController(
             }
             player.setVideoEffects(effects)
             installedUpscale = plan.takeIf { it.mode == PictureAnime4kPolicy.Mode.UPSCALE }
+            installedWantedUpscale = anime
             pipelineInstalled = true
             installedAtMs = SystemClock.elapsedRealtime()
             badDropWindows = 0
