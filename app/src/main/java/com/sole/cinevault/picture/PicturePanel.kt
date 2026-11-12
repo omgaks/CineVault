@@ -302,7 +302,6 @@ private fun MainPage(
         fontSize = 10.sp,
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier.fillMaxWidth().padding(top = 3.dp),
-        maxLines = 2,
     )
 
     if (controller.playbackStats.isNotEmpty()) {
