@@ -5,6 +5,10 @@ import android.app.Presentation
 import android.hardware.display.DisplayManager
 import android.os.Bundle
 import android.view.Display
+import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.OnBackPressedDispatcherOwner
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.activity.setViewTreeOnBackPressedDispatcherOwner
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
@@ -84,6 +88,14 @@ private class CineVaultExternalPresentation(
     override val savedStateRegistry get() = savedStateController.savedStateRegistry
     override val viewModelStore = ViewModelStore()
 
+    // A Presentation is a Dialog, not a ComponentActivity, so nothing supplies a back-press
+    // dispatcher to the Compose tree. Without one, any BackHandler in the app UI (tab/back-stack
+    // handling, Picture panel, playback info) throws as soon as the glasses connect.
+    private val backDispatcherOwner = object : OnBackPressedDispatcherOwner {
+        override val lifecycle: Lifecycle get() = lifecycleRegistry
+        override val onBackPressedDispatcher = OnBackPressedDispatcher()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         savedStateController.performAttach()
         savedStateController.performRestore(savedInstanceState)
@@ -111,12 +123,14 @@ private class CineVaultExternalPresentation(
             setViewTreeLifecycleOwner(this@CineVaultExternalPresentation)
             setViewTreeSavedStateRegistryOwner(this@CineVaultExternalPresentation)
             setViewTreeViewModelStoreOwner(this@CineVaultExternalPresentation)
+            setViewTreeOnBackPressedDispatcherOwner(backDispatcherOwner)
 
             setContent {
                 CineVaultTheme {
                     CompositionLocalProvider(
                         LocalCineVaultRenderDestination provides
-                            CineVaultRenderDestination.EXTERNAL_DISPLAY
+                            CineVaultRenderDestination.EXTERNAL_DISPLAY,
+                        LocalOnBackPressedDispatcherOwner provides backDispatcherOwner,
                     ) {
                         CineVaultSessionRoot {
                             val configuration = LocalConfiguration.current
