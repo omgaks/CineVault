@@ -168,7 +168,7 @@ private fun BoxScope.SplitViewOverlay(
     SplitLabel(
         "ORIGINAL", false,
         Modifier.align(Alignment.TopStart).padding(top = 112.dp)
-            .offset { IntOffset(((dividerX + containerW) * .5f).roundToInt() - with(density) { 36.dp.roundToPx() }, 0) }
+            .offset { IntOffset(dividerX.roundToInt() + with(density) { 14.dp.roundToPx() }, 0) }
     )
 
     // Compose owns the visible divider. It follows the finger immediately even when

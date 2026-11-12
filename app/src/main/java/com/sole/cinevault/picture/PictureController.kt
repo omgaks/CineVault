@@ -147,7 +147,7 @@ class PictureEnhanceController(
         )
     }
 
-    var anime4kStatus by mutableStateOf("Anime4K · Off")
+    var anime4kStatus by mutableStateOf("Upscale · Off")
         private set
     private var installedUpscale: PictureAnime4kPolicy.Plan? = null
     private var installedWantedUpscale = false
@@ -435,15 +435,15 @@ class PictureEnhanceController(
         val now = SystemClock.elapsedRealtime()
         val frames = live.frames
         anime4kStatus = when {
-            !isActive -> "Anime4K · Off"
-            !pipelineInstalled -> "Anime4K · Waiting"
+            !isActive -> "Upscale · Off"
+            !pipelineInstalled -> "Upscale · Waiting"
             installedUpscale != null -> {
                 val target = installedUpscale!!
-                probe.summary()?.let { "Anime4K · $it · ${probe.frames} frames" }
-                    ?: "Anime4K · Upscale to ${target.targetWidth}×${target.targetHeight} requested — waiting for first frame"
+                probe.summary()?.let { "Upscale · $it · ${probe.frames} frames" }
+                    ?: "Upscale · Upscale to ${target.targetWidth}×${target.targetHeight} requested — waiting for first frame"
             }
             PictureProfiles.resolveContent(settings.content, detected) == PictureContent.ANIME ->
-                "Anime4K · Enhancement only — ${upscaleNote ?: viewing.advice}"
+                "Upscale · Enhancement only — ${upscaleNote ?: viewing.advice}"
             else -> "Picture · Standard enhancement"
         }
         val dt = now - lastPollAtMs
