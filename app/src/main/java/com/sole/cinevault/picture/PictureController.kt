@@ -122,7 +122,7 @@ class PictureEnhanceController(
     private fun hdrDecision(format: Format) =
         PictureHdrRouting.decide(format, assumeUntaggedSdr = !keptProtected)
 
-    fun setKeptProtected(protect: Boolean) {
+    fun chooseKeepProtected(protect: Boolean) {
         if (keptProtected == protect) return
         keptProtected = protect
         if (currentPath.isNotEmpty()) PictureMemory.setKeptProtected(context, currentPath, protect)

@@ -319,7 +319,7 @@ private fun MainPage(
             Text(
                 if (controller.keptProtected) "USE ENHANCEMENT" else "KEEP PROTECTED",
                 color = AmberCore, fontSize = 9.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.clickable { controller.setKeptProtected(!controller.keptProtected) }
+                modifier = Modifier.clickable { controller.chooseKeepProtected(!controller.keptProtected) }
                     .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
             )
         }
