@@ -38,6 +38,12 @@ jobs:
           assert text.count(original) == 1, "Unexpected application ID configuration"
           path.write_text(text.replace(original, 'applicationId = "com.sole.cinevault.anime4ktest"'))
           PY
+      # Fixed test-only key so each test build installs over the previous one.
+      # Not the release key; the release build keeps its own secret keystore.
+      - name: Use fixed test signing key
+        run: |
+          mkdir -p ~/.android
+          cp .github/test-signing/debug.keystore ~/.android/debug.keystore
       - name: Build device-test APK
         run: bash gradlew assembleDebug --no-daemon
       - name: Upload installable APK
