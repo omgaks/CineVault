@@ -176,18 +176,12 @@ fun PlaybackInfoPanel(
                     letterSpacing = 0.8.sp,
                 )
                 Text(
-                    text = "PLAYBACK REPORT · TAP HW OR SW TO SWITCH",
+                    text = "PLAYBACK REPORT",
                     color = DiagnosticsSecondary,
                     fontSize = 10.sp,
                 )
             }
             Spacer(Modifier.weight(1f))
-            DecoderModeToggle(
-                mode = snapshot.decoderMode,
-                softwareAvailable = snapshot.softwareFallbackAvailable,
-                onSelect = onSwitchDecoder,
-            )
-            Spacer(Modifier.width(7.dp))
             Text(
                 text = "×",
                 modifier = Modifier
@@ -198,6 +192,13 @@ fun PlaybackInfoPanel(
                 fontWeight = FontWeight.Medium,
             )
         }
+
+        DecoderModeToggle(
+            mode = snapshot.decoderMode,
+            softwareAvailable = snapshot.softwareFallbackAvailable,
+            accent = edge,
+            onSelect = onSwitchDecoder,
+        )
 
         sections.forEach { (label, value, emphasize) ->
             DiagnosticSection(label, value, emphasize)
@@ -283,45 +284,73 @@ fun PlaybackInfoPanel(
 private fun DecoderModeToggle(
     mode: PlaybackEngineMode,
     softwareAvailable: Boolean,
+    accent: Color,
     onSelect: (() -> Unit)?,
 ) {
     val context = LocalContext.current
-    val shape = RoundedCornerShape(999.dp)
-    Row(
-        modifier = Modifier
-            .background(DiagnosticsAmber.copy(alpha = 0.08f), shape)
-            .border(1.dp, DiagnosticsAmber.copy(alpha = 0.38f), shape)
-            .padding(2.dp),
-    ) {
-        listOf(PlaybackEngineMode.HARDWARE to "HW", PlaybackEngineMode.SOFTWARE to "SW")
-            .forEach { (target, label) ->
+    val cut = androidx.compose.foundation.shape.CutCornerShape(8.dp)
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(
+            text = "VIDEO DECODING",
+            color = DiagnosticsSecondary,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.8.sp,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf(
+                Triple(PlaybackEngineMode.HARDWARE, "HW", "Hardware"),
+                Triple(PlaybackEngineMode.SOFTWARE, "SW", "Software"),
+            ).forEach { (target, short, long) ->
                 val selected = mode == target
-                Text(
-                    text = label,
+                val dimmed = target == PlaybackEngineMode.SOFTWARE && !softwareAvailable && !selected
+                Row(
                     modifier = Modifier
+                        .weight(1f)
                         .background(
-                            if (selected) DiagnosticsAmber.copy(alpha = 0.30f) else Color.Transparent,
-                            shape,
+                            if (selected) accent.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.04f),
+                            cut,
+                        )
+                        .border(
+                            1.dp,
+                            if (selected) accent else DiagnosticsBorder,
+                            cut,
                         )
                         .clickable {
                             when {
                                 selected || onSelect == null -> Unit
-                                target == PlaybackEngineMode.SOFTWARE && !softwareAvailable ->
-                                    Toast.makeText(
-                                        context,
-                                        "No software decoder available for this video",
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
+                                dimmed -> Toast.makeText(
+                                    context,
+                                    "No software decoder available for this video",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
                                 else -> onSelect()
                             }
                         }
-                        .padding(horizontal = 11.dp, vertical = 6.dp),
-                    color = if (selected) DiagnosticsPrimary else DiagnosticsAmber.copy(alpha = 0.75f),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.7.sp,
-                )
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = short,
+                        color = if (selected) accent else DiagnosticsPrimary.copy(alpha = if (dimmed) 0.35f else 0.85f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = long.uppercase(),
+                        color = DiagnosticsSecondary.copy(alpha = if (dimmed) 0.35f else 0.8f),
+                        fontSize = 9.sp,
+                        letterSpacing = 0.6.sp,
+                    )
+                }
             }
+        }
     }
 }
 

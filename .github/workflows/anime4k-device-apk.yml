@@ -43,7 +43,7 @@ jobs:
       - name: Use fixed test signing key
         run: |
           mkdir -p ~/.android
-          cp .github/test-signing/debug.keystore ~/.android/debug.keystore
+          base64 -d .github/test-signing/debug.keystore.b64 > ~/.android/debug.keystore
       - name: Build device-test APK
         run: bash gradlew assembleDebug --no-daemon
       - name: Upload installable APK
