@@ -37,4 +37,31 @@ class TvDetectorTest {
         assertNull(extractEpisodeInfo("Star Wars Episode 1 The Phantom Menace.mkv"))
         assertNull(extractEpisodeInfo("Dune 2021.mkv"))
     }
+
+    @Test
+    fun bareEAndFanSubTagsAreRecognised() {
+        val info = extractEpisodeInfo("Dawang Raoming - E04 (Sub).mp4")
+        assertNotNull(info)
+        assertEquals("Dawang Raoming", info!!.showName)
+        assertEquals(1, info.season)
+        assertEquals(4, info.episode)
+        assertEquals(5, extractEpisodeInfo("Dawang Raoming - E05 (Sub).mp4")!!.episode)
+    }
+
+    @Test
+    fun dashNumberedFanSubNamesAreEpisodes() {
+        val info = extractEpisodeInfo("[SubsPlease] Some Show - 05 (1080p).mkv")
+        assertNotNull(info)
+        assertEquals("Some Show", info!!.showName)
+        assertEquals(5, info.episode)
+        assertEquals(7, extractEpisodeInfo("Some Show - 07v2 [720p].mkv")!!.episode)
+    }
+
+    @Test
+    fun filmsWithDashesOrLetterEAreNotShows() {
+        assertNull(extractEpisodeInfo("Catch-22.mkv"))
+        assertNull(extractEpisodeInfo("Mission - 13.mkv"))
+        assertNull(extractEpisodeInfo("E.T. The Extra-Terrestrial 1982.mkv"))
+        assertNull(extractEpisodeInfo("Apollo 13 1995.mkv"))
+    }
 }
