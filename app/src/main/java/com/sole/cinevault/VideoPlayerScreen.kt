@@ -937,11 +937,12 @@ fun VideoPlayerScreen(
             onPlayNext = onPlayNext,
         )
         val currentMeta = episodeRuntime.currentMeta
-        LaunchedEffect(currentVideo.path, currentMeta?.genres) {
+        LaunchedEffect(currentVideo.path, currentMeta?.genres, currentMeta?.originalLanguage) {
             pictureController.bindVideo(
                 path = currentVideo.path,
                 fileName = currentVideo.name,
                 genres = currentMeta?.genres.orEmpty(),
+                originalLanguage = currentMeta?.originalLanguage,
             )
         }
         val activeSmartSegment = episodeRuntime.activeSmartSegment

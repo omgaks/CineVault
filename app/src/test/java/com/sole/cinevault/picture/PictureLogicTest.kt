@@ -51,8 +51,9 @@ class PictureLogicTest {
     fun tune_animeGetsNoGrainAndExtraDeband() {
         assertEquals(0.15f, PictureProfiles.tune(PicturePreset.CINEMA, PictureContent.FILM).grain, 0.0001f)
         assertEquals(0f, PictureProfiles.tune(PicturePreset.CINEMA, PictureContent.ANIME).grain, 0.0001f)
-        assertEquals(0.65f, PictureProfiles.tune(PicturePreset.NATURAL, PictureContent.ANIME).deband, 0.0001f)
-        assertEquals(0.425f, PictureProfiles.tune(PicturePreset.NATURAL, PictureContent.ANIME).sharpen, 0.0001f)
+        assertEquals(0.70f, PictureProfiles.tune(PicturePreset.NATURAL, PictureContent.ANIME).deband, 0.0001f)
+        // Families never sharpen less than Film for anime: the upscaler cleans lines, sharpening stays.
+        assertEquals(0.5f, PictureProfiles.tune(PicturePreset.NATURAL, PictureContent.ANIME).sharpen, 0.0001f)
     }
 
     @Test

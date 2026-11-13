@@ -358,6 +358,25 @@ private fun MainPage(
 
     SectionLabel("EXPERIENCE")
     PictureSourceBadgeView(sourceProfile.toSourceBadge(), Modifier.fillMaxWidth())
+    Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (settings.content == PictureContent.AUTO) {
+                "Detected as ${controller.detected.label}" +
+                    controller.detectedReason.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
+            } else {
+                "You chose ${settings.content.label} · detected ${controller.detected.label}"
+            },
+            color = TextMuted, fontSize = 9.sp, modifier = Modifier.weight(1f),
+        )
+        if (settings.content != PictureContent.AUTO && on) {
+            Text(
+                "BACK TO AUTO",
+                color = AmberCore, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable { controller.setContent(PictureContent.AUTO) }
+                    .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
+            )
+        }
+    }
     Text(
         controller.viewing.headline,
         color = AmberCore, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,

@@ -62,6 +62,7 @@ class PictureEnhanceController(
     var splitPosition by mutableStateOf(0.5f)
         private set
     var detected by mutableStateOf(PictureContent.FILM)
+    var detectedReason by mutableStateOf("")
         private set
     var availability by mutableStateOf<PictureAvailability>(PictureAvailability.Available)
         private set
@@ -237,8 +238,10 @@ class PictureEnhanceController(
 
     // ── Video binding ────────────────────────────────────────────────────────────
 
-    fun bindVideo(path: String, fileName: String, genres: List<String>) {
-        detected = PictureContentDetector.detect(fileName, genres)
+    fun bindVideo(path: String, fileName: String, genres: List<String>, originalLanguage: String? = null) {
+        val detection = PictureContentDetector.describe(fileName, genres, originalLanguage)
+        detected = detection.content
+        detectedReason = detection.reason
         if (path == currentPath) return
         currentPath = path
         // A retained SDR effect must never be carried into a different title.

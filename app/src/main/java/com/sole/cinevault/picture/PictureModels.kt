@@ -37,8 +37,8 @@ object PictureProfiles {
             PicturePreset.OFF,PicturePreset.CUSTOM->Tune(.50f,.50f,.15f,0f)
         }
         return when(content){
-            PictureContent.ANIME->Tune(base.sharpen*.85f,(base.deband+.15f).coerceAtMost(1f),(base.colour*1.2f).coerceAtMost(1f),0f)
-            PictureContent.ANIMATION->Tune(base.sharpen*.80f,(base.deband+.10f).coerceAtMost(1f),base.colour,0f)
+            PictureContent.ANIME->Tune(base.sharpen,(base.deband+.20f).coerceAtMost(1f),(base.colour*1.25f).coerceAtMost(1f),0f)
+            PictureContent.ANIMATION->Tune(base.sharpen*.95f,(base.deband+.15f).coerceAtMost(1f),(base.colour*1.1f).coerceAtMost(1f),0f)
             PictureContent.FILM,PictureContent.AUTO->base
         }
     }
