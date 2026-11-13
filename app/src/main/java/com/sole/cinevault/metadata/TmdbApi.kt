@@ -53,6 +53,14 @@ interface TmdbApi {
         @Query("language") language: String? = null
     ): TmdbEpisode
 
+    @GET("tv/{series_id}/season/{season_number}")
+    suspend fun getTvSeason(
+        @Header("Authorization") bearerToken: String,
+        @Path("series_id") seriesId: Int,
+        @Path("season_number") seasonNumber: Int,
+        @Query("language") language: String? = null
+    ): TmdbSeasonDetails
+
     @GET("movie/{movie_id}/external_ids")
     suspend fun getMovieExternalIds(
         @Header("Authorization") bearerToken: String,

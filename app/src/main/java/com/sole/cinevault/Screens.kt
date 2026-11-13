@@ -477,7 +477,8 @@ fun groupTvShows(videos: List<VideoWithMetadata>): List<TvGroup> {
                 showName = title,
                 posterUrl = episodes.firstOrNull()?.posterUrl,
                 backdropUrl = episodes.firstOrNull()?.backdropUrl,
-                episodes = episodes.sortedBy { it.subtitle }
+                episodes = episodes.sortedBy { it.subtitle },
+                tmdbId = episodes.firstNotNullOfOrNull { it.tmdbId?.takeIf { id -> id > 0 } }
             )
         }
         .sortedBy { it.showName }

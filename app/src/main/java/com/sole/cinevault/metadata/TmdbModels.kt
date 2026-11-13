@@ -105,7 +105,23 @@ data class TmdbTvDetails(
     val genres: List<TmdbGenre>? = null,
     val created_by: List<TmdbCreatedBy>? = null,
     val credits: TmdbCreditsBlock? = null,
-    val keywords: TmdbTvKeywordsBlock? = null
+    val keywords: TmdbTvKeywordsBlock? = null,
+    val seasons: List<TmdbSeasonSummary>? = null
+)
+
+data class TmdbSeasonSummary(
+    val season_number: Int? = null,
+    val episode_count: Int? = null
+)
+
+data class TmdbSeasonDetails(
+    val episodes: List<TmdbSeasonEpisode>? = null
+)
+
+data class TmdbSeasonEpisode(
+    val episode_number: Int? = null,
+    val name: String? = null,
+    val air_date: String? = null
 )
 
 // ── Collections V2 ──────────────────────────────────────────────────────────

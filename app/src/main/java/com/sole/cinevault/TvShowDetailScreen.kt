@@ -120,6 +120,21 @@ fun TvShowDetailScreen(
     }
     val hasMultipleSeasons = seasonGroups.size > 1
 
+    // Episodes TMDB lists as aired that have no file here. Quiet when the catalog is unknown.
+    val catalog by produceState<List<com.sole.cinevault.library.CatalogEpisode>?>(null, group.tmdbId) {
+        value = group.tmdbId?.let { com.sole.cinevault.metadata.ShowCatalogRepository.load(context, it) }
+    }
+    val missing = remember(catalog, visibleEpisodes) {
+        catalog?.let {
+            com.sole.cinevault.library.missingEpisodes(
+                it,
+                com.sole.cinevault.library.ownedEpisodeKeys(visibleEpisodes),
+                com.sole.cinevault.metadata.ShowCatalogRepository.today()
+            )
+        }.orEmpty()
+    }
+    var showMissing by remember { mutableStateOf(false) }
+
     fun openContextSheet(item: VideoWithMetadata) {
         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
         contextSheetItem = item
@@ -294,7 +309,10 @@ fun TvShowDetailScreen(
                     ) {
                         Text(text = group.showName, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = "${visibleEpisodes.size} Episodes", color = Color(0xFFAAAAAA), fontSize = 14.sp)
+                        Text(
+                            text = if (missing.isNotEmpty()) "${visibleEpisodes.size} Episodes · ${missing.size} not downloaded" else "${visibleEpisodes.size} Episodes",
+                            color = Color(0xFFAAAAAA), fontSize = 14.sp
+                        )
                     }
                 }
             }
@@ -399,6 +417,54 @@ fun TvShowDetailScreen(
                         onLongPress = { openContextSheet(episode) }
                     )
                     Spacer(modifier = Modifier.height(2.dp))
+                }
+            }
+
+            if (missing.isNotEmpty()) {
+                item {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 22.dp, vertical = 4.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White.copy(alpha = 0.06f))
+                            .clickable { showMissing = !showMissing }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Not downloaded",
+                            color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(text = "${missing.size} missing", color = Color(0xFFAAAAAA), fontSize = 12.sp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            imageVector = if (showMissing) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                            contentDescription = null, tint = Color(0xFFAAAAAA), modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                if (showMissing) {
+                    items(missing.size) { i ->
+                        val ep = missing[i]
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "S${ep.season.toString().padStart(2, '0')}E${ep.number.toString().padStart(2, '0')}",
+                                color = Color(0xFF8A8A8A), fontSize = 13.sp, fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = ep.name.ifBlank { "Episode ${ep.number}" },
+                                color = Color(0xFF8A8A8A), fontSize = 13.sp, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
             }
 
