@@ -536,15 +536,45 @@ suspend fun enrichVideoWithOnlineMetadata(
     val enriched =
         if (episodeInfo != null) {
 
-            val tv =
-                try {
-                    TmdbClient.api.searchTv(
-                        bearerToken = BuildConfig.TMDB_TOKEN,
-                        query = episodeInfo.showName,
-                        language = metadataLanguage
-                    ).results.firstOrNull()
-                } catch (e: Exception) {
-                    null
+            // One match per series: reuse what an earlier episode (or a manual Fix Match) settled on,
+            // otherwise try the filename's spelling and then known alternative titles.
+            val rememberedShowId = ShowMatchMemory.get(context, episodeInfo.showName)
+            val tv: TmdbTvShow? =
+                if (rememberedShowId != null) {
+                    try {
+                        val details = TmdbClient.api.getTvDetails(
+                            bearerToken = BuildConfig.TMDB_TOKEN,
+                            seriesId = rememberedShowId,
+                            language = metadataLanguage
+                        )
+                        TmdbTvShow(
+                            id = details.id ?: rememberedShowId,
+                            name = details.name,
+                            first_air_date = null,
+                            poster_path = details.poster_path,
+                            backdrop_path = details.backdrop_path,
+                            overview = null,
+                            vote_average = null
+                        )
+                    } catch (e: Exception) {
+                        null
+                    }
+                } else {
+                    var found: TmdbTvShow? = null
+                    for (query in showSearchQueries(episodeInfo.showName)) {
+                        found = try {
+                            TmdbClient.api.searchTv(
+                                bearerToken = BuildConfig.TMDB_TOKEN,
+                                query = query,
+                                language = metadataLanguage
+                            ).results.firstOrNull()
+                        } catch (e: Exception) {
+                            null
+                        }
+                        if (found != null) break
+                    }
+                    found?.id?.let { ShowMatchMemory.put(context, episodeInfo.showName, it) }
+                    found
                 }
 
             val episodeDetails =

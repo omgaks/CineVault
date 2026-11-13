@@ -219,7 +219,13 @@ object ArtworkStudioRepository {
                         director = extra?.director,
                         curatedCollections = extra?.curatedCollections ?: emptyList(),
                         cast = extra?.cast ?: emptyList()
-                    ).also { saveCachedVideoMetadata(context, item.video.path, it) }
+                    ).also {
+                        saveCachedVideoMetadata(context, item.video.path, it)
+                        // Remember the choice for the whole series so its other episodes follow.
+                        com.sole.cinevault.library.extractEpisodeInfo(item.video.name)?.let { info ->
+                            ShowMatchMemory.put(context, info.showName, candidate.tmdbId)
+                        }
+                    }
                 }
                 ArtworkStudioResult.Success(updated)
             }
