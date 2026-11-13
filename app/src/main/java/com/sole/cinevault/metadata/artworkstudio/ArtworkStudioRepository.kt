@@ -188,6 +188,7 @@ object ArtworkStudioRepository {
         try {
             if (candidate.type == "movie") {
                 val item = items.first()
+                com.sole.cinevault.library.EpisodeOverrides.markMovie(context, item.video.path)
                 val updated = applyRematch(
                     context,
                     item,
@@ -221,6 +222,7 @@ object ArtworkStudioRepository {
                         cast = extra?.cast ?: emptyList()
                     ).also {
                         saveCachedVideoMetadata(context, item.video.path, it)
+                        com.sole.cinevault.library.EpisodeOverrides.markEpisode(context, item.video.path)
                         // Remember the choice for the whole series so its other episodes follow.
                         com.sole.cinevault.library.extractEpisodeInfo(item.video.name)?.let { info ->
                             ShowMatchMemory.put(context, info.showName, candidate.tmdbId)

@@ -25,10 +25,27 @@ internal fun extractBareEpisodeNumber(cleanName: String): EpisodeInfo? {
     val show = match.groupValues[1].replace(releaseTagWords, "").replace(Regex("[\\[\\]()]"), " ")
         .replace(Regex("\\s+"), " ").trim()
     if (show.isBlank()) return null
+    // "Chainsaw Man The Movie Reze Arc E01" is a film whatever number trails it.
+    if (filmWords.containsMatchIn(show)) return null
     val rest = match.groupValues[3].replace(releaseTagWords, "").replace(trailingEpisodeTags, "").replace(Regex("[\\[\\]()\\s]"), "")
     if (rest.isNotEmpty()) return null
     val episode = match.groupValues[2].toIntOrNull() ?: return null
     return EpisodeInfo(showName = show, season = 1, episode = episode)
+}
+
+private val filmWords = Regex("(?i)\\b(movie|film)\\b")
+
+/** True for an explicit SxxEyy / NxMM marker, which is always an episode (never a film). */
+fun isExplicitSeasonEpisodeName(fileName: String): Boolean {
+    val clean = fileName.substringBeforeLast(".").replace(".", " ").replace("_", " ").replace("-", " ")
+    return Regex("(?i)\\bS\\d{1,2}E\\d{1,3}\\b").containsMatchIn(clean) ||
+        Regex("(?i)\\b\\d{1,2}x\\d{1,3}\\b").containsMatchIn(clean)
+}
+
+/** True when the name carries a bare "E01" / "Episode 1" style marker, explicit or not. */
+fun hasBareEpisodeMarker(fileName: String): Boolean {
+    val clean = fileName.substringBeforeLast(".").replace(".", " ").replace("_", " ").replace("-", " ")
+    return Regex("(?i)\\b(?:episode|ep|e)\\s*\\d{1,3}\\b").containsMatchIn(clean) && !isExplicitSeasonEpisodeName(fileName)
 }
 
 /** True for names the old SxxEyy / NxMM patterns miss but that are plainly "Show Episode NN". */

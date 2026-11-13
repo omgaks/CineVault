@@ -1,7 +1,10 @@
 package com.sole.cinevault.metadata
 
 import com.sole.cinevault.BuildConfig
+import com.sole.cinevault.library.EpisodeOverrides
 import com.sole.cinevault.library.extractEpisodeInfo
+import com.sole.cinevault.library.hasBareEpisodeMarker
+import com.sole.cinevault.library.isExplicitSeasonEpisodeName
 import com.sole.cinevault.library.isBareEpisodeNumberName
 import com.sole.cinevault.VideoWithMetadata
 import com.sole.cinevault.CastEntry
@@ -212,6 +215,7 @@ suspend fun applyCachedMetadataIfAvailable(
     } else {
         item
     }
+    EpisodeOverrides.ensureLoaded(context)
     return applyManualArtworkPreference(context, fileAsEpisodeIfNamedLikeOne(cachedItem))
 }
 
@@ -222,6 +226,7 @@ suspend fun applyCachedMetadataIfAvailable(
  */
 internal fun fileAsEpisodeIfNamedLikeOne(item: VideoWithMetadata): VideoWithMetadata {
     if (item.type != "movie" || !isBareEpisodeNumberName(item.video.name)) return item
+    if (EpisodeOverrides.isMovie(item.video.path)) return item
     val info = extractEpisodeInfo(item.video.name) ?: return item
     return item.copy(
         type = "tv",
@@ -291,7 +296,7 @@ fun shouldEnrichOnlineMetadata(item: VideoWithMetadata): Boolean {
     // automatic metadata cache is cleared. It must not make that otherwise
     // bare movie/episode look fully enriched and block the next lookup.
     if ((item.type == "movie" || item.type == "tv") && item.tmdbId == null) return true
-    if (item.type == "movie" && isBareEpisodeNumberName(item.video.name)) return true
+    if (item.type == "movie" && isBareEpisodeNumberName(item.video.name) && !EpisodeOverrides.isMovie(item.video.path)) return true
     return !hasUsefulOnlineMetadata(item) ||
             needsRatingsUpgrade(item) ||
             needsGenreUpgrade(item) ||
@@ -491,11 +496,20 @@ suspend fun enrichVideoWithOnlineMetadata(
         // to the fresh search below. Known personal videos remain cached.
         // Likewise, "Show Episode 06" files used to be filed as movies. Look them up again as
         // episodes of a show.
+        EpisodeOverrides.ensureLoaded(context)
         val filedAsMovieButIsEpisode =
             applied.type != "tv" && applied.type != "local" && applied.type != "restricted" &&
-                isBareEpisodeNumberName(item.video.name)
+                isBareEpisodeNumberName(item.video.name) &&
+                !EpisodeOverrides.isMovie(item.video.path)
+        // Filed as a show only because of a bare "E01" in the name: check once whether it is
+        // really a film. Files of a show we already matched are trusted without a new lookup.
+        val filedAsTvButMayBeFilm =
+            applied.type == "tv" && hasBareEpisodeMarker(item.video.name) &&
+                !EpisodeOverrides.isConfirmedEpisode(item.video.path) &&
+                !EpisodeOverrides.isMovie(item.video.path) &&
+                extractEpisodeInfo(item.video.name)?.let { ShowMatchMemory.get(context, it.showName) } == null
         val previousLookupFailed =
-            (!hasUsefulOnlineMetadata(applied) && applied.type != "local") || filedAsMovieButIsEpisode
+            (!hasUsefulOnlineMetadata(applied) && applied.type != "local") || filedAsMovieButIsEpisode || filedAsTvButMayBeFilm
         if (!previousLookupFailed && !needsRatings && !needsGenres && !needsArtwork) return displayed
 
         if (!previousLookupFailed && needsRatings) {
@@ -531,7 +545,39 @@ suspend fun enrichVideoWithOnlineMetadata(
         }
     }
 
-    val episodeInfo = extractEpisodeInfo(item.video.name)
+    EpisodeOverrides.ensureLoaded(context)
+    var episodeDecision = extractEpisodeInfo(item.video.name)
+    if (episodeDecision != null && !isExplicitSeasonEpisodeName(item.video.name)) {
+        // A bare "E01" is weak evidence. Films that carry one stay films.
+        val path = item.video.path
+        val info = episodeDecision!!
+        when {
+            EpisodeOverrides.isMovie(path) -> episodeDecision = null
+            EpisodeOverrides.isConfirmedEpisode(path) || ShowMatchMemory.get(context, info.showName) != null -> Unit
+            else -> {
+                val tvTitles = try {
+                    TmdbClient.api.searchTv(BuildConfig.TMDB_TOKEN, info.showName, language = metadataLanguage)
+                        .results.take(5).mapNotNull { it.name }
+                } catch (_: Exception) { null }
+                val movieTitles = try {
+                    TmdbClient.api.searchMovie(BuildConfig.TMDB_TOKEN, info.showName, language = metadataLanguage)
+                        .results.take(5).mapNotNull { it.title }
+                } catch (_: Exception) { null }
+                if (tvTitles != null && movieTitles != null) {
+                    if (bareNameIsFilm(info.showName, tvTitles, movieTitles)) {
+                        EpisodeOverrides.markMovie(context, path)
+                        episodeDecision = null
+                    } else {
+                        EpisodeOverrides.markEpisode(context, path)
+                    }
+                }
+            }
+        }
+    } else if (episodeDecision == null && hasBareEpisodeMarker(item.video.name)) {
+        // The name rule declined it (e.g. "... The Movie ... E01"): it is a film.
+        EpisodeOverrides.markMovie(context, item.video.path)
+    }
+    val episodeInfo = episodeDecision
 
     val enriched =
         if (episodeInfo != null) {
@@ -642,6 +688,7 @@ suspend fun enrichVideoWithOnlineMetadata(
         } else {
 
             val movieSearchName = cleanMovieFilename(item.video.name)
+                .replace(Regex("(?i)\\s+(?:episode|ep|e)\\s*\\d{1,3}$"), "").trim()
 
             if (looksLikePersonalOrCameraVideoForCache(item.video.name, movieSearchName)) {
                 item.copy(

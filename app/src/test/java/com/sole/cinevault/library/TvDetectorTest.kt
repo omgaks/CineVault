@@ -3,6 +3,8 @@ package com.sole.cinevault.library
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class TvDetectorTest {
@@ -63,5 +65,22 @@ class TvDetectorTest {
         assertNull(extractEpisodeInfo("Mission - 13.mkv"))
         assertNull(extractEpisodeInfo("E.T. The Extra-Terrestrial 1982.mkv"))
         assertNull(extractEpisodeInfo("Apollo 13 1995.mkv"))
+    }
+
+    @Test
+    fun filmsNamedWithMovieWordAndEpisodeNumberAreNotShows() {
+        assertNull(extractEpisodeInfo("Chainsaw Man The Movie Reze Arc E01.mkv"))
+        assertNull(extractEpisodeInfo("Some Film E01 1080p.mkv"))
+        assertNotNull(extractEpisodeInfo("Chainsaw Man S01E01.mkv"))
+    }
+
+    @Test
+    fun explicitAndBareMarkersAreToldApart() {
+        assertTrue(isExplicitSeasonEpisodeName("Show S02E05.mkv"))
+        assertTrue(isExplicitSeasonEpisodeName("Show 2x05.mkv"))
+        assertFalse(isExplicitSeasonEpisodeName("Show E05.mkv"))
+        assertTrue(hasBareEpisodeMarker("Show E05.mkv"))
+        assertFalse(hasBareEpisodeMarker("Show S01E05.mkv"))
+        assertFalse(hasBareEpisodeMarker("Dune 2021.mkv"))
     }
 }

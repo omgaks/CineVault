@@ -43,3 +43,16 @@ object ShowMatchMemory {
             .edit().putInt(key, tmdbId).apply()
     }
 }
+
+/**
+ * Decides whether a bare-"E01" name is really a film: TMDB knows a movie with exactly this
+ * title and no series with it. A series with the same name always wins, so real shows named
+ * like a film are never pulled out of TV Shows.
+ */
+internal fun bareNameIsFilm(showName: String, tvTitles: List<String>, movieTitles: List<String>): Boolean {
+    val key = showKey(showName)
+    if (key.length < 4) return false
+    val tvExact = tvTitles.any { showKey(it) == key }
+    val movieExact = movieTitles.any { showKey(it) == key }
+    return movieExact && !tvExact
+}

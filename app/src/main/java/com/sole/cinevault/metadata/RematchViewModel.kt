@@ -208,6 +208,8 @@ suspend fun applyRematch(
     currentItem: VideoWithMetadata,
     candidate: MatchCandidate
 ): VideoWithMetadata {
+    // A person who picks a film for this file means it: keep it a film even if its name has "E01".
+    com.sole.cinevault.library.EpisodeOverrides.markMovie(context, currentItem.video.path)
     val metadataLanguage = loadMetadataLanguage(context)
     val extra = fetchTmdbExtraDetails(candidate.tmdbId, "movie", metadataLanguage)
 

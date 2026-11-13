@@ -10,6 +10,10 @@ import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.input.key.Key
@@ -86,7 +90,16 @@ internal fun LazyGridScope.LocalLibraryTvAndFoldersShelf(
             Spacer(modifier = Modifier.height(10.dp))
 
             val focusManager = LocalFocusManager.current
+            // Keep the shelf where the person left it when a show is opened and closed again.
+            val shelfState = rememberLazyListState(ShelfScrollMemory.index, ShelfScrollMemory.offset)
+            DisposableEffect(shelfState) {
+                onDispose {
+                    ShelfScrollMemory.index = shelfState.firstVisibleItemIndex
+                    ShelfScrollMemory.offset = shelfState.firstVisibleItemScrollOffset
+                }
+            }
             LazyRow(
+                state = shelfState,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 modifier = Modifier.then(
                     if (isTelevision) {
@@ -140,8 +153,16 @@ internal fun LazyGridScope.LocalLibraryTvAndFoldersShelf(
                                     maxLines = 1,
                                     fontWeight = FontWeight.SemiBold
                                 )
+                                val owned = entry.episodes.size
+                                val aired by produceState<Int?>(null, entry.tmdbId) {
+                                    value = entry.tmdbId?.let { id ->
+                                        com.sole.cinevault.metadata.ShowCatalogRepository.load(context, id)?.let { cat ->
+                                            com.sole.cinevault.library.airedEpisodeCount(cat, com.sole.cinevault.metadata.ShowCatalogRepository.today())
+                                        }
+                                    }
+                                }
                                 Text(
-                                    text = "${entry.episodes.size} Episodes",
+                                    text = aired?.takeIf { it > owned }?.let { "$owned of $it episodes" } ?: "$owned Episodes",
                                     color = TextMuted,
                                     fontSize = 12.sp
                                 )
@@ -175,4 +196,10 @@ internal fun LazyGridScope.LocalLibraryTvAndFoldersShelf(
             Spacer(modifier = Modifier.height(20.dp))
         }
     }
+}
+
+/** Where the TV Shows & Folders shelf was last scrolled to; survives leaving and re-entering the library. */
+internal object ShelfScrollMemory {
+    @Volatile var index: Int = 0
+    @Volatile var offset: Int = 0
 }
