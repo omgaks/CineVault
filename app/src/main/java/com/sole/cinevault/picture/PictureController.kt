@@ -545,7 +545,7 @@ class PictureEnhanceController(
                     outputHeight = outputSurfaceHeight,
                     rendererSupportsOutputScaling = outputSurfaceWidth > 0 && outputSurfaceHeight > 0,
                     hdrSource = hdr,
-                    thermalLimited = false,
+                    thermalLimited = performancePlan.load != PictureAdaptivePerformancePolicy.Load.NORMAL,
                     droppedFramePressure = badDropWindows > 0,
                 )
             )
@@ -582,6 +582,27 @@ class PictureEnhanceController(
         note = reason
         CineVaultToast.show(context, reason)
         refreshLive()
+        // Turning shader uniforms off does not stop an installed resize pass.
+        // Under thermal or sustained frame-drop pressure, detach the costly
+        // upscale pipeline and reprepare at the same playback position.
+        if (installedUpscale != null && pipelineInstalled) {
+            val resumeAt = player.currentPosition.coerceAtLeast(0L)
+            val resumePlaying = player.playWhenReady
+            try {
+                player.setVideoEffects(emptyList())
+                installedUpscale = null
+                pipelineInstalled = false
+                player.stop()
+                player.prepare()
+                player.seekTo(resumeAt)
+                player.playWhenReady = resumePlaying
+            } catch (_: Throwable) {
+                installedUpscale = null
+                pipelineInstalled = false
+                setupFailed = true
+                availability = PictureAvailability.Unavailable("GPU recovery failed — reopen video")
+            }
+        }
     }
 
     @RequiresApi(29)
