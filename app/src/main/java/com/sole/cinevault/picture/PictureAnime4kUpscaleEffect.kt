@@ -24,6 +24,7 @@ import androidx.media3.effect.GlShaderProgram
 class PictureAnime4kUpscaleEffect(
     private val targetWidth: Int,
     private val targetHeight: Int,
+    private val probe: PictureStageProbe? = null,
 ) : GlEffect {
     init {
         require(targetWidth > 0 && targetHeight > 0)
@@ -33,7 +34,7 @@ class PictureAnime4kUpscaleEffect(
 
     override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram {
         if (useHdr) throw VideoFrameProcessingException("HDR Anime4K upscale not yet validated")
-        return Anime4kUpscaleProgram(targetWidth, targetHeight)
+        return Anime4kUpscaleProgram(targetWidth, targetHeight, probe)
     }
 }
 
@@ -41,6 +42,7 @@ class PictureAnime4kUpscaleEffect(
 private class Anime4kUpscaleProgram(
     private val targetWidth: Int,
     private val targetHeight: Int,
+    private val probe: PictureStageProbe?,
 ) : BaseGlShaderProgram(false, 1) {
     private val glProgram = try {
         GlProgram(VERTEX, FRAGMENT)
@@ -63,6 +65,7 @@ private class Anime4kUpscaleProgram(
             throw VideoFrameProcessingException("Invalid source dimensions")
         }
         sourceTexel = floatArrayOf(1f / inputWidth, 1f / inputHeight)
+        probe?.onConfigured(inputWidth, inputHeight, targetWidth, targetHeight)
         return Size(targetWidth, targetHeight)
     }
 
@@ -73,6 +76,7 @@ private class Anime4kUpscaleProgram(
             glProgram.setFloatsUniform("uTexel", sourceTexel)
             glProgram.bindAttributesAndUniforms()
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+            probe?.onFrame()
         } catch (e: GlUtil.GlException) {
             throw VideoFrameProcessingException(e, presentationTimeUs)
         }

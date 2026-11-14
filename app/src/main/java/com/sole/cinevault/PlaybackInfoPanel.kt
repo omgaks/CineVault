@@ -56,6 +56,7 @@ fun PlaybackInfoPanel(
     snapshot: PlaybackDiagnosticsSnapshot,
     onDismiss: () -> Unit,
     onShowCompatibilityReport: () -> Unit = {},
+    onSwitchDecoder: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val presentation = presentPlaybackDiagnostics(snapshot)
@@ -175,17 +176,12 @@ fun PlaybackInfoPanel(
                     letterSpacing = 0.8.sp,
                 )
                 Text(
-                    text = "PLAYBACK REPORT · TAP PILL TO CLOSE",
+                    text = "PLAYBACK REPORT",
                     color = DiagnosticsSecondary,
                     fontSize = 10.sp,
                 )
             }
             Spacer(Modifier.weight(1f))
-            DecoderModeBadge(
-                mode = snapshot.decoderMode,
-                kind = snapshot.activeDecoderKind,
-            )
-            Spacer(Modifier.width(7.dp))
             Text(
                 text = "×",
                 modifier = Modifier
@@ -196,6 +192,13 @@ fun PlaybackInfoPanel(
                 fontWeight = FontWeight.Medium,
             )
         }
+
+        DecoderModeToggle(
+            mode = snapshot.decoderMode,
+            softwareAvailable = snapshot.softwareFallbackAvailable,
+            accent = edge,
+            onSelect = onSwitchDecoder,
+        )
 
         sections.forEach { (label, value, emphasize) ->
             DiagnosticSection(label, value, emphasize)
@@ -278,30 +281,77 @@ fun PlaybackInfoPanel(
 }
 
 @Composable
-private fun DecoderModeBadge(
+private fun DecoderModeToggle(
     mode: PlaybackEngineMode,
-    kind: ActiveVideoDecoderKind,
+    softwareAvailable: Boolean,
+    accent: Color,
+    onSelect: (() -> Unit)?,
 ) {
-    val text = when (kind) {
-        ActiveVideoDecoderKind.HARDWARE -> "HW"
-        ActiveVideoDecoderKind.SOFTWARE -> "SW"
-        ActiveVideoDecoderKind.UNKNOWN -> when (mode) {
-            PlaybackEngineMode.HARDWARE -> "HW"
-            PlaybackEngineMode.SOFTWARE -> "SW"
+    val context = LocalContext.current
+    val cut = androidx.compose.foundation.shape.CutCornerShape(8.dp)
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(
+            text = "VIDEO DECODING",
+            color = DiagnosticsSecondary,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.8.sp,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf(
+                Triple(PlaybackEngineMode.HARDWARE, "HW", "Hardware"),
+                Triple(PlaybackEngineMode.SOFTWARE, "SW", "Software"),
+            ).forEach { (target, short, long) ->
+                val selected = mode == target
+                val dimmed = target == PlaybackEngineMode.SOFTWARE && !softwareAvailable && !selected
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(
+                            if (selected) accent.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.04f),
+                            cut,
+                        )
+                        .border(
+                            1.dp,
+                            if (selected) accent else DiagnosticsBorder,
+                            cut,
+                        )
+                        .clickable {
+                            when {
+                                selected || onSelect == null -> Unit
+                                dimmed -> Toast.makeText(
+                                    context,
+                                    "No software decoder available for this video",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                                else -> onSelect()
+                            }
+                        }
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = short,
+                        color = if (selected) accent else DiagnosticsPrimary.copy(alpha = if (dimmed) 0.35f else 0.85f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = long.uppercase(),
+                        color = DiagnosticsSecondary.copy(alpha = if (dimmed) 0.35f else 0.8f),
+                        fontSize = 9.sp,
+                        letterSpacing = 0.6.sp,
+                    )
+                }
+            }
         }
     }
-    val shape = RoundedCornerShape(999.dp)
-    Text(
-        text = text,
-        modifier = Modifier
-            .background(DiagnosticsAmber.copy(alpha = 0.12f), shape)
-            .border(1.dp, DiagnosticsAmber.copy(alpha = 0.38f), shape)
-            .padding(horizontal = 9.dp, vertical = 4.dp),
-        color = DiagnosticsAmber,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 0.7.sp,
-    )
 }
 
 @Composable

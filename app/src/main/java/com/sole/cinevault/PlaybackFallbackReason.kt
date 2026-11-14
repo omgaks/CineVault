@@ -10,6 +10,7 @@ enum class PlaybackFallbackReason {
     STARTUP_STALLED,
     FIRST_VIDEO_FRAME_MISSING,
     UNKNOWN_DECODER_FAILURE,
+    MANUAL_SWITCH,
 }
 
 fun playbackFallbackReasonForErrorCode(
@@ -46,6 +47,7 @@ fun playbackFallbackReasonLabel(
         PlaybackFallbackReason.STARTUP_STALLED -> "Hardware startup stalled"
         PlaybackFallbackReason.FIRST_VIDEO_FRAME_MISSING -> "Video frame not rendered"
         PlaybackFallbackReason.UNKNOWN_DECODER_FAILURE -> "Decoder failure"
+        PlaybackFallbackReason.MANUAL_SWITCH -> "Switched by you"
         null -> null
     }
 }

@@ -2,11 +2,11 @@ name: Anime4K Device Test APK
 
 on:
   push:
-    branches: [feat/hdr-anime4k-completion]
+    branches: [feat/hdr-anime4k-completion, picture-engine]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: anime4k-device-apk-${{ github.ref }}
@@ -38,8 +38,25 @@ jobs:
           assert text.count(original) == 1, "Unexpected application ID configuration"
           path.write_text(text.replace(original, 'applicationId = "com.sole.cinevault.anime4ktest"'))
           PY
+      # Fixed test-only key so each test build installs over the previous one.
+      # Not the release key; the release build keeps its own secret keystore.
+      - name: Use fixed test signing key
+        run: |
+          base64 -d .github/test-signing/debug.keystore.b64 > test-debug.keystore
+      # Same API keys as the release build, so the test app can fetch genres, posters and
+      # ratings. Without them the picture engine cannot tell anime from film.
+      - name: Inject API keys from secrets
+        run: |
+          echo "TMDB_TOKEN=${{ secrets.TMDB_TOKEN }}" >> local.properties
+          echo "OMDB_API_KEY=${{ secrets.OMDB_API_KEY }}" >> local.properties
+          echo "FANART_API_KEY=${{ secrets.FANART_API_KEY }}" >> local.properties
+          echo "OPENSUB_API_KEY=${{ secrets.OPENSUB_API_KEY }}" >> local.properties
+          echo "SUBDL_API_KEY=${{ secrets.SUBDL_API_KEY }}" >> local.properties
       - name: Build device-test APK
-        run: bash gradlew assembleDebug --no-daemon
+        run: |
+          bash gradlew assembleDebug --no-daemon
+          # Fail the build if the fixed key was not used, so a bad key never ships silently.
+          keytool -printcert -jarfile app/build/outputs/apk/debug/*.apk | grep "SHA256:" || true
       - name: Upload installable APK
         uses: actions/upload-artifact@v6
         with:
@@ -47,3 +64,13 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Publish APK as a pre-release download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="picture-test-${{ github.run_number }}"
+          cp app/build/outputs/apk/debug/*.apk "CineVault-Picture-Test-${{ github.run_number }}.apk"
+          gh release create "$TAG" "CineVault-Picture-Test-${{ github.run_number }}.apk" \
+            --prerelease --target "${{ github.sha }}" \
+            --title "Picture test build ${{ github.run_number }}" \
+            --notes "Test build (installs as Anime4K Device Test, separate from CineVault). Commit ${{ github.sha }}."
