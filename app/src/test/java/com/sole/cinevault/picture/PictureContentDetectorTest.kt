@@ -88,4 +88,11 @@ class PictureContentDetectorTest {
         assertEquals("animation from East Asia, anime style", d.reason)
         assertEquals("live action", PictureContentDetector.describe("x.mkv", listOf("Drama"), "ja").reason)
     }
+
+    @Test
+    fun `known anime film is recognised by name even before genres arrive`() {
+        assertEquals(PictureContent.ANIME, PictureContentDetector.detect("Princess Mononoke 1997 1080p.mkv", emptyList()))
+        assertEquals(PictureContent.FILM, PictureContentDetector.detect("Some Random Film 2020.mkv", emptyList()))
+        assertEquals(PictureContent.FILM, PictureContentDetector.detect("Akira Kurosawa Seven.mkv", listOf("Drama")))
+    }
 }

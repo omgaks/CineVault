@@ -44,6 +44,15 @@ jobs:
         run: |
           mkdir -p ~/.android
           base64 -d .github/test-signing/debug.keystore.b64 > ~/.android/debug.keystore
+      # Same API keys as the release build, so the test app can fetch genres, posters and
+      # ratings. Without them the picture engine cannot tell anime from film.
+      - name: Inject API keys from secrets
+        run: |
+          echo "TMDB_TOKEN=${{ secrets.TMDB_TOKEN }}" >> local.properties
+          echo "OMDB_API_KEY=${{ secrets.OMDB_API_KEY }}" >> local.properties
+          echo "FANART_API_KEY=${{ secrets.FANART_API_KEY }}" >> local.properties
+          echo "OPENSUB_API_KEY=${{ secrets.OPENSUB_API_KEY }}" >> local.properties
+          echo "SUBDL_API_KEY=${{ secrets.SUBDL_API_KEY }}" >> local.properties
       - name: Build device-test APK
         run: bash gradlew assembleDebug --no-daemon
       - name: Upload installable APK

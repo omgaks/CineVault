@@ -95,6 +95,9 @@ object PictureContentDetector {
             tagged -> Detection(PictureContent.ANIME, "anime release tag")
             hasJapanese -> Detection(PictureContent.ANIME, "Japanese or Chinese title")
             romanisedAnimeFilmHint -> Detection(PictureContent.ANIME, "known Japanese animated film")
+            // No genre data yet: a famous Japanese animated title is still safe to recognise by name.
+            genres.isEmpty() && japaneseAnimationTitleHint.containsMatchIn(fileName) ->
+                Detection(PictureContent.ANIME, "known Japanese animated film")
             // Keep western/CGI/general animation on the P5 path.
             animationGenre -> Detection(PictureContent.ANIMATION, "animation")
             else -> Detection(PictureContent.FILM, if (genres.isEmpty()) "no genre info yet" else "film")
