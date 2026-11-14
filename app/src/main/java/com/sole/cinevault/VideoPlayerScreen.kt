@@ -937,12 +937,21 @@ fun VideoPlayerScreen(
             onPlayNext = onPlayNext,
         )
         val currentMeta = episodeRuntime.currentMeta
-        LaunchedEffect(currentVideo.path, currentMeta?.genres, currentMeta?.originalLanguage) {
+        // Only animation needs the original language (anime-style East Asian animation vs western).
+        val isAnimationTitle = currentMeta?.genres.orEmpty().any {
+            it.equals("Animation", ignoreCase = true) || it.equals("Anime", ignoreCase = true)
+        }
+        val originalLanguage by produceState<String?>(
+            currentMeta?.originalLanguage, currentVideo.path, currentMeta?.tmdbId, isAnimationTitle
+        ) {
+            value = if (isAnimationTitle) com.sole.cinevault.metadata.resolveOriginalLanguage(context, currentMeta) else null
+        }
+        LaunchedEffect(currentVideo.path, currentMeta?.genres, originalLanguage) {
             pictureController.bindVideo(
                 path = currentVideo.path,
                 fileName = currentVideo.name,
                 genres = currentMeta?.genres.orEmpty(),
-                originalLanguage = currentMeta?.originalLanguage,
+                originalLanguage = originalLanguage,
             )
         }
         val activeSmartSegment = episodeRuntime.activeSmartSegment
