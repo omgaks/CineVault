@@ -66,6 +66,9 @@
 -keep class com.sole.cinevault.metadata.TmdbCreditsBlock { *; }
 -keep class com.sole.cinevault.metadata.TmdbMovieDetails { *; }
 -keep class com.sole.cinevault.metadata.TmdbTvDetails { *; }
+-keep class com.sole.cinevault.metadata.TmdbSeasonSummary { *; }
+-keep class com.sole.cinevault.metadata.TmdbSeasonDetails { *; }
+-keep class com.sole.cinevault.metadata.TmdbSeasonEpisode { *; }
 -keep class com.sole.cinevault.metadata.TmdbExternalIds { *; }
 -keep class com.sole.cinevault.metadata.OmdbResponse { *; }
 -keep class com.sole.cinevault.metadata.OmdbRating { *; }
