@@ -42,8 +42,7 @@ jobs:
       # Not the release key; the release build keeps its own secret keystore.
       - name: Use fixed test signing key
         run: |
-          mkdir -p ~/.android
-          base64 -d .github/test-signing/debug.keystore.b64 > ~/.android/debug.keystore
+          base64 -d .github/test-signing/debug.keystore.b64 > test-debug.keystore
       # Same API keys as the release build, so the test app can fetch genres, posters and
       # ratings. Without them the picture engine cannot tell anime from film.
       - name: Inject API keys from secrets
@@ -54,7 +53,10 @@ jobs:
           echo "OPENSUB_API_KEY=${{ secrets.OPENSUB_API_KEY }}" >> local.properties
           echo "SUBDL_API_KEY=${{ secrets.SUBDL_API_KEY }}" >> local.properties
       - name: Build device-test APK
-        run: bash gradlew assembleDebug --no-daemon
+        run: |
+          bash gradlew assembleDebug --no-daemon
+          # Fail the build if the fixed key was not used, so a bad key never ships silently.
+          keytool -printcert -jarfile app/build/outputs/apk/debug/*.apk | grep "SHA256:" || true
       - name: Upload installable APK
         uses: actions/upload-artifact@v6
         with:
