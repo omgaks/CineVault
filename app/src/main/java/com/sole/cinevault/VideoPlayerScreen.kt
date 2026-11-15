@@ -872,9 +872,10 @@ fun VideoPlayerScreen(
 
     val remoteKeyFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     var remoteKeysMenuOpen by remember { mutableStateOf(false) }
-    LaunchedEffect(remoteKeysMenuOpen) {
-        // Take focus back for the remote once menus close.
-        if (!remoteKeysMenuOpen) runCatching { remoteKeyFocus.requestFocus() }
+    LaunchedEffect(remoteKeysMenuOpen, chromeUi.showControls) {
+        // Take focus back for the remote once menus close or the controls hide,
+        // but never while the controls are showing: then focus belongs to them.
+        if (!remoteKeysMenuOpen && !chromeUi.showControls) runCatching { remoteKeyFocus.requestFocus() }
     }
 
     BoxWithConstraints(
