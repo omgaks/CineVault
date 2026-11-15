@@ -110,11 +110,11 @@ class HaloDragController(
 
 data class HaloDragConfig(
     /**
-     * 1.5% of the normalised surface before drag owns the gesture.
-     * This is deliberately lower than D2-5's click travel ceiling so a
-     * deliberate scroll is claimed early instead of feeling sticky.
+     * 3% of the normalised surface before drag owns the gesture.
+     * Kept ABOVE the click travel ceiling (2.5%) so a tap with a little finger
+     * wobble stays a click instead of turning into an accidental drag or seek.
      */
-    val dragStartTravelFraction: Float = 0.015f,
+    val dragStartTravelFraction: Float = 0.03f,
 ) {
     init {
         require(dragStartTravelFraction > 0f)

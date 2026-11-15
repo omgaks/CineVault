@@ -75,4 +75,13 @@ class HaloMotionEngineTest {
     fun invalidSoftEdgeConfigurationIsRejected() {
         HaloMotionConfig(softEdgeFraction = 0.30f)
     }
+
+    @Test fun newTouchElsewhereDoesNotJumpTheCursor() {
+        val engine = HaloMotionEngine()
+        engine.update(0.2f, 0.2f, 16L)
+        engine.anchorRaw(0.9f, 0.9f)
+        val point = engine.update(0.9f, 0.9f, 16L)
+        assertEquals(0.2f, point.x, 0.0001f)
+        assertEquals(0.2f, point.y, 0.0001f)
+    }
 }

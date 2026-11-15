@@ -15,6 +15,16 @@ class HaloMotionEngine(
         cursor = position
     }
 
+    /**
+     * A new finger-down lands wherever the finger lands, like lifting and re-placing a
+     * finger on a laptop trackpad: the cursor must stay where it was, not jump by the
+     * distance between the old and new touch points.
+     */
+    fun anchorRaw(rawXFraction: Float, rawYFraction: Float) {
+        if (cursor == null) return
+        lastRaw = HaloVector(rawXFraction.coerceIn(0f, 1f), rawYFraction.coerceIn(0f, 1f))
+    }
+
     fun update(rawXFraction: Float, rawYFraction: Float, deltaTimeMillis: Long): HaloVector {
         val raw = HaloVector(rawXFraction.coerceIn(0f, 1f), rawYFraction.coerceIn(0f, 1f))
         val previousRaw = lastRaw
@@ -74,7 +84,7 @@ class HaloMotionEngine(
 
 data class HaloMotionConfig(
     val precisionGain: Float = 0.95f,
-    val fastGain: Float = 1.75f,
+    val fastGain: Float = 1.45f,
     val fullAccelerationVelocity: Float = 1.4f,
     val smoothingAt60Hz: Float = 0.82f,
     val softEdgeFraction: Float = 0.07f,

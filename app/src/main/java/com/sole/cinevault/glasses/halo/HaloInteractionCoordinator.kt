@@ -23,6 +23,9 @@ class HaloInteractionCoordinator(
         eventTimeMillis: Long,
         deltaTimeMillis: Long,
     ): HaloInteractionFrame {
+        if (sample.pressed && !lastPressed) {
+            motionEngine.anchorRaw(sample.xFraction, sample.yFraction)
+        }
         val position = motionEngine.update(
             rawXFraction = sample.xFraction,
             rawYFraction = sample.yFraction,
