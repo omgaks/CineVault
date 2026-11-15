@@ -59,4 +59,16 @@ class SubtitleCueParserTest {
         assertTrue(SubtitleCueParser.parse("hello\nnot a subtitle\n").isEmpty())
         assertTrue(SubtitleCueParser.parse("00:00:xx --> 00:00:02,000\nText").isEmpty())
     }
+
+    @Test
+    fun parsesAssDialogueAndStripsStyling() {
+        val ass = "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n" +
+            "Dialogue: 0,0:00:01.50,0:00:03.00,Default,,0,0,0,,{\\an8}Hello, {\\i1}world{\\i0}\\Nsecond line\n" +
+            "Comment: 0,0:00:05.00,0:00:06.00,Default,,0,0,0,,ignored\n"
+        val cues = SubtitleCueParser.parseAss(ass)
+        assertEquals(1, cues.size)
+        assertEquals(1500L, cues[0].startMs)
+        assertEquals(3000L, cues[0].endMs)
+        assertEquals("Hello, world\nsecond line", cues[0].text)
+    }
 }

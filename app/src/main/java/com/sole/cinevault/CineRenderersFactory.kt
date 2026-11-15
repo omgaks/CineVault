@@ -79,6 +79,7 @@ class CineRenderersFactory(context: Context) : DefaultRenderersFactory(context) 
             .setAudioCapabilities(
                 androidx.media3.exoplayer.audio.AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES
             )
+            .setAudioProcessors(arrayOf(com.sole.cinevault.audiofx.PcmTapAudioProcessor()))
             .setEnableFloatOutput(enableFloatOutput)
             .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
             .build()

@@ -52,7 +52,7 @@
             android:launchMode="singleTask"
             android:supportsPictureInPicture="true"
             android:resizeableActivity="true"
-            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode|density|fontScale|layoutDirection"
             android:label="CineVault"
             android:theme="@style/Theme.CineVault">
             <intent-filter>

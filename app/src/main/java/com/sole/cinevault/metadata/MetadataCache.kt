@@ -220,12 +220,20 @@ suspend fun applyCachedMetadataIfAvailable(
 }
 
 /**
+ * True when the file name marks an episode, by an explicit season-and-episode marker or a bare
+ * episode number. Explicit markers are included so files an older version filed as films
+ * (episode 100 and above, "Season 1 Episode 3", Chinese episode markers) move to their show.
+ */
+private fun isEpisodeFileName(fileName: String): Boolean =
+    isBareEpisodeNumberName(fileName) || isExplicitSeasonEpisodeName(fileName)
+
+/**
  * "Show Name Episode 06" files are episodes, whatever an earlier scan or lookup said. File them
  * under their show right away, without waiting for the online lookup, so Shows never depends on
  * the network. The lookup later replaces the title with the official show name for every episode.
  */
 internal fun fileAsEpisodeIfNamedLikeOne(item: VideoWithMetadata): VideoWithMetadata {
-    if (item.type != "movie" || !isBareEpisodeNumberName(item.video.name)) return item
+    if (item.type != "movie" || !isEpisodeFileName(item.video.name)) return item
     if (EpisodeOverrides.isMovie(item.video.path)) return item
     val info = extractEpisodeInfo(item.video.name) ?: return item
     return item.copy(
@@ -296,7 +304,7 @@ fun shouldEnrichOnlineMetadata(item: VideoWithMetadata): Boolean {
     // automatic metadata cache is cleared. It must not make that otherwise
     // bare movie/episode look fully enriched and block the next lookup.
     if ((item.type == "movie" || item.type == "tv") && item.tmdbId == null) return true
-    if (item.type == "movie" && isBareEpisodeNumberName(item.video.name) && !EpisodeOverrides.isMovie(item.video.path)) return true
+    if (item.type == "movie" && isEpisodeFileName(item.video.name) && !EpisodeOverrides.isMovie(item.video.path)) return true
     return !hasUsefulOnlineMetadata(item) ||
             needsRatingsUpgrade(item) ||
             needsGenreUpgrade(item) ||
@@ -499,7 +507,7 @@ suspend fun enrichVideoWithOnlineMetadata(
         EpisodeOverrides.ensureLoaded(context)
         val filedAsMovieButIsEpisode =
             applied.type != "tv" && applied.type != "local" && applied.type != "restricted" &&
-                isBareEpisodeNumberName(item.video.name) &&
+                isEpisodeFileName(item.video.name) &&
                 !EpisodeOverrides.isMovie(item.video.path)
         // Filed as a show only because of a bare "E01" in the name: check once whether it is
         // really a film. Files of a show we already matched are trusted without a new lookup.

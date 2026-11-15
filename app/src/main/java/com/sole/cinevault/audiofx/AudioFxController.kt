@@ -11,7 +11,6 @@ import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
 import android.media.audiofx.PresetReverb
 import android.media.audiofx.Virtualizer
-import android.media.audiofx.Visualizer
 import android.os.Build
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -153,7 +152,7 @@ internal class AudioFxController(private val context: Context) {
     private var dynamicsProcessing: DynamicsProcessing? = null
     // Real-time waveform/FFT capture from the actual audio stream — not
     // simulated bars. API 9+, so no version gate needed here.
-    private var visualizer: Visualizer? = null
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var attachedSessionId: Int = 0
 
     private val prefs: SharedPreferences =
@@ -520,44 +519,9 @@ internal class AudioFxController(private val context: Context) {
             dynamicsProcessing = dp
         }
 
-        // Not wrapped in .apply{} deliberately — Visualizer also inherits
-        // AudioEffect.getEnabled(), same receiver-scoping trap already
-        // caught above; a plain local avoids it entirely rather than
-        // relying on remembering to qualify every reference correctly.
-        val vis = runCatching { Visualizer(audioSessionId) }.getOrNull()
-        if (vis != null) {
-            runCatching {
-                val maxSize = Visualizer.getCaptureSizeRange()[1]
-                vis.setCaptureSize(maxSize.coerceAtMost(1024))
-                vis.setDataCaptureListener(
-                    object : Visualizer.OnDataCaptureListener {
-                        override fun onWaveFormDataCapture(v: Visualizer?, capturedBytes: ByteArray?, samplingRate: Int) {
-                            if (capturedBytes != null) {
-                                waveform = capturedBytes
-                                sceneAnalyzer.analyzeWaveform(capturedBytes)
-                                onSceneAnalysisUpdated()
-                            }
-                        }
-                        override fun onFftDataCapture(v: Visualizer?, capturedBytes: ByteArray?, samplingRate: Int) {
-                            if (capturedBytes != null) {
-                                fft = capturedBytes
-                                // samplingRate arrives in milliHertz per
-                                // Android's documented Visualizer contract
-                                // — divided here before it's used for any
-                                // bin-to-frequency math.
-                                sceneAnalyzer.analyzeFft(capturedBytes, samplingRate / 1000)
-                                onSceneAnalysisUpdated()
-                            }
-                        }
-                    },
-                    (Visualizer.getMaxCaptureRate() / 2).coerceAtLeast(1),
-                    /* waveform = */ true,
-                    /* fft = */ true
-                )
-                vis.setEnabled(shouldEnable)
-            }
-        }
-        visualizer = vis
+        // Spectrum + scene detection read the player's own decoded audio (PcmTap),
+        // so no microphone permission is involved. Only listens while effects are on.
+        setTapListening(shouldEnable)
     }
 
     // Reads the device's actual default MBC band configuration (however
@@ -676,6 +640,22 @@ internal class AudioFxController(private val context: Context) {
         }
     }
 
+    private fun setTapListening(on: Boolean) {
+        if (!on) {
+            PcmTap.listener = null
+            return
+        }
+        PcmTap.listener = { wave, fftBytes, sampleRateHz ->
+            mainHandler.post {
+                waveform = wave
+                fft = fftBytes
+                sceneAnalyzer.analyzeWaveform(wave)
+                sceneAnalyzer.analyzeFft(fftBytes, sampleRateHz)
+                onSceneAnalysisUpdated()
+            }
+        }
+    }
+
     fun release() {
         equalizer?.release(); equalizer = null
         bassBoost?.release(); bassBoost = null
@@ -683,7 +663,7 @@ internal class AudioFxController(private val context: Context) {
         presetReverb?.release(); presetReverb = null
         loudnessEnhancer?.release(); loudnessEnhancer = null
         dynamicsProcessing?.release(); dynamicsProcessing = null
-        visualizer?.release(); visualizer = null
+        setTapListening(false)
     }
 
     fun updateEnabled(value: Boolean) {
@@ -694,7 +674,7 @@ internal class AudioFxController(private val context: Context) {
         presetReverb?.let { runCatching { it.enabled = value } }
         loudnessEnhancer?.let { runCatching { it.enabled = value } }
         dynamicsProcessing?.let { dp -> runCatching { dp.enabled = value } }
-        visualizer?.let { v -> runCatching { v.enabled = value } }
+        setTapListening(value)
         prefs.edit().putBoolean(KEY_ENABLED, value).apply()
     }
 

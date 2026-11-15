@@ -49,6 +49,8 @@ internal fun buildAudioTrackRows(
                             )
                         )
                         .build()
+                    // Prefer this language for audio from now on, in every film that has it.
+                    AudioLanguagePreference.rememberPicked(format.language)
                     onTrackSelected()
                 }
             )

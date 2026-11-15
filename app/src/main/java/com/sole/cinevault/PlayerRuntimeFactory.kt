@@ -34,6 +34,9 @@ internal fun rememberPlayerRuntime(
     // surrounding subtitle/player effects briefly holding different player
     // instances, which can pause/crash the session. Runtime identity remains
     // tied only to things that genuinely require a new player.
+    // Audio has its own remembered language; it only falls back to the subtitle language
+    // until the person picks an audio track for the first time.
+    val preferredAudioLanguage = AudioLanguagePreference.current(context) ?: preferredLanguage
     val runtime = remember(
         context,
         currentVideoPath,
@@ -44,6 +47,7 @@ internal fun rememberPlayerRuntime(
             preferredLanguage = preferredLanguage,
             autoEnableEmbeddedSubtitles = autoEnableEmbeddedSubtitles,
             audioRendererPreference = audioRendererPreference,
+            preferredAudioLanguage = preferredAudioLanguage,
         ).also { created ->
             AudioRuntimeRescueController.consumePendingPlan(currentVideoPath)
                 ?.toHandover()
@@ -60,9 +64,9 @@ internal fun rememberPlayerRuntime(
     // Preferred subtitle language is selection policy, not player identity.
     // Apply it live so choosing/promoting an embedded subtitle can never
     // dispose and recreate ExoPlayer mid-playback.
-    LaunchedEffect(runtime.trackSelector, preferredLanguage, autoEnableEmbeddedSubtitles) {
+    LaunchedEffect(runtime.trackSelector, preferredLanguage, preferredAudioLanguage, autoEnableEmbeddedSubtitles) {
         val builder = runtime.trackSelector.buildUponParameters()
-            .setPreferredAudioLanguage(preferredLanguage)
+            .setPreferredAudioLanguage(preferredAudioLanguage)
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
 
         if (autoEnableEmbeddedSubtitles) {
@@ -95,10 +99,11 @@ internal fun createPlayerRuntime(
     autoEnableEmbeddedSubtitles: Boolean,
     audioRendererPreference: CineAudioRendererPreference =
         CineAudioRendererPreference.PLATFORM_FIRST,
+    preferredAudioLanguage: String = preferredLanguage,
 ): PlayerRuntime {
     val trackSelector = DefaultTrackSelector(context).apply {
         parameters = buildUponParameters()
-            .setPreferredAudioLanguage(preferredLanguage)
+            .setPreferredAudioLanguage(preferredAudioLanguage)
             .setPreferredTextLanguage(preferredLanguage)
             .setSelectUndeterminedTextLanguage(true)
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
