@@ -8,23 +8,75 @@ import androidx.media3.common.util.UnstableApi
 
 /** Media3 -> P8 policy adapter. Production HDR GPU remains unverified and disabled. */
 object PictureHdrRouting {
+    /** Explains why the current local video is protected, without treating missing metadata as SDR. */
     @OptIn(UnstableApi::class)
-    fun decide(format: Format): PictureHdrPolicy.Decision {
-        val colorInfo = format.colorInfo
-        // Missing transfer alone is not proof of SDR. However, an 8-bit AVC
-        // stream explicitly marked BT.709 with no HDR static metadata is an
-        // SDR-compatible case we can handle without guessing from resolution.
-        val knownSdrAvc = format.sampleMimeType == MimeTypes.VIDEO_H264 &&
-            colorInfo?.colorSpace == C.COLOR_SPACE_BT709 &&
-            colorInfo.hdrStaticInfo == null &&
-            (format.codecs == null || !format.codecs!!.contains("hvc", ignoreCase = true))
-        val transfer = when (colorInfo?.colorTransfer) {
-            C.COLOR_TRANSFER_ST2084 -> PictureHdrPolicy.Transfer.PQ
-            C.COLOR_TRANSFER_HLG -> PictureHdrPolicy.Transfer.HLG
-            C.COLOR_TRANSFER_SDR -> PictureHdrPolicy.Transfer.SDR
-            else -> if (knownSdrAvc) PictureHdrPolicy.Transfer.SDR else PictureHdrPolicy.Transfer.UNKNOWN
+    fun blockReason(format: Format): String {
+        val info = format.colorInfo
+        val codec = format.sampleMimeType ?: "unknown codec"
+        val transfer = when (info?.colorTransfer) {
+            C.COLOR_TRANSFER_ST2084 -> "PQ HDR"
+            C.COLOR_TRANSFER_HLG -> "HLG HDR"
+            C.COLOR_TRANSFER_SDR -> "SDR"
+            else -> "unknown"
         }
-        val kind = if (format.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION)
+        val colourSpace = when (info?.colorSpace) {
+            C.COLOR_SPACE_BT709 -> "BT.709"
+            C.COLOR_SPACE_BT2020 -> "BT.2020"
+            C.COLOR_SPACE_BT601 -> "BT.601"
+            else -> "unknown"
+        }
+        return "Enhancement protected: $codec, transfer $transfer, colour $colourSpace"
+    }
+
+    /**
+     * Untagged (no transfer / colour space) video up to 1080p carries no HDR evidence at all:
+     * HDR material is virtually always signalled and mostly 4K. Such files may be treated as
+     * standard SDR when the caller opts in. Never true for Dolby Vision or any HDR signal.
+     */
+    @OptIn(UnstableApi::class)
+    fun isUntaggedAssumable(format: Format): Boolean {
+        if (format.width <= 0 || format.height <= 0) return false
+        if (format.width > 2048 || format.height > 1088) return false
+        return decide(format, assumeUntaggedSdr = false).route == PictureHdrPolicy.Route.HDR_PASSTHROUGH &&
+            decide(format, assumeUntaggedSdr = true).route == PictureHdrPolicy.Route.SDR_ENHANCEMENT
+    }
+
+    @OptIn(UnstableApi::class)
+    fun decide(format: Format, assumeUntaggedSdr: Boolean = false): PictureHdrPolicy.Decision {
+        val colorInfo = format.colorInfo
+        // Explicit HDR evidence always wins, including contradictory SDR transfer tags.
+        // Unknown HEVC/VP9/AV1 remains protected until metadata confirms SDR.
+        val hdrSignalled = colorInfo?.hdrStaticInfo != null ||
+            colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 ||
+            colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG ||
+            colorInfo?.colorSpace == C.COLOR_SPACE_BT2020
+        val untaggedSdr = assumeUntaggedSdr && !hdrSignalled &&
+            (colorInfo == null || colorInfo.colorTransfer == Format.NO_VALUE || colorInfo.colorTransfer == C.COLOR_TRANSFER_SDR) &&
+            format.width in 1..2048 && format.height in 1..1088 &&
+            !isDolbyVisionFormat(format)
+        val transfer = when {
+            hdrSignalled -> PictureHdrPolicy.Transfer.PQ
+            colorInfo?.colorTransfer == C.COLOR_TRANSFER_SDR ||
+                colorInfo?.colorTransfer == C.COLOR_TRANSFER_LINEAR ->
+                PictureHdrPolicy.Transfer.SDR
+            // BT.601/BT.709 are SDR colour spaces even if transfer is omitted.
+            // Never use this fallback for explicitly HDR-signalled material.
+            (colorInfo?.colorSpace == C.COLOR_SPACE_BT601 ||
+                colorInfo?.colorSpace == C.COLOR_SPACE_BT709) &&
+                format.sampleMimeType != MimeTypes.VIDEO_DOLBY_VISION ->
+                PictureHdrPolicy.Transfer.SDR
+            // Common metadata-light AVC files are SDR-compatible, unless HDR is signalled.
+            // This is a conservative compatibility heuristic, not proof of SDR.
+            format.sampleMimeType == MimeTypes.VIDEO_H264 &&
+                (format.codecs == null || !format.codecs!!.contains("hvc", ignoreCase = true)) ->
+                PictureHdrPolicy.Transfer.SDR
+            untaggedSdr -> PictureHdrPolicy.Transfer.SDR
+            else -> PictureHdrPolicy.Transfer.UNKNOWN
+        }
+        // Some containers expose Dolby Vision as HEVC with a DV codec identifier.
+        // Protect these even when the transfer is absent or nominally SDR.
+        val dolbyVision = isDolbyVisionFormat(format)
+        val kind = if (dolbyVision)
             PictureHdrPolicy.Format.DOLBY_VISION else PictureHdrPolicy.Format.STANDARD
 
         // P8-S7: The existing PictureController already calls decide() when video tracks change.
@@ -43,5 +95,15 @@ object PictureHdrRouting {
                     "HDR GPU integration pending device verification",
                 )
         }
+    }
+
+    private fun isDolbyVisionFormat(format: Format): Boolean {
+        val codecId = format.codecs.orEmpty().lowercase()
+        return format.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION ||
+            codecId.split(',').any { token ->
+                val id = token.trim()
+                id.startsWith("dvh1") || id.startsWith("dvhe") ||
+                    id.startsWith("dvc1") || id.startsWith("dvav")
+            }
     }
 }

@@ -40,6 +40,17 @@ android {
     }
 
     signingConfigs {
+        // Test-only builds (the Picture Test workflow) drop a fixed key at the repo root so every
+        // test APK has the same signature and installs over the previous one. Absent otherwise.
+        val testDebugKeystore = rootProject.file("test-debug.keystore")
+        if (testDebugKeystore.exists()) {
+            getByName("debug") {
+                storeFile = testDebugKeystore
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
         create("release") {
             val ksFile = rootProject.file("cinevault-release.jks")
             if (ksFile.exists()) {

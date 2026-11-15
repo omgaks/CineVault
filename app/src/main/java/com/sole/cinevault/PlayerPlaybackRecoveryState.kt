@@ -108,6 +108,28 @@ class PlayerPlaybackRecoveryState {
         softwareFallbackRequested = true
     }
 
+    /** User-chosen switch to software video decoding (from the playback info panel). */
+    fun requestManualSoftware(resumePositionMs: Long, subtitleUri: Uri?) {
+        if (engineMode != PlaybackEngineMode.HARDWARE || !softwareFallbackAvailable ||
+            softwareFallbackRequested) return
+        fallbackErrorCode = 0
+        fallbackReason = PlaybackFallbackReason.MANUAL_SWITCH
+        fallbackResumePositionMs = resumePositionMs.coerceAtLeast(0L)
+        fallbackSubtitleUri = subtitleUri
+        softwareFallbackRequested = true
+    }
+
+    /** User-chosen return to hardware decoding. The caller re-prepares playback. */
+    fun restoreHardware() {
+        engineMode = PlaybackEngineMode.HARDWARE
+        fallbackOccurred = false
+        softwareFallbackRequested = false
+        fallbackReason = null
+        droppedFrameUnhealthyStreak = 0
+        startupPlaybackConfirmed = false
+        firstVideoFrameRendered = false
+    }
+
     fun requestProactiveSoftwareFallback(resumePositionMs: Long, subtitleUri: Uri?) {
         if (engineMode != PlaybackEngineMode.HARDWARE || fallbackOccurred ||
             softwareFallbackRequested || !softwareFallbackAvailable) return

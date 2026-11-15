@@ -37,7 +37,7 @@ fun PictureExperienceGallery(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        modifier = modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).height(IntrinsicSize.Max),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         cards.forEach { card ->
@@ -61,7 +61,7 @@ private fun PictureExperienceCardView(
     )
     val shape = RoundedCornerShape(16.dp)
     Column(
-        Modifier.width(176.dp).height(112.dp)
+        Modifier.width(176.dp).fillMaxHeight().heightIn(min = 112.dp)
             .graphicsLayer(alpha = if (enabled) alpha else .42f)
             .clip(shape)
             .background(if (card.selected) AmberGlow.copy(alpha=.16f) else Color.White.copy(alpha=.025f))
@@ -81,8 +81,7 @@ private fun PictureExperienceCardView(
         Text(card.title, color=if(card.selected) AmberCore else TextBright, fontSize=15.sp,
             fontWeight=FontWeight.Bold, maxLines=1)
         Spacer(Modifier.height(3.dp))
-        Text(card.subtitle, color=TextMuted, fontSize=9.5.sp, lineHeight=12.sp,
-            maxLines=2, overflow=TextOverflow.Ellipsis)
+        Text(card.subtitle, color=TextMuted, fontSize=9.5.sp, lineHeight=12.sp)
         Spacer(Modifier.weight(1f))
         Text(card.signature, color=if(card.selected) AmberCore.copy(alpha=.82f) else TextMuted.copy(alpha=.78f),
             fontSize=7.5.sp, fontWeight=FontWeight.Bold, maxLines=1)
@@ -96,11 +95,11 @@ fun PictureQualityRail(
     onSelect: (PictureQualityTier) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+    Row(modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement=Arrangement.spacedBy(6.dp)) {
         choices.forEach { choice ->
             val shape=RoundedCornerShape(14.dp)
             Column(
-                Modifier.weight(1f).graphicsLayer(alpha=if(enabled) 1f else .42f)
+                Modifier.weight(1f).fillMaxHeight().graphicsLayer(alpha=if(enabled) 1f else .42f)
                     .clip(shape)
                     .background(if(choice.selected) AmberGlow.copy(alpha=.14f) else Color.Transparent)
                     .border(1.dp, if(choice.selected) AmberCore.copy(alpha=.78f) else Color.White.copy(alpha=.13f), shape)
@@ -110,8 +109,7 @@ fun PictureQualityRail(
                 Text(choice.label, color=if(choice.selected) AmberCore else TextBright, fontSize=10.5.sp,
                     fontWeight=FontWeight.Bold)
                 Spacer(Modifier.height(2.dp))
-                Text(choice.description, color=TextMuted, fontSize=7.5.sp, lineHeight=9.5.sp,
-                    maxLines=2, overflow=TextOverflow.Ellipsis)
+                Text(choice.description, color=TextMuted, fontSize=8.sp, lineHeight=10.sp)
             }
         }
     }

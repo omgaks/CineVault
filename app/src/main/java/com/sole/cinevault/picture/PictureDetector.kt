@@ -60,7 +60,15 @@ object PictureContentDetector {
         RegexOption.IGNORE_CASE,
     )
 
-    fun detect(fileName: String, genres: List<String>): PictureContent {
+    /** The detected content and a short human reason shown as "Detected as …" in the panel. */
+    data class Detection(val content: PictureContent, val reason: String)
+
+    private val animeStyleLanguages = setOf("ja", "zh", "cn", "ko")
+
+    fun detect(fileName: String, genres: List<String>, originalLanguage: String? = null): PictureContent =
+        describe(fileName, genres, originalLanguage).content
+
+    fun describe(fileName: String, genres: List<String>, originalLanguage: String? = null): Detection {
         val hasJapanese = fileName.any {
             it in '\u3040'..'\u30FF' || it in '\u4E00'..'\u9FFF'
         }
@@ -69,32 +77,33 @@ object PictureContentDetector {
         val animationGenre = genres.any {
             it.equals("Animation", ignoreCase = true) || it.equals("Anime", ignoreCase = true)
         }
+        // Japanese, Chinese and Korean animation share the anime look (flat colour, clean line art),
+        // so they get the anime engine even when TMDB only says "Animation".
+        val eastAsianAnimation = animationGenre &&
+            originalLanguage?.lowercase()?.substringBefore('-') in animeStyleLanguages
 
-        val strongAnimeHint =
-            explicitAnimeGenre ||
-                animeReleaseGroups.containsMatchIn(fileName) ||
-                animeWord.containsMatchIn(fileName) ||
-                hasJapanese
-
-        val romanisedAnimeFilmHint =
-            animationGenre && japaneseAnimationTitleHint.containsMatchIn(fileName)
+        val tagged = animeReleaseGroups.containsMatchIn(fileName) || animeWord.containsMatchIn(fileName)
+        val strongAnimeHint = explicitAnimeGenre || tagged || hasJapanese
+        val romanisedAnimeFilmHint = animationGenre && japaneseAnimationTitleHint.containsMatchIn(fileName)
 
         val result = when {
             // Protect live action, including Japanese live action.
-            genres.isNotEmpty() && !animationGenre -> PictureContent.FILM
-
-            strongAnimeHint || romanisedAnimeFilmHint -> PictureContent.ANIME
-
+            genres.isNotEmpty() && !animationGenre ->
+                Detection(PictureContent.FILM, "live action")
+            explicitAnimeGenre -> Detection(PictureContent.ANIME, "anime genre")
+            eastAsianAnimation -> Detection(PictureContent.ANIME, "animation from East Asia, anime style")
+            tagged -> Detection(PictureContent.ANIME, "anime release tag")
+            hasJapanese -> Detection(PictureContent.ANIME, "Japanese or Chinese title")
+            romanisedAnimeFilmHint -> Detection(PictureContent.ANIME, "known Japanese animated film")
+            // No genre data yet: a famous Japanese animated title is still safe to recognise by name.
+            genres.isEmpty() && japaneseAnimationTitleHint.containsMatchIn(fileName) ->
+                Detection(PictureContent.ANIME, "known Japanese animated film")
             // Keep western/CGI/general animation on the P5 path.
-            animationGenre -> PictureContent.ANIMATION
-
-            // Filename-only anime evidence is still useful when metadata has not arrived yet.
-            strongAnimeHint -> PictureContent.ANIME
-
-            else -> PictureContent.FILM
+            animationGenre -> Detection(PictureContent.ANIMATION, "animation")
+            else -> Detection(PictureContent.FILM, if (genres.isEmpty()) "no genre info yet" else "film")
         }
 
-        PictureAnimeRoutingPolicy.updateDetected(result)
+        PictureAnimeRoutingPolicy.updateDetected(result.content)
         return result
     }
 }

@@ -13,6 +13,18 @@ object PictureMemory {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(key(path), null)
         )
 
+    private fun protectKey(path: String): String = "x" + path.hashCode().toString(16)
+
+    /** True when the user chose to keep an untagged title protected (no enhancement). */
+    fun isKeptProtected(context: Context, path: String): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(protectKey(path), false)
+
+    fun setKeptProtected(context: Context, path: String, protect: Boolean) {
+        val editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        if (protect) editor.putBoolean(protectKey(path), true) else editor.remove(protectKey(path))
+        editor.apply()
+    }
+
     fun save(context: Context, path: String, settings: PictureSettings) {
         val editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
         if (settings.preset == PicturePreset.OFF) {

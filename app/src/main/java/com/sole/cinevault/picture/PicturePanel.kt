@@ -62,8 +62,8 @@ fun PicturePanelHost(controller: PictureEnhanceController, railBottomInset: Dp =
     var panelSize by remember { mutableStateOf(IntSize.Zero) }
 
     fun closePanelOnly() {
-        // Closing settings must not cancel the explicit Split viewing mode.
-        controller.panelOpen = false
+        // Closing Picture also ends split comparison; never leave the overlay behind.
+        controller.closePanel()
     }
 
     BackHandler(enabled = controller.panelOpen) {
@@ -144,7 +144,7 @@ fun PicturePanelHost(controller: PictureEnhanceController, railBottomInset: Dp =
                 color = TextBright,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 28.dp)
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 112.dp)
                     .glassPanel(cornerRadius = 50.dp, fill = GlassSurfaceStrong)
                     .padding(horizontal = 16.dp, vertical = 7.dp),
             )
@@ -162,13 +162,13 @@ private fun BoxScope.SplitViewOverlay(
     val dividerX = containerW * position
     SplitLabel(
         "LIVE · ENHANCED", true,
-        Modifier.align(Alignment.TopStart).padding(top = 28.dp)
+        Modifier.align(Alignment.TopStart).padding(top = 112.dp)
             .offset { IntOffset((dividerX * .5f).roundToInt() - with(density) { 44.dp.roundToPx() }, 0) }
     )
     SplitLabel(
         "ORIGINAL", false,
-        Modifier.align(Alignment.TopStart).padding(top = 28.dp)
-            .offset { IntOffset(((dividerX + containerW) * .5f).roundToInt() - with(density) { 36.dp.roundToPx() }, 0) }
+        Modifier.align(Alignment.TopStart).padding(top = 112.dp)
+            .offset { IntOffset(dividerX.roundToInt() + with(density) { 14.dp.roundToPx() }, 0) }
     )
 
     // Compose owns the visible divider. It follows the finger immediately even when
@@ -243,7 +243,7 @@ private fun PicturePanel(
                 onClose, onToggleSplit, onResetAll
             ) { onPage(PicturePage.FINE) }
         } else {
-            FinePage(controller, settings, available && on, dragHandle) { onPage(PicturePage.MAIN) }
+            FinePage(controller, settings, on, dragHandle) { onPage(PicturePage.MAIN) }
         }
     }
 }
@@ -302,12 +302,34 @@ private fun MainPage(
         fontSize = 10.sp,
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier.fillMaxWidth().padding(top = 3.dp),
-        maxLines = 2,
     )
+
+    if (controller.playbackStats.isNotEmpty()) {
+        Text(
+            controller.playbackStats,
+            color = TextMuted, fontSize = 9.sp,
+            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+        )
+    }
 
     val message = unavailable?.reason ?: controller.note
     if (message != null) {
         Text(message, color = AmberCore, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
+    }
+    if (controller.assumingSdr || controller.keptProtected) {
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (controller.keptProtected) "Kept protected (colour info missing)."
+                else "Colour info missing — assuming standard SDR.",
+                color = TextMuted, fontSize = 9.sp, modifier = Modifier.weight(1f),
+            )
+            Text(
+                if (controller.keptProtected) "USE ENHANCEMENT" else "KEEP PROTECTED",
+                color = AmberCore, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable { controller.chooseKeepProtected(!controller.keptProtected) }
+                    .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
+            )
+        }
     }
     controller.lastError?.let {
         Text("Reason: $it", color = TextMuted, fontSize = 9.sp, modifier = Modifier.padding(top = 2.dp))
@@ -317,10 +339,14 @@ private fun MainPage(
     PictureMasterPill(on, available) { controller.setEnabled(it) }
 
     val selectedFamily = PictureExperienceBridge.selectedFamily(settings)
-    val sourceProfile = remember(controller.detected) {
+    val sourceProfile = remember(
+        controller.detected, settings.content, controller.sourceWidth, controller.sourceHeight,
+    ) {
         PictureSourceProfile(
-            content = controller.detected,
-            resolution = PictureSourceResolution.UNKNOWN,
+            content = PictureProfiles.resolveContent(settings.content, controller.detected),
+            resolution = PictureSourceIntelligence.classifyResolution(
+                controller.sourceWidth, controller.sourceHeight,
+            ),
             quality = PictureSourceQuality.UNKNOWN,
             scalingNeed = PictureSourceScalingNeed.UNKNOWN,
         )
@@ -332,20 +358,50 @@ private fun MainPage(
 
     SectionLabel("EXPERIENCE")
     PictureSourceBadgeView(sourceProfile.toSourceBadge(), Modifier.fillMaxWidth())
+    Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (settings.content == PictureContent.AUTO) {
+                "Detected as ${controller.detected.label}" +
+                    controller.detectedReason.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()
+            } else {
+                "You chose ${settings.content.label} · detected ${controller.detected.label}"
+            },
+            color = TextMuted, fontSize = 9.sp, modifier = Modifier.weight(1f),
+        )
+        if (settings.content != PictureContent.AUTO && on) {
+            Text(
+                "BACK TO AUTO",
+                color = AmberCore, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable { controller.setContent(PictureContent.AUTO) }
+                    .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
+            )
+        }
+    }
+    Text(
+        controller.viewing.headline,
+        color = AmberCore, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+    )
+    Text(
+        controller.viewing.advice,
+        color = TextMuted, fontSize = 9.sp,
+        modifier = Modifier.fillMaxWidth().padding(top = 1.dp),
+    )
     Spacer(Modifier.height(8.dp))
     PictureExperienceGallery(
         cards = PictureExperiencePresentation.cards(selectedFamily, recommendation),
-        enabled = available,
+        // With Picture Enhance off, nothing in the panel can switch processing on:
+        // the master switch is the only way in.
+        enabled = on,
         onSelect = { family ->
             controller.setContent(PictureExperienceBridge.contentFor(family))
-            if (!on) controller.setEnabled(true)
         },
     )
 
     SectionLabel("QUALITY")
     PictureQualityRail(
         choices = PictureQualityPresentation.choices(PictureExperienceBridge.qualityFor(settings)),
-        enabled = available && on,
+        enabled = on,
         onSelect = { tier ->
             controller.setIntensity(PictureExperienceBridge.intensityFor(tier))
             controller.commit()
@@ -357,7 +413,7 @@ private fun MainPage(
         listOf(PicturePreset.NATURAL, PicturePreset.CINEMA, PicturePreset.VIVID, PicturePreset.SHARP)
             .forEach { preset ->
                 Chip(
-                    preset.label, settings.preset == preset, available,
+                    preset.label, settings.preset == preset, true,
                     Modifier.weight(1f)
                 ) { controller.selectPreset(preset) }
             }
@@ -365,15 +421,15 @@ private fun MainPage(
 
     SectionLabel("INTENSITY · ${(settings.intensity * 100).toInt()}%")
     PictureSlider(
-        settings.intensity, available && on,
+        settings.intensity, on,
         { controller.setIntensity(it) }, { controller.commit() }
     )
 
     Spacer(Modifier.height(6.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-        Chip("Fine Tune  ›", false, available && on, Modifier.weight(1f), onFine)
+        Chip("Fine Tune  ›", false, on, Modifier.weight(1f), onFine)
         Chip("Split", controller.splitView, available && on, Modifier.weight(1f), onToggleSplit)
-        Chip("Reset", false, available, Modifier.weight(1f), onResetAll)
+        Chip("Reset", false, true, Modifier.weight(1f), onResetAll)
     }
 
     Spacer(Modifier.height(12.dp))
@@ -484,7 +540,7 @@ private fun PictureMasterPill(enabled: Boolean, usable: Boolean, onToggle: (Bool
         Column(Modifier.weight(1f)) {
             Text("Picture Enhance", color = if (enabled) AmberCore else TextMuted,
                 fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            Text(if (enabled) "Processing live" else "Original picture",
+            Text(if (!enabled) "Original picture" else if (usable) "Processing requested" else "Waiting for compatible video",
                 color = TextMuted, fontSize = 8.sp)
         }
         Box(

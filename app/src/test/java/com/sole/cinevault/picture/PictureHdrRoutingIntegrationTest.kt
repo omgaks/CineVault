@@ -20,6 +20,21 @@ class PictureHdrRoutingIntegrationTest {
         PictureHdrRouting.decide(format(C.COLOR_TRANSFER_SDR)).route,
     )
 
+    @Test fun conflictingSdrTransferAndHdrStaticMetadataIsProtected() {
+        val contradictory = Format.Builder()
+            .setSampleMimeType(MimeTypes.VIDEO_H265)
+            .setColorInfo(
+                ColorInfo.Builder()
+                    .setColorTransfer(C.COLOR_TRANSFER_SDR)
+                    .setHdrStaticInfo(byteArrayOf(1, 2, 3))
+                    .build()
+            ).build()
+        assertEquals(
+            PictureHdrPolicy.Route.HDR_PASSTHROUGH,
+            PictureHdrRouting.decide(contradictory).route,
+        )
+    }
+
     @Test fun pqIsProtected() = assertEquals(
         PictureHdrPolicy.Route.HDR_PASSTHROUGH,
         PictureHdrRouting.decide(format(C.COLOR_TRANSFER_ST2084)).route,
@@ -35,13 +50,13 @@ class PictureHdrRoutingIntegrationTest {
         PictureHdrRouting.decide(format(C.COLOR_TRANSFER_SDR, MimeTypes.VIDEO_DOLBY_VISION)).route,
     )
 
-    @Test fun unknownTransferIsProtected() = assertEquals(
-        PictureHdrPolicy.Route.HDR_PASSTHROUGH,
+    @Test fun metadataLightAvcIsEnhanceable() = assertEquals(
+        PictureHdrPolicy.Route.SDR_ENHANCEMENT,
         PictureHdrRouting.decide(format(Format.NO_VALUE)).route,
     )
 
-    @Test fun missingMetadataProtectsUnknownHdr() = assertEquals(
-        PictureHdrPolicy.Route.HDR_PASSTHROUGH,
+    @Test fun missingMetadataAvcIsEnhanceable() = assertEquals(
+        PictureHdrPolicy.Route.SDR_ENHANCEMENT,
         PictureHdrRouting.decide(Format.Builder().setSampleMimeType(MimeTypes.VIDEO_H264).build()).route,
     )
 
