@@ -1120,6 +1120,7 @@ fun CineVaultApp() {
 
     if (showOnboarding || replayWelcome) {
         OnboardingScreen(
+            videos = libraryVideos,
             replay = replayWelcome,
             onVideosLoaded = { loadedVideos ->
                 libraryVideos = sanitizeLibraryVideos(loadedVideos)

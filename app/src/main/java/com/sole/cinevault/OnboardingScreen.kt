@@ -60,6 +60,8 @@ import kotlinx.coroutines.delay
  */
 @Composable
 internal fun OnboardingScreen(
+    /** The library as it fills in during the scan, for the poster wall. */
+    videos: List<VideoWithMetadata> = emptyList(),
     onVideosLoaded: (List<VideoWithMetadata>) -> Unit,
     onFinished: () -> Unit,
     /** Replay from Settings: skips the Scan step and never rescans. */
@@ -114,6 +116,7 @@ internal fun OnboardingScreen(
                     onContinue = { saveDisplayName(context, name); step = if (replay) OnboardingStep.Reel else OnboardingStep.Scan }
                 )
                 OnboardingStep.Scan -> ScanStep(
+                    videos = videos,
                     onVideosLoaded = onVideosLoaded,
                     onContinue = { step = OnboardingStep.Reel }
                 )
@@ -192,7 +195,11 @@ private fun WelcomeStep(name: String, onNameChange: (String) -> Unit, onContinue
 }
 
 @Composable
-private fun ScanStep(onVideosLoaded: (List<VideoWithMetadata>) -> Unit, onContinue: () -> Unit) {
+private fun ScanStep(
+    videos: List<VideoWithMetadata>,
+    onVideosLoaded: (List<VideoWithMetadata>) -> Unit,
+    onContinue: () -> Unit
+) {
     val context = LocalContext.current
     val permission =
         if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE
@@ -211,6 +218,8 @@ private fun ScanStep(onVideosLoaded: (List<VideoWithMetadata>) -> Unit, onContin
         title = "Find your films",
         body = "CineVault can look for videos on this device. It only reads them. Nothing is uploaded, moved or changed."
     )
+    PosterWall(videos = videos)
+    FoundCounter(count = videos.size, scanning = LibraryScanController.isScanning)
     if (LibraryScanController.isScanning) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -258,44 +267,10 @@ private fun ScanStep(onVideosLoaded: (List<VideoWithMetadata>) -> Unit, onContin
 @Composable
 private fun ReelStep(onDone: () -> Unit) {
     val guides = remember { TUTORIAL_GUIDES.filter { !it.comingSoon } }
-    var tick by remember { mutableIntStateOf(0) }
-    var paused by remember { mutableStateOf(false) }
-    LaunchedEffect(paused) {
-        while (!paused) {
-            delay(2600)
-            tick++
-        }
-    }
-    val index = reelIndexAt(tick, guides.size)
-    val current = guides[index]
-
     Heading(
         title = "Here's what's inside",
-        body = "A few things worth knowing. Tap any chip to hold it, and find full guides any time in Settings."
+        body = "A few things worth knowing. Full guides are always in Settings."
     )
-    // The pill: one feature at a time.
-    Crossfade(targetState = current, label = "reel") { guide ->
-        val g = TutorialGels[guide.gelIndex % TutorialGels.size]
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .cineCard(radius = 26.dp, gel = g)
-                .padding(horizontal = 20.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text(guide.title, color = g, fontFamily = NewsreaderFamily, fontSize = CineType.Title)
-            Text(guide.tagline, color = TextBright, fontSize = CineType.Body, textAlign = TextAlign.Start)
-        }
-    }
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        guides.forEachIndexed { i, guide ->
-            CineChip(
-                text = guide.title,
-                selected = i == index,
-                onClick = { tick = i; paused = true },
-                gel = TutorialGels[guide.gelIndex % TutorialGels.size]
-            )
-        }
-    }
+    FeatureOrbit(guides = guides)
     CineButton(text = "Start watching", onClick = onDone, modifier = Modifier.fillMaxWidth())
 }
