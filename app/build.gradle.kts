@@ -25,7 +25,8 @@ android {
         applicationId = "com.sole.cinevault"
         minSdk = 24
         targetSdk = 36
-        versionCode = 2
+        // CI passes its run number so every release build is a newer version for Android.
+        versionCode = System.getenv("CINEVAULT_BUILD_NUMBER")?.toIntOrNull() ?: 2
         versionName = "2.0"
 
         buildConfigField("String", "TMDB_TOKEN", "\"${localProperties.getProperty("TMDB_TOKEN", "")}\"")

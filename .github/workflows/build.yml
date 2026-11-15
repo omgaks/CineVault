@@ -69,13 +69,14 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          CINEVAULT_BUILD_NUMBER: ${{ github.run_number }}
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Extract version info
         id: version
         run: |
           VERSION_NAME=$(grep 'versionName' app/build.gradle.kts | head -1 | grep -oP '"[^"]*"' | tr -d '"')
-          VERSION_CODE=$(grep 'versionCode' app/build.gradle.kts | head -1 | grep -oP '[0-9]+')
+          VERSION_CODE=${{ github.run_number }}
           BUILD_DATE=$(date +'%Y-%m-%d')
           echo "name=${VERSION_NAME}" >> $GITHUB_OUTPUT
           echo "code=${VERSION_CODE}" >> $GITHUB_OUTPUT
