@@ -111,6 +111,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -866,7 +870,46 @@ fun VideoPlayerScreen(
     val translationJobLabel = subtitleAiRuntime.translationJobLabel
     val translationJobProgress = subtitleAiRuntime.translationJobProgress
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    val remoteKeyFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    var remoteKeysMenuOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(remoteKeysMenuOpen) {
+        // Take focus back for the remote once menus close.
+        if (!remoteKeysMenuOpen) runCatching { remoteKeyFocus.requestFocus() }
+    }
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .onKeyEvent { event ->
+                if (event.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@onKeyEvent false
+                val code = event.nativeKeyEvent.keyCode
+                when (remoteKeyAction(code, chromeUi.showControls, remoteKeysMenuOpen)) {
+                    RemoteKeyAction.TOGGLE_PLAY -> {
+                        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                        true
+                    }
+                    RemoteKeyAction.PLAY -> { exoPlayer.play(); true }
+                    RemoteKeyAction.PAUSE -> { exoPlayer.pause(); true }
+                    RemoteKeyAction.SEEK_BACK, RemoteKeyAction.SEEK_FORWARD -> {
+                        val sign = if (remoteKeyAction(code, chromeUi.showControls, remoteKeysMenuOpen) ==
+                            RemoteKeyAction.SEEK_BACK) -1L else 1L
+                        exoPlayer.seekTo(
+                            seekTargetMs(
+                                exoPlayer.currentPosition,
+                                exoPlayer.duration.coerceAtLeast(0L),
+                                sign * remoteSeekStepMs(code),
+                            )
+                        )
+                        true
+                    }
+                    RemoteKeyAction.SHOW_CONTROLS -> { chromeUi.showControls = true; true }
+                    RemoteKeyAction.NONE -> false
+                }
+            }
+            .focusRequester(remoteKeyFocus)
+            .focusable()
+    ) {
         // Captured as plain local vals (not referenced as the implicit
         // BoxWithConstraintsScope receiver) specifically so they can be
         // used unambiguously from inside further-nested Box {} scopes
@@ -1007,6 +1050,7 @@ fun VideoPlayerScreen(
             sleepMenu = chromeUi.showSleepMenu,
             srtBrowser = chromeUi.showSrtBrowser,
         )
+        SideEffect { remoteKeysMenuOpen = transientUiSnapshot.needsDismissLayer }
 
         // G6B-4: head gestures are deliberately active only during an
         // external-display glasses session. The detector itself refuses to
