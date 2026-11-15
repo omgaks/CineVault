@@ -73,27 +73,3 @@ internal class PlayerPlaybackSettingsState {
     }
 }
 
-@Composable
-@OptIn(UnstableApi::class)
-internal fun PlayerSleepTimerEffect(
-    context: Context,
-    player: ExoPlayer,
-    settings: PlayerPlaybackSettingsState,
-) {
-    LaunchedEffect(settings.sleepTimerActive, settings.sleepTimerRemainingMs) {
-        if (settings.sleepTimerActive && settings.sleepTimerRemainingMs > 0L) {
-            delay(1000)
-            settings.sleepTimerRemainingMs -= 1000L
-            if (settings.sleepTimerRemainingMs <= 0L) {
-                settings.sleepTimerActive = false
-                settings.sleepTimerRemainingMs = 0L
-                player.pause()
-                Toast.makeText(
-                    context,
-                    "Sleep timer — playback paused",
-                    Toast.LENGTH_SHORT,
-                ).show()
-            }
-        }
-    }
-}
