@@ -333,45 +333,5 @@ fun FreshInLibrarySection(
     }
 }
 
-@Composable
-fun HomeRow(
-    title: String,
-    items: List<VideoWithMetadata>,
-    onItemClick: (VideoWithMetadata) -> Unit
-) {
-    val context = LocalContext.current
-    Column {
-        Text(text = title, color = TextBright, fontSize = CineType.Section, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(14.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            items(items) { item ->
-                val watchedPercent = getWatchedPercent(context, item)
-                Column(
-                    modifier = Modifier.width(145.dp).clickable { onItemClick(item) }
-                ) {
-                    Box {
-                        PosterBox(
-                            posterUrl = item.posterUrl,
-                            modifier = Modifier.fillMaxWidth().height(180.dp),
-                            progress = watchedPercent,
-                            videoPath = item.video.path,
-                            episodeStill = item.episodeStill,
-                            backdropUrl = item.backdropUrl,
-                            type = item.type
-                        )
-                        RatingBadgeStack(item = item, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = item.title, color = TextBright, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                    if (item.subtitle.isNotBlank()) {
-                        Text(text = item.subtitle, color = TextMuted, fontSize = CineType.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
-        }
-    }
-}
-
-
 // ── PosterBox — CLEAN poster art. No gradients, no text overlays. Just the
 //    poster and (optionally) a thin progress line hugging the bottom edge. ──

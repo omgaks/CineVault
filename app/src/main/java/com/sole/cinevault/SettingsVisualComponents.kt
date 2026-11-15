@@ -185,23 +185,6 @@ internal fun GlassActionRow(icon: ImageVector, iconTint: Color = AmberCore, titl
     }
 }
 
-// ── Glowing outlined button used for "Add Network Share" ────────────────────
-@Composable
-internal fun GlowButton(text: String, icon: ImageVector, accent: Color, onClick: () -> Unit) {
-    androidx.compose.material3.Button(
-        onClick = onClick,
-        shape = RoundedCornerShape(18.dp),
-        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = GlassSurface, contentColor = TextBright),
-        modifier = Modifier
-            .shadow(10.dp, RoundedCornerShape(18.dp), ambientColor = accent.copy(alpha = 0.4f), spotColor = accent.copy(alpha = 0.5f))
-            .border(1.dp, accent.copy(alpha = 0.4f), RoundedCornerShape(18.dp))
-    ) {
-        Icon(imageVector = icon, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(text, fontWeight = FontWeight.Bold)
-    }
-}
-
 // Same breathing-glow recipe as VideoPlayerScreen.kt's FrostedPlayButton —
 // 0.45→0.95 alpha, 1400ms, FastOutSlowInEasing, reversing — reused here so
 // "Add Folder" and every folder pill pulse with the identical rhythm and
@@ -284,42 +267,6 @@ internal fun FolderNamePill(name: String, accent: Color, onLongPress: () -> Unit
             Icon(imageVector = settingsFolderIconFor(name), contentDescription = null, tint = accent, modifier = Modifier.size(26.dp))
             Spacer(modifier = Modifier.height(8.dp))
             Text(text = name, color = TextBright, fontSize = CineType.Caption, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-        }
-    }
-}
-
-@Composable
-internal fun SmbShareRow(share: SmbShare, onEdit: () -> Unit, onDelete: () -> Unit) {
-    // Phase 13 of TV support: Edit and Delete are two genuinely independent
-    // actions laid out INSIDE this composable (not as call-site siblings),
-    // so unlike SrtBrowserPopup's pick/delete split (phase 8) they can't be
-    // wrapped from outside without restructuring the call site. Safe to fix
-    // here directly instead — this composable has exactly one call site
-    // (SettingsScreen.kt).
-    val context = LocalContext.current
-    val isTelevision = remember { TelevisionModeDetector.isRunningOnTelevision(context) }
-
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp)
-            .clip(RoundedCornerShape(16.dp)).background(SpaceDeep.copy(alpha = 0.60f))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(imageVector = Icons.Rounded.Dns, contentDescription = null, tint = AccentNetwork, modifier = Modifier.size(17.dp))
-        Spacer(modifier = Modifier.width(9.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = share.displayName, color = TextBright, fontSize = CineType.Label, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(text = "${share.host}/${share.shareName}", color = TextMuted, fontSize = CineType.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        TvFocusableSlot(isTelevision = isTelevision, shape = CircleShape, onActivate = onEdit) {
-            IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
-                Icon(imageVector = Icons.Rounded.Edit, contentDescription = "Edit", tint = TextMuted, modifier = Modifier.size(16.dp))
-            }
-        }
-        TvFocusableSlot(isTelevision = isTelevision, shape = CircleShape, onActivate = onDelete) {
-            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                Icon(imageVector = Icons.Rounded.Delete, contentDescription = "Remove", tint = Color(0xFFFF5252), modifier = Modifier.size(16.dp))
-            }
         }
     }
 }

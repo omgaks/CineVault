@@ -34,28 +34,6 @@ import androidx.compose.ui.unit.dp
 import com.sole.cinevault.ui.theme.*
 
 @Composable
-internal fun BackIconButton(size: Dp, onClick: () -> Unit) {
-    Box(modifier = Modifier.size(size).clip(RoundedCornerShape(20.dp))
-        .background(GlassSurface)
-        .background(Brush.verticalGradient(0f to AmberGlow.copy(alpha = 0.10f), 1f to Color.Transparent))
-        .border(1.2.dp, Brush.verticalGradient(listOf(AmberGlow.copy(alpha = 0.55f), AmberDeep.copy(alpha = 0.25f))), RoundedCornerShape(20.dp))
-        .clickable { onClick() }, contentAlignment = Alignment.Center) {
-        Icon(imageVector = Icons.Rounded.ArrowBack, contentDescription = "Back", tint = AmberCore, modifier = Modifier.size(size * 0.42f))
-    }
-}
-
-@Composable
-internal fun GlassTransportButton(icon: ImageVector, size: Dp, onClick: () -> Unit) {
-    Box(modifier = Modifier.size(size).clip(RoundedCornerShape(20.dp))
-        .background(GlassSurface)
-        .background(Brush.verticalGradient(0f to GlassHighlight, 0.4f to Color.Transparent, 1f to Color.Transparent))
-        .border(1.dp, Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)), RoundedCornerShape(20.dp))
-        .clickable { onClick() }, contentAlignment = Alignment.Center) {
-        Icon(imageVector = icon, contentDescription = null, tint = TextBright, modifier = Modifier.size(size * 0.46f))
-    }
-}
-
-@Composable
 internal fun FrostedPlayButton(isPlaying: Boolean, isEnded: Boolean, size: Dp, progress: Float = 0f, onClick: () -> Unit) {
     val infinite = rememberInfiniteTransition(label = "playGlow")
     val glowAlpha by infinite.animateFloat(
@@ -113,13 +91,3 @@ internal fun FrostedPlayButton(isPlaying: Boolean, isEnded: Boolean, size: Dp, p
     }
 }
 
-@Composable
-internal fun IconCircle(icon: ImageVector, size: Dp, tint: Color = TextBright, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Box(modifier = modifier.size(size).clip(RoundedCornerShape(20.dp))
-        .background(GlassSurface)
-        .background(Brush.verticalGradient(0f to GlassHighlight, 0.4f to Color.Transparent, 1f to Color.Transparent))
-        .border(1.dp, Brush.verticalGradient(listOf(GlassBorderTop, GlassBorderBottom)), RoundedCornerShape(20.dp))
-        .clickable { onClick() }, contentAlignment = Alignment.Center) {
-        Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(size * 0.44f))
-    }
-}

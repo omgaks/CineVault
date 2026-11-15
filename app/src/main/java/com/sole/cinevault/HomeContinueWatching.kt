@@ -310,52 +310,6 @@ private fun ContinueArt(item: VideoWithMetadata) {
 }
 
 @Composable
-internal fun ResumePosterBox(
-    item: VideoWithMetadata,
-    modifier: Modifier,
-    progress: Float,
-    onClick: () -> Unit
-) {
-    Column(modifier = modifier.clickable { onClick() }) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(132.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(SpaceMid)
-        ) {
-            val imageModel = item.posterUrl ?: item.video.path
-            if (imageModel.isNotBlank()) {
-                AsyncImage(
-                    model = imageModel,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null, tint = TextFaint, modifier = Modifier.size(30.dp))
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(3.dp)
-                    .background(Color.White.copy(alpha = 0.18f))
-            ) {
-                Box(modifier = Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(AmberGlow))
-            }
-
-            RatingBadgeStack(item = item, modifier = Modifier.align(Alignment.TopStart).padding(6.dp))
-        }
-        Spacer(modifier = Modifier.height(5.dp))
-        Text(text = item.title, color = TextBright, fontSize = CineType.Caption, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
 internal fun ProgressBar(progress: Float, compact: Boolean = false) {
     val barHeight = if (compact) 3.dp else 4.dp
     Box(
@@ -371,20 +325,6 @@ internal fun ProgressBar(progress: Float, compact: Boolean = false) {
                 .fillMaxHeight()
                 .background(AmberGlow)
         )
-    }
-}
-
-@Composable
-internal fun SmallToggleChip(text: String, selected: Boolean, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(if (selected) AmberGlow.copy(alpha = 0.85f) else Color.Transparent)
-            .clickable { onClick() }
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(text = text, color = if (selected) Color.Black else TextMuted, fontSize = CineType.Caption, fontWeight = FontWeight.Bold)
     }
 }
 

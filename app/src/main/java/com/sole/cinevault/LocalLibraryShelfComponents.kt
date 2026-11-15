@@ -44,33 +44,6 @@ private fun folderIconFor(displayName: String): ImageVector {
 }
 
 @Composable
-internal fun LibraryToolIconButton(
-    icon: ImageVector,
-    tint: Color,
-    contentDescription: String,
-    label: String,
-    enabled: Boolean = true,
-    onClick: () -> Unit
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .clip(CircleShape)
-                .background(GlassSurfaceStrong)
-                .background(Brush.radialGradient(listOf(tint.copy(alpha = if (enabled) 0.30f else 0.10f), Color.Transparent), radius = 80f))
-                .border(1.2.dp, tint.copy(alpha = if (enabled) 0.60f else 0.20f), CircleShape)
-                .clickable(enabled = enabled) { onClick() },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(imageVector = icon, contentDescription = contentDescription, tint = if (enabled) tint else tint.copy(alpha = 0.35f), modifier = Modifier.size(19.dp))
-        }
-        Spacer(modifier = Modifier.height(3.dp))
-        Text(text = label, color = if (enabled) tint else tint.copy(alpha = 0.35f), fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
 internal fun SheetIconButton(icon: ImageVector, tint: Color, contentDescription: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier

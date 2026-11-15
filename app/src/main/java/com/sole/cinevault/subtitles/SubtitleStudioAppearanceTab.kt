@@ -105,17 +105,6 @@ internal fun StudioAppearanceTab(
     )
 }
 
-@Composable
-private fun DotThumbSliderDivider() {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 10.dp)
-            .height(1.dp)
-            .background(Color.White.copy(alpha = 0.06f))
-    )
-}
-
 // Shared dot-thumb slider — same visual as WaveformSlider's fallback
 // track (SubtitleStudioTimingTab.kt) but without the waveform overlay,
 // since these two controls (text size, vertical position) have no audio
