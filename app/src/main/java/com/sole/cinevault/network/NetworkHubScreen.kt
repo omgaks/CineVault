@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -25,6 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.ui.theme.AmberCore
+import com.sole.cinevault.ui.theme.CineType
+import com.sole.cinevault.ui.theme.NewsreaderFamily
 import com.sole.cinevault.ui.theme.SpaceBlack
 import com.sole.cinevault.ui.theme.TextBright
 import com.sole.cinevault.ui.theme.TextFaint
@@ -66,7 +69,9 @@ fun NetworkHubScreen(
         val horizontalPadding = when { maxWidth >= 1200.dp -> 64.dp; wide -> 40.dp; else -> 20.dp }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = horizontalPadding, vertical = 20.dp)) {
             NetworkHubHeader(onBack)
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(8.dp))
+            NetworkRadarHero(connectState, visibleDevices)
+            Spacer(Modifier.height(8.dp))
             CineVaultConnectCard(connectState, onFindDevices, onScanQr, onShareLibrary, onDisconnectPeer)
             Spacer(Modifier.height(18.dp))
             if (wide) {
@@ -166,11 +171,20 @@ private fun CineVaultConnectCard(state: CineVaultConnectState, onFindDevices: ()
     AlertDialog(onDismissRequest = onDismiss, confirmButton = { TextButton(onClick = onDismiss) { Text("OK", color = AmberCore) } }, title = { Text(title, color = TextBright) }, text = { Text(body, color = TextMuted) }, containerColor = Color(0xFF15161A))
 }
 
-@Composable private fun NetworkHubHeader(onBack: () -> Unit) { Row(verticalAlignment = Alignment.CenterVertically) { HubIcon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack); Spacer(Modifier.width(14.dp)); Column { Text("Network", color = TextBright, fontSize = 26.sp, fontWeight = FontWeight.Bold); Text("Connect • stream • share", color = TextMuted, fontSize = 13.sp) } } }
+@Composable private fun NetworkHubHeader(onBack: () -> Unit) { Row(verticalAlignment = Alignment.CenterVertically) { HubIcon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack); Spacer(Modifier.width(14.dp)); Column { Text("Network", color = TextBright, fontFamily = NewsreaderFamily, fontSize = CineType.Display); Text("Connect • stream • share", color = TextMuted, fontSize = 13.sp) } } }
 @Composable private fun SavedSources(sources: List<NetworkHubSourceSummary>, onClick: (String) -> Unit) = HubSection("Your Sources") { if (sources.isEmpty()) EmptyHint("No network sources added yet.") else sources.forEach { source -> HubRow(Icons.Rounded.Storage, source.name, "${source.typeLabel} • ${source.statusLabel}") { onClick(source.id) }; Spacer(Modifier.height(8.dp)) } }
 @Composable private fun AddManually(onFileShare: () -> Unit, onMediaServer: () -> Unit, onWebSource: () -> Unit) = HubSection("Add Manually") { HubRow(Icons.Rounded.Storage, "File Shares", "SMB • WebDAV • SFTP", onClick = onFileShare); Spacer(Modifier.height(8.dp)); HubRow(Icons.Rounded.Devices, "Media Servers", "Jellyfin • Emby • DLNA", accent = ConnectViolet, onClick = onMediaServer); Spacer(Modifier.height(8.dp)); HubRow(Icons.Rounded.AddLink, "Web / Playlist", "HTTP directory • M3U", accent = ConnectCyan, onClick = onWebSource) }
 @Composable private fun HubSection(title: String, content: @Composable () -> Unit) { Column(Modifier.fillMaxWidth().background(Color(0xFF121317), RoundedCornerShape(22.dp)).border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(22.dp)).padding(16.dp)) { Text(title, color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.SemiBold); Spacer(Modifier.height(12.dp)); content() } }
-@Composable private fun HubRow(icon: ImageVector, title: String, subtitle: String, accent: Color = AmberCore, enabled: Boolean = true, onClick: () -> Unit) { Row(Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.72f).background(accent.copy(alpha = 0.055f), RoundedCornerShape(16.dp)).border(1.dp, accent.copy(alpha = 0.14f), RoundedCornerShape(16.dp)).clickable(enabled = enabled, onClick = onClick).padding(13.dp), verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(36.dp).background(accent.copy(alpha = 0.12f), RoundedCornerShape(11.dp)), contentAlignment = Alignment.Center) { Icon(icon, null, tint = accent, modifier = Modifier.size(20.dp)) }; Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(title, color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.SemiBold); Text(subtitle, color = TextMuted, fontSize = 12.sp) }; Icon(Icons.Rounded.ChevronRight, null, tint = accent.copy(alpha = 0.72f)) } }
+@Composable private fun HubRow(icon: ImageVector, title: String, subtitle: String, accent: Color = AmberCore, enabled: Boolean = true, onClick: () -> Unit) { Row(Modifier.fillMaxWidth().hubEntrance().alpha(if (enabled) 1f else 0.72f).background(accent.copy(alpha = 0.055f), RoundedCornerShape(16.dp)).border(1.dp, accent.copy(alpha = 0.14f), RoundedCornerShape(16.dp)).clickable(enabled = enabled, onClick = onClick).padding(13.dp), verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(36.dp).background(accent.copy(alpha = 0.12f), RoundedCornerShape(11.dp)), contentAlignment = Alignment.Center) { Icon(icon, null, tint = accent, modifier = Modifier.size(20.dp)) }; Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(title, color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.SemiBold); Text(subtitle, color = TextMuted, fontSize = 12.sp) }; Icon(Icons.Rounded.ChevronRight, null, tint = accent.copy(alpha = 0.72f)) } }
 @Composable private fun HubIcon(icon: ImageVector, description: String, onClick: () -> Unit) { Box(Modifier.background(AmberCore.copy(alpha = 0.10f), RoundedCornerShape(14.dp)).clickable(onClick = onClick).padding(10.dp)) { Icon(icon, description, tint = AmberCore) } }
 @Composable private fun EmptyHint(text: String) = Text(text, color = TextFaint, fontSize = 12.sp, lineHeight = 17.sp)
 private fun discoveryLabel(kind: NetworkDiscoveryKind): String = when (kind) { NetworkDiscoveryKind.CINEVAULT -> "CineVault • Nearby"; NetworkDiscoveryKind.JELLYFIN -> "Jellyfin"; NetworkDiscoveryKind.EMBY -> "Emby"; NetworkDiscoveryKind.DLNA -> "DLNA / UPnP • Tap to browse"; NetworkDiscoveryKind.WEBDAV -> "WebDAV"; NetworkDiscoveryKind.SMB -> "SMB"; NetworkDiscoveryKind.UNKNOWN -> "Network device" }
+
+/** Rows glide in and fade up the first time they appear, so the hub feels alive. */
+@Composable
+private fun Modifier.hubEntrance(): Modifier {
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val progress by animateFloatAsState(if (shown) 1f else 0f, tween(520, easing = FastOutSlowInEasing), label = "hubEntrance")
+    return this.graphicsLayer { alpha = progress; translationY = (1f - progress) * 28f }
+}
