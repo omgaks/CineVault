@@ -1,6 +1,6 @@
 # Privacy Policy — CineVault
 
-**Last updated: 9 October 2026**
+**Last updated: 16 November 2026**
 
 CineVault is a local and network media player. Privacy is a core part of its
 design.
@@ -13,7 +13,7 @@ design.
   third-party crash-reporting SDKs.
 - CineVault does not upload the contents of local videos or SMB videos.
 - CineVault does not access contacts, camera, or location.
-- CineVault uses the microphone only if you switch on the optional Voice (beta) feature in Settings, which is off by default. While it is on, audio is analysed on your phone to notice the wake word, only while CineVault is open and the screen is on. Audio is never recorded, stored or sent anywhere.
+- CineVault uses the microphone only if you switch on the optional Voice (beta) feature in Settings, which is off by default. While it is on, audio is analysed on your phone to notice the wake word, only while CineVault is open and the screen is on. Audio is never recorded, stored or sent anywhere. Audio Studio's adaptive audio and spectrum analyse the film's own sound inside CineVault and do not use the microphone.
 - CineVault does not sell user data or share it with advertising networks or
   data brokers.
 
@@ -54,6 +54,8 @@ SMB network playback.
 | OpenSubtitles | File hash, file size, cleaned title, season/episode, and preferred subtitle language as applicable | Subtitle search and download |
 | SubDL | Cleaned title, season/episode, and preferred subtitle language as applicable | Subtitle search and download |
 | IntroDB | IMDb identifier and, for TV, season and episode numbers | Retrieve community-verified intro, recap, preview, and credits timestamps |
+| Hugging Face (model download) | A standard file download request for the speech-recognition model files, only when the user chooses to download the on-device speech model for generated subtitles. No video, audio or personal information is sent | Download the speech model once; transcription then runs on the device |
+| Google ML Kit (translation model download) | A standard download request for the language model the user picks, only when the user turns on subtitle translation. Subtitle text is translated on the device and is not sent to Google | Download the on-device translation language models |
 | User-selected SMB server | Server address, share name, and configured credentials | Browse and stream the user's network library |
 | User-provided stream URL | The requested URL and protocol-required headers | Direct network playback |
 
