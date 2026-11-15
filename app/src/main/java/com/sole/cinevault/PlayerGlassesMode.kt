@@ -14,11 +14,9 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.sole.cinevault.glasses.ExternalDisplayInfo
-import com.sole.cinevault.glasses.ExternalDisplayLifecyclePolicy
-import com.sole.cinevault.glasses.ExternalDisplayLifecycleState
+import com.sole.cinevault.glasses.LocalAppGlassesSession
 import com.sole.cinevault.glasses.rememberExternalDisplayState
 import com.sole.cinevault.glasses.audio.CineAudioRouteController
-import com.sole.cinevault.glasses.display.rememberSharedCineVaultExternalRuntime
 import kotlinx.coroutines.delay
 
 @Stable
@@ -51,24 +49,13 @@ fun rememberPlayerGlassesMode(
 ): PlayerGlassesMode {
     val context = LocalContext.current
     val activity = context.findCineActivity()
-    val externalDisplay by rememberExternalDisplayState()
+    // The glasses session now belongs to the whole app (see AppGlassesSession), so
+    // opening a film never starts or restarts it; the player just joins it.
+    val appSession = LocalAppGlassesSession.current
+    val rememberedDisplay by rememberExternalDisplayState()
+    val externalDisplay = appSession?.display ?: rememberedDisplay
 
     var showConnectedHint by remember { mutableStateOf(false) }
-    var lifecycle by remember {
-        mutableStateOf(
-            ExternalDisplayLifecycleState(
-                connectedDisplayId = externalDisplay.displayId,
-            )
-        )
-    }
-
-    LaunchedEffect(externalDisplay.displayId) {
-        lifecycle =
-            ExternalDisplayLifecyclePolicy.onDisplayChanged(
-                previous = lifecycle,
-                newDisplayId = externalDisplay.displayId,
-            )
-    }
 
     LaunchedEffect(externalDisplay.isConnected) {
         if (externalDisplay.isConnected) {
@@ -88,12 +75,7 @@ fun rememberPlayerGlassesMode(
         }
     }
 
-    val sharedExternal =
-        rememberSharedCineVaultExternalRuntime(
-            activity = activity,
-            externalDisplay = externalDisplay,
-            enabled = lifecycle.isSessionEnabled,
-        )
+    val sharedExternalActive = appSession?.active == true
 
     /*
      * D7-4 deliberately keeps the SAME player target/session alive.
@@ -111,9 +93,9 @@ fun rememberPlayerGlassesMode(
             canonicalPlayer?.let { CineAudioRouteController(context, it) }
         }
 
-    LaunchedEffect(audioRouteController, sharedExternal.active) {
+    LaunchedEffect(audioRouteController, sharedExternalActive) {
         audioRouteController?.apply(
-            glassesSessionActive = sharedExternal.active,
+            glassesSessionActive = sharedExternalActive,
         )
     }
 
@@ -126,10 +108,7 @@ fun rememberPlayerGlassesMode(
     return PlayerGlassesMode(
         display = externalDisplay,
         showConnectedHint = showConnectedHint,
-        sharedExternalActive = sharedExternal.active,
-        disableSession = {
-            lifecycle =
-                ExternalDisplayLifecyclePolicy.disableCurrentSession(lifecycle)
-        },
+        sharedExternalActive = sharedExternalActive,
+        disableSession = { appSession?.disable?.invoke() },
     )
 }

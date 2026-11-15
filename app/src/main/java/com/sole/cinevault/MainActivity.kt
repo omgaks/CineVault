@@ -14,6 +14,10 @@ import com.sole.cinevault.tvmode.TelevisionModeDetector
 import com.sole.cinevault.tvmode.TvHomeScreen
 import com.sole.cinevault.tvmode.TvShelf
 import com.sole.cinevault.tvmode.TvShelfItem
+import com.sole.cinevault.glasses.BrowseRoute
+import com.sole.cinevault.glasses.ProvideAppGlassesSession
+import com.sole.cinevault.glasses.browseRouteFromSession
+import com.sole.cinevault.glasses.shouldFollowMirror
 import com.sole.cinevault.glasses.rememberExternalDisplayState
 import com.sole.cinevault.glasses.tutorial.GlassesFirstRunTutorial
 import com.sole.cinevault.glasses.tutorial.GlassesGestureTutorialScreen
@@ -238,15 +242,19 @@ fun CineVaultRoot() {
         showSplash = false
     }
 
-    Crossfade(
-        targetState = showSplash,
-        animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
-        label = "cinevaultRootFade"
-    ) { splashVisible ->
-        if (splashVisible) {
-            CineVaultSplashScreen()
-        } else {
-            CineVaultApp()
+    // One glasses session for the whole app: it starts when glasses are plugged in,
+    // wherever the person is, and is shared with the player.
+    ProvideAppGlassesSession {
+        Crossfade(
+            targetState = showSplash,
+            animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
+            label = "cinevaultRootFade"
+        ) { splashVisible ->
+            if (splashVisible) {
+                CineVaultSplashScreen()
+            } else {
+                CineVaultApp()
+            }
         }
     }
 }
@@ -530,7 +538,7 @@ fun CineVaultApp() {
 
             is Destination.TvShow ->
                 sessionAppState.onTvGroupSelected(
-                    sessionKeys.tvGroup(destination.group.toString())
+                    sessionKeys.tvGroup(destination.group.showName)
                 )
 
             is Destination.Player ->
@@ -538,11 +546,45 @@ fun CineVaultApp() {
                     sessionKeys.video(destination.video.path)
                 )
 
-            is Destination.Tab -> Unit
+            // Back on a tab: clear the stale detail/TV key so the other screen follows.
+            is Destination.Tab -> sessionAppState.onTabSelected(destination.index)
 
             // Deep metadata/library pages stay owned by CineVault's real
             // backStack. D1 does not invent parallel route models for them.
             else -> Unit
+        }
+    }
+
+    // Phase 1 mirroring: when the other screen (phone <-> glasses) opens a film page, a TV
+    // show page, or goes back to a tab, follow it. Playing a film is NOT mirrored: one
+    // player owns playback.
+    LaunchedEffect(
+        sessionSnapshot.selectedTab,
+        sessionSnapshot.selectedDetailKey,
+        sessionSnapshot.selectedTvGroupKey,
+        sessionSnapshot.selectedVideoKey,
+        libraryVideos.size,
+    ) {
+        val target = browseRouteFromSession(
+            selectedTab = sessionSnapshot.selectedTab,
+            videoKey = sessionSnapshot.selectedVideoKey,
+            detailKey = sessionSnapshot.selectedDetailKey,
+            tvGroupKey = sessionSnapshot.selectedTvGroupKey,
+        )
+        val local = when (val top = current) {
+            is Destination.Tab -> BrowseRoute.Tab(top.index)
+            is Destination.Detail -> BrowseRoute.Detail(top.item.video.path)
+            is Destination.TvShow -> BrowseRoute.TvGroup(top.group.showName)
+            else -> null
+        }
+        if (!shouldFollowMirror(local, target)) return@LaunchedEffect
+        when (target) {
+            is BrowseRoute.Detail -> libraryVideos.firstOrNull { it.video.path == target.videoPath }
+                ?.let { backStack = backStack.filterIsInstance<Destination.Tab>().take(1) + Destination.Detail(it) }
+            is BrowseRoute.TvGroup -> groupTvShows(libraryVideos).firstOrNull { it.showName == target.showName }
+                ?.let { backStack = backStack.filterIsInstance<Destination.Tab>().take(1) + Destination.TvShow(it) }
+            is BrowseRoute.Tab -> backStack = listOf(Destination.Tab(target.index))
+            null -> Unit
         }
     }
 
