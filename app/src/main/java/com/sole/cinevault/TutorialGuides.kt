@@ -53,9 +53,10 @@ internal val TUTORIAL_GUIDES: List<TutorialGuide> = listOf(
             "Open a film and use the subtitle button in the player.",
             "Subtitle files saved beside the film are found automatically.",
             "To fetch one online, tap Download inside the player. Nothing is downloaded until you tap it.",
-            "Your subtitle choices are remembered for each film."
+            "Your subtitle choices are remembered for each film.",
+            "SRT, VTT and ASS/SSA files all work. ASS shows as plain text, without fancy styling."
         ),
-        tip = "This guide will grow as Subtitle Studio gets its redesign."
+        tip = "Your audio language is remembered separately from your subtitle language."
     ),
     TutorialGuide(
         id = "picture",
@@ -92,9 +93,10 @@ internal val TUTORIAL_GUIDES: List<TutorialGuide> = listOf(
         steps = listOf(
             "Open a film and use the audio button in the player to pick a track or language.",
             "CineVault decodes formats many players struggle with, such as DTS and TrueHD.",
-            "Sound effects settings live in the player and can be reset from Settings."
+            "Sound effects settings live in the player and can be reset from Settings.",
+            "Adaptive Audio and the spectrum listen to the film's own sound inside CineVault. They never use your microphone."
         ),
-        tip = "This guide will grow as Audio Studio gets its redesign."
+        tip = "The audio language you pick is remembered for the next film."
     ),
     TutorialGuide(
         id = "network",
@@ -118,6 +120,8 @@ internal val TUTORIAL_GUIDES: List<TutorialGuide> = listOf(
         steps = listOf(
             "CineVault notices when it runs on a TV and switches on remote control support.",
             "Use the arrow buttons to move between cards and OK to open them.",
+            "In the player: OK pauses or plays, left and right skip 10 seconds, up and down show the controls.",
+            "Rewind and fast-forward keys skip 30 seconds. Play, pause and next work too.",
             "Back always closes the front-most window first."
         ),
         tip = "Closing a window returns you to the button that opened it."
