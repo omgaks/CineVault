@@ -238,8 +238,8 @@ internal fun AudioFxDashboard(
 private fun AdaptiveAudioSection(controller: AudioFxController) {
     AmberSectionPill("Adaptive Audio (Beta)")
     Text(
-        text = "Automatically nudges dialogue presence, compression, and the limiter based on what's playing right now — real-time signal analysis, not scene recognition. A heuristic, not AI; it can be wrong. Your own EQ/FX settings above are the baseline this adjusts on top of, never overwritten.",
-        color = TextMuted, fontSize = 9.5.sp, lineHeight = 13.sp, modifier = Modifier.padding(bottom = 6.dp)
+        text = "Automatically nudges dialogue presence, compression, and the limiter based on what's playing right now — real-time signal analysis, not scene recognition. A heuristic, not AI; it can be wrong. Your own EQ/FX settings above are the baseline this adjusts on top of, never overwritten. Privacy: it only listens to the movie's own sound inside CineVault. It never uses your microphone and asks for no permission.",
+        color = TextMuted, fontSize = 12.sp, lineHeight = 16.sp, modifier = Modifier.padding(bottom = 6.dp)
     )
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(text = "Enable adaptive audio", color = TextBright, fontSize = 12.sp, modifier = Modifier.weight(1f))

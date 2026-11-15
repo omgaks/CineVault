@@ -13,6 +13,51 @@ object SubtitleCueParser {
         Regex("""(?:(\d{1,3}):)?(\d{1,2}):(\d{2})[,.](\d{1,3})""")
     private val alignmentTag = Regex("""\{\\[^}]*\}""")
 
+    /**
+     * Reads SubStation Alpha (.ass/.ssa) "Dialogue:" lines as plain text cues.
+     * Styling and positioning tags are dropped; line breaks (\\N, \\n) are kept.
+     */
+    fun parseAss(raw: String): List<RawCue> {
+        val lines = raw.removePrefix("\uFEFF").replace("\r\n", "\n").replace('\r', '\n').split('\n')
+        var startIdx = 1
+        var endIdx = 2
+        var textIdx = 9
+        var fieldCount = 10
+        val cues = ArrayList<RawCue>()
+        for (line in lines) {
+            val t = line.trim()
+            if (t.startsWith("Format:", ignoreCase = true)) {
+                val fields = t.substringAfter(':').split(',').map { it.trim().lowercase() }
+                val s = fields.indexOf("start")
+                val e = fields.indexOf("end")
+                val x = fields.indexOf("text")
+                if (s >= 0 && e >= 0 && x >= 0) {
+                    startIdx = s; endIdx = e; textIdx = x; fieldCount = fields.size
+                }
+            } else if (t.startsWith("Dialogue:", ignoreCase = true)) {
+                val parts = t.substringAfter(':').trimStart().split(',', limit = fieldCount)
+                if (parts.size <= maxOf(startIdx, endIdx, textIdx)) continue
+                val start = parseAssTime(parts[startIdx]) ?: continue
+                val end = parseAssTime(parts[endIdx]) ?: continue
+                val text = parts[textIdx]
+                    .replace(Regex("\\{[^}]*\\}"), "")
+                    .replace("\\N", "\n")
+                    .replace("\\n", "\n")
+                    .replace("\\h", " ")
+                    .trim()
+                if (text.isNotEmpty() && end > start) cues.add(RawCue(start, end, text))
+            }
+        }
+        return cues.sortedBy { it.startMs }
+    }
+
+    private fun parseAssTime(value: String): Long? {
+        val m = Regex("(\\d+):(\\d{2}):(\\d{2})[.](\\d{1,3})").matchEntire(value.trim()) ?: return null
+        val (h, mi, sec, frac) = m.destructured
+        val ms = frac.padEnd(3, '0').take(3).toLong() // ".12" is centiseconds = 120 ms
+        return h.toLong() * 3_600_000 + mi.toLong() * 60_000 + sec.toLong() * 1000 + ms
+    }
+
     fun parse(raw: String): List<RawCue> {
         val lines = raw.removePrefix("\uFEFF").replace("\r\n", "\n").replace('\r', '\n').split('\n')
         val cues = ArrayList<RawCue>()

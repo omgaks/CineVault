@@ -73,6 +73,23 @@ class MainActivity : FragmentActivity() {
     private val notificationPermissionLauncher =
         registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { /* no-op either way — the foreground service still runs without it, it just won't show a visible notification until granted */ }
 
+    /** Asks for the notification permission once, the first time a video plays. */
+    fun requestNotificationPermissionOnce() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val prefs = getSharedPreferences("cinevault_prompts", MODE_PRIVATE)
+        if (prefs.getBoolean("notification_permission_asked", false)) return
+        prefs.edit().putBoolean("notification_permission_asked", true).apply()
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) return
+        android.widget.Toast.makeText(
+            this,
+            "Allow notifications to get playback controls in your notification shade",
+            android.widget.Toast.LENGTH_LONG
+        ).show()
+        notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -100,9 +117,8 @@ class MainActivity : FragmentActivity() {
         // to actually be visible on Android 13+. The service itself still runs and
         // keeps playback alive without this permission — it just has no visible
         // controls until granted.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        }
+        // Asked at first playback instead (see requestNotificationPermissionOnce)
+        // so the request arrives with a reason, not cold at launch.
 
         // Previously forced screenBrightness = 1.0f here at app launch,
         // app-wide — same anti-pattern already removed from the video
@@ -578,6 +594,9 @@ fun CineVaultApp() {
     // changes made via SharedPreferences.
     val secretVideoPaths = loadSecretVideoPaths(context)
     val secretFolderPaths = loadSecretFolderPaths(context)
+    val isHiddenFromPlaylist: (VideoWithMetadata) -> Boolean = { item ->
+        isSecretItem(item, secretVideoPaths, secretFolderPaths) || isRestrictedFolderItem(item)
+    }
     val homeVisibleVideos = libraryVideos.filter { item ->
         runCatching { item.video.path }.getOrNull() ?: return@filter false
         !isSecretItem(item, secretVideoPaths, secretFolderPaths) &&
@@ -599,6 +618,7 @@ fun CineVaultApp() {
 
     LaunchedEffect(isPlayerActive) {
         if (isPlayerActive) {
+            (activity as? MainActivity)?.requestNotificationPermissionOnce()
             activity?.enterImmersiveModeForPlayer()
         } else {
             activity?.exitImmersiveModeForPlayer()
@@ -662,7 +682,7 @@ fun CineVaultApp() {
                         onBack = { pop() },
                         onPlay = {
                             // Pass full library so autoplay can find next video
-                            push(Destination.Player(dest.item.video, dest.item.type, libraryVideos))
+                            push(Destination.Player(dest.item.video, dest.item.type, buildPlaybackPlaylist(dest.item, libraryVideos, isHiddenFromPlaylist)))
                         },
                         onGenreClick = { genreName -> push(Destination.GenrePage(genreName)) },
                         onDirectorClick = { directorName -> push(Destination.DirectorPage(directorName)) },
@@ -957,7 +977,7 @@ fun CineVaultApp() {
                                 scope.launch { saveLibraryCache(context = context, videos = sanitizeLibraryVideos(loadedVideos)) }
                             },
                             onItemClick = { item -> push(Destination.Detail(item)) },
-                            onPlayClick = { item -> push(Destination.Player(item.video, item.type, libraryVideos)) },
+                            onPlayClick = { item -> push(Destination.Player(item.video, item.type, buildPlaybackPlaylist(item, libraryVideos, isHiddenFromPlaylist))) },
                             onTvGroupClick = { group -> push(Destination.TvShow(group)) },
                             onSecretChanged = { scope.launch { reloadAfterSecretChange() } },
                             onGenreClick = { genreName -> push(Destination.GenrePage(genreName)) },
@@ -1033,7 +1053,7 @@ fun CineVaultApp() {
                                 onScanRequest = { switchTab(1) },
                                 onItemClick = { item -> push(Destination.Detail(item)) },
                                 onPlayClick = { item ->
-                                    push(Destination.Player(item.video, item.type, libraryVideos))
+                                    push(Destination.Player(item.video, item.type, buildPlaybackPlaylist(item, libraryVideos, isHiddenFromPlaylist)))
                                 },
                                 onVideosLoaded = { loadedVideos ->
                                     libraryVideos = sanitizeLibraryVideos(loadedVideos)
@@ -1079,7 +1099,7 @@ fun CineVaultApp() {
                         (activeTabIndex == 0 || activeTabIndex == 1)),
                 onPlay = { key ->
                     homeVisibleVideos.firstOrNull { it.video.path == key }?.let { item ->
-                        val target = Destination.Player(item.video, item.type, libraryVideos)
+                        val target = Destination.Player(item.video, item.type, buildPlaybackPlaylist(item, libraryVideos, isHiddenFromPlaylist))
                         if (isPlayerActive) replaceTop(target) else push(target)
                     }
                 },

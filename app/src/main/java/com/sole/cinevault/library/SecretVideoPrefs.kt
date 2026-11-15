@@ -21,17 +21,28 @@ private const val SECRET_PREFS_NAME_LEGACY = "cinevault_secret"
 private const val SECRET_PATHS_KEY = "secret_video_paths"
 private const val SECRET_FOLDERS_KEY = "secret_folder_paths"
 
+// Built once and reused: creating the MasterKey + EncryptedSharedPreferences
+// is slow, and this store is read on every screen redraw.
+@Volatile private var cachedSecurePrefs: SharedPreferences? = null
+@Volatile private var legacyMigrationChecked = false
+
 private fun securePrefs(context: Context): SharedPreferences {
-    val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
-    return EncryptedSharedPreferences.create(
-        context,
-        SECRET_PREFS_NAME_SECURE,
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-    )
+    cachedSecurePrefs?.let { return it }
+    return synchronized(SECRET_PREFS_NAME_SECURE) {
+        cachedSecurePrefs ?: run {
+            val appContext = context.applicationContext
+            val masterKey = MasterKey.Builder(appContext)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            EncryptedSharedPreferences.create(
+                appContext,
+                SECRET_PREFS_NAME_SECURE,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            ).also { cachedSecurePrefs = it }
+        }
+    }
 }
 
 // Copies whatever's in the old plaintext file into the encrypted store,
@@ -41,6 +52,12 @@ private fun securePrefs(context: Context): SharedPreferences {
 // store, and leaves the legacy file alone if migration fails for any
 // reason rather than risk losing saved paths outright.
 private fun migrateLegacySecretPrefsIfNeeded(context: Context) {
+    if (legacyMigrationChecked) return
+    migrateLegacySecretPrefsOnce(context)
+    legacyMigrationChecked = true
+}
+
+private fun migrateLegacySecretPrefsOnce(context: Context) {
     val legacy = context.getSharedPreferences(SECRET_PREFS_NAME_LEGACY, Context.MODE_PRIVATE)
     val legacyPaths = legacy.getStringSet(SECRET_PATHS_KEY, null)
     val legacyFolders = legacy.getStringSet(SECRET_FOLDERS_KEY, null)

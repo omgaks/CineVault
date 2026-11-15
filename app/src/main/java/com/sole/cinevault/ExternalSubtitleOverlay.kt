@@ -90,7 +90,8 @@ class ExternalSubtitleOverlay(
 
     fun canHandle(uri: Uri): Boolean {
         val format = detectSubtitleFormat(uri)
-        return format == SubtitleFormat.SRT || format == SubtitleFormat.VTT
+        return format == SubtitleFormat.SRT || format == SubtitleFormat.VTT ||
+            format == SubtitleFormat.ASS || format == SubtitleFormat.SSA
     }
 
     /** Takes subtitle rendering over from ExoPlayer right now (before the file is read). */
@@ -236,7 +237,8 @@ class ExternalSubtitleOverlay(
                 "file", null -> File(uri.path ?: return emptyList()).readText(Charsets.UTF_8)
                 else -> return emptyList()
             }
-            SubtitleCueParser.parse(text).map { TimedCue(it.startMs, it.endMs, buildCue(it)) }
+            val isAss = detectSubtitleFormat(uri).let { it == SubtitleFormat.ASS || it == SubtitleFormat.SSA }
+            (if (isAss) SubtitleCueParser.parseAss(text) else SubtitleCueParser.parse(text)).map { TimedCue(it.startMs, it.endMs, buildCue(it)) }
         } catch (_: Exception) {
             emptyList()
         }

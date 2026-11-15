@@ -21,7 +21,7 @@ private val releaseTagWords = Regex(
  * "Star Wars Episode 1 The Phantom Menace" is not mistaken for a show.
  */
 internal fun extractBareEpisodeNumber(cleanName: String): EpisodeInfo? {
-    val match = Regex("(?i)^(.*?)\\b(?:episode|ep|e)(?=\\s*\\d)\\s*(\\d{1,3})\\b(.*)$").find(cleanName) ?: return null
+    val match = Regex("(?i)^(.*?)\\b(?:episode|ep|e)(?=\\s*\\d)\\s*(\\d{1,4})\\b(.*)$").find(cleanName) ?: return null
     val show = match.groupValues[1].replace(releaseTagWords, "").replace(Regex("[\\[\\]()]"), " ")
         .replace(Regex("\\s+"), " ").trim()
     if (show.isBlank()) return null
@@ -35,17 +35,47 @@ internal fun extractBareEpisodeNumber(cleanName: String): EpisodeInfo? {
 
 private val filmWords = Regex("(?i)\\b(movie|film)\\b")
 
-/** True for an explicit SxxEyy / NxMM marker, which is always an episode (never a film). */
+/**
+ * "S01E05", "S01 E05", "S01E100" and double episodes such as "S01E01E02" (the first one counts).
+ * Episode numbers run to four digits because long series pass 100, and some pass 1000.
+ */
+private val seasonEpisodeMarker = Regex("(?i)(.*?)\\bS(\\d{1,2})\\s{0,3}E(\\d{1,4})(?:\\s?E\\d{1,4})*\\b")
+
+/** "2x05". */
+private val crossMarker = Regex("(?i)(.*?)\\b(\\d{1,2})x(\\d{1,3})\\b")
+
+/** "Season 1 Episode 3", "Season 2 Ep 14". */
+private val seasonWordMarker = Regex("(?i)(.*?)\\bseason\\s*(\\d{1,2})\\s*(?:episode|ep|e)\\s*(\\d{1,4})\\b")
+
+/** Chinese "第12集" / "第12话" (episode 12), with an optional "第2季" (season 2) before it. */
+private val chineseEpisodeMarker = Regex("^(.*?)(?:第\\s*(\\d{1,2})\\s*季)?\\s*第\\s*(\\d{1,4})\\s*[集话話回]")
+
+private fun cleanedForMarkers(fileName: String): String =
+    fileName.substringBeforeLast(".").replace(".", " ").replace("_", " ").replace("-", " ")
+
+/** True for an explicit season-and-episode marker, which is always an episode (never a film). */
 fun isExplicitSeasonEpisodeName(fileName: String): Boolean {
-    val clean = fileName.substringBeforeLast(".").replace(".", " ").replace("_", " ").replace("-", " ")
-    return Regex("(?i)\\bS\\d{1,2}E\\d{1,3}\\b").containsMatchIn(clean) ||
-        Regex("(?i)\\b\\d{1,2}x\\d{1,3}\\b").containsMatchIn(clean)
+    val clean = cleanedForMarkers(fileName)
+    return seasonEpisodeMarker.containsMatchIn(clean) ||
+        crossMarker.containsMatchIn(clean) ||
+        seasonWordMarker.containsMatchIn(clean) ||
+        extractChineseEpisodeNumber(clean) != null
+}
+
+/** "斗破苍穹 第01集": the show name is whatever comes before the marker. */
+internal fun extractChineseEpisodeNumber(cleanName: String): EpisodeInfo? {
+    val match = chineseEpisodeMarker.find(cleanName) ?: return null
+    val show = match.groupValues[1].replace(releaseTagWords, "").replace(Regex("[\\[\\]()【】]"), " ")
+        .replace(Regex("\\s+"), " ").trim()
+    if (show.isBlank()) return null
+    val episode = match.groupValues[3].toIntOrNull() ?: return null
+    return EpisodeInfo(showName = show, season = match.groupValues[2].toIntOrNull() ?: 1, episode = episode)
 }
 
 /** True when the name carries a bare "E01" / "Episode 1" style marker, explicit or not. */
 fun hasBareEpisodeMarker(fileName: String): Boolean {
     val clean = fileName.substringBeforeLast(".").replace(".", " ").replace("_", " ").replace("-", " ")
-    return Regex("(?i)\\b(?:episode|ep|e)\\s*\\d{1,3}\\b").containsMatchIn(clean) && !isExplicitSeasonEpisodeName(fileName)
+    return Regex("(?i)\\b(?:episode|ep|e)\\s*\\d{1,4}\\b").containsMatchIn(clean) && !isExplicitSeasonEpisodeName(fileName)
 }
 
 /** True for names the old SxxEyy / NxMM patterns miss but that are plainly "Show Episode NN". */
@@ -63,11 +93,7 @@ fun extractEpisodeInfo(fileName: String): EpisodeInfo? {
             .replace("_", " ")
             .replace("-", " ")
 
-    val patterns =
-        listOf(
-            Regex("(?i)(.*?)\\bS(\\d{1,2})E(\\d{1,2})\\b"),
-            Regex("(?i)(.*?)\\b(\\d{1,2})x(\\d{1,2})\\b")
-        )
+    val patterns = listOf(seasonEpisodeMarker, seasonWordMarker, crossMarker)
 
     for (pattern in patterns) {
 
@@ -95,7 +121,9 @@ fun extractEpisodeInfo(fileName: String): EpisodeInfo? {
         )
     }
 
-    return extractBareEpisodeNumber(cleanName) ?: extractDashEpisodeNumber(fileName)
+    return extractChineseEpisodeNumber(cleanName)
+        ?: extractBareEpisodeNumber(cleanName)
+        ?: extractDashEpisodeNumber(fileName)
 }
 
 /**
@@ -105,7 +133,9 @@ fun extractEpisodeInfo(fileName: String): EpisodeInfo? {
  */
 internal fun extractDashEpisodeNumber(fileName: String): EpisodeInfo? {
     val base = fileName.substringBeforeLast(".").replace("_", " ")
-    val match = Regex("^(.*?)\\s-\\s(\\d{1,3})(?:v\\d)?\\b(.*)$").find(base) ?: return null
+    val match = Regex("^(.*?)\\s-\\s(\\d{1,4})(?:v\\d)?\\b(.*)$").find(base) ?: return null
+    // "[Group] Some Film - 2019 (1080p)" carries a release year, not episode 2019.
+    if (match.groupValues[2].toIntOrNull() in 1900..2099) return null
     val hasGroup = Regex("^\\s*\\[[^\\]]+\\]").containsMatchIn(match.groupValues[1])
     val tail = match.groupValues[3]
     val hasTail = releaseTagWords.containsMatchIn(tail) || trailingEpisodeTags.containsMatchIn(tail) ||
