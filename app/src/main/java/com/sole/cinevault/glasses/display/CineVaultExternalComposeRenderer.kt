@@ -158,23 +158,27 @@ private class CineVaultExternalPresentation(
                                     CineVaultRenderDestination.EXTERNAL_DISPLAY
                                 )
 
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                HaloCanonicalCineVaultSurface(
-                                    enabled = haloEnabled,
-                                    acceptRemoteInput = haloEnabled,
-                                ) {
+                            // Everything (the app, the film, the calibration card) lives INSIDE
+                            // the Halo surface so the glasses pointer can reach all of it.
+                            HaloCanonicalCineVaultSurface(
+                                enabled = haloEnabled,
+                                acceptRemoteInput = haloEnabled,
+                            ) {
+                                Box(modifier = Modifier.fillMaxSize()) {
                                     CineVaultRoot()
-                                }
 
-                                GlassesCalibrationPrompt(
-                                    visible = showCalibration,
-                                    displayName = display.name,
-                                    isLandscape =
-                                        configuration.orientation ==
-                                            android.content.res.Configuration.ORIENTATION_LANDSCAPE,
-                                    onDone = { showCalibration = false },
-                                    modifier = Modifier.align(Alignment.Center),
-                                )
+                                    ExternalCanonicalVideoLayer()
+
+                                    GlassesCalibrationPrompt(
+                                        visible = showCalibration,
+                                        displayName = display.name,
+                                        isLandscape =
+                                            configuration.orientation ==
+                                                android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+                                        onDone = { showCalibration = false },
+                                        modifier = Modifier.align(Alignment.Center),
+                                    )
+                                }
                             }
                         }
                     }
