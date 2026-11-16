@@ -14,6 +14,7 @@ import com.sole.cinevault.tvmode.TelevisionModeDetector
 import com.sole.cinevault.tvmode.TvHomeScreen
 import com.sole.cinevault.tvmode.TvShelf
 import com.sole.cinevault.tvmode.TvShelfItem
+import com.sole.cinevault.glasses.AppCinemaVoidPad
 import com.sole.cinevault.glasses.BrowseRoute
 import com.sole.cinevault.glasses.ProvideAppGlassesSession
 import com.sole.cinevault.glasses.browseRouteFromSession
@@ -1186,4 +1187,12 @@ fun CineVaultApp() {
             showGlassesFirstRunTutorial = false
         },
     )
+
+    // Glasses connected: the tablet becomes the touchpad on every screen, after the
+    // one-time tutorial card has been dismissed. Phone copy only.
+    if (!showGlassesFirstRunTutorial &&
+        LocalCineVaultRenderDestination.current == CineVaultRenderDestination.HOST_DISPLAY
+    ) {
+        AppCinemaVoidPad()
+    }
 }

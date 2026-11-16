@@ -1,0 +1,105 @@
+package com.sole.cinevault.glasses
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.sole.cinevault.CineVaultPlayerHolder
+import com.sole.cinevault.ui.theme.AmberCore
+
+private const val FIVE_FINGER_SPREAD = 1.35f
+
+/**
+ * The tablet as a touchpad on EVERY screen while glasses are connected, not just inside a
+ * film. Without it nothing on the tablet can move the glasses pointer outside playback.
+ *
+ * It is never a trap: "Use tablet" hides it, a small chip brings it back, and a five-finger
+ * spread ends the glasses session. Hidden while a film plays (the player has its own pad).
+ */
+@Composable
+internal fun AppCinemaVoidPad() {
+    val session = LocalAppGlassesSession.current ?: return
+    val filmPlaying = CineVaultPlayerHolder.currentPlayer != null
+    // Resets whenever a different pair of glasses is connected.
+    var padOn by remember(session.display.displayId) { mutableStateOf(true) }
+    if (!session.active || filmPlaying) return
+
+    if (padOn) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            CinemaVoidControllerSurface(
+                modifier = Modifier.fillMaxSize().fiveFingerReturn(session.disable),
+                inPlayer = false,
+            )
+            PadChip(
+                label = "Use tablet",
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 28.dp),
+                onClick = { padOn = false },
+            )
+        }
+    } else {
+        Box(modifier = Modifier.fillMaxSize()) {
+            PadChip(
+                label = "Glasses touchpad",
+                modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp),
+                onClick = { padOn = true },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PadChip(label: String, modifier: Modifier, onClick: () -> Unit) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(AmberCore)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = androidx.compose.ui.graphics.Color.Black,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+/** Five fingers spreading apart = give the tablet back. Observes only; never consumes. */
+private fun Modifier.fiveFingerReturn(onReturn: () -> Unit): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        var spread = 1f
+        var fired = false
+        do {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            if (event.changes.count { it.pressed } >= 5) {
+                spread *= event.calculateZoom()
+                if (!fired && spread >= FIVE_FINGER_SPREAD) {
+                    fired = true
+                    onReturn()
+                }
+            }
+        } while (event.changes.any { it.pressed })
+    }
+}
