@@ -21,6 +21,9 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
+import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.OnBackPressedDispatcherOwner
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistryController
@@ -75,7 +78,8 @@ private class CineVaultExternalPresentation(
 ) : Presentation(activity, display),
     LifecycleOwner,
     SavedStateRegistryOwner,
-    ViewModelStoreOwner {
+    ViewModelStoreOwner,
+    OnBackPressedDispatcherOwner {
 
     private val lifecycleRegistry = LifecycleRegistry(this)
     private val savedStateController = SavedStateRegistryController.create(this)
@@ -83,6 +87,18 @@ private class CineVaultExternalPresentation(
     override val lifecycle: Lifecycle get() = lifecycleRegistry
     override val savedStateRegistry get() = savedStateController.savedStateRegistry
     override val viewModelStore = ViewModelStore()
+
+    // A Presentation is a plain Dialog, so it has no back-button owner of its own. The
+    // full CineVault tree uses BackHandler, which crashed with "No
+    // OnBackPressedDispatcherOwner" the moment the glasses showed the real app.
+    private val backDispatcher = OnBackPressedDispatcher()
+    override val onBackPressedDispatcher: OnBackPressedDispatcher get() = backDispatcher
+
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        if (!backDispatcher.hasEnabledCallbacks()) super.onBackPressed()
+        else backDispatcher.onBackPressed()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         savedStateController.performAttach()
@@ -116,7 +132,9 @@ private class CineVaultExternalPresentation(
                 CineVaultTheme {
                     CompositionLocalProvider(
                         LocalCineVaultRenderDestination provides
-                            CineVaultRenderDestination.EXTERNAL_DISPLAY
+                            CineVaultRenderDestination.EXTERNAL_DISPLAY,
+                        LocalOnBackPressedDispatcherOwner provides
+                            this@CineVaultExternalPresentation,
                     ) {
                         CineVaultSessionRoot {
                             val configuration = LocalConfiguration.current
