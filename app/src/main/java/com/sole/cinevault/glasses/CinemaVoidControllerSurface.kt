@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun CinemaVoidControllerSurface(
     modifier: Modifier = Modifier,
+    inPlayer: Boolean = true,
 ) {
     BoxWithConstraints(
         modifier = modifier
@@ -107,22 +108,13 @@ fun CinemaVoidControllerSurface(
                         textAlign = TextAlign.Center,
                     )
 
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(12.dp))
 
-                    Text(
-                        text = "External display active",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.54f),
-                        textAlign = TextAlign.Center,
-                    )
-
-                    Spacer(Modifier.height(3.dp))
-
-                    Text(
-                        text = "Touch anywhere to control CineVault",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.42f),
-                        textAlign = TextAlign.Center,
+                    // While a film plays the guide shows for a few seconds at the start, then
+                    // fades so the surface is just a quiet touchpad. Outside a film it stays.
+                    CinemaVoidGuide(
+                        rows = if (inPlayer) PLAYER_GUIDE_ROWS else APP_GUIDE_ROWS,
+                        autoHideMs = if (inPlayer) 12_000L else null,
                     )
                 }
             }
