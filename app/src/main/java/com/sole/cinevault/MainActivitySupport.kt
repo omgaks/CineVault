@@ -46,7 +46,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 object CineVaultPlayerHolder {
-    var currentPlayer: ExoPlayer? = null
+    // State-backed so the glasses copy of the app notices when a film starts or stops.
+    var currentPlayer: ExoPlayer? by mutableStateOf(null)
     // Set/cleared by VideoPlayerScreen.kt alongside currentPlayer. Bridges
     // hardware media-button next/previous (headset, Bluetooth) into the
     // app's own episode-switching logic (playNext()/playPrevious() in

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +42,7 @@ import com.sole.cinevault.ui.theme.TextBright
 import com.sole.cinevault.ui.theme.TextMuted
 import com.sole.cinevault.ui.theme.glassPanel
 
+private const val AUTO_CLOSE_MS = 25_000L
 private const val FONT_STEP_SP = 2f
 private const val MIN_FONT_SP = 18f
 private const val MAX_FONT_SP = 42f
@@ -62,6 +64,15 @@ internal fun GlassesCalibrationPrompt(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+
+    // Never leave the glasses stuck on this card: it closes itself after a while and is
+    // asked again next time. (Only "Looks right" remembers the model.)
+    LaunchedEffect(visible) {
+        if (visible) {
+            kotlinx.coroutines.delay(AUTO_CLOSE_MS)
+            onDone()
+        }
+    }
 
     AnimatedVisibility(
         visible = visible,
@@ -91,8 +102,8 @@ internal fun GlassesCalibrationPrompt(
             Text(
                 text = "One-time check, per model. Does this square look square, and is the sample text a comfortable size?",
                 color = TextMuted,
-                fontSize = 11.5.sp,
-                lineHeight = 16.sp,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
             )
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -148,6 +159,12 @@ internal fun GlassesCalibrationPrompt(
                     current.copy(fontSizeSp = fontSizeSp),
                 )
                 markCalibrated(context, displayName)
+                onDone()
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            CalibrationButton(label = "Skip for now", modifier = Modifier.fillMaxWidth()) {
                 onDone()
             }
         }
