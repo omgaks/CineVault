@@ -59,7 +59,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.sole.cinevault.ui.theme.CineVaultTheme
 import com.sole.cinevault.ui.theme.usesSideRail
 import com.sole.cinevault.glasses.display.CineVaultTabletSessionHost
+import com.sole.cinevault.glasses.display.CineVaultRenderDestination
 import com.sole.cinevault.glasses.display.LocalCineVaultComposeAppState
+import com.sole.cinevault.glasses.display.LocalCineVaultRenderDestination
 import com.sole.cinevault.glasses.display.CineVaultNavigationKeyFactory
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -1136,9 +1138,10 @@ fun CineVaultApp() {
             }
             VoiceTalkHost(
                 films = talkFilms,
-                buttonVisible = (isPlayerActive && !isTelevision && VoicePlayerRegistry.current != null) ||
+                buttonVisible = LocalCineVaultRenderDestination.current == CineVaultRenderDestination.HOST_DISPLAY &&
+                    ((isPlayerActive && !isTelevision && VoicePlayerRegistry.current != null) ||
                     (!isPlayerActive && !isTelevision && current is Destination.Tab &&
-                        (activeTabIndex == 0 || activeTabIndex == 1)),
+                        (activeTabIndex == 0 || activeTabIndex == 1))),
                 onPlay = { key ->
                     homeVisibleVideos.firstOrNull { it.video.path == key }?.let { item ->
                         val target = Destination.Player(item.video, item.type, buildPlaybackPlaylist(item, libraryVideos, isHiddenFromPlaylist))
@@ -1158,7 +1161,11 @@ fun CineVaultApp() {
 
     // Voice (beta): off unless switched on in Settings. See VoiceWakeHost.
     LaunchedEffect(Unit) { VoiceRuntime.loadFrom(context) }
-    VoiceWakeHost()
+    // Microphone features belong to the phone's copy only; the glasses copy must not
+    // start a second listener.
+    if (LocalCineVaultRenderDestination.current == CineVaultRenderDestination.HOST_DISPLAY) {
+        VoiceWakeHost()
+    }
 
     if (showOnboarding || replayWelcome) {
         OnboardingScreen(
