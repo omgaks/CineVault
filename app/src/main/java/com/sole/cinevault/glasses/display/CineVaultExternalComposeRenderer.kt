@@ -94,12 +94,6 @@ private class CineVaultExternalPresentation(
     private val backDispatcher = OnBackPressedDispatcher()
     override val onBackPressedDispatcher: OnBackPressedDispatcher get() = backDispatcher
 
-    @Suppress("DEPRECATION")
-    override fun onBackPressed() {
-        if (!backDispatcher.hasEnabledCallbacks()) super.onBackPressed()
-        else backDispatcher.onBackPressed()
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         savedStateController.performAttach()
         savedStateController.performRestore(savedInstanceState)
