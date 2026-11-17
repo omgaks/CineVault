@@ -21,7 +21,11 @@ object PictureHdrRouting {
         val transfer = when (colorInfo?.colorTransfer) {
             C.COLOR_TRANSFER_ST2084 -> PictureHdrPolicy.Transfer.PQ
             C.COLOR_TRANSFER_HLG -> PictureHdrPolicy.Transfer.HLG
-            C.COLOR_TRANSFER_SDR -> PictureHdrPolicy.Transfer.SDR
+            // Conflicting SDR transfer and HDR mastering metadata is unsafe to
+            // process through the SDR-only shader. Preserve original playback.
+            C.COLOR_TRANSFER_SDR ->
+                if (colorInfo.hdrStaticInfo != null) PictureHdrPolicy.Transfer.UNKNOWN
+                else PictureHdrPolicy.Transfer.SDR
             else -> if (knownSdrAvc) PictureHdrPolicy.Transfer.SDR else PictureHdrPolicy.Transfer.UNKNOWN
         }
         val kind = if (format.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION)

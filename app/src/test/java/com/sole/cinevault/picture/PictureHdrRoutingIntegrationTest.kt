@@ -20,6 +20,21 @@ class PictureHdrRoutingIntegrationTest {
         PictureHdrRouting.decide(format(C.COLOR_TRANSFER_SDR)).route,
     )
 
+    @Test fun conflictingSdrTransferAndHdrStaticMetadataIsProtected() {
+        val contradictory = Format.Builder()
+            .setSampleMimeType(MimeTypes.VIDEO_H265)
+            .setColorInfo(
+                ColorInfo.Builder()
+                    .setColorTransfer(C.COLOR_TRANSFER_SDR)
+                    .setHdrStaticInfo(byteArrayOf(1, 2, 3))
+                    .build()
+            ).build()
+        assertEquals(
+            PictureHdrPolicy.Route.HDR_PASSTHROUGH,
+            PictureHdrRouting.decide(contradictory).route,
+        )
+    }
+
     @Test fun pqIsProtected() = assertEquals(
         PictureHdrPolicy.Route.HDR_PASSTHROUGH,
         PictureHdrRouting.decide(format(C.COLOR_TRANSFER_ST2084)).route,
