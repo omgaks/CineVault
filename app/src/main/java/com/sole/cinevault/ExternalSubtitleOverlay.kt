@@ -190,6 +190,8 @@ class ExternalSubtitleOverlay(
         lastShownKey = key
         lastPushAtMs = SystemClock.elapsedRealtime()
         subtitleViewProvider()?.setCues(list)
+        // The same cues also go to the video view drawn on the glasses, when there is one.
+        com.sole.cinevault.glasses.display.ExternalPlayerViewRegistry.playerView?.subtitleView?.setCues(list)
     }
 
     /** Index of the latest cue that has started and not yet ended, or -1. */

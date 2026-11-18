@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.media3.common.util.UnstableApi
@@ -23,6 +24,12 @@ import com.sole.cinevault.PlayerVideoSurface
 @Composable
 internal fun ExternalCanonicalVideoLayer() {
     val player = CineVaultPlayerHolder.currentPlayer ?: return
+    DisposableEffect(player) {
+        onDispose {
+            ExternalPlayerViewRegistry.playerView = null
+            ExternalPlayerHudState.reset()
+        }
+    }
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         PlayerVideoSurface(
             player = player,
@@ -31,8 +38,9 @@ internal fun ExternalCanonicalVideoLayer() {
             videoScale = 1f,
             videoOffsetX = 0f,
             videoOffsetY = 0f,
-            onPlayerViewChanged = {},
+            onPlayerViewChanged = { ExternalPlayerViewRegistry.playerView = it },
             onResizeModeChanged = {},
         )
+        ExternalPlayerHudOverlay(player = player)
     }
 }

@@ -1,6 +1,7 @@
 package com.sole.cinevault
 
 import com.sole.cinevault.glasses.gestures.HeadGesture
+import com.sole.cinevault.glasses.display.ExternalPlayerHudState
 import com.sole.cinevault.glasses.display.ExternalViewportSessionState
 import com.sole.cinevault.glasses.gestures.rememberHeadGestureDetector
 
@@ -1077,6 +1078,12 @@ fun VideoPlayerScreen(
             }
         }
 
+        // Keep the glasses status bar in step with the tablet's controls and the film title.
+        SideEffect {
+            ExternalPlayerHudState.controlsVisible = glasses.isActive && chromeUi.showControls
+            ExternalPlayerHudState.title = currentVideo.name.substringBeforeLast('.')
+        }
+
         PlayerPlaybackGestureLayer(
             context = context,
             activity = activity,
@@ -1121,13 +1128,27 @@ fun VideoPlayerScreen(
                 chromeUi.brightnessGestureKey++
                 chromeUi.volumeGestureKey++
             },
-            externalControlsVisible = { false },
+            // Glasses: the REAL controls (and Subtitle Studio, Audio Studio ...) show on the
+            // tablet; the glasses mirror a read-only status through ExternalPlayerHudState.
+            externalControlsVisible = { chromeUi.showControls },
             externalShowTouchPulse = {},
             externalClickPointer = { false },
-            externalShowControls = {},
-            externalHideControls = {},
-            externalShowGestureHud = { _, _, _ -> },
-            externalUpdateSeekPreview = { _, _, _ -> },
+            externalShowControls = {
+                chromeUi.showControls = true
+                chromeUi.showTopBar = true
+            },
+            externalHideControls = {
+                chromeUi.showControls = false
+                chromeUi.showTopBar = false
+            },
+            externalShowGestureHud = { label, value, progress ->
+                ExternalPlayerHudState.showGesture(label, value, progress)
+            },
+            externalUpdateSeekPreview = { bitmap, positionMs, visible ->
+                ExternalPlayerHudState.seekPreviewBitmap = bitmap
+                ExternalPlayerHudState.seekPreviewMs = positionMs
+                ExternalPlayerHudState.seekPreviewVisible = visible
+            },
             externalMovePointer = { _, _ -> },
             externalApplyViewportTransform = { zoom, panX, panY ->
                 ExternalViewportSessionState.applyGesture(
