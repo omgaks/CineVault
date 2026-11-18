@@ -24,7 +24,10 @@ import kotlin.math.hypot
  *
  * Observes in the Final pass and never consumes, like the player pad.
  */
-internal fun Modifier.appPadTouch(): Modifier = pointerInput(Unit) {
+internal fun Modifier.appPadTouch(
+    allowScroll: Boolean = true,
+    onActivity: () -> Unit = {},
+): Modifier = pointerInput(allowScroll) {
     awaitEachGesture {
         val w = size.width
         val h = size.height
@@ -40,6 +43,7 @@ internal fun Modifier.appPadTouch(): Modifier = pointerInput(Unit) {
         }
 
         val first = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Final)
+        onActivity()
         var pos = first.position
 
         // Give a second finger a moment to land before treating this as a pointer press.
@@ -59,7 +63,7 @@ internal fun Modifier.appPadTouch(): Modifier = pointerInput(Unit) {
 
         when (early) {
             1 -> {
-                twoFingerScroll(w, h)
+                twoFingerScroll(w, h, allowScroll)
                 return@awaitEachGesture
             }
             2 -> { // quick tap
@@ -89,10 +93,11 @@ internal fun Modifier.appPadTouch(): Modifier = pointerInput(Unit) {
                 continue
             }
 
+            onActivity()
             val down = event.changes.count { it.pressed }
             if (down >= 2) {
                 HaloRemoteInputSession.publishCancelPress()
-                twoFingerScroll(w, h)
+                twoFingerScroll(w, h, allowScroll)
                 return@awaitEachGesture
             }
             val mine = event.changes.firstOrNull { it.id == first.id } ?: break
@@ -117,7 +122,15 @@ internal fun Modifier.appPadTouch(): Modifier = pointerInput(Unit) {
 private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.twoFingerScroll(
     w: Int,
     h: Int,
+    allowScroll: Boolean,
 ) {
+    if (!allowScroll) {
+        // Inside a film the two-finger scroll must never nudge a slider under the pointer.
+        do {
+            val event = awaitPointerEvent(PointerEventPass.Final)
+        } while (event.changes.fastAny { it.pressed })
+        return
+    }
     HaloRemoteInputSession.publishScroll(HaloRemoteInputSession.ScrollPhase.START, 0f, 0f)
     var previous: Offset? = null
     var scrolling = true

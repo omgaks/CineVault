@@ -47,8 +47,8 @@ internal data class GuideRow(val icon: ImageVector, val title: String, val detai
 
 /** What the tablet touch surface does while a film plays on the glasses. */
 internal val PLAYER_GUIDE_ROWS = listOf(
-    GuideRow(Icons.Rounded.OpenWith, "Drag", "Move the pointer on the glasses"),
-    GuideRow(Icons.Rounded.TouchApp, "Tap", "Show or hide the controls, or press what the pointer is on"),
+    GuideRow(Icons.Rounded.TouchApp, "Tap", "Show the controls on the glasses"),
+    GuideRow(Icons.Rounded.OpenWith, "Controls showing", "One finger moves the pointer, tap presses, hold then drag slides the bar"),
     GuideRow(Icons.Rounded.PlayCircle, "Double tap", "Play or pause"),
     GuideRow(Icons.Rounded.FastForward, "Swipe sideways, top half", "Seek through the film"),
     GuideRow(Icons.Rounded.WbSunny, "Swipe up/down, left edge", "Brightness"),

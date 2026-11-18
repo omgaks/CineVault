@@ -16,6 +16,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.media3.exoplayer.ExoPlayer
+import com.sole.cinevault.glasses.appPadTouch
+import com.sole.cinevault.glasses.display.ExternalPlayerCommands
 import com.sole.cinevault.glasses.halo.HaloPlayerInputBridge
 import com.sole.cinevault.glasses.halo.HaloPlayerLiveBindings
 import com.sole.cinevault.glasses.halo.HaloPlayerLiveSessionFactory
@@ -358,10 +360,23 @@ internal fun PlayerPlaybackGestureLayer(
             )
         }
 
+    // Glasses: while the glasses controls are showing, one finger is a POINTER for those
+    // controls (tap presses what the pointer is on, hold-then-drag slides the seek bar);
+    // with the controls hidden the film gestures (seek, volume, speed ...) apply as before.
+    val glassesPointerMode = externalDisplayActive && externalControlsVisible()
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
-                .then(playbackGestureModifier)
+                .then(
+                    if (glassesPointerMode) {
+                        Modifier.appPadTouch(
+                            allowScroll = false,
+                            onActivity = { ExternalPlayerCommands.touched() },
+                        )
+                    } else {
+                        playbackGestureModifier
+                    }
+                )
     )
 }
