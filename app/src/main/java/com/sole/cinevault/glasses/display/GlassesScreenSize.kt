@@ -18,6 +18,18 @@ internal object GlassesScreenSizePolicy {
         return STEPS[(i + 1) % STEPS.size]
     }
 
+    /** One step smaller, stopping at the smallest size (no wrap-around). */
+    fun smaller(current: Float): Float {
+        val i = STEPS.indexOf(snap(current))
+        return STEPS[(i + 1).coerceAtMost(STEPS.lastIndex)]
+    }
+
+    /** One step bigger, stopping at full size (no wrap-around). */
+    fun bigger(current: Float): Float {
+        val i = STEPS.indexOf(snap(current))
+        return STEPS[(i - 1).coerceAtLeast(0)]
+    }
+
     /** 3D side-by-side must fill the glasses frame or the depth breaks; everything else shrinks. */
     fun effective(chosen: Float, fullFrame3d: Boolean): Float =
         if (fullFrame3d) 1f else snap(chosen)
@@ -51,5 +63,7 @@ internal object GlassesScreenSize {
             .edit().putFloat("scale_$displayName", scale).putFloat("scale_default", scale).apply()
     }
 
-    fun cycle(context: Context) = set(context, GlassesScreenSizePolicy.next(scale))
+    fun smaller(context: Context) = set(context, GlassesScreenSizePolicy.smaller(scale))
+
+    fun bigger(context: Context) = set(context, GlassesScreenSizePolicy.bigger(scale))
 }

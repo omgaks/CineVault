@@ -22,3 +22,18 @@ class GlassesScreenSizePolicyTest {
         assertEquals(0.8f, GlassesScreenSizePolicy.effective(0.8f, fullFrame3d = false), 0.0001f)
     }
 }
+
+class GlassesScreenSizeBothWaysTest {
+    @Test fun smallerAndBiggerMoveOneStepAndStopAtTheEnds() {
+        assertEquals(0.85f, GlassesScreenSizePolicy.smaller(0.9f), 0.0001f)
+        assertEquals(0.95f, GlassesScreenSizePolicy.bigger(0.9f), 0.0001f)
+        assertEquals(0.75f, GlassesScreenSizePolicy.smaller(0.75f), 0.0001f)
+        assertEquals(1f, GlassesScreenSizePolicy.bigger(1f), 0.0001f)
+    }
+
+    @Test fun biggerFromAnySizeCanAlwaysReachFullWithoutGoingSmaller() {
+        var v = 0.75f
+        repeat(5) { v = GlassesScreenSizePolicy.bigger(v) }
+        assertEquals(1f, v, 0.0001f)
+    }
+}

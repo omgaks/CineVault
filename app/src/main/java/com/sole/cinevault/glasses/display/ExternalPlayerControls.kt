@@ -20,7 +20,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AspectRatio
+import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Audiotrack
 import androidx.compose.material.icons.rounded.ClosedCaption
 import androidx.compose.material.icons.rounded.ClosedCaptionOff
@@ -268,13 +270,23 @@ internal fun ExternalPlayerControls(player: Player, title: String, modifier: Mod
                     panel = if (panel == Panel.AUDIO) null else Panel.AUDIO
                 }
                 val sizeContext = androidx.compose.ui.platform.LocalContext.current
-                GlassButton(
-                    Icons.Rounded.AspectRatio,
-                    if (ExternalPlayerHudState.fullFrame3d) "3D full" else "Size " + GlassesScreenSizePolicy.label(GlassesScreenSize.scale),
-                    wide = true,
-                ) {
-                    ExternalPlayerCommands.touched()
-                    GlassesScreenSize.cycle(sizeContext)
+                if (ExternalPlayerHudState.fullFrame3d) {
+                    GlassButton(Icons.Rounded.AspectRatio, "3D full", wide = true) {
+                        ExternalPlayerCommands.touched()
+                    }
+                } else {
+                    GlassButton(Icons.Rounded.Remove, "Size") {
+                        ExternalPlayerCommands.touched()
+                        GlassesScreenSize.smaller(sizeContext)
+                    }
+                    GlassButton(Icons.Rounded.AspectRatio, GlassesScreenSizePolicy.label(GlassesScreenSize.scale), wide = true) {
+                        ExternalPlayerCommands.touched()
+                        GlassesScreenSize.set(sizeContext, 1f)
+                    }
+                    GlassButton(Icons.Rounded.Add, "Size") {
+                        ExternalPlayerCommands.touched()
+                        GlassesScreenSize.bigger(sizeContext)
+                    }
                 }
                 GlassButton(Icons.Rounded.Speed, speedLabel(speed), wide = true) {
                     ExternalPlayerCommands.touched()

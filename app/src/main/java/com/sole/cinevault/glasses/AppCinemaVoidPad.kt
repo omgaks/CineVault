@@ -62,11 +62,13 @@ internal fun AppCinemaVoidPad() {
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 PadChip(label = "Use tablet", modifier = Modifier, onClick = { padOn = false })
+                PadChip(label = "Size -", modifier = Modifier, onClick = { GlassesScreenSize.smaller(traceContext) })
                 PadChip(
-                    label = "Glasses size " + GlassesScreenSizePolicy.label(GlassesScreenSize.scale),
+                    label = GlassesScreenSizePolicy.label(GlassesScreenSize.scale),
                     modifier = Modifier,
-                    onClick = { GlassesScreenSize.cycle(traceContext) },
+                    onClick = { GlassesScreenSize.set(traceContext, 1f) },
                 )
+                PadChip(label = "Size +", modifier = Modifier, onClick = { GlassesScreenSize.bigger(traceContext) })
             }
         }
     } else {
