@@ -27,7 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.CineVaultPlayerHolder
 import com.sole.cinevault.glasses.display.GlassesScreenSize
-import com.sole.cinevault.glasses.display.GlassesScreenSizePolicy
+import com.sole.cinevault.glasses.display.GlassPill
+import com.sole.cinevault.glasses.display.GlassSizeCapsule
 import com.sole.cinevault.ui.theme.AmberCore
 
 private const val FIVE_FINGER_SPREAD = 1.35f
@@ -59,45 +60,34 @@ internal fun AppCinemaVoidPad() {
             )
             Row(
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 28.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                PadChip(label = "Use tablet", modifier = Modifier, onClick = { padOn = false })
-                PadChip(label = "Size -", modifier = Modifier, onClick = { GlassesScreenSize.smaller(traceContext) })
-                PadChip(
-                    label = GlassesScreenSizePolicy.label(GlassesScreenSize.scale),
-                    modifier = Modifier,
-                    onClick = { GlassesScreenSize.set(traceContext, 1f) },
+                GlassPill("Use tablet") { padOn = false }
+                GlassSizeCapsule(
+                    scale = GlassesScreenSize.scale,
+                    onSmaller = { GlassesScreenSize.smaller(traceContext) },
+                    onReset = { GlassesScreenSize.set(traceContext, 1f) },
+                    onBigger = { GlassesScreenSize.bigger(traceContext) },
                 )
-                PadChip(label = "Size +", modifier = Modifier, onClick = { GlassesScreenSize.bigger(traceContext) })
             }
         }
     } else {
         Box(modifier = Modifier.fillMaxSize()) {
-            PadChip(
-                label = "Glasses touchpad",
+            Row(
                 modifier = Modifier.align(Alignment.BottomEnd).padding(24.dp),
-                onClick = { padOn = true },
-            )
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                GlassSizeCapsule(
+                    scale = GlassesScreenSize.scale,
+                    onSmaller = { GlassesScreenSize.smaller(traceContext) },
+                    onReset = { GlassesScreenSize.set(traceContext, 1f) },
+                    onBigger = { GlassesScreenSize.bigger(traceContext) },
+                )
+                GlassPill("Glasses touchpad") { padOn = true }
+            }
         }
-    }
-}
-
-@Composable
-private fun PadChip(label: String, modifier: Modifier, onClick: () -> Unit) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(50))
-            .background(AmberCore)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            color = androidx.compose.ui.graphics.Color.Black,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
     }
 }
 
