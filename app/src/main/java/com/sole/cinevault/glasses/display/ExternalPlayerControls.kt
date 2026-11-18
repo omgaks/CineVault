@@ -2,8 +2,6 @@ package com.sole.cinevault.glasses.display
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,27 +11,21 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AspectRatio
-import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Audiotrack
 import androidx.compose.material.icons.rounded.ClosedCaption
 import androidx.compose.material.icons.rounded.ClosedCaptionOff
 import androidx.compose.material.icons.rounded.Forward10
-import androidx.compose.material.icons.rounded.Pause
-import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Speed
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -50,9 +42,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -60,7 +49,10 @@ import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.TrackSelectionOverride
+import com.sole.cinevault.FrostedPlayButton
 import com.sole.cinevault.ui.theme.AmberCore
+import com.sole.cinevault.ui.theme.CineType
+import com.sole.cinevault.ui.theme.PlexMonoFamily
 import com.sole.cinevault.ui.theme.TextBright
 import com.sole.cinevault.ui.theme.TextMuted
 
@@ -115,6 +107,7 @@ internal fun ExternalPlayerControls(player: Player, title: String, modifier: Mod
     var tracks by remember { mutableStateOf(player.currentTracks) }
     var panel by remember { mutableStateOf<Panel?>(null) }
     var scrubFraction by remember { mutableStateOf<Float?>(null) }
+    val sizeContext = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(player) {
         while (true) {
@@ -149,25 +142,25 @@ internal fun ExternalPlayerControls(player: Player, title: String, modifier: Mod
             },
         )
 
-        // Top: back + title
+        // Top: back + title on a soft scrim
         Row(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .fillMaxWidth()
-                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)))
-                .padding(horizontal = 40.dp, vertical = 24.dp),
+                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.72f), Color.Transparent)))
+                .padding(horizontal = 44.dp, vertical = 26.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            GlassButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", wide = true) {
+            GlassPill("Back", icon = Icons.AutoMirrored.Rounded.ArrowBack) {
                 ExternalPlayerCommands.touched()
                 ExternalPlayerCommands.back?.invoke()
             }
-            Spacer(Modifier.width(20.dp))
-            Text(title, color = TextBright, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text(title, color = TextBright, fontSize = CineType.Title, fontWeight = FontWeight.Bold, maxLines = 1)
         }
 
-        // Panels sit just above the bottom bar.
-        Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 190.dp)) {
+        // Panels sit just above the bottom deck.
+        Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 230.dp)) {
             when (panel) {
                 Panel.SPEED -> OptionList("Speed", GLASSES_SPEEDS.map { speedLabel(it) to (it == speed) }) { i ->
                     ExternalPlayerCommands.touched()
@@ -199,19 +192,21 @@ internal fun ExternalPlayerControls(player: Player, title: String, modifier: Mod
             }
         }
 
-        // Bottom: seek bar + buttons
+        // Bottom deck: seek thread, then the transport (with the real Lumen Ring play button),
+        // then the option pills.
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.82f))))
-                .padding(horizontal = 40.dp, vertical = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.84f))))
+                .padding(horizontal = 44.dp, vertical = 26.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(formatHudTime((shownFraction * duration).toLong()), color = TextBright, fontSize = 15.sp)
-                Spacer(Modifier.width(14.dp))
-                SeekBar(
+                Text(formatHudTime((shownFraction * duration).toLong()), color = TextBright, fontSize = CineType.Body, fontFamily = PlexMonoFamily)
+                Spacer(Modifier.width(16.dp))
+                GlassNeonSeekBar(
                     fraction = shownFraction,
                     modifier = Modifier.weight(1f),
                     onScrub = { f ->
@@ -224,102 +219,70 @@ internal fun ExternalPlayerControls(player: Player, title: String, modifier: Mod
                         scrubFraction = null
                     },
                 )
-                Spacer(Modifier.width(14.dp))
-                Text(formatHudTime(duration), color = TextMuted, fontSize = 15.sp)
+                Spacer(Modifier.width(16.dp))
+                Text(formatHudTime(duration), color = TextMuted, fontSize = CineType.Body, fontFamily = PlexMonoFamily)
             }
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
+                horizontalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (ExternalPlayerCommands.hasEpisodes) {
-                    GlassButton(Icons.Rounded.SkipPrevious, "Previous") {
+                    GlassIconButton(Icons.Rounded.SkipPrevious, "Previous") {
                         ExternalPlayerCommands.touched(); ExternalPlayerCommands.previous?.invoke()
                     }
                 }
-                GlassButton(Icons.Rounded.Replay10, "-10s") {
+                GlassIconButton(Icons.Rounded.Replay10, "Back 10 seconds") {
                     ExternalPlayerCommands.touched()
                     player.seekTo((player.currentPosition - 10_000L).coerceAtLeast(0L))
                 }
-                GlassButton(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    if (playing) "Pause" else "Play", wide = true, primary = true) {
+                FrostedPlayButton(isPlaying = playing, isEnded = false, size = 84.dp, progress = shownFraction) {
                     ExternalPlayerCommands.touched()
                     if (player.isPlaying) player.pause() else player.play()
                 }
-                GlassButton(Icons.Rounded.Forward10, "+10s") {
+                GlassIconButton(Icons.Rounded.Forward10, "Forward 10 seconds") {
                     ExternalPlayerCommands.touched()
                     val end = if (duration > 0L) duration else Long.MAX_VALUE
                     player.seekTo((player.currentPosition + 10_000L).coerceAtMost(end))
                 }
                 if (ExternalPlayerCommands.hasEpisodes) {
-                    GlassButton(Icons.Rounded.SkipNext, "Next") {
+                    GlassIconButton(Icons.Rounded.SkipNext, "Next") {
                         ExternalPlayerCommands.touched(); ExternalPlayerCommands.next?.invoke()
                     }
                 }
-                Spacer(Modifier.width(18.dp))
-                GlassButton(
-                    if (ExternalPlayerCommands.subtitlesOn) Icons.Rounded.ClosedCaption else Icons.Rounded.ClosedCaptionOff,
-                    if (ExternalPlayerCommands.subtitlesOn) "Subs on" else "Subs off",
-                    wide = true,
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                GlassPill(
+                    text = if (ExternalPlayerCommands.subtitlesOn) "Subtitles on" else "Subtitles off",
+                    icon = if (ExternalPlayerCommands.subtitlesOn) Icons.Rounded.ClosedCaption else Icons.Rounded.ClosedCaptionOff,
+                    selected = ExternalPlayerCommands.subtitlesOn,
                 ) {
                     ExternalPlayerCommands.touched()
                     ExternalPlayerCommands.setSubtitles?.invoke(!ExternalPlayerCommands.subtitlesOn)
                 }
-                GlassButton(Icons.Rounded.Audiotrack, "Audio", wide = true) {
+                GlassPill("Audio", icon = Icons.Rounded.Audiotrack, selected = panel == Panel.AUDIO) {
                     ExternalPlayerCommands.touched()
                     panel = if (panel == Panel.AUDIO) null else Panel.AUDIO
                 }
-                val sizeContext = androidx.compose.ui.platform.LocalContext.current
-                if (ExternalPlayerHudState.fullFrame3d) {
-                    GlassButton(Icons.Rounded.AspectRatio, "3D full", wide = true) {
-                        ExternalPlayerCommands.touched()
-                    }
-                } else {
-                    GlassButton(Icons.Rounded.Remove, "Size") {
-                        ExternalPlayerCommands.touched()
-                        GlassesScreenSize.smaller(sizeContext)
-                    }
-                    GlassButton(Icons.Rounded.AspectRatio, GlassesScreenSizePolicy.label(GlassesScreenSize.scale), wide = true) {
-                        ExternalPlayerCommands.touched()
-                        GlassesScreenSize.set(sizeContext, 1f)
-                    }
-                    GlassButton(Icons.Rounded.Add, "Size") {
-                        ExternalPlayerCommands.touched()
-                        GlassesScreenSize.bigger(sizeContext)
-                    }
-                }
-                GlassButton(Icons.Rounded.Speed, speedLabel(speed), wide = true) {
+                GlassPill(speedLabel(speed), icon = Icons.Rounded.Speed, selected = panel == Panel.SPEED) {
                     ExternalPlayerCommands.touched()
                     panel = if (panel == Panel.SPEED) null else Panel.SPEED
                 }
+                if (ExternalPlayerHudState.fullFrame3d) {
+                    GlassPill("3D full size", icon = Icons.Rounded.AspectRatio, selected = true) {
+                        ExternalPlayerCommands.touched()
+                    }
+                } else {
+                    GlassSizeCapsule(
+                        scale = GlassesScreenSize.scale,
+                        onSmaller = { ExternalPlayerCommands.touched(); GlassesScreenSize.smaller(sizeContext) },
+                        onReset = { ExternalPlayerCommands.touched(); GlassesScreenSize.set(sizeContext, 1f) },
+                        onBigger = { ExternalPlayerCommands.touched(); GlassesScreenSize.bigger(sizeContext) },
+                    )
+                }
             }
-        }
-    }
-}
-
-@Composable
-private fun GlassButton(
-    icon: ImageVector,
-    label: String,
-    wide: Boolean = false,
-    primary: Boolean = false,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .height(56.dp)
-            .widthIn(min = 56.dp)
-            .clip(if (wide) RoundedCornerShape(50) else CircleShape)
-            .background(if (primary) AmberCore else Color.White.copy(alpha = 0.16f))
-            .clickable(onClick = onClick)
-            .padding(horizontal = if (wide) 20.dp else 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
-    ) {
-        Icon(icon, contentDescription = label, tint = if (primary) Color.Black else TextBright, modifier = Modifier.size(28.dp))
-        if (wide) {
-            Spacer(Modifier.width(8.dp))
-            Text(label, color = if (primary) Color.Black else TextBright, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -328,61 +291,24 @@ private fun GlassButton(
 private fun OptionList(title: String, options: List<Pair<String, Boolean>>, onPick: (Int) -> Unit) {
     Column(
         modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xE6101018))
+            .glassSurface(RoundedCornerShape(26.dp))
             .padding(18.dp)
-            .widthIn(min = 260.dp),
+            .widthIn(min = 280.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(title, color = TextMuted, fontSize = 14.sp)
+        Text(title, color = TextMuted, fontSize = CineType.Label, fontWeight = FontWeight.Bold)
         options.forEachIndexed { i, (label, selected) ->
-            Row(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(if (selected) AmberCore.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.08f))
+                    .glassSurface(CircleShape, lit = selected)
                     .clickable { onPick(i) }
-                    .padding(horizontal = 18.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(horizontal = 22.dp),
+                contentAlignment = Alignment.CenterStart,
             ) {
-                Text(label, color = if (selected) AmberCore else TextBright, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                Text(label, color = if (selected) AmberCore else TextBright, fontSize = CineType.Body, fontWeight = FontWeight.Bold)
             }
         }
-    }
-}
-
-/** Tap or drag anywhere on the bar. Works with the Halo's synthetic touches. */
-@Composable
-private fun SeekBar(
-    fraction: Float,
-    modifier: Modifier,
-    onScrub: (Float) -> Unit,
-    onCommit: (Float) -> Unit,
-) {
-    Box(
-        modifier = modifier
-            .height(44.dp)
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    val w = size.width.toFloat().coerceAtLeast(1f)
-                    var f = (down.position.x / w).coerceIn(0f, 1f)
-                    onScrub(f)
-                    while (true) {
-                        val e = awaitPointerEvent(PointerEventPass.Main)
-                        val c = e.changes.firstOrNull() ?: break
-                        f = (c.position.x / w).coerceIn(0f, 1f)
-                        if (!c.pressed) break
-                        c.consume()
-                        onScrub(f)
-                    }
-                    onCommit(f)
-                }
-            },
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.25f)))
-        Box(Modifier.fillMaxWidth(fraction.coerceIn(0.001f, 1f)).height(8.dp).clip(RoundedCornerShape(50)).background(AmberCore))
     }
 }
