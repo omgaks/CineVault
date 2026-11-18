@@ -114,7 +114,7 @@ fun CinemaVoidControllerSurface(
                     // fades so the surface is just a quiet touchpad. Outside a film it stays.
                     CinemaVoidGuide(
                         rows = if (inPlayer) PLAYER_GUIDE_ROWS else APP_GUIDE_ROWS,
-                        autoHideMs = if (inPlayer) 12_000L else null,
+                        autoHideMs = if (inPlayer) 18_000L else null,
                     )
                 }
             }
