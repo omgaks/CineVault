@@ -1,5 +1,7 @@
 # RayNeo Gesture Build — Device Test
 
+> Superseded by GLASSES_ACCEPTANCE.md (kept for history).
+
 This build preserves the atomic Media3 surface-handoff correction and adds the stable dark-tablet gesture map.
 
 ## Gesture map
