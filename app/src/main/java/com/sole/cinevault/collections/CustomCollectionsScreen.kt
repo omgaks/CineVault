@@ -1,6 +1,7 @@
 package com.sole.cinevault.collections
 
 import androidx.compose.foundation.background
+import com.sole.cinevault.glasses.display.HostWindowOnly
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -172,7 +173,7 @@ fun CustomCollectionsScreen(
     }
 
     deleting?.let { c ->
-        Dialog(onDismissRequest = { deleting = null }) {
+        HostWindowOnly { Dialog(onDismissRequest = { deleting = null }) {
             Column(Modifier.clip(RoundedCornerShape(22.dp)).background(SpaceMid).padding(20.dp)) {
                 Text("Delete \"${c.name}\"?", color = TextBright, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(6.dp))
@@ -186,7 +187,7 @@ fun CustomCollectionsScreen(
                     })
                 }
             }
-        }
+        } }
     }
 }
 
@@ -209,7 +210,7 @@ private fun NewCollectionDialog(
     val canCreate = name.isNotBlank() && (!smart || !rule.isEmpty)
     val config = LocalConfiguration.current
 
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    HostWindowOnly { Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             Modifier.fillMaxWidth(if (config.screenWidthDp > 700) 0.6f else 0.92f)
                 .clip(RoundedCornerShape(24.dp)).background(SpaceMid).padding(20.dp)
@@ -277,7 +278,7 @@ private fun NewCollectionDialog(
                 )
             }
         }
-    }
+    } }
 }
 
 @Composable
@@ -299,7 +300,7 @@ private fun PickFilmsDialog(
     val shown = remember(movies, query) { if (query.isBlank()) movies else movies.filter { it.title.contains(query, ignoreCase = true) } }
     val config = LocalConfiguration.current
 
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    HostWindowOnly { Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             Modifier.fillMaxWidth(if (config.screenWidthDp > 700) 0.6f else 0.94f).fillMaxHeight(0.86f)
                 .clip(RoundedCornerShape(24.dp)).background(SpaceMid).padding(16.dp)
@@ -344,5 +345,5 @@ private fun PickFilmsDialog(
                 Text("DONE", color = AmberCore, fontWeight = FontWeight.Black, fontSize = 13.sp, modifier = Modifier.clickable { onDone(picked) })
             }
         }
-    }
+    } }
 }
