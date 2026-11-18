@@ -1,6 +1,7 @@
 package com.sole.cinevault.network
 
 import androidx.compose.material3.*
+import com.sole.cinevault.glasses.display.HostWindowOnly
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -112,7 +113,7 @@ fun NetworkHubIntegratedScreen(
 
     val message = localMessage ?: connectState.message
     message?.let { body ->
-        AlertDialog(
+        HostWindowOnly { AlertDialog(
             onDismissRequest = {
                 localMessage = null
                 nearby.clearConnectMessage()
@@ -131,6 +132,6 @@ fun NetworkHubIntegratedScreen(
             },
             text = { Text(body, color = TextMuted) },
             containerColor = Color(0xFF15161A),
-        )
+        ) }
     }
 }

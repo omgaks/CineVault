@@ -195,14 +195,23 @@ private class CineVaultExternalPresentation(
     }
 
     override fun onStop() {
-        lifecycleRegistry.currentState = Lifecycle.State.CREATED
+        // Dismissing marks the lifecycle DESTROYED first; Android then calls onStop and a
+        // DESTROYED lifecycle can never go back to CREATED (that crashed on unplug and on
+        // closing the app). Only step down when we are not already finished.
+        if (lifecycleRegistry.currentState != Lifecycle.State.DESTROYED) {
+            lifecycleRegistry.currentState = Lifecycle.State.CREATED
+        }
         super.onStop()
     }
 
+    private var finished = false
+
     override fun dismiss() {
+        if (finished) return
+        finished = true
         ExternalViewportSessionState.unbindProfile(display.name)
+        super.dismiss() // runs onStop while the lifecycle is still alive
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
         viewModelStore.clear()
-        super.dismiss()
     }
 }

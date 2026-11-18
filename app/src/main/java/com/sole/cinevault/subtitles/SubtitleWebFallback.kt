@@ -1,6 +1,7 @@
 package com.sole.cinevault.subtitles
 
 import com.sole.cinevault.lumenFrame
+import com.sole.cinevault.glasses.display.HostWindowOnly
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -398,7 +399,7 @@ fun SubtitleCandidateSheet(primary: ImportedSubtitle, alternatives: List<Importe
     val candidates = remember(primary, alternatives) {
         listOf(primary) + alternatives
     }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color(0xFF161622)) {
+    HostWindowOnly { ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color(0xFF161622)) {
         Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Choose subtitle", style = MaterialTheme.typography.titleLarge, color = Color.White)
             Text("Best English/release match is shown first.", style = MaterialTheme.typography.bodySmall, color = Color(0xFF9D9DAC))
@@ -422,5 +423,5 @@ fun SubtitleCandidateSheet(primary: ImportedSubtitle, alternatives: List<Importe
                 }
             }
         }
-    }
+    } }
 }

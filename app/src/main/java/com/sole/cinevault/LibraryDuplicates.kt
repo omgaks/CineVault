@@ -1,6 +1,7 @@
 package com.sole.cinevault
 
 import android.content.Context
+import com.sole.cinevault.glasses.display.HostWindowOnly
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,7 +47,7 @@ internal fun ManageCopiesSheet(
     onDelete: (VideoWithMetadata) -> Unit,
     onClose: () -> Unit
 ) {
-    Dialog(onDismissRequest = onClose) {
+    HostWindowOnly { Dialog(onDismissRequest = onClose) {
         Column(
             modifier = Modifier
                 .widthIn(max = 560.dp)
@@ -105,5 +106,5 @@ internal fun ManageCopiesSheet(
                 }
             }
         }
-    }
+    } }
 }

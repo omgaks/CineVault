@@ -1,6 +1,7 @@
 package com.sole.cinevault.network
 
 import androidx.compose.foundation.layout.*
+import com.sole.cinevault.glasses.display.HostWindowOnly
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -37,7 +38,7 @@ fun EffortlessSourceSheet(
     var hostKey by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
 
-    ModalBottomSheet(
+    HostWindowOnly { ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = Color(0xFF121317),
         contentColor = TextBright,
@@ -132,7 +133,7 @@ fun EffortlessSourceSheet(
             }
             Spacer(Modifier.height(12.dp))
         }
-    }
+    } }
 }
 
 @Composable

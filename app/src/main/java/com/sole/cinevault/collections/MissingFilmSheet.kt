@@ -1,6 +1,7 @@
 package com.sole.cinevault.collections
 
 import android.content.Intent
+import com.sole.cinevault.glasses.display.HostWindowOnly
 import android.net.Uri
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -102,7 +103,7 @@ internal fun MissingFilmSheet(
     val overview = extras?.overview ?: slot.part.overview
     val poster = tmdbImageUrl(slot.part.posterPath)
 
-    ModalBottomSheet(
+    HostWindowOnly { ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = SpaceMid,
@@ -206,7 +207,7 @@ internal fun MissingFilmSheet(
                 }
             }
         }
-    }
+    } }
 }
 
 @Composable

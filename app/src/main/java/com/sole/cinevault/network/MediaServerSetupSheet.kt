@@ -1,6 +1,7 @@
 package com.sole.cinevault.network
 
 import androidx.compose.foundation.layout.*
+import com.sole.cinevault.glasses.display.HostWindowOnly
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -34,7 +35,7 @@ fun MediaServerSetupSheet(
     var connecting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    ModalBottomSheet(
+    HostWindowOnly { ModalBottomSheet(
         onDismissRequest = { if (!connecting) onDismiss() },
         containerColor = Color(0xFF121317),
         contentColor = TextBright,
@@ -152,5 +153,5 @@ fun MediaServerSetupSheet(
             }
             Spacer(Modifier.height(12.dp))
         }
-    }
+    } }
 }

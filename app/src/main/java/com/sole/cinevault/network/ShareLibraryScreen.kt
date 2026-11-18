@@ -1,6 +1,7 @@
 package com.sole.cinevault.network
 
 import androidx.activity.compose.BackHandler
+import com.sole.cinevault.glasses.display.HostWindowOnly
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -191,8 +192,8 @@ fun ShareLibraryScreen(
     }
 
     error?.let { msg ->
-        AlertDialog(onDismissRequest={error=null}, confirmButton={ TextButton(onClick={error=null}){Text("OK")} },
-            title={Text("Nearby sharing")}, text={Text(msg)})
+        HostWindowOnly { AlertDialog(onDismissRequest={error=null}, confirmButton={ TextButton(onClick={error=null}){Text("OK")} },
+            title={Text("Nearby sharing")}, text={Text(msg)}) }
     }
 }
 

@@ -1,6 +1,7 @@
 package com.sole.cinevault.metadata
 
 import com.sole.cinevault.VideoWithMetadata
+import com.sole.cinevault.glasses.display.HostWindowOnly
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -119,7 +120,7 @@ fun RematchDialog(
         }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    HostWindowOnly { Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -219,7 +220,7 @@ fun RematchDialog(
                 }
             }
         }
-    }
+    } }
 }
 
 @Composable

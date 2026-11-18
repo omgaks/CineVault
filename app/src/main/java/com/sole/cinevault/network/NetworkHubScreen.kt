@@ -1,6 +1,7 @@
 package com.sole.cinevault.network
 
 import androidx.activity.compose.BackHandler
+import com.sole.cinevault.glasses.display.HostWindowOnly
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -168,7 +169,7 @@ private fun CineVaultConnectCard(state: CineVaultConnectState, onFindDevices: ()
         AddSourceKind.MEDIA_SERVER -> "Media Server" to "Jellyfin and Emby can be signed in directly. DLNA devices are discovered automatically."
         AddSourceKind.WEB -> "Web / Playlist" to "HTTP Directory and M3U sources are available. CineVault never auto-connects to an unknown address."
     }
-    AlertDialog(onDismissRequest = onDismiss, confirmButton = { TextButton(onClick = onDismiss) { Text("OK", color = AmberCore) } }, title = { Text(title, color = TextBright) }, text = { Text(body, color = TextMuted) }, containerColor = Color(0xFF15161A))
+    HostWindowOnly { AlertDialog(onDismissRequest = onDismiss, confirmButton = { TextButton(onClick = onDismiss) { Text("OK", color = AmberCore) } }, title = { Text(title, color = TextBright) }, text = { Text(body, color = TextMuted) }, containerColor = Color(0xFF15161A)) }
 }
 
 @Composable private fun NetworkHubHeader(onBack: () -> Unit) { Row(verticalAlignment = Alignment.CenterVertically) { HubIcon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack); Spacer(Modifier.width(14.dp)); Column { Text("Network", color = TextBright, fontFamily = NewsreaderFamily, fontSize = CineType.Display); Text("Connect • stream • share", color = TextMuted, fontSize = 13.sp) } } }

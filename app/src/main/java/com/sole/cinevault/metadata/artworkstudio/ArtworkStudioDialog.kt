@@ -1,6 +1,7 @@
 package com.sole.cinevault.metadata.artworkstudio
 
 import android.net.Uri
+import com.sole.cinevault.glasses.display.HostWindowOnly
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -109,7 +110,7 @@ fun ArtworkStudioDialog(
     }
 
     BackHandler { onDismiss() }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    HostWindowOnly { Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             modifier = Modifier
                 .fillMaxWidth(if (wide) 0.82f else 0.94f)
@@ -239,7 +240,7 @@ fun ArtworkStudioDialog(
                 )
             }
         }
-    }
+    } }
 }
 
 @Composable
