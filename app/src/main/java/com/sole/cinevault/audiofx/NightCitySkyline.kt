@@ -16,11 +16,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,8 +39,17 @@ internal fun NightCitySkyline(
     fft: ByteArray,
     modifier: Modifier = Modifier,
 ) {
-    var environment by remember { mutableStateOf(NightCityEnvironment.ANIME_RAINFALL) }
-    var motionEnabled by remember { mutableStateOf(true) }
+    val context = LocalContext.current
+    val prefs = remember(context) {
+        context.getSharedPreferences("cinevault_audio_night_city", android.content.Context.MODE_PRIVATE)
+    }
+    var environment by remember(prefs) {
+        mutableStateOf(NightCityEnvironment.fromSavedName(prefs.getString("environment", null)))
+    }
+    var motionEnabled by remember(prefs) {
+        mutableStateOf(prefs.getBoolean("motion_enabled", true))
+    }
+    var pausedPhase by remember { mutableStateOf(0f) }
     val animation = rememberInfiniteTransition(label = "NightCityAtmosphere")
     val motionPhase by animation.animateFloat(
         initialValue = 0f,
@@ -46,7 +57,7 @@ internal fun NightCitySkyline(
         animationSpec = infiniteRepeatable(animation = tween(9000), repeatMode = RepeatMode.Restart),
         label = "CityMotionPhase",
     )
-    val phase = if (motionEnabled) motionPhase else 0f
+    val phase = if (motionEnabled) motionPhase else pausedPhase
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
@@ -65,7 +76,10 @@ internal fun NightCitySkyline(
                             if (selected) Color(0xFF3B2B15) else Color(0xFF171925),
                             RoundedCornerShape(9.dp),
                         )
-                        .clickable { environment = option }
+                        .clickable {
+                            environment = option
+                            prefs.edit().putString("environment", option.name).apply()
+                        }
                         .padding(horizontal = 5.dp, vertical = 10.dp),
                 )
             }
@@ -74,7 +88,11 @@ internal fun NightCitySkyline(
             text = if (motionEnabled) "MOTION ON · TAP TO PAUSE" else "MOTION OFF · TAP TO RESUME",
             color = NightCityEnvironment.signatureAmber,
             fontSize = 10.sp,
-            modifier = Modifier.clickable { motionEnabled = !motionEnabled }
+            modifier = Modifier.clickable {
+                if (motionEnabled) pausedPhase = motionPhase
+                motionEnabled = !motionEnabled
+                prefs.edit().putBoolean("motion_enabled", motionEnabled).apply()
+            }
                 .padding(bottom = 7.dp),
         )
         Canvas(
@@ -176,15 +194,53 @@ internal fun NightCitySkyline(
                 )
             }
             if (environment == NightCityEnvironment.NEO_KYOTO_MIDNIGHT) {
-                // Minimal temple roof silhouette; detailed environment art comes later.
-                val roofY = h * 0.73f
-                drawLine(environment.neonSecondary, Offset(w * 0.04f, roofY),
-                    Offset(w * 0.22f, roofY), 3f)
-                drawLine(environment.neonSecondary, Offset(w * 0.13f, roofY - 14f),
-                    Offset(w * 0.22f, roofY), 2f)
-                drawLine(environment.neonSecondary, Offset(w * 0.13f, roofY - 14f),
-                    Offset(w * 0.04f, roofY), 2f)
+                // Tiered pagoda silhouette, cyan roof edges, and drifting sakura.
+                val baseX = w * 0.11f
+                for (tier in 0 until 3) {
+                    val roofY = h * (0.84f - tier * 0.15f)
+                    val halfWidth = w * (0.13f - tier * 0.025f)
+                    val roof = Path().apply {
+                        moveTo(baseX - halfWidth, roofY)
+                        lineTo(baseX - halfWidth * 0.78f, roofY - h * 0.045f)
+                        lineTo(baseX, roofY - h * 0.085f)
+                        lineTo(baseX + halfWidth * 0.78f, roofY - h * 0.045f)
+                        lineTo(baseX + halfWidth, roofY)
+                        close()
+                    }
+                    drawPath(roof, color = Color(0xFF0A1020))
+                    drawLine(environment.neonSecondary.copy(alpha = 0.8f),
+                        Offset(baseX - halfWidth, roofY),
+                        Offset(baseX, roofY - h * 0.085f), 2f)
+                    drawLine(environment.neonSecondary.copy(alpha = 0.8f),
+                        Offset(baseX, roofY - h * 0.085f),
+                        Offset(baseX + halfWidth, roofY), 2f)
+                    drawRect(
+                        color = environment.building,
+                        topLeft = Offset(baseX - halfWidth * 0.48f, roofY),
+                        size = Size(halfWidth * 0.96f, h * 0.12f),
+                    )
+                }
+                for (petal in 0 until 23) {
+                    val x = ((petal * 71.9f) + phase * w * 0.28f) % w
+                    val y = ((petal * 37.1f) + phase * h * 0.19f) % h
+                    drawCircle(
+                        color = Color(0xFFFFA7C6).copy(alpha = 0.28f + (petal % 3) * 0.13f),
+                        radius = 1.5f + (petal % 3) * 0.55f,
+                        center = Offset(x, y),
+                    )
+                }
+                // Architectural ground reflection.
+                for (reflection in 0 until 9) {
+                    val yy = h * 0.9f + reflection * h * 0.012f
+                    drawLine(
+                        environment.neonSecondary.copy(alpha = 0.26f * (1f - reflection / 10f)),
+                        Offset(w * 0.02f + reflection * 2f, yy),
+                        Offset(w * 0.23f - reflection * 2f, yy),
+                        1f,
+                    )
+                }
             }
+
         }
         Text(
             "ANIME NIGHT CITY  •  DECODED AUDIO VISUALIZATION",
