@@ -68,6 +68,15 @@ Tester: Ash. Build (versionCode): ____  Date: ____
 | F4 | Screen rotation / app to background and back keeps glasses working | NOT TESTED | |
 | F5 | 30-minute film plays through with no stutter, heat warning or crash | NOT TESTED | |
 
+## G. Glasses screen size
+| # | Check | Status | Notes |
+|---|-------|--------|-------|
+| G1 | Tablet pad "Glasses size" button cycles 100, 95, 90, 85, 80, 75 and the app shrinks toward the centre | NOT TESTED | |
+| G2 | After shrinking, the pointer still lands on what it points at and taps open the right item | NOT TESTED | |
+| G3 | Settings > Glasses screen size chips change it and it survives reconnecting the glasses | NOT TESTED | |
+| G4 | A 2D film and the glasses controls shrink with it; the "Size" button on the glasses also cycles it | NOT TESTED | |
+| G5 | A 3D side-by-side film stays full size whatever the setting (button shows "3D full") | NOT TESTED | |
+
 ## Known gaps (not bugs in the table above)
 - Glasses controls cover the essentials. Subtitle Studio, Audio Studio, waveform bar, sleep timer and other tablet-only tools are not on the glasses yet.
 - Glasses cannot open studios or menus with the pointer; those stay on the tablet.

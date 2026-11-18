@@ -73,6 +73,12 @@ internal fun PlayerVideoSurface(
     // Tell the viewer about 3D (or that Top/Bottom plays flat) instead of staying silent.
     if (renderDestination == CineVaultRenderDestination.EXTERNAL_DISPLAY) {
         val notice = com.sole.cinevault.glasses.stereo.StereoNoticeResolver.resolve(stereoRenderPlan)
+        val fullFrame3d = stereoRenderPlan.mode ==
+            com.sole.cinevault.glasses.stereo.StereoPlaybackMode.SIDE_BY_SIDE &&
+            stereoRenderPlan.supportedByNativeSbsOutput
+        androidx.compose.runtime.LaunchedEffect(fullFrame3d) {
+            com.sole.cinevault.glasses.display.ExternalPlayerHudState.fullFrame3d = fullFrame3d
+        }
         androidx.compose.runtime.LaunchedEffect(notice) {
             com.sole.cinevault.glasses.display.ExternalPlayerHudState.stereoNotice = notice
         }

@@ -5,7 +5,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,6 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sole.cinevault.CineVaultPlayerHolder
+import com.sole.cinevault.glasses.display.GlassesScreenSize
+import com.sole.cinevault.glasses.display.GlassesScreenSizePolicy
 import com.sole.cinevault.ui.theme.AmberCore
 
 private const val FIVE_FINGER_SPREAD = 1.35f
@@ -53,11 +57,17 @@ internal fun AppCinemaVoidPad() {
                 modifier = Modifier.fillMaxSize().fiveFingerReturn(session.disable),
                 inPlayer = false,
             )
-            PadChip(
-                label = "Use tablet",
+            Row(
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 28.dp),
-                onClick = { padOn = false },
-            )
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                PadChip(label = "Use tablet", modifier = Modifier, onClick = { padOn = false })
+                PadChip(
+                    label = "Glasses size " + GlassesScreenSizePolicy.label(GlassesScreenSize.scale),
+                    modifier = Modifier,
+                    onClick = { GlassesScreenSize.cycle(traceContext) },
+                )
+            }
         }
     } else {
         Box(modifier = Modifier.fillMaxSize()) {
