@@ -167,6 +167,36 @@ fun rememberPlayerSubtitleRuntimeEffects(
         )
     }
 
+    // Same look on the glasses: style the video view drawn there using the glasses' own
+    // visible frame, so size and position follow what the glasses can actually show.
+    val glassesPlayerView = com.sole.cinevault.glasses.display.ExternalPlayerViewRegistry.playerView
+    val glassesFrame = ExternalViewportSessionState.visibleFrame
+    val glassesSubtitleAppearanceCoordinator = remember { SubtitleAppearanceCoordinator() }
+    LaunchedEffect(
+        glassesPlayerView,
+        glassesFrame,
+        videoAspect,
+        appearanceUi.textSizeSp,
+        appearanceUi.bottomPadding,
+        appearanceUi.appearance,
+        dualUi.enabled,
+        appearanceUi.preserveOriginalStyling,
+        isAssOrSsaFormat,
+    ) {
+        val view = glassesPlayerView ?: return@LaunchedEffect
+        val density = view.resources.displayMetrics.density.coerceAtLeast(1f)
+        glassesSubtitleAppearanceCoordinator.apply(
+            playerView = view,
+            appearanceUi = appearanceUi,
+            dualSubtitlesEnabled = dualUi.enabled,
+            isAssOrSsaFormat = isAssOrSsaFormat,
+            availableWidthDp = if (glassesFrame.widthPx > 0) glassesFrame.widthPx / density else availableWidthDp,
+            availableHeightDp = if (glassesFrame.heightPx > 0) glassesFrame.heightPx / density else availableHeightDp,
+            externalVisibleFrame = glassesFrame,
+            videoAspect = videoAspect,
+        )
+    }
+
     val subtitleSyncRenderCoordinator = remember(exoPlayer) {
         SubtitleSyncRenderCoordinator(
             context = context,
