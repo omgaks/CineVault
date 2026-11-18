@@ -38,6 +38,7 @@ internal fun PlayerAutoHideEffects(
     onHideSubtitleDock: () -> Unit,
     onHideSubtitleBloom: () -> Unit,
     onHideDualSubsWindow: () -> Unit,
+    externalInteractionKey: Int = 0,
 ) {
     LaunchedEffect(
         showControls,
@@ -49,6 +50,7 @@ internal fun PlayerAutoHideEffects(
         showSleepMenu,
         showSrtBrowser,
         isDraggingSeekbar,
+        externalInteractionKey,
     ) {
         val anyMenuOpen = showAudioSelector || coreUi.showSettings || trackUi.showSelector ||
             searchUi.showSearch || driftUi.showDialog || coreUi.showAppearanceStudio ||

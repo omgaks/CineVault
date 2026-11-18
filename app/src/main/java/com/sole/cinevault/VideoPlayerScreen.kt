@@ -1,6 +1,7 @@
 package com.sole.cinevault
 
 import com.sole.cinevault.glasses.gestures.HeadGesture
+import com.sole.cinevault.glasses.display.ExternalPlayerCommands
 import com.sole.cinevault.glasses.display.ExternalPlayerHudState
 import com.sole.cinevault.glasses.display.ExternalViewportSessionState
 import com.sole.cinevault.glasses.gestures.rememberHeadGestureDetector
@@ -1075,6 +1076,27 @@ fun VideoPlayerScreen(
                         chromeUi.showTopBar = nextVisible
                     }
                 }
+            }
+        }
+
+        // Let the glasses controls drive this player screen (back, next/previous, subtitles).
+        val latestPlayNext by rememberUpdatedState { playbackNavigationCoordinator.playNext() }
+        val latestPlayPrevious by rememberUpdatedState { playbackNavigationCoordinator.playPrevious() }
+        DisposableEffect(Unit) {
+            ExternalPlayerCommands.back = { latestOnBack() }
+            ExternalPlayerCommands.next = { latestPlayNext() }
+            ExternalPlayerCommands.previous = { latestPlayPrevious() }
+            ExternalPlayerCommands.setSubtitles = { coreUi.subtitlesEnabled = it }
+            onDispose { ExternalPlayerCommands.clear() }
+        }
+        SideEffect {
+            ExternalPlayerCommands.hasEpisodes = showPrevNextButtons
+            ExternalPlayerCommands.subtitlesOn = coreUi.subtitlesEnabled
+        }
+        LaunchedEffect(ExternalPlayerHudState.hideRequested) {
+            if (ExternalPlayerHudState.hideRequested != 0L) {
+                chromeUi.showControls = false
+                chromeUi.showTopBar = false
             }
         }
 

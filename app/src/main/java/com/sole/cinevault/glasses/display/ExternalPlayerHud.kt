@@ -78,6 +78,13 @@ internal object ExternalPlayerHudState {
         gestureStamp = System.nanoTime()
     }
 
+    /** The glasses asked to hide the controls (pointer tapped empty picture). */
+    var hideRequested by mutableLongStateOf(0L)
+
+    fun requestHide() {
+        hideRequested = System.nanoTime()
+    }
+
     fun reset() {
         controlsVisible = false
         stereoNotice = null
@@ -149,9 +156,9 @@ internal fun ExternalPlayerHudOverlay(player: Player, modifier: Modifier = Modif
             visible = hud.controlsVisible,
             enter = fadeIn(),
             exit = fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter),
+            modifier = Modifier.fillMaxSize(),
         ) {
-            StatusBar(player = player, title = hud.title)
+            ExternalPlayerControls(player = player, title = hud.title)
         }
 
         AnimatedVisibility(
@@ -170,53 +177,6 @@ internal fun ExternalPlayerHudOverlay(player: Player, modifier: Modifier = Modif
             modifier = Modifier.align(Alignment.Center),
         ) {
             SeekPreview(hud.seekPreviewBitmap, hud.seekPreviewMs, player.duration)
-        }
-    }
-}
-
-@Composable
-private fun StatusBar(player: Player, title: String) {
-    var position by remember { mutableLongStateOf(0L) }
-    var duration by remember { mutableLongStateOf(0L) }
-    var playing by remember { mutableStateOf(false) }
-    LaunchedEffect(player) {
-        while (true) {
-            position = player.currentPosition
-            duration = player.duration.coerceAtLeast(0L)
-            playing = player.isPlaying
-            delay(250)
-        }
-    }
-    val progress = if (duration > 0L) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.78f))))
-            .padding(horizontal = 48.dp, vertical = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        if (title.isNotBlank()) {
-            Text(title, color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                contentDescription = null,
-                tint = AmberCore,
-                modifier = Modifier.size(26.dp),
-            )
-            Spacer(Modifier.width(12.dp))
-            Text(formatHudTime(position), color = TextBright, fontSize = 14.sp)
-            Spacer(Modifier.width(12.dp))
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.weight(1f).height(5.dp).clip(RoundedCornerShape(50)),
-                color = AmberCore,
-                trackColor = Color.White.copy(alpha = 0.22f),
-            )
-            Spacer(Modifier.width(12.dp))
-            Text(formatHudTime(duration), color = TextMuted, fontSize = 14.sp)
         }
     }
 }

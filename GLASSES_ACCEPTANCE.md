@@ -35,6 +35,13 @@ Tester: Ash. Build (versionCode): ____  Date: ____
 | C7 | Seek bar can be dragged with the pointer on glasses (code exists, unverified) | NOT TESTED | |
 | C8 | Gesture guide shows when a film starts (about 18 s) | NOT TESTED | |
 
+| C9 | Tap shows glasses controls (Back, seek bar, Prev/-10/Play/+10/Next, Subs, Audio, Speed) | NOT TESTED | |
+| C10 | With controls showing, one finger moves the pointer and tap presses buttons | NOT TESTED | |
+| C11 | Seek bar: tap and hold-then-drag move the film position | NOT TESTED | |
+| C12 | Audio and Speed lists open on the glasses and change the film | NOT TESTED | |
+| C13 | Subs button turns subtitles on/off; Back on glasses leaves the film | NOT TESTED | |
+| C14 | Tapping empty picture hides the controls; they also hide by themselves after ~9 s of no use | NOT TESTED | |
+
 ## D. Subtitles
 | # | Check | Status | Notes |
 |---|-------|--------|-------|
@@ -62,6 +69,7 @@ Tester: Ash. Build (versionCode): ____  Date: ____
 | F5 | 30-minute film plays through with no stutter, heat warning or crash | NOT TESTED | |
 
 ## Known gaps (not bugs in the table above)
+- Glasses controls cover the essentials. Subtitle Studio, Audio Studio, waveform bar, sleep timer and other tablet-only tools are not on the glasses yet.
 - Glasses cannot open studios or menus with the pointer; those stay on the tablet.
 - Pressing Play from the glasses pointer is not mirrored to the tablet yet.
 - Top/Bottom 3D is not converted; it plays flat by design for now.

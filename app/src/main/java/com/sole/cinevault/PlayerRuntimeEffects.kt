@@ -273,5 +273,6 @@ internal fun PlayerRuntimeEffects(
         onHideSubtitleDock = onHideSubtitleDock,
         onHideSubtitleBloom = onHideSubtitleBloom,
         onHideDualSubsWindow = onHideDualSubsWindow,
+        externalInteractionKey = com.sole.cinevault.glasses.display.ExternalPlayerCommands.interactionKey,
     )
 }
