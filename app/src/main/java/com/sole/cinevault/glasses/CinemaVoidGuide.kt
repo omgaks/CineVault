@@ -15,6 +15,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BackHand
 import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.OpenWith
+import androidx.compose.material.icons.rounded.PanTool
+import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.TouchApp
@@ -58,8 +60,10 @@ internal val PLAYER_GUIDE_ROWS = listOf(
 
 /** What the tablet touch surface does while the glasses show the app (no film playing). */
 internal val APP_GUIDE_ROWS = listOf(
-    GuideRow(Icons.Rounded.OpenWith, "Drag", "Move the pointer on the glasses"),
+    GuideRow(Icons.Rounded.OpenWith, "One finger", "Move the pointer (the page stays still)"),
     GuideRow(Icons.Rounded.TouchApp, "Tap", "Press what the pointer is on"),
+    GuideRow(Icons.Rounded.SwapVert, "Two fingers", "Scroll the page up and down"),
+    GuideRow(Icons.Rounded.PanTool, "Hold, then drag", "Slide a slider or bar"),
     GuideRow(Icons.Rounded.BackHand, "Five fingers spread", "Come back to the tablet"),
 )
 

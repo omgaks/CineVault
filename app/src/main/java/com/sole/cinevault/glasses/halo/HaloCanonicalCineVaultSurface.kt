@@ -134,13 +134,41 @@ fun HaloCanonicalCineVaultSurface(
         }
     }
 
+    // Two-finger scroll from the tablet: a synthetic drag from where the Halo rests, so the
+    // pointer itself never moves and is never lost off-screen.
+    val scrollState = remember { HaloPadScrollState() }
+    val processScroll: (HaloRemoteInputSession.ScrollPhase, Float, Float) -> Unit = { phase, dx, dy ->
+        val origin = haloPosition ?: HaloVector(0.5f, 0.5f)
+        when (phase) {
+            HaloRemoteInputSession.ScrollPhase.START -> {
+                scrollState.begin(origin)
+                dragDispatcher.dispatch(
+                    HaloDragEvent(HaloDragEventType.DRAG_START, origin, HaloVector(0f, 0f))
+                )
+            }
+            HaloRemoteInputSession.ScrollPhase.MOVE -> {
+                val p = scrollState.move(dx, dy)
+                dragDispatcher.dispatch(HaloDragEvent(HaloDragEventType.DRAG, p, HaloVector(dx, dy)))
+            }
+            HaloRemoteInputSession.ScrollPhase.END -> {
+                dragDispatcher.dispatch(
+                    HaloDragEvent(HaloDragEventType.DRAG_END, scrollState.last(), HaloVector(0f, 0f))
+                )
+            }
+        }
+    }
+
     DisposableEffect(enabled, acceptRemoteInput, dragDispatcher) {
         if (enabled && acceptRemoteInput) {
             HaloRemoteInputSession.setReceiver(processSample)
+            HaloRemoteInputSession.setScrollReceiver(processScroll)
+            HaloRemoteInputSession.setCancelReceiver { coordinator.reset(haloPosition) }
         }
 
         onDispose {
             if (acceptRemoteInput) {
+                HaloRemoteInputSession.setScrollReceiver(null)
+                HaloRemoteInputSession.setCancelReceiver(null)
                 HaloRemoteInputSession.setReceiver(null)
                 HaloRemoteInputSession.clearTargetViewport()
             }

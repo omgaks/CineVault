@@ -41,6 +41,7 @@ internal class HaloRemoteInputRouter {
             xFraction = point.xFraction,
             yFraction = point.yFraction,
             pressed = point.pressed,
+            moveOnly = sample.moveOnly,
         )
     }
 
@@ -73,6 +74,29 @@ internal object HaloRemoteInputSession {
         )?.let { mapped ->
             receiver?.invoke(mapped)
         }
+    }
+
+    /** Two-finger scroll from the tablet pad. Deltas are fractions of the pad size. */
+    internal enum class ScrollPhase { START, MOVE, END }
+
+    private var scrollReceiver: ((ScrollPhase, Float, Float) -> Unit)? = null
+    private var cancelReceiver: (() -> Unit)? = null
+
+    internal fun setScrollReceiver(value: ((ScrollPhase, Float, Float) -> Unit)?) {
+        scrollReceiver = value
+    }
+
+    internal fun setCancelReceiver(value: (() -> Unit)?) {
+        cancelReceiver = value
+    }
+
+    internal fun publishScroll(phase: ScrollPhase, dxFraction: Float, dyFraction: Float) {
+        scrollReceiver?.invoke(phase, dxFraction, dyFraction)
+    }
+
+    /** A press turned into a scroll: forget the press so it can never click. */
+    internal fun publishCancelPress() {
+        cancelReceiver?.invoke()
     }
 
     fun clearTargetViewport() {

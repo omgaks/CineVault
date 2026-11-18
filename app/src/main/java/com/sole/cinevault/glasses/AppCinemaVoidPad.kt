@@ -41,6 +41,10 @@ internal fun AppCinemaVoidPad() {
     val filmPlaying = CineVaultPlayerHolder.currentPlayer != null
     // Resets whenever a different pair of glasses is connected.
     var padOn by remember(session.display.displayId) { mutableStateOf(true) }
+    val traceContext = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(session.active, filmPlaying, padOn) {
+        GlassesTrace.log(traceContext, "app pad: active=${session.active} filmPlaying=$filmPlaying padOn=$padOn")
+    }
     if (!session.active || filmPlaying) return
 
     if (padOn) {

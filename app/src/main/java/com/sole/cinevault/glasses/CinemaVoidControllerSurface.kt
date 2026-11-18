@@ -45,30 +45,7 @@ fun CinemaVoidControllerSurface(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val event =
-                            awaitPointerEvent(pass = PointerEventPass.Final)
-                        val change = event.changes.firstOrNull() ?: continue
-                        val liveSize = this@pointerInput.size
-                        if (liveSize.width <= 0 || liveSize.height <= 0) continue
-
-                        HaloRemoteInputSession.publish(
-                            sample =
-                                HaloPointerMapper.sample(
-                                    xPx = change.position.x,
-                                    yPx = change.position.y,
-                                    widthPx = liveSize.width,
-                                    heightPx = liveSize.height,
-                                    pressed = change.pressed,
-                                ),
-                            sourceWidthPx = liveSize.width,
-                            sourceHeightPx = liveSize.height,
-                        )
-                    }
-                }
-            },
+            .then(if (inPlayer) Modifier.playerPadTouch() else Modifier.appPadTouch())
     ) {
         val spec = CinemaVoidAdaptivePolicy.resolve(
             availableWidthDp = maxWidth.value.toInt(),
@@ -131,3 +108,30 @@ fun CinemaVoidControllerSurface(
         }
     }
 }
+
+
+/** Player pad: every touch goes straight to Halo, which owns the film gestures. */
+private fun Modifier.playerPadTouch(): Modifier = pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event =
+                            awaitPointerEvent(pass = PointerEventPass.Final)
+                        val change = event.changes.firstOrNull() ?: continue
+                        val liveSize = this@pointerInput.size
+                        if (liveSize.width <= 0 || liveSize.height <= 0) continue
+
+                        HaloRemoteInputSession.publish(
+                            sample =
+                                HaloPointerMapper.sample(
+                                    xPx = change.position.x,
+                                    yPx = change.position.y,
+                                    widthPx = liveSize.width,
+                                    heightPx = liveSize.height,
+                                    pressed = change.pressed,
+                                ),
+                            sourceWidthPx = liveSize.width,
+                            sourceHeightPx = liveSize.height,
+                        )
+                    }
+                }
+            }
