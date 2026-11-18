@@ -108,6 +108,16 @@ fun CinemaVoidControllerSurface(
                         textAlign = TextAlign.Center,
                     )
 
+                    com.sole.cinevault.glasses.display.ExternalPlayerHudState.stereoNotice?.let { n ->
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = n.title + ": " + n.detail,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = com.sole.cinevault.ui.theme.AmberCore,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+
                     Spacer(Modifier.height(12.dp))
 
                     // While a film plays the guide shows for a few seconds at the start, then

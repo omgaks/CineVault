@@ -1,5 +1,7 @@
 package com.sole.cinevault
 
+import com.sole.cinevault.glasses.stereo.StereoModeChoice
+import com.sole.cinevault.glasses.stereo.StereoModePrefs
 import androidx.compose.material.icons.rounded.Collections
 import com.sole.cinevault.collections.loadCollectionPageV2Enabled
 import com.sole.cinevault.collections.saveCollectionPageV2Enabled
@@ -354,6 +356,28 @@ fun SettingsScreen(
                 subtitle = "Learn the controls, practise nod and shake gestures",
                 action = "OPEN"
             ) { onOpenGlassesGestureTutorial() }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            val settingsContext = androidx.compose.ui.platform.LocalContext.current
+            androidx.compose.runtime.LaunchedEffect(Unit) { StereoModePrefs.load(settingsContext) }
+            Text(text = "3D video on glasses", color = TextBright, fontSize = CineType.Label, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Auto reads 3D from the file name. Pick Side-by-side for a 3D film without it in the name, or Off to always play flat. Top/Bottom plays flat for now.",
+                color = TextMuted,
+                fontSize = CineType.Caption,
+                lineHeight = 17.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StereoModeChoice.entries.forEach { option ->
+                    CineChip(
+                        text = option.label,
+                        selected = StereoModePrefs.choice == option,
+                        onClick = { StereoModePrefs.set(settingsContext, option) },
+                    )
+                }
+            }
         }
     }
 
