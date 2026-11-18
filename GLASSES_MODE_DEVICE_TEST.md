@@ -1,5 +1,7 @@
 # CineVault Glasses Mode — RayNeo device test
 
+> Superseded by GLASSES_ACCEPTANCE.md (kept for history).
+
 This build is based on the exact repository used for the 11 August 2026 RayNeo test.
 
 ## Changes in this build
