@@ -44,11 +44,11 @@ class HaloMotionEngineTest {
     @Test fun motionIntoEdgeIsSoftened() {
         val normal = HaloMotionEngine(HaloMotionConfig(softEdgeFraction = 0f))
         normal.update(0.96f, 0.5f, 16L)
-        val normalPoint = normal.update(0.98f, 0.5f, 16L)
+        val normalPoint = normal.update(0.97f, 0.5f, 16L)
 
         val softened = HaloMotionEngine()
         softened.update(0.96f, 0.5f, 16L)
-        val softenedPoint = softened.update(0.98f, 0.5f, 16L)
+        val softenedPoint = softened.update(0.97f, 0.5f, 16L)
 
         assertTrue(softenedPoint.x < normalPoint.x)
         assertTrue(softenedPoint.x > 0.96f)

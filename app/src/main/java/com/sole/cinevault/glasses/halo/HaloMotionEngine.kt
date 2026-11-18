@@ -83,12 +83,12 @@ class HaloMotionEngine(
 }
 
 data class HaloMotionConfig(
-    val precisionGain: Float = 0.95f,
-    val fastGain: Float = 1.45f,
-    val fullAccelerationVelocity: Float = 1.4f,
-    val smoothingAt60Hz: Float = 0.82f,
-    val softEdgeFraction: Float = 0.07f,
-    val minimumEdgeGain: Float = 0.42f,
+    val precisionGain: Float = 1.25f,
+    val fastGain: Float = 2.6f,
+    val fullAccelerationVelocity: Float = 1.0f,
+    val smoothingAt60Hz: Float = 0.93f,
+    val softEdgeFraction: Float = 0.06f,
+    val minimumEdgeGain: Float = 0.5f,
     val minFrameMillis: Long = 4L,
     val maxFrameMillis: Long = 50L,
 ) {
