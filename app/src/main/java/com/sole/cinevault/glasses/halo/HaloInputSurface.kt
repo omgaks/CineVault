@@ -62,6 +62,9 @@ data class HaloPointerSample(
     val yFraction: Float,
 
     val pressed: Boolean,
+
+    /** Pointer-only touch: the finger moves/clicks the Halo but never starts a drag/scroll. */
+    val moveOnly: Boolean = false,
 )
 
 object HaloPointerMapper {

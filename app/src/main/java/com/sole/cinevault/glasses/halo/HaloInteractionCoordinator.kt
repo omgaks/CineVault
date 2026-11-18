@@ -35,10 +35,14 @@ class HaloInteractionCoordinator(
         val pressStarted = sample.pressed && !lastPressed
         val precisionAtPressDown = pressStarted && lastStability.isStable
 
-        val dragEvents = dragController.update(
-            position = position,
-            pressed = sample.pressed,
-        )
+        val dragEvents = if (sample.moveOnly) {
+            emptyList()
+        } else {
+            dragController.update(
+                position = position,
+                pressed = sample.pressed,
+            )
+        }
 
         val dragOwnsGesture = dragController.isDragging() ||
             dragEvents.any {

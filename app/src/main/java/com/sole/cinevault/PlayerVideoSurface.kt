@@ -48,6 +48,14 @@ internal fun PlayerVideoSurface(
             renderDestination = renderDestination,
         )
 
+    val traceContext = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(cinemaVoidHost, externalDisplayActive, renderDestination) {
+        com.sole.cinevault.glasses.GlassesTrace.log(
+            traceContext,
+            "video surface: dest=$renderDestination externalActive=$externalDisplayActive tabletIsPad=$cinemaVoidHost",
+        )
+    }
+
     // D12-S4: connect stereo state to the SAME canonical player. Keeping the
     // snapshot here makes render-destination policy explicit and gives S4 one
     // bounded handoff point for the actual eye-layout transform.
