@@ -5,6 +5,7 @@ import android.app.Presentation
 import android.hardware.display.DisplayManager
 import android.os.Bundle
 import android.view.Display
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
@@ -14,6 +15,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
@@ -127,6 +130,8 @@ private class CineVaultExternalPresentation(
             },
         )
 
+        GlassesScreenSize.bind(context, display.name)
+
         val composeView = ComposeView(context).apply {
             setViewTreeLifecycleOwner(this@CineVaultExternalPresentation)
             setViewTreeSavedStateRegistryOwner(this@CineVaultExternalPresentation)
@@ -164,8 +169,17 @@ private class CineVaultExternalPresentation(
                                 enabled = haloEnabled,
                                 acceptRemoteInput = haloEnabled,
                             ) {
-                                Box(modifier = Modifier.fillMaxSize()) {
-                                    CineVaultRoot()
+                                Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+                                    // Shrunk toward the centre so edges the glasses crop stay visible.
+                                    // Touch hit-testing follows the scaling, so the pointer stays accurate.
+                                    Box(
+                                        modifier = Modifier.fillMaxSize().graphicsLayer {
+                                            scaleX = GlassesScreenSize.scale
+                                            scaleY = GlassesScreenSize.scale
+                                        },
+                                    ) {
+                                        CineVaultRoot()
+                                    }
 
                                     ExternalCanonicalVideoLayer()
 

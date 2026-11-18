@@ -360,6 +360,25 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(12.dp))
             val settingsContext = androidx.compose.ui.platform.LocalContext.current
             androidx.compose.runtime.LaunchedEffect(Unit) { StereoModePrefs.load(settingsContext) }
+            Text(text = "Glasses screen size", color = TextBright, fontSize = CineType.Label, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Shrinks the app and 2D films on the glasses if the edges are hard to see. 3D side-by-side films always stay full size. Also on the tablet touchpad.",
+                color = TextMuted,
+                fontSize = CineType.Caption,
+                lineHeight = 17.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                com.sole.cinevault.glasses.display.GlassesScreenSizePolicy.STEPS.forEach { step ->
+                    CineChip(
+                        text = com.sole.cinevault.glasses.display.GlassesScreenSizePolicy.label(step),
+                        selected = com.sole.cinevault.glasses.display.GlassesScreenSize.scale == step,
+                        onClick = { com.sole.cinevault.glasses.display.GlassesScreenSize.set(settingsContext, step) },
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
             Text(text = "3D video on glasses", color = TextBright, fontSize = CineType.Label, fontWeight = FontWeight.SemiBold)
             Spacer(modifier = Modifier.height(4.dp))
             Text(

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.media3.common.util.UnstableApi
 import com.sole.cinevault.CineVaultPlayerHolder
@@ -30,17 +31,37 @@ internal fun ExternalCanonicalVideoLayer() {
             ExternalPlayerHudState.reset()
         }
     }
+    // 2D films shrink with the app size; 3D side-by-side stays full frame so depth is not broken.
+    val size = GlassesScreenSizePolicy.effective(
+        chosen = GlassesScreenSize.scale,
+        fullFrame3d = ExternalPlayerHudState.fullFrame3d,
+    )
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        PlayerVideoSurface(
-            player = player,
-            externalDisplayActive = true,
-            isZoomMode = false,
-            videoScale = 1f,
-            videoOffsetX = 0f,
-            videoOffsetY = 0f,
-            onPlayerViewChanged = { ExternalPlayerViewRegistry.playerView = it },
-            onResizeModeChanged = {},
-        )
-        ExternalPlayerHudOverlay(player = player)
+        Box(
+            modifier = Modifier.fillMaxSize().graphicsLayer {
+                scaleX = size
+                scaleY = size
+            },
+        ) {
+            PlayerVideoSurface(
+                player = player,
+                externalDisplayActive = true,
+                isZoomMode = false,
+                videoScale = 1f,
+                videoOffsetX = 0f,
+                videoOffsetY = 0f,
+                onPlayerViewChanged = { ExternalPlayerViewRegistry.playerView = it },
+                onResizeModeChanged = {},
+            )
+        }
+        // Controls and messages always follow the chosen size so no edge button is cropped.
+        Box(
+            modifier = Modifier.fillMaxSize().graphicsLayer {
+                scaleX = GlassesScreenSize.scale
+                scaleY = GlassesScreenSize.scale
+            },
+        ) {
+            ExternalPlayerHudOverlay(player = player)
+        }
     }
 }

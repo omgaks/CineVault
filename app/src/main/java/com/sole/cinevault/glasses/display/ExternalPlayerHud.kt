@@ -65,6 +65,9 @@ internal object ExternalPlayerHudState {
     var gestureProgress by mutableStateOf<Int?>(null)
     var gestureStamp by mutableLongStateOf(0L)
 
+    /** True while a supported 3D side-by-side film fills the whole glasses frame. */
+    var fullFrame3d by mutableStateOf(false)
+
     var stereoNotice by mutableStateOf<com.sole.cinevault.glasses.stereo.StereoNotice?>(null)
 
     var seekPreviewVisible by mutableStateOf(false)
@@ -88,6 +91,7 @@ internal object ExternalPlayerHudState {
     fun reset() {
         controlsVisible = false
         stereoNotice = null
+        fullFrame3d = false
         seekPreviewVisible = false
         seekPreviewBitmap = null
         gestureLabel = ""

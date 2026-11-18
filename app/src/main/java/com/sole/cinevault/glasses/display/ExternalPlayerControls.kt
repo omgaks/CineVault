@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.Audiotrack
 import androidx.compose.material.icons.rounded.ClosedCaption
 import androidx.compose.material.icons.rounded.ClosedCaptionOff
@@ -265,6 +266,15 @@ internal fun ExternalPlayerControls(player: Player, title: String, modifier: Mod
                 GlassButton(Icons.Rounded.Audiotrack, "Audio", wide = true) {
                     ExternalPlayerCommands.touched()
                     panel = if (panel == Panel.AUDIO) null else Panel.AUDIO
+                }
+                val sizeContext = androidx.compose.ui.platform.LocalContext.current
+                GlassButton(
+                    Icons.Rounded.AspectRatio,
+                    if (ExternalPlayerHudState.fullFrame3d) "3D full" else "Size " + GlassesScreenSizePolicy.label(GlassesScreenSize.scale),
+                    wide = true,
+                ) {
+                    ExternalPlayerCommands.touched()
+                    GlassesScreenSize.cycle(sizeContext)
                 }
                 GlassButton(Icons.Rounded.Speed, speedLabel(speed), wide = true) {
                     ExternalPlayerCommands.touched()
