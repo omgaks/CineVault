@@ -65,6 +65,8 @@ internal object ExternalPlayerHudState {
     var gestureProgress by mutableStateOf<Int?>(null)
     var gestureStamp by mutableLongStateOf(0L)
 
+    var stereoNotice by mutableStateOf<com.sole.cinevault.glasses.stereo.StereoNotice?>(null)
+
     var seekPreviewVisible by mutableStateOf(false)
     var seekPreviewMs by mutableLongStateOf(0L)
     var seekPreviewBitmap by mutableStateOf<Bitmap?>(null)
@@ -78,6 +80,7 @@ internal object ExternalPlayerHudState {
 
     fun reset() {
         controlsVisible = false
+        stereoNotice = null
         seekPreviewVisible = false
         seekPreviewBitmap = null
         gestureLabel = ""
@@ -108,7 +111,40 @@ internal fun ExternalPlayerHudOverlay(player: Player, modifier: Modifier = Modif
         }
     }
 
+    // The 3D note shows for a few seconds when a film starts (or the choice changes).
+    var noticeShown by remember { mutableStateOf(false) }
+    LaunchedEffect(hud.stereoNotice) {
+        if (hud.stereoNotice != null) {
+            noticeShown = true
+            delay(7000)
+            noticeShown = false
+        } else {
+            noticeShown = false
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
+        AnimatedVisibility(
+            visible = noticeShown && hud.stereoNotice != null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 40.dp),
+        ) {
+            hud.stereoNotice?.let { n ->
+                Column(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Color.Black.copy(alpha = 0.72f))
+                        .padding(horizontal = 24.dp, vertical = 14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(n.title, color = AmberCore, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(n.detail, color = TextBright, fontSize = 13.sp)
+                }
+            }
+        }
+
         AnimatedVisibility(
             visible = hud.controlsVisible,
             enter = fadeIn(),

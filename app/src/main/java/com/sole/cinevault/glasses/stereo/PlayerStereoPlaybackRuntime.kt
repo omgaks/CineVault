@@ -70,6 +70,11 @@ internal fun rememberStereoPlaybackRuntime(
     @Suppress("UNUSED_VARIABLE")
     val observedRevision = revision
 
+    // The person's own 3D choice from Settings (Auto leaves detection alone).
+    val context = androidx.compose.ui.platform.LocalContext.current
+    StereoModePrefs.load(context)
+    session.setUserOverride(StereoModePrefs.choice.toOverride())
+
     return StereoPlaybackRuntimeSnapshot(
         decision = session.resolve(externalDisplayActive = externalDisplayDestination),
         sourcePath = sourcePath,
