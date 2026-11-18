@@ -13,9 +13,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BackHand
+import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.OpenWith
 import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material.icons.rounded.ZoomOutMap
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -44,7 +48,11 @@ internal val PLAYER_GUIDE_ROWS = listOf(
     GuideRow(Icons.Rounded.OpenWith, "Drag", "Move the pointer on the glasses"),
     GuideRow(Icons.Rounded.TouchApp, "Tap", "Show or hide the controls, or press what the pointer is on"),
     GuideRow(Icons.Rounded.PlayCircle, "Double tap", "Play or pause"),
+    GuideRow(Icons.Rounded.FastForward, "Swipe sideways, top half", "Seek through the film"),
+    GuideRow(Icons.Rounded.WbSunny, "Swipe up/down, left edge", "Brightness"),
+    GuideRow(Icons.Rounded.VolumeUp, "Swipe up/down, right edge", "Volume"),
     GuideRow(Icons.Rounded.ZoomOutMap, "Two fingers", "Pinch to zoom, drag to move the picture"),
+    GuideRow(Icons.Rounded.Speed, "Hold 2, 3 or 4 fingers still", "Play at 2x, 3x or 5x until you let go"),
     GuideRow(Icons.Rounded.BackHand, "Five fingers spread", "Come back to the tablet"),
 )
 

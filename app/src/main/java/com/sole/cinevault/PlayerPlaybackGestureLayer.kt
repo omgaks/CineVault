@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
@@ -18,7 +20,9 @@ import com.sole.cinevault.glasses.halo.HaloPlayerInputBridge
 import com.sole.cinevault.glasses.halo.HaloPlayerLiveBindings
 import com.sole.cinevault.glasses.halo.HaloPlayerLiveSessionFactory
 import com.sole.cinevault.glasses.halo.haloPlayerLiveDragGestures
+import com.sole.cinevault.glasses.halo.HaloSpeedHoldPolicy
 import com.sole.cinevault.glasses.halo.haloPlayerSupportGestures
+import com.sole.cinevault.glasses.halo.haloSpeedHoldGestures
 import com.sole.cinevault.library.VideoThumbnailHelper
 
 /**
@@ -171,6 +175,9 @@ internal fun PlayerPlaybackGestureLayer(
             )
         }
 
+    // Speed the film had before a multi-finger hold, restored when the fingers lift.
+    var speedBeforeHold by remember { mutableStateOf<Float?>(null) }
+
     val playbackGestureModifier =
         if (externalDisplayActive) {
             Modifier
@@ -190,6 +197,20 @@ internal fun PlayerPlaybackGestureLayer(
                             false,
                         )
                         onGestureEnd()
+                    },
+                )
+                .haloSpeedHoldGestures(
+                    gestureKey = currentVideoPath,
+                    onHeldSpeedChanged = { held ->
+                        if (held != null) {
+                            if (speedBeforeHold == null) speedBeforeHold = player.playbackParameters.speed
+                            player.setPlaybackSpeed(held)
+                            externalShowGestureHud("Speed", HaloSpeedHoldPolicy.label(held), null)
+                        } else {
+                            speedBeforeHold?.let { player.setPlaybackSpeed(it) }
+                            speedBeforeHold = null
+                            externalShowGestureHud("Speed", "NORMAL", null)
+                        }
                     },
                 )
                 .haloPlayerSupportGestures(
