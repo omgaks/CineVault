@@ -63,7 +63,7 @@ import com.sole.cinevault.ui.theme.*
 // belongs to a different concern.
 @Composable
 private fun AmberSectionPill(text: String) {
-    LumenSectionLabel(text, LumenViolet)
+    LumenSectionLabel(text, NightCityEnvironment.signatureAmber)
 }
 
 @Composable
@@ -81,6 +81,8 @@ internal fun AudioFxDashboard(
     // The frame, title and close behaviour now come from LumenWindow; this is just the content.
     Column(modifier = Modifier.fillMaxWidth()) {
         Spacer(modifier = Modifier.height(10.dp))
+        AudioStudioAmberHeader(enabled = controller.enabled)
+        Spacer(modifier = Modifier.height(14.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
