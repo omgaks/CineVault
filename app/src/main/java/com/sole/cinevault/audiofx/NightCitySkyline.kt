@@ -1,5 +1,10 @@
 package com.sole.cinevault.audiofx
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,7 +21,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,6 +38,15 @@ internal fun NightCitySkyline(
     modifier: Modifier = Modifier,
 ) {
     var environment by remember { mutableStateOf(NightCityEnvironment.ANIME_RAINFALL) }
+    var motionEnabled by remember { mutableStateOf(true) }
+    val animation = rememberInfiniteTransition(label = "NightCityAtmosphere")
+    val motionPhase by animation.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(9000), repeatMode = RepeatMode.Restart),
+        label = "CityMotionPhase",
+    )
+    val phase = if (motionEnabled) motionPhase else 0f
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
@@ -57,6 +70,13 @@ internal fun NightCitySkyline(
                 )
             }
         }
+        Text(
+            text = if (motionEnabled) "MOTION ON · TAP TO PAUSE" else "MOTION OFF · TAP TO RESUME",
+            color = NightCityEnvironment.signatureAmber,
+            fontSize = 10.sp,
+            modifier = Modifier.clickable { motionEnabled = !motionEnabled }
+                .padding(bottom = 7.dp),
+        )
         Canvas(
             modifier = Modifier.fillMaxWidth().height(150.dp)
                 .background(Color(0xFF05060A), RoundedCornerShape(12.dp)),
@@ -92,7 +112,8 @@ internal fun NightCitySkyline(
                 val rows = (buildingHeight / 13f).toInt()
                 for (row in 1 until rows) {
                     if ((i * 7 + row * 11) % 5 == 0) continue
-                    val alpha = (0.28f + energy * 0.65f).coerceIn(0f, 1f)
+                    val pulse = if (motionEnabled) 0.10f * sin(phase * 6.283185f + i * 0.73f + row).toFloat() else 0f
+                    val alpha = (0.28f + energy * 0.55f + pulse).coerceIn(0.08f, 1f)
                     drawRect(
                         color = if ((i + row) % 4 == 0) environment.neonSecondary.copy(alpha = alpha)
                         else environment.windowLight.copy(alpha = alpha),
@@ -110,7 +131,7 @@ internal fun NightCitySkyline(
             if (environment == NightCityEnvironment.ANIME_RAINFALL) {
                 for (i in 0 until 44) {
                     val x = (i * 47.3f) % w
-                    val y = (i * 31.7f) % h
+                    val y = ((i * 31.7f) + phase * h * 1.7f) % h
                     drawLine(
                         color = Color(0xFF7CCFFF).copy(alpha = 0.25f),
                         start = Offset(x, y),
@@ -118,6 +139,41 @@ internal fun NightCitySkyline(
                         strokeWidth = 1f,
                     )
                 }
+            }
+            // Elevated train: geometric light strip moves continuously across the skyline.
+            val trackY = h * 0.81f
+            drawLine(
+                color = environment.neonSecondary.copy(alpha = 0.45f),
+                start = Offset(0f, trackY + 8f),
+                end = Offset(w, trackY + 8f),
+                strokeWidth = 2f,
+            )
+            val trainWidth = w * 0.23f
+            val trainX = -trainWidth + phase * (w + trainWidth)
+            drawRect(
+                color = Color(0xFF171923),
+                topLeft = Offset(trainX, trackY),
+                size = Size(trainWidth, 11f),
+            )
+            drawLine(
+                color = NightCityEnvironment.signatureAmber,
+                start = Offset(trainX, trackY),
+                end = Offset(trainX + trainWidth, trackY),
+                strokeWidth = 2f,
+            )
+            for (window in 0 until 7) {
+                drawRect(
+                    color = environment.windowLight.copy(alpha = 0.8f),
+                    topLeft = Offset(trainX + (window + 0.5f) * trainWidth / 8f, trackY + 3f),
+                    size = Size(trainWidth / 15f, 4f),
+                )
+            }
+            if (environment == NightCityEnvironment.SKYLINE_AT_DUSK) {
+                drawCircle(
+                    color = NightCityEnvironment.signatureAmber.copy(alpha = 0.65f),
+                    radius = h * 0.095f,
+                    center = Offset(w * 0.78f, h * 0.24f),
+                )
             }
             if (environment == NightCityEnvironment.NEO_KYOTO_MIDNIGHT) {
                 // Minimal temple roof silhouette; detailed environment art comes later.
