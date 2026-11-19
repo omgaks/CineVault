@@ -29,6 +29,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -113,8 +114,9 @@ internal fun NightCitySkyline(
                 .padding(vertical = 16.dp),
         )
         Canvas(
-            modifier = Modifier.fillMaxWidth().height(150.dp)
-                .background(Color(0xFF05060A), RoundedCornerShape(12.dp)),
+            modifier = Modifier.fillMaxWidth().height(184.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF05060A)),
         ) {
             val w = size.width
             val h = size.height
@@ -124,6 +126,16 @@ internal fun NightCitySkyline(
                 radius = w * 0.33f,
                 center = Offset(w * 0.77f, h * 0.28f),
             )
+            // Distant tower layer adds atmospheric depth.
+            for (tower in 0 until 18) {
+                val tw = w / 18f
+                val th = h * (0.14f + abs(sin(tower * 2.13)).toFloat() * 0.36f)
+                drawRect(
+                    color = environment.building.copy(alpha = 0.48f),
+                    topLeft = Offset(tower * tw, h - th),
+                    size = Size(tw * 0.84f, th),
+                )
+            }
             val count = 27
             val buildingWidth = w / count
             for (i in 0 until count) {
@@ -156,6 +168,19 @@ internal fun NightCitySkyline(
                     )
                 }
             }
+            // Spectrum follows actual decoded FFT energy.
+            val spectrumBase = h * 0.965f
+            for (bar in 0 until 32) {
+                val energy = NightCityFftEnergy.at(fft, bar, 32)
+                val barHeight = 2f + energy * h * 0.14f
+                val bx = w * (bar + 0.5f) / 32f
+                drawLine(
+                    color = environment.neonPrimary.copy(alpha = 0.32f + energy * 0.55f),
+                    start = Offset(bx, spectrumBase),
+                    end = Offset(bx, spectrumBase - barHeight),
+                    strokeWidth = (w / 32f * 0.42f).coerceAtLeast(1f),
+                )
+            }
             drawLine(
                 color = NightCityEnvironment.signatureAmber.copy(alpha = 0.7f),
                 start = Offset(0f, h - 1f),
@@ -163,6 +188,17 @@ internal fun NightCitySkyline(
                 strokeWidth = 2f,
             )
             if (environment == NightCityEnvironment.ANIME_RAINFALL) {
+                // Reflective wet pavement with scattered neon streaks.
+                for (streak in 0 until 14) {
+                    val sx = (streak * 83.3f) % w
+                    val sy = h * (0.89f + (streak % 5) * 0.022f)
+                    drawLine(
+                        color = environment.neonPrimary.copy(alpha = 0.11f + (streak % 3) * 0.07f),
+                        start = Offset(sx, sy),
+                        end = Offset((sx + w * 0.07f).coerceAtMost(w), sy),
+                        strokeWidth = 1.4f,
+                    )
+                }
                 for (i in 0 until 44) {
                     val x = (i * 47.3f) % w
                     val y = ((i * 31.7f) + phase * h * 1.7f) % h
