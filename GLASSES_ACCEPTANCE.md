@@ -21,6 +21,8 @@ Tester: Ash. Build (versionCode): ____  Date: ____
 | B1 | Dragging on the tablet moves the Halo pointer on glasses | NOT TESTED | |
 | B2 | Tap on the pad taps what the pointer is on | NOT TESTED | |
 | B3 | Switching tabs / opening a film detail / a TV show on the tablet is mirrored on glasses | NOT TESTED | |
+| B5 | Two fingers scroll the list under the pointer like a mouse wheel; the pointer does not move, and it works even with the pointer at the top or bottom edge | NOT TESTED | |
+| B6 | A quick two-finger tap on the pad goes Back (detail to library, etc.) | NOT TESTED | |
 | B4 | Five-finger spread on the pad leaves Glasses Mode | NOT TESTED | |
 
 ## C. Playback

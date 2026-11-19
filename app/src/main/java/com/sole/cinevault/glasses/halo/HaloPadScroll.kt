@@ -12,21 +12,15 @@ internal const val PAD_HOLD_SLOP_FRACTION = 0.012f
 /** Waiting this long for a second finger before a lone finger becomes a pointer press. */
 internal const val PAD_SECOND_FINGER_WAIT_MS = 70L
 
-/** Where the synthetic scroll finger is, as a 0..1 position on the glasses screen. */
-internal class HaloPadScrollState {
-    private var x = 0.5f
-    private var y = 0.5f
+/** Two fingers that land and lift within this time, barely moving, are a two-finger TAP (Back). */
+internal const val PAD_TWO_FINGER_TAP_MS = 280L
 
-    fun begin(origin: HaloVector) {
-        x = origin.x.coerceIn(0f, 1f)
-        y = origin.y.coerceIn(0f, 1f)
-    }
+/** Android's mouse wheel moves a list by this many dp per wheel unit. */
+private const val DP_PER_WHEEL_UNIT = 64f
 
-    fun move(dxFraction: Float, dyFraction: Float): HaloVector {
-        x = (x + dxFraction * PAD_SCROLL_GAIN).coerceIn(0f, 1f)
-        y = (y + dyFraction * PAD_SCROLL_GAIN).coerceIn(0f, 1f)
-        return HaloVector(x, y)
-    }
-
-    fun last() = HaloVector(x, y)
-}
+/**
+ * Turns finger travel (a fraction of the pad) into wheel units for a glasses screen that is
+ * [extentDp] dp long on that axis. Sign is not changed here.
+ */
+internal fun wheelUnits(fractionDelta: Float, extentDp: Float): Float =
+    fractionDelta * extentDp * PAD_SCROLL_GAIN / DP_PER_WHEEL_UNIT

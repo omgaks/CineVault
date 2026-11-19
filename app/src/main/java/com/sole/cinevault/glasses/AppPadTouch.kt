@@ -12,6 +12,7 @@ import com.sole.cinevault.glasses.halo.HaloRemoteInputSession
 import com.sole.cinevault.glasses.halo.PAD_HOLD_SLOP_FRACTION
 import com.sole.cinevault.glasses.halo.PAD_HOLD_TO_DRAG_MS
 import com.sole.cinevault.glasses.halo.PAD_SECOND_FINGER_WAIT_MS
+import com.sole.cinevault.glasses.halo.PAD_TWO_FINGER_TAP_MS
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.hypot
 
@@ -19,7 +20,8 @@ import kotlin.math.hypot
  * Touch rules for the tablet pad while the glasses show the APP (not a film):
  *
  *  - one finger: moves the glasses pointer only; a quick tap clicks. The page never scrolls.
- *  - two fingers: scroll the page. The pointer stays exactly where it was left.
+ *  - two fingers: scroll the page (like a mouse wheel). The pointer stays exactly where it was
+ *    left. A quick two-finger tap is Back.
  *  - one finger held still ~0.5 s, then dragged: a real drag (for sliders).
  *
  * Observes in the Final pass and never consumes, like the player pad.
@@ -27,6 +29,7 @@ import kotlin.math.hypot
 internal fun Modifier.appPadTouch(
     allowScroll: Boolean = true,
     onActivity: () -> Unit = {},
+    onTwoFingerTap: (() -> Unit)? = null,
 ): Modifier = pointerInput(allowScroll) {
     awaitEachGesture {
         val w = size.width
@@ -63,7 +66,7 @@ internal fun Modifier.appPadTouch(
 
         when (early) {
             1 -> {
-                twoFingerScroll(w, h, allowScroll)
+                twoFingerScroll(w, h, allowScroll, onTwoFingerTap)
                 return@awaitEachGesture
             }
             2 -> { // quick tap
@@ -97,7 +100,7 @@ internal fun Modifier.appPadTouch(
             val down = event.changes.count { it.pressed }
             if (down >= 2) {
                 HaloRemoteInputSession.publishCancelPress()
-                twoFingerScroll(w, h, allowScroll)
+                twoFingerScroll(w, h, allowScroll, onTwoFingerTap)
                 return@awaitEachGesture
             }
             val mine = event.changes.firstOrNull { it.id == first.id } ?: break
@@ -118,22 +121,23 @@ internal fun Modifier.appPadTouch(
     }
 }
 
-/** Runs until every finger is up; the first lifted finger ends the scroll without a jump. */
+/**
+ * Two fingers: a quick tap that barely moves is "Back" ([onTap]); otherwise they scroll
+ * (mouse-wheel ticks on the glasses). Runs until every finger is up.
+ */
 private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.twoFingerScroll(
     w: Int,
     h: Int,
     allowScroll: Boolean,
+    onTap: (() -> Unit)?,
 ) {
-    if (!allowScroll) {
-        // Inside a film the two-finger scroll must never nudge a slider under the pointer.
-        do {
-            val event = awaitPointerEvent(PointerEventPass.Final)
-        } while (event.changes.fastAny { it.pressed })
-        return
-    }
-    HaloRemoteInputSession.publishScroll(HaloRemoteInputSession.ScrollPhase.START, 0f, 0f)
+    val startTime = System.currentTimeMillis()
+    var travel = 0f
     var previous: Offset? = null
     var scrolling = true
+    var started = false
+    var pendingDx = 0f
+    var pendingDy = 0f
     do {
         val event = awaitPointerEvent(PointerEventPass.Final)
         val pressed = event.changes.filter { it.pressed }
@@ -143,19 +147,36 @@ private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.two
                 pressed.map { it.position.y }.average().toFloat(),
             )
             previous?.let {
-                HaloRemoteInputSession.publishScroll(
-                    HaloRemoteInputSession.ScrollPhase.MOVE,
-                    (centre.x - it.x) / w,
-                    (centre.y - it.y) / h,
-                )
+                val dx = (centre.x - it.x) / w
+                val dy = (centre.y - it.y) / h
+                travel += hypot(dx, dy)
+                if (allowScroll) {
+                    pendingDx += dx
+                    pendingDy += dy
+                    // Do not scroll on a mere tap: wait until the fingers really travel.
+                    if (!started && travel > PAD_HOLD_SLOP_FRACTION) {
+                        started = true
+                        HaloRemoteInputSession.publishScroll(HaloRemoteInputSession.ScrollPhase.START, 0f, 0f)
+                    }
+                    if (started) {
+                        HaloRemoteInputSession.publishScroll(HaloRemoteInputSession.ScrollPhase.MOVE, pendingDx, pendingDy)
+                        pendingDx = 0f
+                        pendingDy = 0f
+                    }
+                }
             }
             previous = centre
         } else if (scrolling) {
-            scrolling = false
-            HaloRemoteInputSession.publishScroll(HaloRemoteInputSession.ScrollPhase.END, 0f, 0f)
+            scrolling = false // first lifted finger ends the scroll without a jump
         }
     } while (event.changes.fastAny { it.pressed })
-    if (scrolling) {
+
+    if (started) {
         HaloRemoteInputSession.publishScroll(HaloRemoteInputSession.ScrollPhase.END, 0f, 0f)
+    } else if (onTap != null &&
+        travel <= PAD_HOLD_SLOP_FRACTION * 2f &&
+        System.currentTimeMillis() - startTime <= PAD_TWO_FINGER_TAP_MS
+    ) {
+        onTap()
     }
 }

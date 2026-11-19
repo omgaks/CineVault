@@ -134,27 +134,23 @@ fun HaloCanonicalCineVaultSurface(
         }
     }
 
-    // Two-finger scroll from the tablet: a synthetic drag from where the Halo rests, so the
-    // pointer itself never moves and is never lost off-screen.
-    val scrollState = remember { HaloPadScrollState() }
+    // Two-finger scroll from the tablet becomes mouse-wheel ticks under the Halo, so the pointer
+    // never moves, there is no edge to run out of, and a slider is never dragged by accident.
+    val wheelDispatcher = remember(rootView, syntheticGuard) { HaloWheelDispatcher(rootView, syntheticGuard) }
     val processScroll: (HaloRemoteInputSession.ScrollPhase, Float, Float) -> Unit = { phase, dx, dy ->
         val origin = haloPosition ?: HaloVector(0.5f, 0.5f)
         when (phase) {
-            HaloRemoteInputSession.ScrollPhase.START -> {
-                scrollState.begin(origin)
-                dragDispatcher.dispatch(
-                    HaloDragEvent(HaloDragEventType.DRAG_START, origin, HaloVector(0f, 0f))
-                )
-            }
+            HaloRemoteInputSession.ScrollPhase.START -> wheelDispatcher.hover(origin)
             HaloRemoteInputSession.ScrollPhase.MOVE -> {
-                val p = scrollState.move(dx, dy)
-                dragDispatcher.dispatch(HaloDragEvent(HaloDragEventType.DRAG, p, HaloVector(dx, dy)))
-            }
-            HaloRemoteInputSession.ScrollPhase.END -> {
-                dragDispatcher.dispatch(
-                    HaloDragEvent(HaloDragEventType.DRAG_END, scrollState.last(), HaloVector(0f, 0f))
+                val density = rootView.resources.displayMetrics.density.coerceAtLeast(1f)
+                // Finger up = see what is below = wheel down (negative); finger left = wheel right.
+                wheelDispatcher.scroll(
+                    position = origin,
+                    vScroll = wheelUnits(dy, rootView.height / density),
+                    hScroll = -wheelUnits(dx, rootView.width / density),
                 )
             }
+            HaloRemoteInputSession.ScrollPhase.END -> Unit
         }
     }
 
