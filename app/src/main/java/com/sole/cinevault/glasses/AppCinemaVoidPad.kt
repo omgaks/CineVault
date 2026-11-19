@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import com.sole.cinevault.CineVaultPlayerHolder
 import com.sole.cinevault.glasses.display.GlassesScreenSize
 import com.sole.cinevault.glasses.display.GlassPill
+import com.sole.cinevault.glasses.display.GlassesBackBridge
 import com.sole.cinevault.glasses.display.GlassSizeCapsule
 import com.sole.cinevault.ui.theme.AmberCore
 
@@ -57,6 +58,7 @@ internal fun AppCinemaVoidPad() {
             CinemaVoidControllerSurface(
                 modifier = Modifier.fillMaxSize().fiveFingerReturn(session.disable),
                 inPlayer = false,
+                onTwoFingerTap = { GlassesBackBridge.handler?.invoke() },
             )
             Row(
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 28.dp),

@@ -131,6 +131,7 @@ private class CineVaultExternalPresentation(
         )
 
         GlassesScreenSize.bind(context, display.name)
+        GlassesBackBridge.handler = { backDispatcher.onBackPressed() }
 
         val composeView = ComposeView(context).apply {
             setViewTreeLifecycleOwner(this@CineVaultExternalPresentation)
@@ -223,6 +224,7 @@ private class CineVaultExternalPresentation(
     override fun dismiss() {
         if (finished) return
         finished = true
+        GlassesBackBridge.handler = null
         ExternalViewportSessionState.unbindProfile(display.name)
         super.dismiss() // runs onStop while the lifecycle is still alive
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
