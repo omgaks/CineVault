@@ -125,8 +125,7 @@ internal fun NightCitySkyline(
                     end = Offset(x + buildingWidth - 1f, y),
                     strokeWidth = 1.3f,
                 )
-                val bin = if (fft.isEmpty()) 0 else ((i * 2 + 1) % fft.size)
-                val energy = if (fft.isEmpty()) 0f else (fft[bin].toInt() and 0xff) / 255f
+                val energy = NightCityFftEnergy.at(fft, i, count)
                 val rows = (buildingHeight / 13f).toInt()
                 for (row in 1 until rows) {
                     if ((i * 7 + row * 11) % 5 == 0) continue
