@@ -8,6 +8,12 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -59,41 +65,52 @@ internal fun NightCitySkyline(
     )
     val phase = if (motionEnabled) motionPhase else pausedPhase
     Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            text = "CITY ENVIRONMENT",
+            color = Color(0xFFA8A6A0),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 7.dp),
+        )
         Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                .padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             NightCityEnvironment.entries.forEach { option ->
                 val selected = option == environment
                 Text(
                     text = option.displayName,
                     color = if (selected) NightCityEnvironment.signatureAmber else Color(0xFFB7B7C4),
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                     modifier = Modifier
-                        .weight(1f)
                         .background(
                             if (selected) Color(0xFF3B2B15) else Color(0xFF171925),
-                            RoundedCornerShape(9.dp),
+                            RoundedCornerShape(12.dp),
                         )
-                        .clickable {
+                        .selectable(selected = selected, role = Role.RadioButton) {
                             environment = option
                             prefs.edit().putString("environment", option.name).apply()
                         }
-                        .padding(horizontal = 5.dp, vertical = 10.dp),
+                        .heightIn(min = 48.dp)
+                        .padding(horizontal = 14.dp, vertical = 16.dp),
                 )
             }
         }
         Text(
             text = if (motionEnabled) "MOTION ON · TAP TO PAUSE" else "MOTION OFF · TAP TO RESUME",
             color = NightCityEnvironment.signatureAmber,
-            fontSize = 10.sp,
-            modifier = Modifier.clickable {
-                if (motionEnabled) pausedPhase = motionPhase
-                motionEnabled = !motionEnabled
-                prefs.edit().putBoolean("motion_enabled", motionEnabled).apply()
-            }
-                .padding(bottom = 7.dp),
+            fontSize = 11.sp,
+            modifier = Modifier
+                .semantics { stateDescription = if (motionEnabled) "Animation on" else "Animation paused" }
+                .clickable(role = Role.Switch) {
+                    if (motionEnabled) pausedPhase = motionPhase
+                    motionEnabled = !motionEnabled
+                    prefs.edit().putBoolean("motion_enabled", motionEnabled).apply()
+                }
+                .heightIn(min = 48.dp)
+                .padding(vertical = 16.dp),
         )
         Canvas(
             modifier = Modifier.fillMaxWidth().height(150.dp)
