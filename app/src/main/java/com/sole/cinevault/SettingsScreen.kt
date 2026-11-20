@@ -379,6 +379,43 @@ fun SettingsScreen(
                 }
             }
             Spacer(modifier = Modifier.height(12.dp))
+            androidx.compose.runtime.LaunchedEffect(Unit) { com.sole.cinevault.glasses.halo.PadScrollPrefs.load(settingsContext) }
+            Text(text = "Touchpad scroll direction", color = TextBright, fontSize = CineType.Label, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Reversed: slide two fingers down to move down the page, left to right to bring the tiles ahead into view. Natural: the page follows your fingers like a phone.",
+                color = TextMuted,
+                fontSize = CineType.Caption,
+                lineHeight = 17.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CineChip(
+                    text = "Reversed",
+                    selected = com.sole.cinevault.glasses.halo.PadScrollPrefs.reversed,
+                    onClick = { com.sole.cinevault.glasses.halo.PadScrollPrefs.set(settingsContext, true) },
+                )
+                CineChip(
+                    text = "Natural",
+                    selected = !com.sole.cinevault.glasses.halo.PadScrollPrefs.reversed,
+                    onClick = { com.sole.cinevault.glasses.halo.PadScrollPrefs.set(settingsContext, false) },
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(text = "Glasses intro and set-up", color = TextBright, fontSize = CineType.Label, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Show the welcome tile again, or run the glasses size check again (it appears on the glasses).",
+                color = TextMuted,
+                fontSize = CineType.Caption,
+                lineHeight = 17.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CineChip(text = "Show intro again", selected = false, onClick = { com.sole.cinevault.glasses.GlassesReplay.showIntroAgain() })
+                CineChip(text = "Recalibrate", selected = false, onClick = { com.sole.cinevault.glasses.GlassesReplay.recalibrate() })
+            }
+            Spacer(modifier = Modifier.height(12.dp))
             Text(text = "3D video on glasses", color = TextBright, fontSize = CineType.Label, fontWeight = FontWeight.SemiBold)
             Spacer(modifier = Modifier.height(4.dp))
             Text(

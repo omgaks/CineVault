@@ -1,5 +1,6 @@
 package com.sole.cinevault.glasses.display
 
+import com.sole.cinevault.glasses.GlassesFilmOwner
 import android.app.Activity
 import android.app.Presentation
 import android.hardware.display.DisplayManager
@@ -131,6 +132,7 @@ private class CineVaultExternalPresentation(
         )
 
         GlassesScreenSize.bind(context, display.name)
+        com.sole.cinevault.glasses.halo.PadScrollPrefs.load(context)
         GlassesBackBridge.handler = { backDispatcher.onBackPressed() }
 
         val composeView = ComposeView(context).apply {
@@ -159,6 +161,12 @@ private class CineVaultExternalPresentation(
                                 )
                             }
 
+                            // Settings -> "Recalibrate" shows the card again.
+                            val recalibrateStamp = com.sole.cinevault.glasses.GlassesReplay.calibrationStamp
+                            androidx.compose.runtime.LaunchedEffect(recalibrateStamp) {
+                                if (recalibrateStamp != 0L) showCalibration = true
+                            }
+
                             val haloEnabled =
                                 HaloRenderDestinationPolicy.shouldOwnHalo(
                                     CineVaultRenderDestination.EXTERNAL_DISPLAY
@@ -173,13 +181,28 @@ private class CineVaultExternalPresentation(
                                 Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
                                     // Shrunk toward the centre so edges the glasses crop stay visible.
                                     // Touch hit-testing follows the scaling, so the pointer stays accurate.
+                                    // A 3D side-by-side film keeps the full frame (depth would break if
+                                    // shrunk); everything else follows the chosen size.
+                                    val appScale =
+                                        if (GlassesFilmOwner.externalShowsPlayer) {
+                                            GlassesScreenSizePolicy.effective(
+                                                chosen = GlassesScreenSize.scale,
+                                                fullFrame3d = ExternalPlayerHudState.fullFrame3d,
+                                            )
+                                        } else {
+                                            GlassesScreenSize.scale
+                                        }
                                     Box(
                                         modifier = Modifier.fillMaxSize().graphicsLayer {
-                                            scaleX = GlassesScreenSize.scale
-                                            scaleY = GlassesScreenSize.scale
+                                            scaleX = appScale
+                                            scaleY = appScale
                                         },
                                     ) {
                                         CineVaultRoot()
+                                    }
+
+                                    if (GlassesFilmOwner.externalShowsPlayer) {
+                                        ExternalStereoNoticeOverlay()
                                     }
 
                                     ExternalCanonicalVideoLayer()

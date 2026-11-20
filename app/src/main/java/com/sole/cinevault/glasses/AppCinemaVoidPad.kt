@@ -25,7 +25,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.sole.cinevault.CineVaultPlayerHolder
 import com.sole.cinevault.glasses.display.GlassesScreenSize
 import com.sole.cinevault.glasses.display.GlassPill
 import com.sole.cinevault.glasses.display.GlassesBackBridge
@@ -39,12 +38,14 @@ private const val FIVE_FINGER_SPREAD = 1.35f
  * film. Without it nothing on the tablet can move the glasses pointer outside playback.
  *
  * It is never a trap: "Use tablet" hides it, a small chip brings it back, and a five-finger
- * spread ends the glasses session. Hidden while a film plays (the player has its own pad).
+ * spread ends the glasses session. Hidden only while the tablet shows the player screen (it has its own pad).
  */
 @Composable
 internal fun AppCinemaVoidPad() {
     val session = LocalAppGlassesSession.current ?: return
-    val filmPlaying = CineVaultPlayerHolder.currentPlayer != null
+    // Only when the tablet itself shows the player screen (which has its own pad). Music or a
+    // film shown on the glasses must not take the touchpad away.
+    val filmPlaying = GlassesFilmOwner.hostShowsPlayer
     // Resets whenever a different pair of glasses is connected.
     var padOn by remember(session.display.displayId) { mutableStateOf(true) }
     val traceContext = androidx.compose.ui.platform.LocalContext.current
