@@ -15,6 +15,10 @@ import com.sole.cinevault.tvmode.TvHomeScreen
 import com.sole.cinevault.tvmode.TvShelf
 import com.sole.cinevault.tvmode.TvShelfItem
 import com.sole.cinevault.glasses.AppCinemaVoidPad
+import com.sole.cinevault.glasses.ExternalPlayRequest
+import com.sole.cinevault.glasses.GlassesFilmOwner
+import com.sole.cinevault.glasses.LocalAppGlassesSession
+import com.sole.cinevault.glasses.shouldOpenFilmOnGlasses
 import com.sole.cinevault.glasses.BrowseRoute
 import com.sole.cinevault.glasses.ProvideAppGlassesSession
 import com.sole.cinevault.glasses.browseRouteFromSession
@@ -476,6 +480,13 @@ fun CineVaultApp() {
         showOnboarding = show
     }
 
+    val isHostCopy = LocalCineVaultRenderDestination.current == CineVaultRenderDestination.HOST_DISPLAY
+    // Settings -> "Show intro again".
+    val introReplayStamp = com.sole.cinevault.glasses.GlassesReplay.introStamp
+    LaunchedEffect(introReplayStamp) {
+        if (introReplayStamp != 0L && isHostCopy) showGlassesFirstRunTutorial = true
+    }
+
     LaunchedEffect(glassesDisplay.isConnected) {
         if (glassesDisplay.isConnected && !hasSeenGlassesFirstRunTutorial(context)) {
             showGlassesFirstRunTutorial = true
@@ -501,7 +512,19 @@ fun CineVaultApp() {
     val current = backStack.last()
     val activeTabIndex = (backStack.firstOrNull() as? Destination.Tab)?.index ?: 0
 
-    fun push(dest: Destination) { backStack = backStack + dest }
+    // With glasses connected, a film opens in the glasses copy of the app (the real player
+    // screen, on the glasses) and this tablet stays the touchpad. The glasses copy itself
+    // has no session of its own, so it keeps pushing the player onto its own stack.
+    val filmOnGlassesSession = LocalAppGlassesSession.current
+    fun push(dest: Destination) {
+        if (dest is Destination.Player &&
+            shouldOpenFilmOnGlasses(isHostCopy, filmOnGlassesSession?.active == true)
+        ) {
+            GlassesFilmOwner.request = ExternalPlayRequest(dest.video, dest.mediaType, dest.episodeList)
+        } else {
+            backStack = backStack + dest
+        }
+    }
     fun pop() { if (backStack.size > 1) backStack = backStack.dropLast(1) }
     // Slice B: a collection that belongs to a franchise "universe" (Jurassic Park + Jurassic
     // World, The Hobbit + The Lord of the Rings, ...) opens the merged page. Universes only
@@ -517,6 +540,14 @@ fun CineVaultApp() {
         backStack = listOf(Destination.Tab(index))
     }
     fun replaceTop(dest: Destination) { backStack = backStack.dropLast(1) + dest }
+
+    // Glasses copy: open the film the tablet asked for.
+    val pendingFilm = GlassesFilmOwner.request
+    LaunchedEffect(pendingFilm) {
+        if (!isHostCopy && pendingFilm != null) {
+            GlassesFilmOwner.take()?.let { push(Destination.Player(it.video, it.mediaType, it.episodeList)) }
+        }
+    }
 
     // A tab change coming from the other render surface must move this
     // composition to the same top-level tab. Do not touch deeper destinations
@@ -662,6 +693,8 @@ fun CineVaultApp() {
     val isPlayerActive = current is Destination.Player
 
     LaunchedEffect(isPlayerActive) {
+        // The glasses copy shares the tablet's activity; its film must not hide the tablet's bars.
+        if (!isHostCopy) return@LaunchedEffect
         if (isPlayerActive) {
             (activity as? MainActivity)?.requestNotificationPermissionOnce()
             activity?.enterImmersiveModeForPlayer()

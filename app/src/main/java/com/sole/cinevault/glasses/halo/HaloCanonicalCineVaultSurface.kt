@@ -146,8 +146,8 @@ fun HaloCanonicalCineVaultSurface(
                 // Finger up = see what is below = wheel down (negative); finger left = wheel right.
                 wheelDispatcher.scroll(
                     position = origin,
-                    vScroll = wheelUnits(dy, rootView.height / density),
-                    hScroll = -wheelUnits(dx, rootView.width / density),
+                    vScroll = scrollSign(PadScrollPrefs.reversed) * wheelUnits(dy, rootView.height / density),
+                    hScroll = -scrollSign(PadScrollPrefs.reversed) * wheelUnits(dx, rootView.width / density),
                 )
             }
             HaloRemoteInputSession.ScrollPhase.END -> Unit

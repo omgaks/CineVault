@@ -122,6 +122,42 @@ internal fun ExternalPlayerHudOverlay(player: Player, modifier: Modifier = Modif
         }
     }
 
+    Box(modifier = modifier.fillMaxSize()) {
+        ExternalStereoNoticeOverlay()
+
+        AnimatedVisibility(
+            visible = hud.controlsVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            ExternalPlayerControls(player = player, title = hud.title)
+        }
+
+        AnimatedVisibility(
+            visible = gestureShown && !hud.seekPreviewVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.Center),
+        ) {
+            GesturePill(hud.gestureLabel, hud.gestureValue, hud.gestureProgress)
+        }
+
+        AnimatedVisibility(
+            visible = hud.seekPreviewVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.Center),
+        ) {
+            SeekPreview(hud.seekPreviewBitmap, hud.seekPreviewMs, player.duration)
+        }
+    }
+}
+
+/** The 3D note: shows for a few seconds when a film starts (or the choice changes). */
+@Composable
+internal fun ExternalStereoNoticeOverlay(modifier: Modifier = Modifier) {
+    val hud = ExternalPlayerHudState
     // The 3D note shows for a few seconds when a film starts (or the choice changes).
     var noticeShown by remember { mutableStateOf(false) }
     LaunchedEffect(hud.stereoNotice) {
@@ -154,33 +190,6 @@ internal fun ExternalPlayerHudOverlay(player: Player, modifier: Modifier = Modif
                     Text(n.detail, color = TextBright, fontSize = 13.sp)
                 }
             }
-        }
-
-        AnimatedVisibility(
-            visible = hud.controlsVisible,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            ExternalPlayerControls(player = player, title = hud.title)
-        }
-
-        AnimatedVisibility(
-            visible = gestureShown && !hud.seekPreviewVisible,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.Center),
-        ) {
-            GesturePill(hud.gestureLabel, hud.gestureValue, hud.gestureProgress)
-        }
-
-        AnimatedVisibility(
-            visible = hud.seekPreviewVisible,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.Center),
-        ) {
-            SeekPreview(hud.seekPreviewBitmap, hud.seekPreviewMs, player.duration)
         }
     }
 }

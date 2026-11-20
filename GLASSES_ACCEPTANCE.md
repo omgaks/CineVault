@@ -9,8 +9,8 @@ Tester: Ash. Build (versionCode): ____  Date: ____
 ## A. Connect and first run
 | # | Check | Status | Notes |
 |---|-------|--------|-------|
-| A1 | Plug glasses in: intro tile appears on glasses, app does not crash | NOT TESTED | |
-| A2 | Calibration card shows, can finish it, and also closes by itself after ~25 s or via "Skip for now" | NOT TESTED | |
+| A1 | Plug glasses in: intro tile appears on the tablet (Settings > Glasses Mode > Show intro again brings it back), app does not crash | NOT TESTED | |
+| A2 | Calibration card shows (Settings > Glasses Mode > Recalibrate brings it back), can finish it, and also closes by itself after ~25 s or via "Skip for now" | NOT TESTED | |
 | A3 | Glasses show the same app as the tablet (home, tabs) | NOT TESTED | |
 | A4 | Tablet becomes the Cinema Void touchpad with guide visible | NOT TESTED | |
 | A5 | Unplug glasses: tablet returns to normal app, no crash | NOT TESTED | |
@@ -21,6 +21,7 @@ Tester: Ash. Build (versionCode): ____  Date: ____
 | B1 | Dragging on the tablet moves the Halo pointer on glasses | NOT TESTED | |
 | B2 | Tap on the pad taps what the pointer is on | NOT TESTED | |
 | B3 | Switching tabs / opening a film detail / a TV show on the tablet is mirrored on glasses | NOT TESTED | |
+| B7 | Settings > Glasses Mode > Touchpad scroll direction: Reversed (default) = finger down moves down the page, left to right brings tiles ahead; Natural = phone style | NOT TESTED | |
 | B5 | Two fingers scroll the list under the pointer like a mouse wheel; the pointer does not move, and it works even with the pointer at the top or bottom edge | NOT TESTED | |
 | B6 | A quick two-finger tap on the pad goes Back (detail to library, etc.) | NOT TESTED | |
 | B4 | Five-finger spread on the pad leaves Glasses Mode | NOT TESTED | |
@@ -37,12 +38,12 @@ Tester: Ash. Build (versionCode): ____  Date: ____
 | C7 | Seek bar can be dragged with the pointer on glasses (code exists, unverified) | NOT TESTED | |
 | C8 | Gesture guide shows when a film starts (about 18 s) | NOT TESTED | |
 
-| C9 | Tap shows glasses controls (Back, seek bar, Prev/-10/Play/+10/Next, Subs, Audio, Speed) | NOT TESTED | |
-| C10 | With controls showing, one finger moves the pointer and tap presses buttons | NOT TESTED | |
-| C11 | Seek bar: tap and hold-then-drag move the film position | NOT TESTED | |
-| C12 | Audio and Speed lists open on the glasses and change the film | NOT TESTED | |
-| C13 | Subs button turns subtitles on/off; Back on glasses leaves the film | NOT TESTED | |
-| C14 | Tapping empty picture hides the controls; they also hide by themselves after ~9 s of no use | NOT TESTED | |
+| C9 | Film started from the glasses pointer OR the tablet opens the real player screen on the glasses (same look as the tablet player) | NOT TESTED | New design, replaces the old glasses-only controls |
+| C10 | The tablet stays the touchpad for the whole film (not blank, not the black card) | NOT TESTED | |
+| C11 | Tap on the pad shows the real controls on the glasses; pointer taps buttons; seek bar tap and hold-then-drag work | NOT TESTED | |
+| C12 | Subtitles, Audio, Speed open from the real controls on the glasses and change the film | NOT TESTED | |
+| C13 | Two-finger tap on the pad (or Back on screen) leaves the film and returns to the app on the glasses | NOT TESTED | |
+| C14 | Music playing does not take the touchpad away | NOT TESTED | |
 
 ## D. Subtitles
 | # | Check | Status | Notes |
@@ -76,14 +77,19 @@ Tester: Ash. Build (versionCode): ____  Date: ____
 | G1 | Tablet pad "Glasses size" button cycles 100, 95, 90, 85, 80, 75 and the app shrinks toward the centre | NOT TESTED | |
 | G2 | After shrinking, the pointer still lands on what it points at and taps open the right item | NOT TESTED | |
 | G3 | Settings > Glasses screen size chips change it and it survives reconnecting the glasses | NOT TESTED | |
-| G4 | A 2D film and the glasses controls shrink with it; the "Size" button on the glasses also cycles it | NOT TESTED | |
-| G5 | A 3D side-by-side film stays full size whatever the setting (button shows "3D full") | NOT TESTED | |
+| G4 | A 2D film and the app shrink with it; the pad size buttons change it during a film | NOT TESTED | |
+| G5 | A 3D side-by-side film stays full size whatever the setting | NOT TESTED | |
+
+## Results log
+- 21 Nov, build 1967 (Ash): connect and first run looked fine; browsing, pointer, scroll, Back and screen size passed on his checklist up to row 25; rows 26, 27 and 29 not yet tested. Failed: a film started with the glasses pointer opened a second player (tablet blank, pad hidden, no controls); music hid the pad; scroll direction felt backwards; glasses controls did not match the real player.
+- Fix in the next build: the glasses show the real player screen; the tablet stays the pad; scroll direction setting (Reversed default); intro and calibration replay buttons. Rows above stay NOT TESTED until Ash confirms on that build.
 
 ## Known gaps (not bugs in the table above)
-- Glasses controls cover the essentials. Subtitle Studio, Audio Studio, waveform bar, sleep timer and other tablet-only tools are not on the glasses yet.
-- Glasses cannot open studios or menus with the pointer; those stay on the tablet.
-- Pressing Play from the glasses pointer is not mirrored to the tablet yet.
+- The real player runs inside the glasses window. Some tablet-only actions (screen brightness swipe, picture-in-picture) still act on the tablet, not the glasses.
+- If a film is already playing on the tablet when the glasses are plugged in, the older mirror path is used (glasses controls bar), not the real player screen.
+- Unplugging the glasses mid-film ends a film that was opened on the glasses.
 - Top/Bottom 3D is not converted; it plays flat by design for now.
+- 3D mode itself is switched with the glasses' own buttons; the app cannot switch it.
 
 ## Release rule
 Glasses Mode is only called "working" when sections A to F have no FAIL and no NOT TESTED

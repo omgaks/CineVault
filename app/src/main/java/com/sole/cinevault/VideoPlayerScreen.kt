@@ -1079,6 +1079,26 @@ fun VideoPlayerScreen(
             }
         }
 
+        // Tell the rest of the app which screen (tablet or glasses) is showing this player.
+        val playerRenderDestination = com.sole.cinevault.glasses.display.LocalCineVaultRenderDestination.current
+        DisposableEffect(playerRenderDestination) {
+            val onGlasses = playerRenderDestination ==
+                com.sole.cinevault.glasses.display.CineVaultRenderDestination.EXTERNAL_DISPLAY
+            if (onGlasses) {
+                com.sole.cinevault.glasses.GlassesFilmOwner.externalShowsPlayer = true
+            } else {
+                com.sole.cinevault.glasses.GlassesFilmOwner.hostShowsPlayer = true
+            }
+            onDispose {
+                if (onGlasses) {
+                    com.sole.cinevault.glasses.GlassesFilmOwner.externalShowsPlayer = false
+                    ExternalPlayerHudState.reset()
+                } else {
+                    com.sole.cinevault.glasses.GlassesFilmOwner.hostShowsPlayer = false
+                }
+            }
+        }
+
         // Let the glasses controls drive this player screen (back, next/previous, subtitles).
         val latestPlayNext by rememberUpdatedState { playbackNavigationCoordinator.playNext() }
         val latestPlayPrevious by rememberUpdatedState { playbackNavigationCoordinator.playPrevious() }

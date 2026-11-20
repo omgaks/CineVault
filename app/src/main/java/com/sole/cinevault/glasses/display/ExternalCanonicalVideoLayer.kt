@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.media3.common.util.UnstableApi
 import com.sole.cinevault.CineVaultPlayerHolder
 import com.sole.cinevault.PlayerVideoSurface
+import com.sole.cinevault.glasses.GlassesFilmOwner
 
 /**
  * Draws the film on the glasses.
@@ -24,6 +25,8 @@ import com.sole.cinevault.PlayerVideoSurface
 @OptIn(UnstableApi::class)
 @Composable
 internal fun ExternalCanonicalVideoLayer() {
+    // When the glasses copy shows the real player screen it draws the film itself.
+    if (GlassesFilmOwner.externalShowsPlayer) return
     val player = CineVaultPlayerHolder.currentPlayer ?: return
     DisposableEffect(player) {
         onDispose {
