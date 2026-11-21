@@ -1085,6 +1085,9 @@ fun VideoPlayerScreen(
             val onGlasses = playerRenderDestination ==
                 com.sole.cinevault.glasses.display.CineVaultRenderDestination.EXTERNAL_DISPLAY
             if (onGlasses) {
+                // Zoom belongs to one film. An old saved zoom (for example 90%) would shrink
+                // every new film and push the controls out beside the picture.
+                com.sole.cinevault.glasses.display.ExternalViewportSessionState.reset()
                 com.sole.cinevault.glasses.GlassesFilmOwner.externalShowsPlayer = true
             } else {
                 com.sole.cinevault.glasses.GlassesFilmOwner.hostShowsPlayer = true

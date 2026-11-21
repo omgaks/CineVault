@@ -29,9 +29,9 @@ class ExternalViewportSessionStateTest {
             onTransformChanged = null,
         )
 
-        assertEquals(3f, ExternalViewportSessionState.transform.scale, 0.0001f)
-        assertEquals(1920f, ExternalViewportSessionState.transform.panX, 0.0001f)
-        assertEquals(-1080f, ExternalViewportSessionState.transform.panY, 0.0001f)
+        assertEquals(2f, ExternalViewportSessionState.transform.scale, 0.0001f)
+        assertEquals(960f, ExternalViewportSessionState.transform.panX, 0.0001f)
+        assertEquals(-540f, ExternalViewportSessionState.transform.panY, 0.0001f)
     }
 
     @Test
@@ -66,11 +66,27 @@ class ExternalViewportSessionStateTest {
     }
 
     @Test
-    fun reducedViewportStaysCentred() {
-        ExternalViewportSessionState.applyGesture(0.95f, 300f, -200f)
-        assertEquals(0.95f, ExternalViewportSessionState.transform.scale, 0.0001f)
-        assertEquals(0f, ExternalViewportSessionState.transform.panX, 0.0001f)
-        assertEquals(0f, ExternalViewportSessionState.transform.panY, 0.0001f)
+    fun reducedViewportCanMoveOnlyWithinTheFreeSpace() {
+        ExternalViewportSessionState.applyGesture(0.5f, 5000f, -5000f)
+        assertEquals(0.5f, ExternalViewportSessionState.transform.scale, 0.0001f)
+        assertEquals(480f, ExternalViewportSessionState.transform.panX, 0.0001f)
+        assertEquals(-270f, ExternalViewportSessionState.transform.panY, 0.0001f)
+    }
+
+    @Test
+    fun zoomIsLimitedToHalfAndDouble() {
+        ExternalViewportSessionState.applyGesture(0.1f, 0f, 0f)
+        assertEquals(0.5f, ExternalViewportSessionState.transform.scale, 0.0001f)
+        ExternalViewportSessionState.applyGesture(100f, 0f, 0f)
+        assertEquals(2f, ExternalViewportSessionState.transform.scale, 0.0001f)
+    }
+
+    @Test
+    fun padPanIsAFractionOfTheGlassesPicture() {
+        ExternalViewportSessionState.applyGesture(2f, 0f, 0f)
+        ExternalViewportSessionState.applyPadGesture(1f, 0.25f, -0.1f)
+        assertEquals(480f, ExternalViewportSessionState.transform.panX, 0.0001f)
+        assertEquals(-108f, ExternalViewportSessionState.transform.panY, 0.0001f)
     }
 
     @Test

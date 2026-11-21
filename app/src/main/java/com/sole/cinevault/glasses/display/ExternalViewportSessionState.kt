@@ -25,8 +25,8 @@ internal data class ExternalVisibleFrame(
 }
 
 internal object ExternalViewportSessionState {
-    internal const val MIN_SCALE = 0.75f
-    internal const val MAX_SCALE = 3f
+    internal const val MIN_SCALE = 0.5f
+    internal const val MAX_SCALE = 2f
 
     private const val PRESET_SNAP_TOLERANCE = 0.008f
     private val usefulScalePresets = floatArrayOf(0.90f, 0.95f, 1.00f)
@@ -104,6 +104,19 @@ internal object ExternalViewportSessionState {
         )
     }
 
+    /**
+     * Pinch and drag from the tablet pad. [zoom] is the ratio since the last step; the pan
+     * values are fractions of the pad (so they scale to the glasses picture), the picture
+     * following the fingers.
+     */
+    fun applyPadGesture(zoom: Float, panXFraction: Float, panYFraction: Float) {
+        applyGesture(
+            zoom = zoom,
+            panX = panXFraction * viewportWidthPx,
+            panY = panYFraction * viewportHeightPx,
+        )
+    }
+
     fun reset() {
         publishTransform(ExternalViewportTransform())
     }
@@ -122,13 +135,6 @@ internal object ExternalViewportSessionState {
                 ?.coerceIn(MIN_SCALE, MAX_SCALE)
                 ?: 1f
 
-        // A reduced viewport is intentionally centred. There is no hidden
-        // content to recover by panning when the whole movie is smaller than
-        // the available display.
-        if (safeScale <= 1f) {
-            return ExternalViewportTransform(scale = safeScale)
-        }
-
         if (viewportWidthPx <= 0 || viewportHeightPx <= 0) {
             return ExternalViewportTransform(
                 scale = safeScale,
@@ -140,8 +146,10 @@ internal object ExternalViewportSessionState {
         // graphicsLayer scales around the surface centre. These bounds are the
         // exact extra half-width/half-height created by the scale, so clamping
         // here prevents panning the movie completely away from the display.
-        val maxPanX = viewportWidthPx * (safeScale - 1f) / 2f
-        val maxPanY = viewportHeightPx * (safeScale - 1f) / 2f
+        // A smaller picture can be moved around inside the free space; a bigger one inside
+        // the extra it creates. Both are bounded by half of |scale - 1|.
+        val maxPanX = viewportWidthPx * abs(safeScale - 1f) / 2f
+        val maxPanY = viewportHeightPx * abs(safeScale - 1f) / 2f
 
         return ExternalViewportTransform(
             scale = safeScale,

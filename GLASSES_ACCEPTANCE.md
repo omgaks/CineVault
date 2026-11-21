@@ -89,6 +89,15 @@ Tester: Ash. Build (versionCode): ____  Date: ____
 | H4 | A 3D side-by-side film fills the whole frame (no black edges) with 3D display on | NOT TESTED | |
 | H5 | The white pointer hides a couple of seconds after it stops moving during a film, and comes back when you move or tap | NOT TESTED | |
 
+## I. Film picture size and zoom
+| # | Check | Status | Notes |
+|---|-------|--------|-------|
+| I1 | A 2D film on the glasses fills the picture area; the controls float over the picture, not beside it | NOT TESTED | An old saved 90% zoom was shrinking it; now reset at every film start |
+| I2 | Pinch out with two fingers on the pad zooms the glasses picture up to 200%; pinch in goes down to 50% | NOT TESTED | |
+| I3 | After zooming in or out, dragging with two fingers moves the picture | NOT TESTED | |
+| I4 | The "Zoom" chip on the pad shows the percent and taps back to fit | NOT TESTED | |
+| I5 | A quick two-finger tap is still Back | NOT TESTED | |
+
 ## Results log
 - 21 Nov, build 1967 (Ash): connect and first run looked fine; browsing, pointer, scroll, Back and screen size passed on his checklist up to row 25; rows 26, 27 and 29 not yet tested. Failed: a film started with the glasses pointer opened a second player (tablet blank, pad hidden, no controls); music hid the pad; scroll direction felt backwards; glasses controls did not match the real player.
 - Fix in the next build: the glasses show the real player screen; the tablet stays the pad; scroll direction setting (Reversed default); intro and calibration replay buttons. Rows above stay NOT TESTED until Ash confirms on that build.
