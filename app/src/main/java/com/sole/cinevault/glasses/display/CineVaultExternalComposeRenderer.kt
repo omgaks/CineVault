@@ -133,6 +133,7 @@ private class CineVaultExternalPresentation(
 
         GlassesScreenSize.bind(context, display.name)
         com.sole.cinevault.glasses.halo.PadScrollPrefs.load(context)
+        GlassesDisplay3d.load(context)
         GlassesBackBridge.handler = { backDispatcher.onBackPressed() }
 
         val composeView = ComposeView(context).apply {
@@ -177,6 +178,11 @@ private class CineVaultExternalPresentation(
                             HaloCanonicalCineVaultSurface(
                                 enabled = haloEnabled,
                                 acceptRemoteInput = haloEnabled,
+                                eyeSplit = shouldSplitForEyes(
+                                    display3dOn = GlassesDisplay3d.enabled,
+                                    fullFrame3dFilm = ExternalPlayerHudState.fullFrame3d,
+                                ),
+                                autoHideCursor = GlassesFilmOwner.externalShowsPlayer,
                             ) {
                                 Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
                                     // Shrunk toward the centre so edges the glasses crop stay visible.

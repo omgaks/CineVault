@@ -402,6 +402,29 @@ fun SettingsScreen(
                 )
             }
             Spacer(modifier = Modifier.height(12.dp))
+            androidx.compose.runtime.LaunchedEffect(Unit) { com.sole.cinevault.glasses.display.GlassesDisplay3d.load(settingsContext) }
+            Text(text = "Glasses in their own 3D display mode", color = TextBright, fontSize = CineType.Label, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Turn this On when you have switched the glasses' own 3D mode on (the screen looks split in two). The app is then drawn once per eye so it stays usable, and 3D films still get the full frame. Switch it Off for normal use. Also on the tablet touchpad.",
+                color = TextMuted,
+                fontSize = CineType.Caption,
+                lineHeight = 17.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CineChip(text = "Off", selected = !com.sole.cinevault.glasses.display.GlassesDisplay3d.enabled, onClick = { com.sole.cinevault.glasses.display.GlassesDisplay3d.set(settingsContext, false) })
+                CineChip(text = "On", selected = com.sole.cinevault.glasses.display.GlassesDisplay3d.enabled, onClick = { com.sole.cinevault.glasses.display.GlassesDisplay3d.set(settingsContext, true) })
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            var askCalibration by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(com.sole.cinevault.calibrationAskOnConnect(settingsContext)) }
+            Text(text = "Ask to calibrate when glasses connect", color = TextBright, fontSize = CineType.Label, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CineChip(text = "Off", selected = !askCalibration, onClick = { askCalibration = false; com.sole.cinevault.setCalibrationAskOnConnect(settingsContext, false) })
+                CineChip(text = "On", selected = askCalibration, onClick = { askCalibration = true; com.sole.cinevault.setCalibrationAskOnConnect(settingsContext, true) })
+            }
+            Spacer(modifier = Modifier.height(12.dp))
             Text(text = "Glasses intro and set-up", color = TextBright, fontSize = CineType.Label, fontWeight = FontWeight.SemiBold)
             Spacer(modifier = Modifier.height(4.dp))
             Text(

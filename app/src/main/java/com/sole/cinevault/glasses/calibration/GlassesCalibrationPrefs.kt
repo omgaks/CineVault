@@ -31,6 +31,7 @@ fun bundledFontScale(displayName: String?): Float? {
 // No reported name at all → skip calibration rather than nag forever with
 // nothing to key a saved answer against.
 fun needsCalibration(context: Context, displayName: String?): Boolean {
+    if (!calibrationAskOnConnect(context)) return false
     val key = GlassesCalibrationIdentity.preferenceKey(displayName) ?: return false
     if (bundledFontScale(displayName) != null) return false
     return !context.getSharedPreferences(CALIBRATION_PREFS, Context.MODE_PRIVATE)
@@ -43,4 +44,16 @@ fun markCalibrated(context: Context, displayName: String) {
         .edit()
         .putBoolean(key, true)
         .apply()
+}
+
+private const val KEY_ASK_ON_CONNECT = "ask_on_connect"
+
+/** Settings switch: show the calibration card when new glasses connect. On by default. */
+fun calibrationAskOnConnect(context: Context): Boolean =
+    context.getSharedPreferences(CALIBRATION_PREFS, Context.MODE_PRIVATE)
+        .getBoolean(KEY_ASK_ON_CONNECT, true)
+
+fun setCalibrationAskOnConnect(context: Context, value: Boolean) {
+    context.getSharedPreferences(CALIBRATION_PREFS, Context.MODE_PRIVATE)
+        .edit().putBoolean(KEY_ASK_ON_CONNECT, value).apply()
 }

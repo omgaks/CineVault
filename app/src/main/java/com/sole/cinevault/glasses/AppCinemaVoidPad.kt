@@ -29,6 +29,7 @@ import com.sole.cinevault.glasses.display.GlassesScreenSize
 import com.sole.cinevault.glasses.display.GlassPill
 import com.sole.cinevault.glasses.display.GlassesBackBridge
 import com.sole.cinevault.glasses.display.GlassSizeCapsule
+import com.sole.cinevault.glasses.display.GlassesDisplay3d
 import com.sole.cinevault.ui.theme.AmberCore
 
 private const val FIVE_FINGER_SPREAD = 1.35f
@@ -67,6 +68,9 @@ internal fun AppCinemaVoidPad() {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 GlassPill("Use tablet") { padOn = false }
+                GlassPill(if (GlassesDisplay3d.enabled) "3D display: on" else "3D display: off") {
+                    GlassesDisplay3d.set(traceContext, !GlassesDisplay3d.enabled)
+                }
                 GlassSizeCapsule(
                     scale = GlassesScreenSize.scale,
                     onSmaller = { GlassesScreenSize.smaller(traceContext) },
@@ -88,6 +92,9 @@ internal fun AppCinemaVoidPad() {
                     onReset = { GlassesScreenSize.set(traceContext, 1f) },
                     onBigger = { GlassesScreenSize.bigger(traceContext) },
                 )
+                GlassPill(if (GlassesDisplay3d.enabled) "3D display: on" else "3D display: off") {
+                    GlassesDisplay3d.set(traceContext, !GlassesDisplay3d.enabled)
+                }
                 GlassPill("Glasses touchpad") { padOn = true }
             }
         }

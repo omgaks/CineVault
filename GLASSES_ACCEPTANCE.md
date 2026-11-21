@@ -80,6 +80,15 @@ Tester: Ash. Build (versionCode): ____  Date: ____
 | G4 | A 2D film and the app shrink with it; the pad size buttons change it during a film | NOT TESTED | |
 | G5 | A 3D side-by-side film stays full size whatever the setting | NOT TESTED | |
 
+## H. Glasses 3D display mode, calibration, pointer
+| # | Check | Status | Notes |
+|---|-------|--------|-------|
+| H1 | Calibration card: tapping Skip (or letting it time out) means it does not come back on the next connect | NOT TESTED | |
+| H2 | Settings > Ask to calibrate when glasses connect: Off stops the card; Recalibrate still shows it | NOT TESTED | |
+| H3 | With the glasses' own 3D mode on and "3D display: on" (pad chip or Settings), the app looks normal in both eyes and the pointer works | NOT TESTED | New, unverified on device |
+| H4 | A 3D side-by-side film fills the whole frame (no black edges) with 3D display on | NOT TESTED | |
+| H5 | The white pointer hides a couple of seconds after it stops moving during a film, and comes back when you move or tap | NOT TESTED | |
+
 ## Results log
 - 21 Nov, build 1967 (Ash): connect and first run looked fine; browsing, pointer, scroll, Back and screen size passed on his checklist up to row 25; rows 26, 27 and 29 not yet tested. Failed: a film started with the glasses pointer opened a second player (tablet blank, pad hidden, no controls); music hid the pad; scroll direction felt backwards; glasses controls did not match the real player.
 - Fix in the next build: the glasses show the real player screen; the tablet stays the pad; scroll direction setting (Reversed default); intro and calibration replay buttons. Rows above stay NOT TESTED until Ash confirms on that build.
@@ -89,6 +98,7 @@ Tester: Ash. Build (versionCode): ____  Date: ____
 - If a film is already playing on the tablet when the glasses are plugged in, the older mirror path is used (glasses controls bar), not the real player screen.
 - Unplugging the glasses mid-film ends a film that was opened on the glasses.
 - Top/Bottom 3D is not converted; it plays flat by design for now.
+- With the glasses' own 3D mode on, a 2D film is not supported yet (the picture shows only in one eye); switch the glasses' 3D mode off for 2D films. Controls shown over a 3D film are not duplicated per eye.
 - 3D mode itself is switched with the glasses' own buttons; the app cannot switch it.
 
 ## Release rule
