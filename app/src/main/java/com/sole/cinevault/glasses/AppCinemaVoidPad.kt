@@ -83,6 +83,7 @@ internal fun AppCinemaVoidPad() {
                         ExternalViewportSessionState.reset()
                     }
                 }
+                GlassPill("Keyboard") { com.sole.cinevault.glasses.keyboard.GlassesKeyboardState.toggleManual() }
                 GlassPill(if (GlassesDisplay3d.enabled) "3D display: on" else "3D display: off") {
                     GlassesDisplay3d.set(traceContext, !GlassesDisplay3d.enabled)
                 }

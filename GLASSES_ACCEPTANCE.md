@@ -98,6 +98,13 @@ Tester: Ash. Build (versionCode): ____  Date: ____
 | I4 | The "Zoom" chip on the pad shows the percent and taps back to fit | NOT TESTED | |
 | I5 | A quick two-finger tap is still Back | NOT TESTED | |
 
+## J. Keyboard on the glasses
+| # | Check | Status | Notes |
+|---|-------|--------|-------|
+| J1 | Tapping the Search box with the pointer opens an on-screen keyboard on the glasses; keys type, Del deletes, Enter searches | NOT TESTED | |
+| J2 | The app lifts so the box stays visible while the keyboard is open; it closes when you leave the box or press Close | NOT TESTED | |
+| J3 | The pad "Keyboard" chip opens it by hand and types into a web page field (subtitle search page) | NOT TESTED | May not work for every web field |
+
 ## Results log
 - 21 Nov, build 1967 (Ash): connect and first run looked fine; browsing, pointer, scroll, Back and screen size passed on his checklist up to row 25; rows 26, 27 and 29 not yet tested. Failed: a film started with the glasses pointer opened a second player (tablet blank, pad hidden, no controls); music hid the pad; scroll direction felt backwards; glasses controls did not match the real player.
 - Fix in the next build: the glasses show the real player screen; the tablet stays the pad; scroll direction setting (Reversed default); intro and calibration replay buttons. Rows above stay NOT TESTED until Ash confirms on that build.
