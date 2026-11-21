@@ -96,7 +96,20 @@ internal fun AudioFxDashboard(
         }
 
         Spacer(modifier = Modifier.height(14.dp))
-        NightCitySkyline(fft = controller.fft)
+        NightCitySkyline(
+            fft = controller.fft,
+            modifier = Modifier
+                .background(
+                    NightCityEnvironment.glassBase.copy(alpha = 0.86f),
+                    RoundedCornerShape(22.dp),
+                )
+                .border(
+                    1.dp,
+                    NightCityEnvironment.signatureAmber.copy(alpha = 0.15f),
+                    RoundedCornerShape(22.dp),
+                )
+                .padding(12.dp),
+        )
 
         Spacer(modifier = Modifier.height(14.dp))
         AmberSectionPill("Loudness Normalization")
