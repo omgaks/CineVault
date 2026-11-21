@@ -56,7 +56,6 @@ internal fun NightCitySkyline(
     var motionEnabled by remember(prefs) {
         mutableStateOf(prefs.getBoolean("motion_enabled", true))
     }
-    var pausedPhase by remember { mutableStateOf(0f) }
     // Remove the infinite transition entirely while motion is paused.
     // This avoids continuous Compose invalidations when the visualizer is static.
     val phase = if (motionEnabled) {
@@ -67,10 +66,9 @@ internal fun NightCitySkyline(
             animationSpec = infiniteRepeatable(animation = tween(9000), repeatMode = RepeatMode.Restart),
             label = "CityMotionPhase",
         )
-        pausedPhase = motionPhase
         motionPhase
     } else {
-        pausedPhase
+        0f
     }
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
