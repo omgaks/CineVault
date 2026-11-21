@@ -32,7 +32,7 @@ internal data class StereoNotice(val title: String, val detail: String)
 internal object StereoNoticeResolver {
     fun resolve(plan: ExternalStereoRenderPlan): StereoNotice? = when {
         plan.mode == StereoPlaybackMode.SIDE_BY_SIDE && plan.supportedByNativeSbsOutput ->
-            StereoNotice("3D  -  Side-by-side", "Turn on 3D with the glasses' own buttons (see your glasses' manual) to see it in depth.")
+            StereoNotice("3D  -  Side-by-side", "RayNeo Air 4 Pro: short-press brightness and volume together to switch the glasses to 3D.")
         plan.mode == StereoPlaybackMode.TOP_BOTTOM && !plan.supportedByNativeSbsOutput ->
             StereoNotice("3D  -  Top/Bottom", "Not converted yet, so it plays flat (2D) instead of looking wrong.")
         else -> null

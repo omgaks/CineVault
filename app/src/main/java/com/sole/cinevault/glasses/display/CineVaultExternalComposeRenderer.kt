@@ -1,6 +1,11 @@
 package com.sole.cinevault.glasses.display
 
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import com.sole.cinevault.glasses.GlassesFilmOwner
+import com.sole.cinevault.glasses.keyboard.GlassesKeyboardOverlay
+import com.sole.cinevault.glasses.keyboard.GlassesKeyboardState
+import com.sole.cinevault.glasses.keyboard.GlassesTextInputHost
 import android.app.Activity
 import android.app.Presentation
 import android.hardware.display.DisplayManager
@@ -198,14 +203,23 @@ private class CineVaultExternalPresentation(
                                         } else {
                                             GlassesScreenSize.scale
                                         }
+                                    // The glasses window has no system keyboard, so text fields in the
+                                    // glasses copy type through the app's own on-screen keyboard.
+                                    val keyboardPadding =
+                                        if (GlassesKeyboardState.visible) 330.dp else 0.dp
                                     Box(
-                                        modifier = Modifier.fillMaxSize().graphicsLayer {
-                                            scaleX = appScale
-                                            scaleY = appScale
-                                        },
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(bottom = keyboardPadding)
+                                            .graphicsLayer {
+                                                scaleX = appScale
+                                                scaleY = appScale
+                                            },
                                     ) {
-                                        CineVaultRoot()
+                                        GlassesTextInputHost { CineVaultRoot() }
                                     }
+
+                                    GlassesKeyboardOverlay(modifier = Modifier.align(Alignment.BottomCenter))
 
                                     if (GlassesFilmOwner.externalShowsPlayer) {
                                         ExternalStereoNoticeOverlay()
