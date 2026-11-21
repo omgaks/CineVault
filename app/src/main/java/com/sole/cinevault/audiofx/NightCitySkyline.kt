@@ -57,14 +57,21 @@ internal fun NightCitySkyline(
         mutableStateOf(prefs.getBoolean("motion_enabled", true))
     }
     var pausedPhase by remember { mutableStateOf(0f) }
-    val animation = rememberInfiniteTransition(label = "NightCityAtmosphere")
-    val motionPhase by animation.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(animation = tween(9000), repeatMode = RepeatMode.Restart),
-        label = "CityMotionPhase",
-    )
-    val phase = if (motionEnabled) motionPhase else pausedPhase
+    // Remove the infinite transition entirely while motion is paused.
+    // This avoids continuous Compose invalidations when the visualizer is static.
+    val phase = if (motionEnabled) {
+        val animation = rememberInfiniteTransition(label = "NightCityAtmosphere")
+        val motionPhase by animation.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(animation = tween(9000), repeatMode = RepeatMode.Restart),
+            label = "CityMotionPhase",
+        )
+        pausedPhase = motionPhase
+        motionPhase
+    } else {
+        pausedPhase
+    }
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = "CITY ENVIRONMENT",
@@ -106,7 +113,6 @@ internal fun NightCitySkyline(
             modifier = Modifier
                 .semantics { stateDescription = if (motionEnabled) "Animation on" else "Animation paused" }
                 .clickable(role = Role.Switch) {
-                    if (motionEnabled) pausedPhase = motionPhase
                     motionEnabled = !motionEnabled
                     prefs.edit().putBoolean("motion_enabled", motionEnabled).apply()
                 }
