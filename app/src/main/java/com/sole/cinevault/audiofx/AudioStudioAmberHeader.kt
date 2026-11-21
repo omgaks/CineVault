@@ -76,14 +76,15 @@ internal fun AudioStudioAmberHeader(
             ).forEach { labels ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     labels.forEach { label ->
-                Text(
-                    text = label,
-                    color = if (label == "AMBER LENS") amber else Color(0xFFB9B7C1),
-                    fontSize = 9.sp,
-                    modifier = Modifier
-                        .background(Color(0xFF1D2130), RoundedCornerShape(18.dp))
-                        .padding(horizontal = 8.dp, vertical = 7.dp),
-                    )
+                        Text(
+                            text = label,
+                            color = if (label == "AMBER LENS") amber else Color(0xFFB9B7C1),
+                            fontSize = 9.sp,
+                            modifier = Modifier
+                                .background(Color(0xFF1D2130), RoundedCornerShape(18.dp))
+                                .padding(horizontal = 8.dp, vertical = 7.dp),
+                        )
+                    }
                 }
             }
         }
