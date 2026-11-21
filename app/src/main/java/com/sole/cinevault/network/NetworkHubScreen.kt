@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -46,6 +47,7 @@ fun NetworkHubScreen(
     onBack: () -> Unit,
     onFindDevices: () -> Unit,
     onDisconnectPeer: () -> Unit = {},
+    onReconnect: () -> Unit = {},
     onScanQr: () -> Unit,
     onAddFileShare: () -> Unit,
     onAddMediaServer: () -> Unit,
@@ -63,6 +65,7 @@ fun NetworkHubScreen(
         sanitizeDiscoveredDevices(discoveredDevices + runtimeState.discoveredDevices)
     }
     var addKind by remember { mutableStateOf<AddSourceKind?>(null) }
+    val remembered = remember(connectState.isConnected) { CineVaultReconnectStore(context).load() }
     BackHandler(onBack = onBack)
 
     BoxWithConstraints(Modifier.fillMaxSize().background(SpaceBlack)) {
@@ -73,13 +76,13 @@ fun NetworkHubScreen(
             Spacer(Modifier.height(8.dp))
             NetworkRadarHero(connectState, visibleDevices)
             Spacer(Modifier.height(8.dp))
-            CineVaultConnectCard(connectState, onFindDevices, onScanQr, onShareLibrary, onDisconnectPeer)
+            CineVaultConnectCard(connectState, remembered, onFindDevices, onScanQr, onShareLibrary, onDisconnectPeer, onReconnect, onOpenConnected = { connectState.remoteConnection?.device?.let(onDiscoveredDeviceClick) })
             Spacer(Modifier.height(18.dp))
             if (wide) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.Top) {
                     Column(Modifier.weight(1f)) { SavedSources(savedSources, onSourceClick) }
                     Column(Modifier.weight(1f)) {
-                        NearbyDevices(visibleDevices, connectState, onDiscoveredDeviceClick)
+                        NearbyDevices(visibleDevices, connectState, remembered, onDiscoveredDeviceClick)
                         Spacer(Modifier.height(18.dp))
                         AddManually({ addKind = AddSourceKind.FILE_SHARE; onAddFileShare() }, { addKind = AddSourceKind.MEDIA_SERVER; onAddMediaServer() }, { addKind = AddSourceKind.WEB; onAddWebSource() })
                     }
@@ -87,7 +90,7 @@ fun NetworkHubScreen(
             } else {
                 SavedSources(savedSources, onSourceClick)
                 Spacer(Modifier.height(18.dp))
-                NearbyDevices(visibleDevices, connectState, onDiscoveredDeviceClick)
+                NearbyDevices(visibleDevices, connectState, remembered, onDiscoveredDeviceClick)
                 Spacer(Modifier.height(18.dp))
                 AddManually({ addKind = AddSourceKind.FILE_SHARE; onAddFileShare() }, { addKind = AddSourceKind.MEDIA_SERVER; onAddMediaServer() }, { addKind = AddSourceKind.WEB; onAddWebSource() })
             }
@@ -101,25 +104,30 @@ data class NetworkHubSourceSummary(val id: String, val name: String, val typeLab
 private enum class AddSourceKind { FILE_SHARE, MEDIA_SERVER, WEB }
 
 @Composable
-private fun CineVaultConnectCard(state: CineVaultConnectState, onFindDevices: () -> Unit, onScanQr: () -> Unit, onShareLibrary: () -> Unit, onDisconnect: () -> Unit) {
+private fun CineVaultConnectCard(state: CineVaultConnectState, remembered: RememberedCineVaultPeer?, onFindDevices: () -> Unit, onScanQr: () -> Unit, onShareLibrary: () -> Unit, onDisconnect: () -> Unit, onReconnect: () -> Unit, onOpenConnected: () -> Unit) {
     val infinite = rememberInfiniteTransition(label = "connectPulse")
     val pulse by infinite.animateFloat(0.35f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "pulse")
     val accent = when { state.isConnected -> ConnectGreen; state.requiresLocalApproval -> AmberCore; state.isBusy -> ConnectCyan; state.isProviding -> ConnectViolet; else -> AmberCore }
-    Column(Modifier.fillMaxWidth().background(Color(0xFF12151B), RoundedCornerShape(26.dp)).border(1.dp, accent.copy(alpha = 0.48f), RoundedCornerShape(26.dp)).padding(18.dp)) {
+    Column(Modifier.fillMaxWidth().background(Color(0xFF12151B), RoundedCornerShape(26.dp)).border(1.5.dp, accent.copy(alpha = 0.6f), RoundedCornerShape(26.dp)).padding(22.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(48.dp).background(accent.copy(alpha = 0.13f), CircleShape).border(1.dp, accent.copy(alpha = if (state.isBusy) pulse else 0.55f), CircleShape), contentAlignment = Alignment.Center) {
                 Icon(when { state.isConnected -> Icons.Rounded.Link; state.isBusy -> Icons.Rounded.Radar; state.isProviding -> Icons.Rounded.WifiTethering; else -> Icons.Rounded.Hub }, null, tint = accent, modifier = Modifier.size(25.dp))
             }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text("CineVault Connect", color = TextBright, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("CineVault Connect", color = TextBright, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Text(state.statusLabel, color = accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
             RoleBadge(state.role, accent)
         }
+        val waitingFor = state.connectingPeer?.takeIf { !state.isConnected && state.phase == CineVaultConnectPhase.REQUESTING_APPROVAL }
+        if (waitingFor != null) {
+            ApprovalPanel(waitingFor.displayName, state.connectingCode, onCancel = onDisconnect)
+            return@Column
+        }
         Spacer(Modifier.height(16.dp))
         Text(when {
-            state.remoteConnection != null -> "Streaming access to ${state.remoteConnection.device.displayName} is active."
+            state.remoteConnection != null -> "Streaming access to ${state.remoteConnection.device.displayName} is active." + (state.remoteVideoCount?.let { " $it ${if (it == 1) "video is" else "videos are"} ready to play." } ?: "")
             state.requiresLocalApproval -> "${state.sharing.pending?.remoteDeviceName ?: "A CineVault"} wants access to your shared library."
             state.isProviding -> "Your CineVault is visible nearby. You can keep sharing while connecting to another CineVault."
             state.isBusy -> "Looking for CineVault devices on your local network."
@@ -130,8 +138,33 @@ private fun CineVaultConnectCard(state: CineVaultConnectState, onFindDevices: ()
             ConnectAction(if (state.phase == CineVaultConnectPhase.DISCOVERING) "Finding…" else "Find CineVaults", Icons.Rounded.Radar, ConnectCyan, onFindDevices, state.phase != CineVaultConnectPhase.DISCOVERING)
             ConnectAction("Scan QR", Icons.Rounded.QrCodeScanner, ConnectViolet, onScanQr)
             ConnectAction(if (state.isProviding) "Sharing On" else "Share Library", Icons.Rounded.FolderShared, AmberCore, onShareLibrary)
+            if (state.isConnected) ConnectAction("Open library", Icons.Rounded.VideoLibrary, ConnectGreen, onOpenConnected)
             if (state.isConnected) ConnectAction("Disconnect", Icons.Rounded.LinkOff, ConnectGreen, onDisconnect)
+            if (!state.isConnected && !state.isBusy && remembered != null) ConnectAction("Reconnect to ${remembered.displayName}", Icons.Rounded.Replay, ConnectCyan, onReconnect)
         }
+    }
+}
+
+private const val APPROVAL_TIMEOUT_SECONDS = 90
+
+/** Shown inside the Connect card while the other device decides: code to compare, countdown, Cancel. */
+@Composable
+private fun ApprovalPanel(deviceName: String, code: String?, onCancel: () -> Unit) {
+    var elapsed by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) { while (true) { delay(1000); elapsed++ } }
+    val left = (APPROVAL_TIMEOUT_SECONDS - elapsed).coerceAtLeast(0)
+    Spacer(Modifier.height(16.dp))
+    Text("Waiting for $deviceName to approve", color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+    Spacer(Modifier.height(6.dp))
+    Text("On $deviceName, tap Approve. Check that this code matches the one it shows.", color = TextMuted, fontSize = 13.sp, lineHeight = 18.sp)
+    if (code != null) {
+        Spacer(Modifier.height(14.dp))
+        Text(formatMatchCode(code), color = AmberCore, fontSize = 32.sp, fontWeight = FontWeight.Bold, letterSpacing = 6.sp, modifier = Modifier.background(AmberCore.copy(alpha = 0.10f), RoundedCornerShape(16.dp)).border(1.dp, AmberCore.copy(alpha = 0.4f), RoundedCornerShape(16.dp)).padding(horizontal = 18.dp, vertical = 8.dp))
+    }
+    Spacer(Modifier.height(14.dp))
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        ConnectAction("Cancel", Icons.Rounded.Close, ConnectCyan, onCancel)
+        Text("Times out in ${left / 60}:${(left % 60).toString().padStart(2, '0')}", color = TextFaint, fontSize = 12.sp)
     }
 }
 
@@ -146,8 +179,8 @@ private fun CineVaultConnectCard(state: CineVaultConnectState, onFindDevices: ()
     }
 }
 
-@Composable private fun NearbyDevices(devices: List<DiscoveredNetworkDevice>, connectState: CineVaultConnectState, onClick: (DiscoveredNetworkDevice) -> Unit) = HubSection("Nearby") {
-    if (devices.isEmpty()) EmptyHint("Nothing discovered yet. Find CineVaults or use QR for a direct invite.")
+@Composable private fun NearbyDevices(devices: List<DiscoveredNetworkDevice>, connectState: CineVaultConnectState, remembered: RememberedCineVaultPeer?, onClick: (DiscoveredNetworkDevice) -> Unit) = HubSection("Nearby") {
+    if (devices.isEmpty()) EmptyNearby(remembered)
     else sanitizeDiscoveredDevices(devices).forEach { device ->
         val isConnecting = connectState.connectingPeer?.id == device.id
         val isConnected = connectState.remoteConnection?.device?.id == device.id
@@ -173,11 +206,24 @@ private fun CineVaultConnectCard(state: CineVaultConnectState, onFindDevices: ()
 }
 
 @Composable private fun NetworkHubHeader(onBack: () -> Unit) { Row(verticalAlignment = Alignment.CenterVertically) { HubIcon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack); Spacer(Modifier.width(14.dp)); Column { Text("Network", color = TextBright, fontFamily = NewsreaderFamily, fontSize = CineType.Display); Text("Connect • stream • share", color = TextMuted, fontSize = 13.sp) } } }
-@Composable private fun SavedSources(sources: List<NetworkHubSourceSummary>, onClick: (String) -> Unit) = HubSection("Your Sources") { if (sources.isEmpty()) EmptyHint("No network sources added yet.") else sources.forEach { source -> HubRow(Icons.Rounded.Storage, source.name, "${source.typeLabel} • ${source.statusLabel}") { onClick(source.id) }; Spacer(Modifier.height(8.dp)) } }
+@Composable private fun SavedSources(sources: List<NetworkHubSourceSummary>, onClick: (String) -> Unit) = HubSection("Your Sources") { if (sources.isEmpty()) EmptyHint("No saved sources yet. Add a file share, media server or web link under Add Manually and it will wait here.") else sources.forEach { source -> HubRow(Icons.Rounded.Storage, source.name, "${source.typeLabel} • ${source.statusLabel}") { onClick(source.id) }; Spacer(Modifier.height(8.dp)) } }
 @Composable private fun AddManually(onFileShare: () -> Unit, onMediaServer: () -> Unit, onWebSource: () -> Unit) = HubSection("Add Manually") { HubRow(Icons.Rounded.Storage, "File Shares", "SMB • WebDAV • SFTP", onClick = onFileShare); Spacer(Modifier.height(8.dp)); HubRow(Icons.Rounded.Devices, "Media Servers", "Jellyfin • Emby • DLNA", accent = ConnectViolet, onClick = onMediaServer); Spacer(Modifier.height(8.dp)); HubRow(Icons.Rounded.AddLink, "Web / Playlist", "HTTP directory • M3U", accent = ConnectCyan, onClick = onWebSource) }
 @Composable private fun HubSection(title: String, content: @Composable () -> Unit) { Column(Modifier.fillMaxWidth().background(Color(0xFF121317), RoundedCornerShape(22.dp)).border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(22.dp)).padding(16.dp)) { Text(title, color = TextBright, fontSize = 16.sp, fontWeight = FontWeight.SemiBold); Spacer(Modifier.height(12.dp)); content() } }
 @Composable private fun HubRow(icon: ImageVector, title: String, subtitle: String, accent: Color = AmberCore, enabled: Boolean = true, onClick: () -> Unit) { Row(Modifier.fillMaxWidth().hubEntrance().alpha(if (enabled) 1f else 0.72f).background(accent.copy(alpha = 0.055f), RoundedCornerShape(16.dp)).border(1.dp, accent.copy(alpha = 0.14f), RoundedCornerShape(16.dp)).clickable(enabled = enabled, onClick = onClick).padding(13.dp), verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(36.dp).background(accent.copy(alpha = 0.12f), RoundedCornerShape(11.dp)), contentAlignment = Alignment.Center) { Icon(icon, null, tint = accent, modifier = Modifier.size(20.dp)) }; Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(title, color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.SemiBold); Text(subtitle, color = TextMuted, fontSize = 12.sp) }; Icon(Icons.Rounded.ChevronRight, null, tint = accent.copy(alpha = 0.72f)) } }
 @Composable private fun HubIcon(icon: ImageVector, description: String, onClick: () -> Unit) { Box(Modifier.background(AmberCore.copy(alpha = 0.10f), RoundedCornerShape(14.dp)).clickable(onClick = onClick).padding(10.dp)) { Icon(icon, description, tint = AmberCore) } }
+@Composable private fun EmptyNearby(remembered: RememberedCineVaultPeer?) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(Icons.Rounded.Radar, null, tint = ConnectCyan.copy(alpha = 0.7f), modifier = Modifier.size(34.dp))
+        Spacer(Modifier.height(8.dp))
+        Text("No devices in range yet", color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(4.dp))
+        Text("Tap Find CineVaults, and on the other device open Network → Share Library. Both need the same Wi-Fi. No Wi-Fi in common? Use Scan QR.", color = TextMuted, fontSize = 12.sp, lineHeight = 17.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        if (remembered != null) {
+            Spacer(Modifier.height(8.dp))
+            Text("Last connected: ${remembered.displayName}", color = TextFaint, fontSize = 12.sp)
+        }
+    }
+}
 @Composable private fun EmptyHint(text: String) = Text(text, color = TextFaint, fontSize = 12.sp, lineHeight = 17.sp)
 private fun discoveryLabel(kind: NetworkDiscoveryKind): String = when (kind) { NetworkDiscoveryKind.CINEVAULT -> "CineVault • Nearby"; NetworkDiscoveryKind.JELLYFIN -> "Jellyfin"; NetworkDiscoveryKind.EMBY -> "Emby"; NetworkDiscoveryKind.DLNA -> "DLNA / UPnP • Tap to browse"; NetworkDiscoveryKind.WEBDAV -> "WebDAV"; NetworkDiscoveryKind.SMB -> "SMB"; NetworkDiscoveryKind.UNKNOWN -> "Network device" }
 

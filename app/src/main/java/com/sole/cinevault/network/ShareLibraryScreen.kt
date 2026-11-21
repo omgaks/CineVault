@@ -140,7 +140,10 @@ fun ShareLibraryScreen(
                 state.pending?.let { request ->
                     Spacer(Modifier.height(16.dp))
                     Text("${request.remoteDeviceName} wants access", color=TextBright, fontSize=16.sp, fontWeight=FontWeight.Bold)
-                    Text("Nothing is shared until you approve.", color=TextMuted, fontSize=12.sp)
+                    Text("Approve only if this code matches the one on ${request.remoteDeviceName}.", color=TextMuted, fontSize=12.sp)
+                    Spacer(Modifier.height(6.dp))
+                    Text(formatMatchCode(pairingCode(request.inviteNonce)), color=AmberCore, fontSize=26.sp, fontWeight=FontWeight.Bold, letterSpacing=4.sp)
+                    Text("Nothing is shared until you approve.", color=TextFaint, fontSize=11.sp)
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                         ShareButton("APPROVE") {
@@ -154,7 +157,7 @@ fun ShareLibraryScreen(
 
             state.approved?.let { approved ->
                 Spacer(Modifier.height(16.dp))
-                ShareCard("Connected securely", Icons.Rounded.Security) {
+                ShareCard("Connected", Icons.Rounded.Security) {
                     Text("Temporary Nearby session active", color=Color(0xFF55D98B), fontWeight=FontWeight.Bold)
                     Text("Access expires automatically. Vault / Restricted content remains excluded.", color=TextMuted, fontSize=12.sp)
                 }

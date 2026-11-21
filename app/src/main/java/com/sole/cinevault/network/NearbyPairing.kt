@@ -66,6 +66,10 @@ class NearbyPairingPolicy(
     }
 }
 
+/** 123456 -> "123 456", easier to compare across two screens. */
+internal fun formatMatchCode(code: String): String =
+    if (code.length == 6) code.substring(0, 3) + " " + code.substring(3) else code
+
 internal fun pairingCode(token: String): String {
     val digits = sha256(token.toByteArray(StandardCharsets.UTF_8))
         .take(4)
