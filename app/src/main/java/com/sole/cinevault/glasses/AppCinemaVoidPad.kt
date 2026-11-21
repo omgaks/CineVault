@@ -29,6 +29,8 @@ import com.sole.cinevault.glasses.display.GlassesScreenSize
 import com.sole.cinevault.glasses.display.GlassPill
 import com.sole.cinevault.glasses.display.GlassesBackBridge
 import com.sole.cinevault.glasses.display.GlassSizeCapsule
+import com.sole.cinevault.glasses.display.ExternalPlayerHudState
+import com.sole.cinevault.glasses.display.ExternalViewportSessionState
 import com.sole.cinevault.glasses.display.GlassesDisplay3d
 import com.sole.cinevault.ui.theme.AmberCore
 
@@ -61,6 +63,13 @@ internal fun AppCinemaVoidPad() {
                 modifier = Modifier.fillMaxSize().fiveFingerReturn(session.disable),
                 inPlayer = false,
                 onTwoFingerTap = { GlassesBackBridge.handler?.invoke() },
+                // A film on the glasses: two fingers zoom (50% to 200%) and move the picture.
+                // A 3D side-by-side film keeps its full frame, so it is not zoomed.
+                onPinchPan = if (GlassesFilmOwner.externalShowsPlayer && !ExternalPlayerHudState.fullFrame3d) {
+                    { zoom, fx, fy -> ExternalViewportSessionState.applyPadGesture(zoom, fx, fy) }
+                } else {
+                    null
+                },
             )
             Row(
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 28.dp),
@@ -68,6 +77,12 @@ internal fun AppCinemaVoidPad() {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 GlassPill("Use tablet") { padOn = false }
+                if (GlassesFilmOwner.externalShowsPlayer && !ExternalPlayerHudState.fullFrame3d) {
+                    val zoomPercent = (ExternalViewportSessionState.transform.scale * 100f).toInt()
+                    GlassPill(if (zoomPercent == 100) "Zoom: fit" else "Zoom $zoomPercent% (tap to fit)") {
+                        ExternalViewportSessionState.reset()
+                    }
+                }
                 GlassPill(if (GlassesDisplay3d.enabled) "3D display: on" else "3D display: off") {
                     GlassesDisplay3d.set(traceContext, !GlassesDisplay3d.enabled)
                 }

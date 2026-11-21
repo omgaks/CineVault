@@ -63,7 +63,7 @@ internal val PLAYER_GUIDE_ROWS = listOf(
 internal val APP_GUIDE_ROWS = listOf(
     GuideRow(Icons.Rounded.OpenWith, "One finger", "Move the pointer (the page stays still)"),
     GuideRow(Icons.Rounded.TouchApp, "Tap", "Press what the pointer is on"),
-    GuideRow(Icons.Rounded.SwapVert, "Two fingers", "Scroll the page, over the list you want"),
+    GuideRow(Icons.Rounded.SwapVert, "Two fingers", "Scroll the page. In a film: pinch to zoom, drag to move"),
     GuideRow(Icons.AutoMirrored.Rounded.ArrowBack, "Two-finger tap", "Go back"),
     GuideRow(Icons.Rounded.PanTool, "Hold, then drag", "Slide a slider or bar"),
     GuideRow(Icons.Rounded.BackHand, "Five fingers spread", "Come back to the tablet"),

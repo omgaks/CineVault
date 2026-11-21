@@ -30,7 +30,9 @@ internal fun Modifier.appPadTouch(
     allowScroll: Boolean = true,
     onActivity: () -> Unit = {},
     onTwoFingerTap: (() -> Unit)? = null,
-): Modifier = pointerInput(allowScroll) {
+    /** During a film: two fingers pinch (zoom ratio) and drag (pad fractions) instead of scrolling. */
+    onPinchPan: ((zoom: Float, panX: Float, panY: Float) -> Unit)? = null,
+): Modifier = pointerInput(allowScroll, onPinchPan != null) {
     awaitEachGesture {
         val w = size.width
         val h = size.height
@@ -66,7 +68,7 @@ internal fun Modifier.appPadTouch(
 
         when (early) {
             1 -> {
-                twoFingerScroll(w, h, allowScroll, onTwoFingerTap)
+                twoFingerScroll(w, h, allowScroll, onTwoFingerTap, onPinchPan)
                 return@awaitEachGesture
             }
             2 -> { // quick tap
@@ -100,7 +102,7 @@ internal fun Modifier.appPadTouch(
             val down = event.changes.count { it.pressed }
             if (down >= 2) {
                 HaloRemoteInputSession.publishCancelPress()
-                twoFingerScroll(w, h, allowScroll, onTwoFingerTap)
+                twoFingerScroll(w, h, allowScroll, onTwoFingerTap, onPinchPan)
                 return@awaitEachGesture
             }
             val mine = event.changes.firstOrNull { it.id == first.id } ?: break
@@ -130,7 +132,10 @@ private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.two
     h: Int,
     allowScroll: Boolean,
     onTap: (() -> Unit)?,
+    onPinchPan: ((Float, Float, Float) -> Unit)? = null,
 ) {
+    var previousSpread = 0f
+    var pinchStarted = false
     val startTime = System.currentTimeMillis()
     var travel = 0f
     var previous: Offset? = null
@@ -146,11 +151,21 @@ private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.two
                 pressed.map { it.position.x }.average().toFloat(),
                 pressed.map { it.position.y }.average().toFloat(),
             )
+            val spread = hypot(
+                pressed[0].position.x - pressed[1].position.x,
+                pressed[0].position.y - pressed[1].position.y,
+            )
             previous?.let {
                 val dx = (centre.x - it.x) / w
                 val dy = (centre.y - it.y) / h
                 travel += hypot(dx, dy)
-                if (allowScroll) {
+                if (onPinchPan != null) {
+                    if (previousSpread > 0f) travel += kotlin.math.abs(spread - previousSpread) / w
+                    if (!pinchStarted && travel > PAD_HOLD_SLOP_FRACTION) pinchStarted = true
+                    if (pinchStarted && previousSpread > 0f) {
+                        onPinchPan(spread / previousSpread, dx, dy)
+                    }
+                } else if (allowScroll) {
                     pendingDx += dx
                     pendingDy += dy
                     // Do not scroll on a mere tap: wait until the fingers really travel.
@@ -166,6 +181,7 @@ private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.two
                 }
             }
             previous = centre
+            previousSpread = spread
         } else if (scrolling) {
             scrolling = false // first lifted finger ends the scroll without a jump
         }
@@ -173,6 +189,8 @@ private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.two
 
     if (started) {
         HaloRemoteInputSession.publishScroll(HaloRemoteInputSession.ScrollPhase.END, 0f, 0f)
+    } else if (pinchStarted) {
+        // zoom and pan were applied live; nothing more to do
     } else if (onTap != null &&
         travel <= PAD_HOLD_SLOP_FRACTION * 2f &&
         System.currentTimeMillis() - startTime <= PAD_TWO_FINGER_TAP_MS

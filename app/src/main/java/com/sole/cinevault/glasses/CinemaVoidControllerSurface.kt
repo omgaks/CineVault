@@ -41,12 +41,13 @@ fun CinemaVoidControllerSurface(
     modifier: Modifier = Modifier,
     inPlayer: Boolean = true,
     onTwoFingerTap: (() -> Unit)? = null,
+    onPinchPan: ((Float, Float, Float) -> Unit)? = null,
 ) {
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
-            .then(if (inPlayer) Modifier.playerPadTouch() else Modifier.appPadTouch(onTwoFingerTap = onTwoFingerTap))
+            .then(if (inPlayer) Modifier.playerPadTouch() else Modifier.appPadTouch(onTwoFingerTap = onTwoFingerTap, onPinchPan = onPinchPan))
     ) {
         val spec = CinemaVoidAdaptivePolicy.resolve(
             availableWidthDp = maxWidth.value.toInt(),
