@@ -23,7 +23,7 @@ class HaloCanonicalTargetDispatcher(
 
         val point = HaloTargetProjection.toPixels(
             position = position,
-            widthPx = rootView.width,
+            widthPx = HaloSurfaceBounds.projectedWidthPx(rootView.width),
             heightPx = rootView.height,
         )
 

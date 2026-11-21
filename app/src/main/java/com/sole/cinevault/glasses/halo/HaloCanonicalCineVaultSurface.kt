@@ -3,7 +3,11 @@ package com.sole.cinevault.glasses.halo
 import android.os.SystemClock
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -35,9 +39,26 @@ fun HaloCanonicalCineVaultSurface(
     enabled: Boolean = true,
     acceptRemoteInput: Boolean = false,
     onActivity: (HaloActivityEvent) -> Unit = {},
+    /** Glasses in their own 3D display mode: lay out in the left half, draw again for the right eye. */
+    eyeSplit: Boolean = false,
+    /** Hide the pointer a moment after it stops moving (used while a film plays). */
+    autoHideCursor: Boolean = false,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
+    androidx.compose.runtime.DisposableEffect(eyeSplit) {
+        HaloSurfaceBounds.widthFraction = if (eyeSplit) 0.5f else 1f
+        onDispose { HaloSurfaceBounds.widthFraction = 1f }
+    }
+    var lastMoveStamp by remember { mutableStateOf(0L) }
+    var cursorIdle by remember { mutableStateOf(false) }
+    LaunchedEffect(lastMoveStamp, autoHideCursor) {
+        cursorIdle = false
+        if (autoHideCursor) {
+            delay(2500L)
+            cursorIdle = true
+        }
+    }
     val coordinator = remember { HaloInteractionCoordinator() }
     val clock = remember { HaloEventClock() }
     val pulseController = remember { HaloClickPulseController() }
@@ -85,10 +106,11 @@ fun HaloCanonicalCineVaultSurface(
 
             haloPosition = frame.position
             haloStable = frame.stability.isStable
+            lastMoveStamp = now
 
             val currentAwareness = HaloTargetAwarenessResolver.resolve(
                 position = frame.position,
-                widthPx = rootView.width,
+                widthPx = HaloSurfaceBounds.projectedWidthPx(rootView.width),
                 heightPx = rootView.height,
                 focusConfidence = frame.focusConfidence,
             )
@@ -139,6 +161,7 @@ fun HaloCanonicalCineVaultSurface(
     val wheelDispatcher = remember(rootView, syntheticGuard) { HaloWheelDispatcher(rootView, syntheticGuard) }
     val processScroll: (HaloRemoteInputSession.ScrollPhase, Float, Float) -> Unit = { phase, dx, dy ->
         val origin = haloPosition ?: HaloVector(0.5f, 0.5f)
+        lastMoveStamp = SystemClock.uptimeMillis()
         when (phase) {
             HaloRemoteInputSession.ScrollPhase.START -> wheelDispatcher.hover(origin)
             HaloRemoteInputSession.ScrollPhase.MOVE -> {
@@ -196,17 +219,27 @@ fun HaloCanonicalCineVaultSurface(
                 },
         onSample = processSample,
     ) {
-        Box(Modifier.fillMaxSize()) {
-            content()
-            if (enabled) {
-                haloPosition?.let {
-                    HaloCursor(
-                        position = it,
-                        stable = haloStable,
-                        awareness = awareness,
-                        pulseProgress = pulseProgress,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+        Box(
+            if (eyeSplit) Modifier.fillMaxSize().drawForBothEyes() else Modifier.fillMaxSize(),
+        ) {
+            Box(
+                if (eyeSplit) {
+                    Modifier.fillMaxHeight().fillMaxWidth(0.5f)
+                } else {
+                    Modifier.fillMaxSize()
+                },
+            ) {
+                content()
+                if (enabled && !cursorIdle) {
+                    haloPosition?.let {
+                        HaloCursor(
+                            position = it,
+                            stable = haloStable,
+                            awareness = awareness,
+                            pulseProgress = pulseProgress,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
             }
         }
@@ -340,5 +373,13 @@ internal class HaloEventClock {
 
     fun reset() {
         previousMillis = null
+    }
+}
+
+/** Draws the content once, then again shifted by half the width: one picture per eye. */
+private fun Modifier.drawForBothEyes(): Modifier = drawWithContent {
+    drawContent()
+    translate(left = size.width / 2f) {
+        this@drawWithContent.drawContent()
     }
 }

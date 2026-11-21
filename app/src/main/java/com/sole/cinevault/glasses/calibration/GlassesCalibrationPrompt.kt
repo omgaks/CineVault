@@ -65,11 +65,13 @@ internal fun GlassesCalibrationPrompt(
 ) {
     val context = LocalContext.current
 
-    // Never leave the glasses stuck on this card: it closes itself after a while and is
-    // asked again next time. (Only "Looks right" remembers the model.)
+    // Never leave the glasses stuck on this card: it closes itself after a while. Closing it
+    // any way (done, skip, or timing out) counts as answered, so it is not asked on every
+    // connect. Settings -> Recalibrate brings it back.
     LaunchedEffect(visible) {
         if (visible) {
             kotlinx.coroutines.delay(AUTO_CLOSE_MS)
+            markCalibrated(context, displayName)
             onDone()
         }
     }
@@ -165,6 +167,7 @@ internal fun GlassesCalibrationPrompt(
             Spacer(modifier = Modifier.height(8.dp))
 
             CalibrationButton(label = "Skip for now", modifier = Modifier.fillMaxWidth()) {
+                markCalibrated(context, displayName)
                 onDone()
             }
         }

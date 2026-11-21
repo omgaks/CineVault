@@ -84,21 +84,34 @@ internal fun PlayerVideoSurface(
         }
     }
 
+    // A 3D side-by-side film must keep the whole frame: an old saved zoom or pan from a 2D
+    // film would leave black edges and break the depth, so it is ignored for 3D.
+    val fullFrame3dSurface =
+        renderDestination == CineVaultRenderDestination.EXTERNAL_DISPLAY &&
+            stereoRenderPlan.mode ==
+            com.sole.cinevault.glasses.stereo.StereoPlaybackMode.SIDE_BY_SIDE &&
+            stereoRenderPlan.supportedByNativeSbsOutput
     val externalViewport = ExternalViewportSessionState.transform
     val surfaceScale =
-        if (renderDestination == CineVaultRenderDestination.EXTERNAL_DISPLAY) {
+        if (fullFrame3dSurface) {
+            1f
+        } else if (renderDestination == CineVaultRenderDestination.EXTERNAL_DISPLAY) {
             externalViewport.scale
         } else {
             videoScale
         }
     val surfaceOffsetX =
-        if (renderDestination == CineVaultRenderDestination.EXTERNAL_DISPLAY) {
+        if (fullFrame3dSurface) {
+            0f
+        } else if (renderDestination == CineVaultRenderDestination.EXTERNAL_DISPLAY) {
             externalViewport.panX
         } else {
             videoOffsetX
         }
     val surfaceOffsetY =
-        if (renderDestination == CineVaultRenderDestination.EXTERNAL_DISPLAY) {
+        if (fullFrame3dSurface) {
+            0f
+        } else if (renderDestination == CineVaultRenderDestination.EXTERNAL_DISPLAY) {
             externalViewport.panY
         } else {
             videoOffsetY

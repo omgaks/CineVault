@@ -27,7 +27,7 @@ class HaloWheelDispatcher(
 
     private fun send(action: Int, position: HaloVector, vScroll: Float, hScroll: Float): Boolean {
         if (rootView.width <= 0 || rootView.height <= 0) return false
-        val point = HaloTargetProjection.toPixels(position, rootView.width, rootView.height)
+        val point = HaloTargetProjection.toPixels(position, HaloSurfaceBounds.projectedWidthPx(rootView.width), rootView.height)
         val props = arrayOf(MotionEvent.PointerProperties().apply {
             id = 0
             toolType = MotionEvent.TOOL_TYPE_MOUSE
