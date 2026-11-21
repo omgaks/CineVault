@@ -125,11 +125,29 @@ internal fun NightCitySkyline(
             val w = size.width
             val h = size.height
             drawRect(brush = Brush.verticalGradient(listOf(environment.skyTop, environment.skyBottom)))
+            // Diffused skyline halo: overlapping rings avoid an opaque flat disk.
+            for (halo in 4 downTo 1) {
+                drawCircle(
+                    color = environment.atmosphericGlow.copy(alpha = 0.055f),
+                    radius = w * (0.17f + halo * 0.06f),
+                    center = Offset(w * 0.77f, h * 0.28f),
+                )
+            }
             drawCircle(
-                color = environment.atmosphericGlow.copy(alpha = 0.34f),
+                color = environment.atmosphericGlow.copy(alpha = 0.22f),
                 radius = w * 0.33f,
                 center = Offset(w * 0.77f, h * 0.28f),
             )
+            // Sparse deterministic stars and distant haze; no random flicker.
+            for (star in 0 until 34) {
+                val x = (star * 79.17f) % w
+                val y = (star * 41.83f) % (h * 0.47f)
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.12f + (star % 4) * 0.07f),
+                    radius = 0.6f + (star % 3) * 0.3f,
+                    center = Offset(x, y),
+                )
+            }
             // Distant tower layer adds atmospheric depth.
             for (tower in 0 until 18) {
                 val tw = w / 18f
@@ -159,6 +177,20 @@ internal fun NightCitySkyline(
                     strokeWidth = 1.3f,
                 )
                 val energy = NightCityFftEnergy.at(fft, i, count)
+                // Rooftop antennas and occasional cyan spires break up the skyline.
+                if (i % 6 == 2) {
+                    drawLine(
+                        color = environment.neonPrimary.copy(alpha = 0.65f),
+                        start = Offset(x + buildingWidth * 0.5f, y),
+                        end = Offset(x + buildingWidth * 0.5f, y - h * 0.075f),
+                        strokeWidth = 1.5f,
+                    )
+                    drawCircle(
+                        color = environment.windowLight.copy(alpha = 0.85f),
+                        radius = 2f,
+                        center = Offset(x + buildingWidth * 0.5f, y - h * 0.075f),
+                    )
+                }
                 val rows = (buildingHeight / 13f).toInt()
                 for (row in 1 until rows) {
                     if ((i * 7 + row * 11) % 5 == 0) continue
@@ -172,6 +204,14 @@ internal fun NightCitySkyline(
                     )
                 }
             }
+            // Fine horizon haze separates the foreground from the skyline.
+            drawRect(
+                brush = Brush.verticalGradient(
+                    listOf(Color.Transparent, environment.neonPrimary.copy(alpha = 0.10f)),
+                    startY = h * 0.69f,
+                    endY = h,
+                ),
+            )
             // Spectrum follows actual decoded FFT energy.
             val spectrumBase = h * 0.965f
             for (bar in 0 until 32) {
