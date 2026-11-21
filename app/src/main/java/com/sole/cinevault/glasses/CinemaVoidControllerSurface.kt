@@ -54,6 +54,17 @@ fun CinemaVoidControllerSurface(
             availableHeightDp = maxHeight.value.toInt(),
         )
 
+        // In a film the whole card (title, 3D notice, guide) disappears after a while so the
+        // pad is a plain dark touchpad; the 3D notice stays on the glasses themselves.
+        var cardShown by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+        androidx.compose.runtime.LaunchedEffect(inPlayer) {
+            cardShown = true
+            if (inPlayer) {
+                kotlinx.coroutines.delay(18_000L)
+                cardShown = false
+            }
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -62,7 +73,7 @@ fun CinemaVoidControllerSurface(
                     vertical = spec.verticalPaddingDp.dp,
                 ),
         ) {
-            Surface(
+            if (cardShown) Surface(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .widthIn(max = spec.statusCardMaxWidthDp.dp),

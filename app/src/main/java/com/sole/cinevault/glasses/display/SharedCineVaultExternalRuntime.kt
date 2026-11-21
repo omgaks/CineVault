@@ -3,7 +3,11 @@ package com.sole.cinevault.glasses.display
 import android.app.Activity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import com.sole.cinevault.glasses.ExternalDisplayInfo
 
 /**
@@ -33,9 +37,14 @@ fun rememberSharedCineVaultExternalRuntime(
         UnifiedGlassesDisplayRuntime(renderer)
     }
 
+    // When CineVault leaves the screen (minimised, another app opened) the glasses go back to
+    // showing the tablet; they come back by themselves when the app returns.
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val appInForeground = lifecycleState.isAtLeast(Lifecycle.State.STARTED)
+
     val modeState =
         externalDisplay.toGlassesDisplayModeState(
-            enabled = enabled,
+            enabled = enabled && appInForeground,
         )
 
     runtime.apply(modeState)
