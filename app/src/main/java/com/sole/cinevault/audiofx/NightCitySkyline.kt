@@ -8,6 +8,12 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -23,6 +29,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,45 +66,57 @@ internal fun NightCitySkyline(
     )
     val phase = if (motionEnabled) motionPhase else pausedPhase
     Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            text = "CITY ENVIRONMENT",
+            color = Color(0xFFA8A6A0),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 7.dp),
+        )
         Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                .padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             NightCityEnvironment.entries.forEach { option ->
                 val selected = option == environment
                 Text(
                     text = option.displayName,
                     color = if (selected) NightCityEnvironment.signatureAmber else Color(0xFFB7B7C4),
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                     modifier = Modifier
-                        .weight(1f)
                         .background(
                             if (selected) Color(0xFF3B2B15) else Color(0xFF171925),
-                            RoundedCornerShape(9.dp),
+                            RoundedCornerShape(12.dp),
                         )
-                        .clickable {
+                        .selectable(selected = selected, role = Role.RadioButton) {
                             environment = option
                             prefs.edit().putString("environment", option.name).apply()
                         }
-                        .padding(horizontal = 5.dp, vertical = 10.dp),
+                        .heightIn(min = 48.dp)
+                        .padding(horizontal = 14.dp, vertical = 16.dp),
                 )
             }
         }
         Text(
             text = if (motionEnabled) "MOTION ON · TAP TO PAUSE" else "MOTION OFF · TAP TO RESUME",
             color = NightCityEnvironment.signatureAmber,
-            fontSize = 10.sp,
-            modifier = Modifier.clickable {
-                if (motionEnabled) pausedPhase = motionPhase
-                motionEnabled = !motionEnabled
-                prefs.edit().putBoolean("motion_enabled", motionEnabled).apply()
-            }
-                .padding(bottom = 7.dp),
+            fontSize = 11.sp,
+            modifier = Modifier
+                .semantics { stateDescription = if (motionEnabled) "Animation on" else "Animation paused" }
+                .clickable(role = Role.Switch) {
+                    if (motionEnabled) pausedPhase = motionPhase
+                    motionEnabled = !motionEnabled
+                    prefs.edit().putBoolean("motion_enabled", motionEnabled).apply()
+                }
+                .heightIn(min = 48.dp)
+                .padding(vertical = 16.dp),
         )
         Canvas(
-            modifier = Modifier.fillMaxWidth().height(150.dp)
-                .background(Color(0xFF05060A), RoundedCornerShape(12.dp)),
+            modifier = Modifier.fillMaxWidth().height(184.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF05060A)),
         ) {
             val w = size.width
             val h = size.height
@@ -107,6 +126,16 @@ internal fun NightCitySkyline(
                 radius = w * 0.33f,
                 center = Offset(w * 0.77f, h * 0.28f),
             )
+            // Distant tower layer adds atmospheric depth.
+            for (tower in 0 until 18) {
+                val tw = w / 18f
+                val th = h * (0.14f + abs(sin(tower * 2.13)).toFloat() * 0.36f)
+                drawRect(
+                    color = environment.building.copy(alpha = 0.48f),
+                    topLeft = Offset(tower * tw, h - th),
+                    size = Size(tw * 0.84f, th),
+                )
+            }
             val count = 27
             val buildingWidth = w / count
             for (i in 0 until count) {
@@ -139,6 +168,19 @@ internal fun NightCitySkyline(
                     )
                 }
             }
+            // Spectrum follows actual decoded FFT energy.
+            val spectrumBase = h * 0.965f
+            for (bar in 0 until 32) {
+                val energy = NightCityFftEnergy.at(fft, bar, 32)
+                val barHeight = 2f + energy * h * 0.14f
+                val bx = w * (bar + 0.5f) / 32f
+                drawLine(
+                    color = environment.neonPrimary.copy(alpha = 0.32f + energy * 0.55f),
+                    start = Offset(bx, spectrumBase),
+                    end = Offset(bx, spectrumBase - barHeight),
+                    strokeWidth = (w / 32f * 0.42f).coerceAtLeast(1f),
+                )
+            }
             drawLine(
                 color = NightCityEnvironment.signatureAmber.copy(alpha = 0.7f),
                 start = Offset(0f, h - 1f),
@@ -146,6 +188,17 @@ internal fun NightCitySkyline(
                 strokeWidth = 2f,
             )
             if (environment == NightCityEnvironment.ANIME_RAINFALL) {
+                // Reflective wet pavement with scattered neon streaks.
+                for (streak in 0 until 14) {
+                    val sx = (streak * 83.3f) % w
+                    val sy = h * (0.89f + (streak % 5) * 0.022f)
+                    drawLine(
+                        color = environment.neonPrimary.copy(alpha = 0.11f + (streak % 3) * 0.07f),
+                        start = Offset(sx, sy),
+                        end = Offset((sx + w * 0.07f).coerceAtMost(w), sy),
+                        strokeWidth = 1.4f,
+                    )
+                }
                 for (i in 0 until 44) {
                     val x = (i * 47.3f) % w
                     val y = ((i * 31.7f) + phase * h * 1.7f) % h
