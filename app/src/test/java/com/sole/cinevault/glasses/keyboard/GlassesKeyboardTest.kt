@@ -31,6 +31,6 @@ class GlassesKeyboardTest {
 
     @Test
     fun letterRowsCoverTheAlphabetOnce() {
-        assertEquals(("a".."z").joinToString(""), LETTER_ROWS.joinToString("").toList().sorted().joinToString(""))
+        assertEquals(('a'..'z').joinToString(""), LETTER_ROWS.joinToString("").toList().sorted().joinToString(""))
     }
 }
