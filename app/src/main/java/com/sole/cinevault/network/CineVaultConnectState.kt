@@ -21,6 +21,10 @@ data class CineVaultConnectState(
     val connectingPeer: DiscoveredNetworkDevice? = null,
     val remoteConnection: CineVaultRemoteConnection? = null,
     val message: String? = null,
+    /** Six-digit code both devices show while a request waits for approval. */
+    val connectingCode: String? = null,
+    /** How many videos the connected device shares, once known. */
+    val remoteVideoCount: Int? = null,
 ) {
     val isProviding get() = sharing.running
     val isReceiving get() = remoteConnection != null ||
@@ -74,6 +78,7 @@ internal fun CineVaultConnectState.withError(message: String): CineVaultConnectS
         enabled = sharing.running || remoteConnection != null,
         phase = CineVaultConnectPhase.ERROR,
         connectingPeer = null,
+        connectingCode = null,
         message = message,
     )
 

@@ -232,17 +232,18 @@ class CineVaultNearbyRuntime(context: Context) {
                 update { it.withError("This CineVault device did not provide a usable Nearby address.") }
                 return@launch
             }
+            val request = createNearbyPairRequest(deviceId, deviceName, qr)
             update {
                 it.copy(
                     enabled = true,
                     phase = CineVaultConnectPhase.REQUESTING_APPROVAL,
                     connectingPeer = device,
+                    connectingCode = request?.let { r -> pairingCode(r.inviteNonce) },
                     message = "Waiting for approval on ${device.displayName}…",
                 )
             }
             try {
-                val request = createNearbyPairRequest(deviceId, deviceName, qr)
-                    ?: error("Could not create pairing request.")
+                request ?: error("Could not create pairing request.")
                 val initial = directClient.requestPairing(endpoint, request)
                 if (initial.state == "error" || initial.state == "denied") {
                     error(initial.message ?: "Pairing request failed.")
@@ -269,12 +270,15 @@ class CineVaultNearbyRuntime(context: Context) {
                 }
                 val connection = CineVaultRemoteConnection(device, endpoint, session)
                 reconnectStore.remember(connection)
+                val sharedCount = runCatching { source.scan().size }.getOrNull()
                 update {
                     it.copy(
                         enabled = true,
                         phase = CineVaultConnectPhase.CONNECTED,
                         connectingPeer = null,
+                        connectingCode = null,
                         remoteConnection = connection,
+                        remoteVideoCount = sharedCount,
                         message = null,
                     )
                 }
@@ -298,7 +302,9 @@ class CineVaultNearbyRuntime(context: Context) {
                     else -> CineVaultConnectPhase.OFF
                 },
                 connectingPeer = null,
+                connectingCode = null,
                 remoteConnection = null,
+                remoteVideoCount = null,
                 message = null,
             )
         }

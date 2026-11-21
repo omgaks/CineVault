@@ -67,6 +67,7 @@ fun NetworkHubIntegratedScreen(
         onBack = onBack,
         onFindDevices = nearby::findCineVaultPeers,
         onDisconnectPeer = nearby::disconnectPeer,
+        onReconnect = { nearby.reconnectLastPeer(onOpenSource) },
         onScanQr = {
             qrScanner.scan(
                 onResult = { raw ->
@@ -111,7 +112,9 @@ fun NetworkHubIntegratedScreen(
         },
     )
 
-    val message = localMessage ?: connectState.message
+    // While waiting for approval the hub card shows the code, timer and Cancel itself.
+    val message = localMessage
+        ?: connectState.message.takeUnless { connectState.phase == CineVaultConnectPhase.REQUESTING_APPROVAL }
     message?.let { body ->
         HostWindowOnly { AlertDialog(
             onDismissRequest = {

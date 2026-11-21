@@ -33,7 +33,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.sole.cinevault.rememberMotionAllowed
 import com.sole.cinevault.ui.theme.SpaceBlack
 import kotlin.math.PI
@@ -59,6 +61,8 @@ internal fun NetworkRadarHero(
     modifier: Modifier = Modifier
 ) {
     val motion = rememberMotionAllowed()
+    val textMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
+    val labelStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp)
     val transition = rememberInfiniteTransition(label = "radar")
     val t by transition.animateFloat(
         initialValue = 0f,
@@ -88,15 +92,22 @@ internal fun NetworkRadarHero(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(250.dp)
+            .height(320.dp)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center
     ) {
-        Canvas(Modifier.fillMaxWidth().height(250.dp)) {
+        Canvas(Modifier.fillMaxWidth().height(320.dp)) {
             val c = Offset(size.width / 2f, size.height / 2f)
             val maxR = min(size.width, size.height) / 2f - 6.dp.toPx()
             val dash = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 8.dp.toPx()))
 
+            // A faint star field so the space around the radar never looks empty.
+            for (i in 0 until 46) {
+                val sx = ((i * 97) % 1000) / 1000f * size.width
+                val sy = ((i * 53) % 1000) / 1000f * size.height
+                val tw = 0.5f + 0.5f * sin((time + i / 46f) * 2f * PI.toFloat())
+                drawCircle(Color.White.copy(alpha = 0.05f + 0.10f * tw), radius = (0.8f + (i % 3) * 0.5f).dp.toPx(), center = Offset(sx, sy))
+            }
             // Quiet guide rings.
             for (k in 1..3) {
                 drawCircle(
@@ -163,6 +174,8 @@ internal fun NetworkRadarHero(
                 drawCircle(color.copy(alpha = 0.28f * glow * dim), radius = (7f + 14f * glow).dp.toPx(), center = p)
                 drawCircle(color.copy(alpha = dim), radius = (if (isPeer) 6f else 4.5f).dp.toPx(), center = p)
                 drawCircle(SpaceBlack, radius = 1.8.dp.toPx(), center = p)
+                val label = textMeasurer.measure(device.displayName.take(18), labelStyle)
+                drawText(label, color = Color.White.copy(alpha = 0.8f * dim), topLeft = Offset(p.x - label.size.width / 2f, p.y + 12.dp.toPx()))
 
                 // A flowing link from this device to the connected peer.
                 if (isPeer) {
