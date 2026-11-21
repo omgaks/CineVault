@@ -68,8 +68,14 @@ internal fun AudioStudioAmberHeader(
             fontSize = 12.sp,
         )
         Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("AMBER LENS", "LIVE SPECTRUM", "ANIME NIGHT CITY").forEach { label ->
+        // Two compact rows prevent badge overflow in narrow player popups.
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(
+                listOf("AMBER LENS", "LIVE SPECTRUM"),
+                listOf("ANIME NIGHT CITY"),
+            ).forEach { labels ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    labels.forEach { label ->
                 Text(
                     text = label,
                     color = if (label == "AMBER LENS") amber else Color(0xFFB9B7C1),
@@ -77,7 +83,8 @@ internal fun AudioStudioAmberHeader(
                     modifier = Modifier
                         .background(Color(0xFF1D2130), RoundedCornerShape(18.dp))
                         .padding(horizontal = 8.dp, vertical = 7.dp),
-                )
+                    )
+                }
             }
         }
     }
