@@ -1,5 +1,7 @@
 package com.sole.cinevault.network
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -20,6 +22,7 @@ import androidx.compose.material.icons.rounded.Radar
 import androidx.compose.material.icons.rounded.WifiTethering
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -71,6 +74,19 @@ internal fun NetworkRadarHero(
         label = "t"
     )
     val time = if (motion) t else 0.25f
+    val peerIdForJoin = state.remoteConnection?.device?.id
+    // The handshake: the other device glides in, the link draws itself, then a flash.
+    val join = remember { Animatable(0f) }
+    val flash = remember { Animatable(1f) }
+    LaunchedEffect(peerIdForJoin, motion) {
+        if (peerIdForJoin == null) { join.snapTo(0f); flash.snapTo(1f); return@LaunchedEffect }
+        if (!motion) { join.snapTo(1f); flash.snapTo(1f); return@LaunchedEffect }
+        join.snapTo(0f); flash.snapTo(0f)
+        join.animateTo(1f, tween(1100, easing = FastOutSlowInEasing))
+        flash.animateTo(1f, tween(700))
+    }
+    val joinT = join.value
+    val flashT = flash.value
     val accent = when {
         state.isConnected -> RadarGreen
         state.isBusy -> RadarCyan
@@ -160,7 +176,7 @@ internal fun NetworkRadarHero(
                 val (angle, distance) = radarPlacement(device.id)
                 val isPeer = device.id == peerId
                 val rad = angle * PI.toFloat() / 180f
-                val r = if (isPeer) maxR * 0.78f else maxR * distance
+                val r = if (isPeer) maxR * (1.0f - 0.22f * joinT) else maxR * distance
                 val p = Offset(c.x + r * cos(rad), c.y + r * sin(rad))
                 val color = when {
                     isPeer -> RadarGreen
@@ -184,8 +200,14 @@ internal fun NetworkRadarHero(
                         moveTo(c.x, c.y)
                         quadraticTo(mid.x, mid.y, p.x, p.y)
                     }
+                    val measure = androidx.compose.ui.graphics.PathMeasure().apply { setPath(path, false) }
+                    val partial = Path()
+                    measure.getSegment(0f, measure.length * joinT, partial, true)
+                    if (flashT < 1f) {
+                        drawCircle(RadarGreen.copy(alpha = (1f - flashT) * 0.6f), radius = (8f + 40f * flashT).dp.toPx(), center = p, style = Stroke(2.dp.toPx()))
+                    }
                     drawPath(
-                        path,
+                        partial,
                         color = RadarGreen.copy(alpha = 0.75f),
                         style = Stroke(
                             2.dp.toPx(),
@@ -195,7 +217,7 @@ internal fun NetworkRadarHero(
                             )
                         )
                     )
-                    for (k in 0 until 3) {
+                    if (joinT >= 1f) for (k in 0 until 3) {
                         val u = (time * 2f + k / 3f) % 1f
                         val inv = 1f - u
                         val x = inv * inv * c.x + 2f * inv * u * mid.x + u * u * p.x
