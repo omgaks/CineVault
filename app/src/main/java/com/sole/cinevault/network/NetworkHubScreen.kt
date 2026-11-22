@@ -20,6 +20,9 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -108,7 +111,7 @@ private fun CineVaultConnectCard(state: CineVaultConnectState, remembered: Remem
     val infinite = rememberInfiniteTransition(label = "connectPulse")
     val pulse by infinite.animateFloat(0.35f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "pulse")
     val accent = when { state.isConnected -> ConnectGreen; state.requiresLocalApproval -> AmberCore; state.isBusy -> ConnectCyan; state.isProviding -> ConnectViolet; else -> AmberCore }
-    Column(Modifier.fillMaxWidth().background(Color(0xFF12151B), RoundedCornerShape(26.dp)).border(1.5.dp, accent.copy(alpha = 0.6f), RoundedCornerShape(26.dp)).padding(22.dp)) {
+    Column(Modifier.fillMaxWidth().drawBehind { drawRoundRect(accent.copy(alpha = 0.10f + 0.12f * (if (state.isBusy) pulse else 0.6f)), cornerRadius = CornerRadius(26.dp.toPx()), style = Stroke(9.dp.toPx())) }.background(Color(0xFF12151B), RoundedCornerShape(26.dp)).border(1.5.dp, accent.copy(alpha = 0.6f), RoundedCornerShape(26.dp)).padding(22.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(48.dp).background(accent.copy(alpha = 0.13f), CircleShape).border(1.dp, accent.copy(alpha = if (state.isBusy) pulse else 0.55f), CircleShape), contentAlignment = Alignment.Center) {
                 Icon(when { state.isConnected -> Icons.Rounded.Link; state.isBusy -> Icons.Rounded.Radar; state.isProviding -> Icons.Rounded.WifiTethering; else -> Icons.Rounded.Hub }, null, tint = accent, modifier = Modifier.size(25.dp))
@@ -185,14 +188,35 @@ private fun ApprovalPanel(deviceName: String, code: String?, onCancel: () -> Uni
         val isConnecting = connectState.connectingPeer?.id == device.id
         val isConnected = connectState.remoteConnection?.device?.id == device.id
         val accent = when { isConnected -> ConnectGreen; isConnecting -> ConnectCyan; device.kind == NetworkDiscoveryKind.CINEVAULT -> ConnectViolet; else -> AmberCore }
-        HubRow(
-            icon = when (device.kind) { NetworkDiscoveryKind.CINEVAULT -> Icons.Rounded.Devices; NetworkDiscoveryKind.DLNA -> Icons.Rounded.LiveTv; else -> Icons.Rounded.Wifi },
-            title = device.displayName,
+        NearbyRow(
+            device = device,
             subtitle = when { isConnected -> "Connected • Tap to open library"; isConnecting -> "Waiting for approval…"; else -> discoveryLabel(device.kind) },
             accent = accent,
+            live = !isConnected && !isConnecting,
             enabled = !isConnecting,
         ) { onClick(device) }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** A nearby device: initial in a coloured circle, a heartbeat dot while it is reachable, a small kind icon. */
+@Composable
+private fun NearbyRow(device: DiscoveredNetworkDevice, subtitle: String, accent: Color, live: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val beat by rememberInfiniteTransition(label = "beat").animateFloat(0.3f, 1f, infiniteRepeatable(tween(1000), RepeatMode.Reverse), label = "beatAlpha")
+    val kindIcon = when (device.kind) { NetworkDiscoveryKind.CINEVAULT -> Icons.Rounded.Devices; NetworkDiscoveryKind.DLNA -> Icons.Rounded.LiveTv; else -> Icons.Rounded.Wifi }
+    Row(Modifier.fillMaxWidth().hubEntrance().alpha(if (enabled) 1f else 0.72f).background(accent.copy(alpha = 0.055f), RoundedCornerShape(16.dp)).border(1.dp, accent.copy(alpha = 0.14f), RoundedCornerShape(16.dp)).clickable(enabled = enabled, onClick = onClick).padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(40.dp).background(accent.copy(alpha = 0.16f), CircleShape), contentAlignment = Alignment.Center) {
+            Text(device.displayName.trim().firstOrNull()?.uppercase() ?: "?", color = accent, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(device.displayName, color = TextBright, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                if (live) { Spacer(Modifier.width(8.dp)); Box(Modifier.size(7.dp).alpha(beat).background(ConnectCyan, CircleShape)) }
+            }
+            Text(subtitle, color = TextMuted, fontSize = 12.sp)
+        }
+        Icon(kindIcon, null, tint = accent.copy(alpha = 0.72f), modifier = Modifier.size(20.dp))
     }
 }
 

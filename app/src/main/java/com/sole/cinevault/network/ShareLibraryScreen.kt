@@ -131,7 +131,7 @@ fun ShareLibraryScreen(
                     Text("Another CineVault can simply use Find Devices — no address typing.", color=TextMuted, fontSize=12.sp)
                     state.qrOrNull(runtime)?.let {
                         Spacer(Modifier.height(14.dp))
-                        Box(Modifier.fillMaxWidth(), contentAlignment=Alignment.Center) { CineVaultInviteQr(it) }
+                        Box(Modifier.fillMaxWidth(), contentAlignment=Alignment.Center) { CineVaultInviteQr(it, expiresAtEpochMs = state.invite?.expiresAtEpochMs) }
                         Spacer(Modifier.height(7.dp))
                         Text("Or scan this code from CineVault → Network → Scan QR.", color=TextFaint, fontSize=11.sp)
                     }
