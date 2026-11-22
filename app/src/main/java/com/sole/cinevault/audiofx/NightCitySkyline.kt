@@ -176,7 +176,7 @@ internal fun NightCitySkyline(
                     end = Offset(x + buildingWidth - 1f, y),
                     strokeWidth = 1.3f,
                 )
-                val energy = NightCityFftEnergy.at(fft, i, count)
+                val energy = NightCityFftEnergy.band(fft, i, count)
                 // Rooftop antennas and occasional cyan spires break up the skyline.
                 if (i % 6 == 2) {
                     drawLine(
@@ -215,7 +215,7 @@ internal fun NightCitySkyline(
             // Spectrum follows actual decoded FFT energy.
             val spectrumBase = h * 0.965f
             for (bar in 0 until 32) {
-                val energy = NightCityFftEnergy.at(fft, bar, 32)
+                val energy = NightCityFftEnergy.band(fft, bar, 32)
                 val barHeight = 2f + energy * h * 0.14f
                 val bx = w * (bar + 0.5f) / 32f
                 drawLine(
