@@ -488,8 +488,7 @@ fun mediaBadgesFromName(fileName: String): List<String> {
     val lower = fileName.lowercase()
     val badges = mutableListOf<String>()
 
-    if (lower.contains("3d") || lower.contains("sbs") || lower.contains("hsbs") ||
-        lower.contains("half sbs") || lower.contains("ou")) badges.add("3D")
+    if (com.sole.cinevault.glasses.stereo.StereoPlaybackDetector.looksStereo(fileName)) badges.add("3D")
     if (lower.contains("hevc") || lower.contains("x265") || lower.contains("h265")) badges.add("HEVC")
     if (lower.contains("2160p") || lower.contains("4k")) badges.add("4K")
     else if (lower.contains("1080p")) badges.add("1080p")
