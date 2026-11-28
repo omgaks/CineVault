@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">CineVault</string>
+    <string name="widget_continue_watching_description">Posters of the films you have started. Swipe to flip, tap to carry on.</string>
 </resources>

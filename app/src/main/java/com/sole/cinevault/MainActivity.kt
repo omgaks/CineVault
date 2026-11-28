@@ -185,6 +185,10 @@ class MainActivity : FragmentActivity() {
         if (uri != null) {
             IncomingIntentHolder.pendingUri = uri
         }
+        if (intent.action == com.sole.cinevault.widget.WidgetPlayRequest.ACTION) {
+            com.sole.cinevault.widget.WidgetPlayRequest.pendingPath =
+                intent.getStringExtra(com.sole.cinevault.widget.WidgetPlayRequest.EXTRA_PATH)
+        }
     }
 
     // CineVault is a video-first player: leaving the app or locking the
@@ -195,6 +199,8 @@ class MainActivity : FragmentActivity() {
         if (!isInPictureInPictureMode && !CineVaultPlayerHolder.isInPipMode) {
             CineVaultPlayerHolder.currentPlayer?.pause()
         }
+        // Keep the home-screen widget's films current once playback has saved its position.
+        com.sole.cinevault.widget.ContinueWatchingWidgetProvider.refresh(this)
         super.onStop()
     }
 
@@ -677,6 +683,16 @@ fun CineVaultApp() {
         runCatching { item.video.path }.getOrNull() ?: return@filter false
         !isSecretItem(item, secretVideoPaths, secretFolderPaths) &&
             !isRestrictedFolderItem(item)
+    }
+
+    // A film tapped on the home-screen widget: open it in the player once the library is loaded.
+    // Looked up in the home-visible list, so a private film can never be opened this way.
+    LaunchedEffect(com.sole.cinevault.widget.WidgetPlayRequest.pendingPath, homeVisibleVideos.size) {
+        val path = com.sole.cinevault.widget.WidgetPlayRequest.pendingPath ?: return@LaunchedEffect
+        if (homeVisibleVideos.isEmpty()) return@LaunchedEffect
+        com.sole.cinevault.widget.WidgetPlayRequest.pendingPath = null
+        val item = homeVisibleVideos.firstOrNull { it.video.path == path } ?: return@LaunchedEffect
+        push(Destination.Player(item.video, item.type, buildPlaybackPlaylist(item, libraryVideos, isHiddenFromPlaylist)))
     }
 
     // FIX: previously, swiping back at the root of ANY tab (Library, Search,
