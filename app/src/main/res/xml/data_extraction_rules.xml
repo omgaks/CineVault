@@ -20,6 +20,8 @@
         <exclude domain="sharedpref" path="cinevault_restricted_folders.xml"/>
         <exclude domain="sharedpref" path="cinevault_smb_shares.xml"/>
         <exclude domain="sharedpref" path="cinevault_smb_shares_secure.xml"/>
+        <exclude domain="sharedpref" path="cinevault_network_credentials_secure.xml"/>
+        <exclude domain="sharedpref" path="__androidx_security_crypto_encrypted_prefs__.xml"/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="cinevault_secret.xml"/>
@@ -27,5 +29,7 @@
         <exclude domain="sharedpref" path="cinevault_restricted_folders.xml"/>
         <exclude domain="sharedpref" path="cinevault_smb_shares.xml"/>
         <exclude domain="sharedpref" path="cinevault_smb_shares_secure.xml"/>
+        <exclude domain="sharedpref" path="cinevault_network_credentials_secure.xml"/>
+        <exclude domain="sharedpref" path="__androidx_security_crypto_encrypted_prefs__.xml"/>
     </device-transfer>
 </data-extraction-rules>

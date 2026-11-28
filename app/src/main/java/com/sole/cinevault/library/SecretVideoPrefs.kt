@@ -5,8 +5,7 @@ import com.sole.cinevault.fileLeafName
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import com.sole.cinevault.openSecurePrefs
 import java.io.File
 
 // FIX: this whole file used to be plain SharedPreferences — the entire
@@ -30,17 +29,7 @@ private fun securePrefs(context: Context): SharedPreferences {
     cachedSecurePrefs?.let { return it }
     return synchronized(SECRET_PREFS_NAME_SECURE) {
         cachedSecurePrefs ?: run {
-            val appContext = context.applicationContext
-            val masterKey = MasterKey.Builder(appContext)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-            EncryptedSharedPreferences.create(
-                appContext,
-                SECRET_PREFS_NAME_SECURE,
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            ).also { cachedSecurePrefs = it }
+            openSecurePrefs(context, SECRET_PREFS_NAME_SECURE).also { cachedSecurePrefs = it }
         }
     }
 }

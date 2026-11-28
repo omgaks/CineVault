@@ -2,8 +2,7 @@ package com.sole.cinevault.smb
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import com.sole.cinevault.openSecurePrefs
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -35,18 +34,7 @@ private const val SMB_SHARES_PREF = "cinevault_smb_shares_secure"
 private const val SMB_SHARES_PREF_LEGACY = "cinevault_smb_shares"
 private const val SMB_SHARES_KEY = "shares"
 
-private fun securePrefs(context: Context): SharedPreferences {
-    val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
-    return EncryptedSharedPreferences.create(
-        context,
-        SMB_SHARES_PREF,
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-    )
-}
+private fun securePrefs(context: Context): SharedPreferences = openSecurePrefs(context, SMB_SHARES_PREF)
 
 // One-time migration for anyone upgrading from before encrypted storage
 // existed. Reads whatever's sitting in the old plain-text prefs file, copies
