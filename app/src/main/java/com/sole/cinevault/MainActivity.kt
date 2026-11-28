@@ -185,6 +185,10 @@ class MainActivity : FragmentActivity() {
         if (uri != null) {
             IncomingIntentHolder.pendingUri = uri
         }
+        if (intent.action == com.sole.cinevault.widget.WidgetPlayRequest.ACTION_TAB) {
+            com.sole.cinevault.widget.WidgetPlayRequest.pendingTab =
+                intent.getIntExtra(com.sole.cinevault.widget.WidgetPlayRequest.EXTRA_TAB, 0)
+        }
         if (intent.action == com.sole.cinevault.widget.WidgetPlayRequest.ACTION) {
             com.sole.cinevault.widget.WidgetPlayRequest.pendingPath =
                 intent.getStringExtra(com.sole.cinevault.widget.WidgetPlayRequest.EXTRA_PATH)
@@ -683,6 +687,13 @@ fun CineVaultApp() {
         runCatching { item.video.path }.getOrNull() ?: return@filter false
         !isSecretItem(item, secretVideoPaths, secretFolderPaths) &&
             !isRestrictedFolderItem(item)
+    }
+
+    // Home / Library buttons on the home-screen widget.
+    LaunchedEffect(com.sole.cinevault.widget.WidgetPlayRequest.pendingTab) {
+        val tab = com.sole.cinevault.widget.WidgetPlayRequest.pendingTab ?: return@LaunchedEffect
+        com.sole.cinevault.widget.WidgetPlayRequest.pendingTab = null
+        switchTab(tab)
     }
 
     // A film tapped on the home-screen widget: open it in the player once the library is loaded.

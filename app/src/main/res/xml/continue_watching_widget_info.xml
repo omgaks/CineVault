@@ -3,11 +3,11 @@
     android:description="@string/widget_continue_watching_description"
     android:initialLayout="@layout/widget_continue_watching"
     android:minWidth="110dp"
-    android:minHeight="110dp"
+    android:minHeight="180dp"
     android:minResizeWidth="80dp"
     android:minResizeHeight="80dp"
     android:targetCellWidth="2"
-    android:targetCellHeight="3"
+    android:targetCellHeight="4"
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="1800000"
     android:widgetCategory="home_screen" />
