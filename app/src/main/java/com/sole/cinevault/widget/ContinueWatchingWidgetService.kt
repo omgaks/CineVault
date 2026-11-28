@@ -11,7 +11,7 @@ import com.sole.cinevault.R
 import com.sole.cinevault.VideoDurationDatabase
 import com.sole.cinevault.mediaBadgesFromName
 import com.sole.cinevault.library.PlaybackPositionDatabase
-import com.sole.cinevault.library.VideoWithMetadata
+import com.sole.cinevault.VideoWithMetadata
 import com.sole.cinevault.library.isRestrictedFolderItem
 import com.sole.cinevault.library.isSecretItem
 import com.sole.cinevault.library.loadLibraryCache
