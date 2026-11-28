@@ -13,8 +13,9 @@ import com.sole.cinevault.MainActivity
 import com.sole.cinevault.R
 
 /**
- * Home-screen widget: a stack of posters for the films you have started. Swipe to flip through,
- * tap to carry on where you stopped. Resizable; tall sizes also show a header.
+ * Home-screen widget in the style of the Google TV one: CINEVAULT header with the logo, big cards for the
+ * films you have started (scroll up and down, tap to carry on), and Home / Library buttons at the bottom.
+ * Resizable; short sizes drop the buttons.
  */
 class ContinueWatchingWidgetProvider : AppWidgetProvider() {
 
@@ -32,7 +33,16 @@ class ContinueWatchingWidgetProvider : AppWidgetProvider() {
             val app = context.applicationContext
             val manager = AppWidgetManager.getInstance(app)
             val ids = manager.getAppWidgetIds(ComponentName(app, ContinueWatchingWidgetProvider::class.java))
-            if (ids.isNotEmpty()) manager.notifyAppWidgetViewDataChanged(ids, R.id.widget_stack)
+            if (ids.isNotEmpty()) manager.notifyAppWidgetViewDataChanged(ids, R.id.widget_list)
+        }
+
+        private fun tabIntent(context: Context, tab: Int): PendingIntent {
+            val intent = Intent(context, MainActivity::class.java).apply {
+                action = WidgetPlayRequest.ACTION_TAB
+                putExtra(WidgetPlayRequest.EXTRA_TAB, tab)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            return PendingIntent.getActivity(context, 10 + tab, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         }
 
         private fun update(context: Context, manager: AppWidgetManager, id: Int) {
@@ -46,8 +56,8 @@ class ContinueWatchingWidgetProvider : AppWidgetProvider() {
                 data = android.net.Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
             }
             @Suppress("DEPRECATION")
-            views.setRemoteAdapter(R.id.widget_stack, serviceIntent)
-            views.setEmptyView(R.id.widget_stack, R.id.widget_empty)
+            views.setRemoteAdapter(R.id.widget_list, serviceIntent)
+            views.setEmptyView(R.id.widget_list, R.id.widget_empty)
 
             val openApp = Intent(context, MainActivity::class.java).apply {
                 action = WidgetPlayRequest.ACTION
@@ -55,13 +65,16 @@ class ContinueWatchingWidgetProvider : AppWidgetProvider() {
             }
             val flags = PendingIntent.FLAG_UPDATE_CURRENT or
                 (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
-            views.setPendingIntentTemplate(R.id.widget_stack, PendingIntent.getActivity(context, 0, openApp, flags))
+            views.setPendingIntentTemplate(R.id.widget_list, PendingIntent.getActivity(context, 0, openApp, flags))
 
             val launch = Intent(context, MainActivity::class.java)
-            views.setOnClickPendingIntent(
-                R.id.widget_empty,
-                PendingIntent.getActivity(context, 1, launch, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT),
-            )
+            val openAppIntent = PendingIntent.getActivity(context, 1, launch, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            views.setOnClickPendingIntent(R.id.widget_empty, openAppIntent)
+            views.setOnClickPendingIntent(R.id.widget_logo, openAppIntent)
+            if (layout == R.layout.widget_continue_watching_tall) {
+                views.setOnClickPendingIntent(R.id.widget_btn_home, tabIntent(context, 0))
+                views.setOnClickPendingIntent(R.id.widget_btn_library, tabIntent(context, 1))
+            }
             manager.updateAppWidget(id, views)
         }
     }

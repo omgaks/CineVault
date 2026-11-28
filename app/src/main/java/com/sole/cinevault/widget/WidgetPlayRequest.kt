@@ -9,5 +9,9 @@ object WidgetPlayRequest {
     const val ACTION = "com.sole.cinevault.WIDGET_PLAY"
     const val EXTRA_PATH = "widget_video_path"
 
+    const val ACTION_TAB = "com.sole.cinevault.WIDGET_TAB"
+    const val EXTRA_TAB = "widget_tab"
+
     var pendingPath: String? by mutableStateOf(null)
+    var pendingTab: Int? by mutableStateOf(null)
 }

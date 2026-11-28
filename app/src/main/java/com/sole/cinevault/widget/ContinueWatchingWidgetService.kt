@@ -59,9 +59,10 @@ class ContinueWatchingWidgetService : RemoteViewsService() {
 
 private class WidgetFilm(val path: String, val title: String, val poster: Bitmap?, val is3d: Boolean, val progress: Float)
 
-private const val MAX_FILMS = 10
-private const val POSTER_W = 240
-private const val POSTER_H = 360
+private const val MAX_FILMS = 8
+private const val CARD_W = 480
+private const val CARD_H = 270
+private const val CARD_RADIUS_PX = 36f
 
 /** Films you have started, never including anything from the Secret or Restricted folders. */
 private suspend fun loadFilms(context: Context): List<WidgetFilm> {
@@ -88,23 +89,41 @@ private suspend fun loadFilms(context: Context): List<WidgetFilm> {
         WidgetFilm(
             path = path,
             title = item.title.ifBlank { item.video.name },
-            poster = loadPoster(context, item.posterUrl),
+            poster = loadCard(context, item.backdropUrl ?: item.episodeStill ?: item.posterUrl),
             is3d = "3D" in mediaBadgesFromName(item.video.name),
             progress = progress,
         )
     }
 }
 
-// Small, 16-bit posters: every widget image has to fit through the system's size limit.
-private suspend fun loadPoster(context: Context, url: String?): Bitmap? {
+// Landscape card art (backdrop, else the poster cropped to fit) with rounded corners, kept small so
+// every widget image fits through the system's size limit.
+private suspend fun loadCard(context: Context, url: String?): Bitmap? {
     if (url.isNullOrBlank()) return null
     return runCatching {
         val request = ImageRequest.Builder(context)
             .data(url)
-            .size(POSTER_W, POSTER_H)
+            .size(CARD_W, CARD_H)
+            .scale(coil.size.Scale.FILL)
             .allowHardware(false)
-            .bitmapConfig(Bitmap.Config.RGB_565)
             .build()
-        (Coil.imageLoader(context).execute(request).drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+        val source = (Coil.imageLoader(context).execute(request).drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+        source?.let { roundedCard(it) }
     }.getOrNull()
+}
+
+private fun roundedCard(source: Bitmap): Bitmap {
+    val out = Bitmap.createBitmap(CARD_W, CARD_H, Bitmap.Config.ARGB_8888)
+    val scale = maxOf(CARD_W / source.width.toFloat(), CARD_H / source.height.toFloat())
+    val w = source.width * scale
+    val h = source.height * scale
+    val matrix = android.graphics.Matrix().apply {
+        setScale(scale, scale)
+        postTranslate((CARD_W - w) / 2f, (CARD_H - h) / 2f)
+    }
+    val shader = android.graphics.BitmapShader(source, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP)
+        .apply { setLocalMatrix(matrix) }
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { this.shader = shader }
+    android.graphics.Canvas(out).drawRoundRect(android.graphics.RectF(0f, 0f, CARD_W.toFloat(), CARD_H.toFloat()), CARD_RADIUS_PX, CARD_RADIUS_PX, paint)
+    return out
 }
