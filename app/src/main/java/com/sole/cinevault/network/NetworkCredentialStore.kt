@@ -1,8 +1,7 @@
 package com.sole.cinevault.network
 
 import android.content.Context
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import com.sole.cinevault.openSecurePrefs
 import org.json.JSONObject
 
 data class NetworkCredential(
@@ -11,15 +10,7 @@ data class NetworkCredential(
 )
 
 class NetworkCredentialStore(context: Context) {
-    private val prefs = EncryptedSharedPreferences.create(
-        context.applicationContext,
-        "cinevault_network_credentials_secure",
-        MasterKey.Builder(context.applicationContext)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build(),
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-    )
+    private val prefs = openSecurePrefs(context, "cinevault_network_credentials_secure")
 
     fun save(sourceId: String, credential: NetworkCredential) {
         require(isSafeNetworkSourceId(sourceId)) { "Unsafe network source id" }
